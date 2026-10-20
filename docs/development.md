@@ -73,6 +73,11 @@ npm run test:package   # Packaged app + separate background PTY input/resize/exi
 npm run install:local  # After quitting: verify and install into release/mac-arm64
 ```
 
+GitHub Actions (`.github/workflows/ci.yml`, macOS) runs `check`, `test:runtime`, `package` and
+`test:package` on every push. The desktop, visual and performance suites are local gates: their
+screenshot baselines and frame budgets were recorded on a development Mac and do not match a
+hosted runner, and the full suite outlasts a job. Run them before packaging.
+
 Automated Electron runs use hidden windows and stay out of the Dock. Screenshots,
 keyboard/pointer actions and terminal performance checks still run. To watch a
 journey while debugging, opt in with `ACT_TEST_SHOW_WINDOW=1 npm run test:desktop`

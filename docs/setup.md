@@ -53,7 +53,7 @@ npm --version                   # 11.x
 ```sh
 git clone https://github.com/pelzerim/agentic-crafting-table.git agent-crafting-table
 cd agent-crafting-table
-npm ci                          # also rebuilds native modules for Electron
+npm ci                          # also downloads Electron and rebuilds native modules for it
 npm run dev                     # builds and starts the app
 ```
 

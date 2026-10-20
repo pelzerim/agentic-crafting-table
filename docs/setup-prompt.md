@@ -40,7 +40,7 @@ post-install note so `nvm` works in a new shell. In the repository directory run
 
 **3. The repository.** If this directory is not already the ACT checkout, clone
 `https://github.com/pelzerim/agentic-crafting-table.git` and work in it. Then `npm ci`. Check it ends without errors
-(native modules are rebuilt during install; that is expected to take a minute).
+(Electron is downloaded and native modules are rebuilt during install; that takes a minute).
 
 **4. Run from source.** `npm run dev`. Tell me to look for a window that says
 **Create your first project**, then quit the app, then continue.

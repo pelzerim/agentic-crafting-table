@@ -37,7 +37,7 @@
     "install:local": "node scripts/install-local.mjs",
     "test:package": "node scripts/smoke-packaged.mjs",
     "check": "npm run typecheck && npm test && npm run build",
-    "postinstall": "electron-builder install-app-deps",
+    "postinstall": "install-electron && electron-builder install-app-deps",
     "test:runtime": "npm run build && node --test tests/runtime/*.test.mjs",
     "test:plugins": "node --test src/resource-plugins/*.test.ts packages/workspace-service/plugin-migrations.test.ts",
     "workspace:backup": "node scripts/workspace-backup.mjs"
