@@ -1,0 +1,212 @@
+/*
+ * Agentic Crafting Table design tokens. Every colour, font and scale value the
+ * renderer and resource plugins use should come from here; docs/design-tokens.md
+ * describes each role. Plugins read these through var(--act-*).
+ */
+:root {
+  /* Surfaces, darkest to lightest */
+  --act-deep: #0b100d;
+  --act-bg: #141a17;
+  --act-sunken: #17211b;
+  --act-card: #1a251e;
+  --act-surface: #1c2720;
+  --act-panel: #202d24;
+  --act-raised: #24322a;
+  --act-control: #263a2d;
+  --act-hover: #2a3b30;
+  --act-selected: #304b39;
+  --act-control-hover: #354e3c;
+
+  /* Lines */
+  --act-line: #3c5143;
+  --act-line-control: #4b6252;
+  --act-line-strong: #5b7563;
+  --act-line-accent: #63826b;
+
+  /* Ink */
+  --act-ink-bright: #f4f8f4;
+  --act-ink: #e1eae2;
+  --act-ink-soft: #bfcec2;
+  --act-ink-dim: #a0b1a4;
+  --act-ink-faint: #8fa596;
+  --act-ink-on-selected: #c8d8cc;
+  --act-ink-on-accent: #15251a;
+  --act-ink-on-attention: #262014;
+
+  /* Accent and focus */
+  --act-accent: #98d6ac;
+  --act-accent-bg: #213a2b;
+  --act-focus: #b4dfbf;
+  --act-section: #d2c39a;
+  --act-focus-ring: 2px solid var(--act-focus);
+
+  /* Map links and selection */
+  --act-link: #9fb5a4;
+  --act-link-active: var(--act-ink);
+  --act-selection: var(--act-ink);
+  /* Plots: each plot's color is a quiet lift on the field; its tone draws the sign's bar and sprout. Never an outline or amber.
+     A plot's elements set both from their neighborhood's palette (plotPalette). */
+  --act-plot-hue: var(--act-accent);
+  --act-plot-tone: var(--act-accent);
+  --act-plot-sign: color-mix(in srgb, var(--act-bg) 88%, transparent);
+  --act-plot-sign-line: var(--act-line-control);
+
+  /* Muted project: night over its neighbourhood. Never amber or mint, and not the Undermap red */
+  --act-mute-hull: #6d7aa6;
+  --act-mute-veil: #1a2030;
+  --act-mute-veil-attach: color-mix(in srgb, var(--act-mute-veil) 72%, var(--act-mute-star));
+  --act-mute-card: #11141d;
+  --act-mute-note: #4d515c;
+  --act-mute-star: #cfd8ee;
+  --act-mute-atlas: #39405a;
+  --act-mute-ink: var(--act-ink-dim);
+
+  /* Undermap: the layer below the map is the deepest surface tinted red */
+  --act-undermap: #170d10;
+  --act-undermap-panel: color-mix(in srgb, var(--act-undermap), var(--act-ink) 6%);
+  --act-undermap-line: #5b2d2e;
+  --act-undermap-surface: #1d1011;
+  --act-undermap-ink: #f3dcd6;
+  --act-undermap-ink-dim: #c79a90;
+  --act-undermap-accent: #b38ae0;
+  --act-undermap-edge: #6b3432;
+
+  /* Card tones beyond the indicator tones */
+  --act-card-teal: #87c7bf;
+  --act-card-teal-bg: #203735;
+  --act-card-amber: #d8b576;
+  --act-card-blue: #a4b8e2;
+  --act-card-indigo: #afa3df;
+  --act-card-indigo-bg: #2d2d43;
+
+  /* A hovered or open card lifts its face; its edge keeps its width, because a 2px edge means Asking me */
+  --act-card-lift: #ffffff0c;
+
+  /* Dashboards and blocking */
+  --act-working-ink: #b6ffd1;
+  --act-working-sheep: #e4ffee;
+  --act-working-sheep-head: #73b58c;
+  --act-working-raccoon: #c3ccc6;
+  --act-working-raccoon-band: #56605a;
+  --act-working-raccoon-pale: #f4f8f5;
+  --act-working-raccoon-can: #7f8b85;
+  --act-todo-ink: #c9e8d2;
+  --act-needs-row-bg: #2a2a1f;
+  --act-strip-neutral: #6b7e70;
+  --act-strip-violet: #9d86c9;
+  --act-strip-blue: #8fb3e0;
+  --act-ink-on-coral: #2a1812;
+  --act-coral-bg: #3a2019;
+  --act-coral-bg-hover: #5a2d21;
+  --act-coral-ink: #ffd9c8;
+
+  /* Status */
+  --act-ok: var(--act-accent);
+  /* Needs me owns amber: one ramp, stepped in brightness by tier (STATE-02). --act-attention is the
+     umbrella and My turn; -asking is the brightest (stopped until I act); -finished recedes. */
+  --act-attention: #e8bd72;
+  --act-attention-asking: #ffd98a;
+  --act-attention-finished: #a88f5c;
+  /* Provider cues toned "amber" (Queued, Changes requested, Updates paused) and stale data: neutral, never Needs me amber */
+  --act-cue-waiting: var(--act-neutral);
+  /* In-flight operations in settings and item views (Sending…, unsaved); not Needs me */
+  --act-pending: #efcc89;
+  --act-pending-bg: #353120;
+  --act-pending-line: #6c5a2c;
+  --act-needs-me-fill: #3b3222;
+  --act-needs-me-edge: #967d4d;
+  --act-error: #f0b8a1;
+  --act-error-bg: #402225;
+  --act-bad: #ff9d98;
+  --act-danger-fill: #a64d41;
+  --act-danger-ink: #fff3ee;
+  --act-info: #a5c9f2;
+  --act-info-bg: #253344;
+  --act-info-line: #4a617d;
+  --act-neutral: #b8c4bd;
+
+  /* Blue family: surfaces, lines and ink of a view that sits in a blue frame (the rollout view) */
+  --act-blue-sunken: #18202b;
+  --act-blue-surface: #1d2634;
+  --act-blue-raised: #24303f;
+  --act-blue-hover: #2a3850;
+  --act-blue-line: #33445a;
+  --act-blue-line-strong: var(--act-info-line);
+  --act-blue-ink: #e2e8f0;
+  --act-blue-ink-dim: #a6b3c4;
+  --act-blue-ink-faint: #8d9bb0;
+
+  /* Indicator tones */
+  --act-tone-green: #a4e6b7;
+  --act-tone-violet: #d8c2f1;
+  --act-tone-red: #f0aaa4;
+  --act-tone-coral: #f29b7a;
+
+  /* Agents, brands and copper (agent work) */
+  --act-agent-claude: #e39a79;
+  --act-agent-codex: #9fb7ff;
+  --act-brand-linear: #b3adff;
+  --act-brand-github: #d8d3ef;
+  --act-copper: #dca57c;
+  --act-copper-bg: #33271e;
+  --act-copper-line: #6e5039;
+  --act-copper-ink: #221710;
+  --act-copper-fill: #d59a6e;
+
+  /* Note papers: decoration only, never status. No yellow, because amber means Needs me. */
+  --act-paper-mint: var(--act-todo-ink);
+  --act-paper-sky: var(--act-card-blue);
+  --act-paper-lilac: var(--act-tone-violet);
+  --act-paper-peach: var(--act-coral-ink);
+  --act-paper-slate: var(--act-raised);
+  --act-paper-ink: var(--act-ink-on-accent);
+  --act-paper-slate-ink: var(--act-ink);
+  --act-paper-tape: color-mix(in srgb, var(--act-ink-bright) 62%, transparent);
+  --act-paper-agent-tape: var(--act-copper-fill);
+
+  /* Type */
+  --act-font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", sans-serif;
+  --act-font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --act-fs-caps: 10px;
+  --act-fs-meta: 11px;
+  --act-fs-ui: 12px;
+  --act-fs-body: 13px;
+  --act-fs-panel: 15px;
+  --act-fs-title: 18px;
+  --act-fs-display: 24px;
+  --act-fw-regular: 400;
+  --act-fw-medium: 500;
+  --act-fw-strong: 650;
+
+  /* Spacing (2px pixel grid) */
+  --act-sp-0_5: 2px;
+  --act-sp-1: 4px;
+  --act-sp-1_5: 6px;
+  --act-sp-2: 8px;
+  --act-sp-3: 12px;
+  --act-sp-4: 16px;
+  --act-sp-6: 24px;
+  --act-sp-8: 32px;
+
+  /* Sizes */
+  --act-control-size: 26px;
+
+  /* Shape: stepped pixel corners instead of border radius */
+  --act-shape-control: var(--pixel-control-shape);
+  --act-shape-panel: var(--pixel-panel-shape);
+
+  /* Elevation */
+  --act-shadow-sm: 0 3px 0 #0c140f;
+  --act-shadow-md: 0 5px 0 #090f0b, 0 12px 35px #0005;
+  --act-shadow-lg: 0 12px 40px #0007;
+  --act-shadow-popover: 0 6px 18px #0009;
+  --act-z-map: 0;
+  --act-z-card: 10;
+  --act-z-edge: 20;
+  --act-z-overlay: 100;
+  --act-z-panel: 200;
+  --act-z-menu: 300;
+  --act-z-toast: 400;
+  --act-z-modal: 500;
+}
+

@@ -1,0 +1,18 @@
+{
+  "id": "sample",
+  "name": "Sample cards",
+  "version": "1.0.0",
+  "apiRange": "^1.0.0",
+  "description": "A provider-free fixture package with one item type.",
+  "entries": {
+    "definitions": "dist/definitions.mjs",
+    "service": "dist/service.mjs",
+    "renderer": "dist/renderer.mjs"
+  },
+  "contributes": {
+    "itemTypes": ["sample.card"],
+    "runtimeOperations": ["sample.echo"],
+    "agentGuide": ["sample.guide"],
+    "css": ["dist/renderer.css"]
+  }
+}

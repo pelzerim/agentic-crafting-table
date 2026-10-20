@@ -1,0 +1,1957 @@
+.resource-detail {
+  height: 100%;
+  overflow: auto;
+  padding: 12px;
+  line-height: 1.6;
+}
+
+.resource-detail p {
+  white-space: pre-wrap;
+}
+
+.resource-detail a {
+  color: var(--act-focus);
+}
+
+.map-card.small-card {
+  padding: 9px 11px;
+}
+
+.small-card .card-heading {
+  height: 100%;
+}
+
+.small-card .card-label small,
+.small-card .card-summary {
+  display: none;
+}
+
+.small-card .item-glyph {
+  font-size: 18px;
+}
+
+.resource-detail:has(.native-terminal) {
+  padding: 0;
+  overflow: hidden;
+}
+
+.react-flow__node-card {
+  border: 0;
+  background: transparent;
+}
+
+.card-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.item-glyph {
+  font-size: 23px;
+  color: var(--tone);
+  flex: none;
+}
+
+.card-label {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.card-label small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--act-fs-caps);
+  color: var(--tone);
+  text-transform: uppercase;
+  letter-spacing: .7px;
+}
+
+.card-label strong {
+  font-size: var(--act-fs-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-summary {
+  font-size: var(--act-fs-meta);
+  margin: 12px 0 0;
+  color: var(--act-ink-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.map-card.compact {
+  padding: 9px;
+}
+
+.card-heading button {
+  margin-left: auto;
+}
+
+.map-card button,
+.map-trail button {
+  border: 1px solid var(--act-line-control);
+  background: var(--act-control);
+  color: var(--act-ink);
+  border-radius: 0;
+  padding: 7px 10px;
+  font-size: var(--act-fs-ui);
+}
+
+.card-detail {
+  flex: 1;
+  min-height: 0;
+  padding-top: 16px;
+}
+
+.card-detail[hidden] {
+  display: none;
+}
+
+.map-trail button {
+  background: var(--act-bg);
+}
+
+.map-card:has(:focus-visible) {
+  outline: var(--act-focus-ring);
+}
+
+.item-icon {
+  width: 19px;
+  height: 19px;
+  flex: none;
+  vertical-align: middle;
+}
+
+.brand-claude {
+  color: var(--act-agent-claude);
+}
+
+.brand-codex {
+  color: var(--act-agent-codex);
+}
+
+.brand-linear {
+  color: var(--act-brand-linear);
+}
+
+.brand-github {
+  color: var(--act-brand-github);
+}
+
+.expanded .card-heading:has(.session-toolbar-slot:not(:empty)) .card-label,
+.expanded .card-heading:has(.item-frame-slot:not(:empty)) .card-label {
+  max-width: 170px;
+}
+
+.expanded .card-label small {
+  display: none;
+}
+
+.expanded .card-label strong {
+  font-size: var(--act-fs-body);
+}
+
+.map-card.expanded {
+  display: flex;
+  flex-direction: column;
+  background: var(--act-surface);
+  box-shadow: 0 12px 36px #0005;
+  padding: 12px;
+}
+
+.expanded .card-detail {
+  padding-top: 8px;
+}
+
+.map-card.tone-teal,
+.picker-center[data-preview=true].tone-teal {
+  --tone: var(--act-card-teal);
+  background: var(--act-card-teal-bg);
+}
+
+.map-card.tone-amber,
+.picker-center[data-preview=true].tone-amber {
+  --tone: var(--act-card-amber);
+  background: var(--act-pending-bg);
+}
+
+.map-card.tone-blue,
+.picker-center[data-preview=true].tone-blue {
+  --tone: var(--act-card-blue);
+  background: var(--act-info-bg);
+}
+
+.map-card.tone-indigo,
+.picker-center[data-preview=true].tone-indigo {
+  --tone: var(--act-card-indigo);
+  background: var(--act-card-indigo-bg);
+}
+
+.map-card .item-glyph {
+  width: 23px;
+  height: 23px;
+  color: var(--tone);
+}
+
+.map-card .item-glyph.brand-claude {
+  color: var(--act-agent-claude);
+}
+
+.map-card .item-glyph.brand-codex {
+  color: var(--act-agent-codex);
+}
+
+.map-card .item-glyph.brand-linear {
+  color: var(--act-brand-linear);
+}
+
+.map-card .item-glyph.brand-github {
+  color: var(--act-brand-github);
+}
+
+.map-card.compact .item-glyph {
+  width: 24px;
+  height: 24px;
+}
+
+/* VIS-03: the mark on a card's bottom edge. Tufts in the card's own colour stand on the inside of the edge and
+   the item's sheep walks along it, eating them, or takes the pose its state calls for. The mark is a row of
+   paddocks (i), one per sheep: the first is the item's own, the others its busy helpers'. Stepped animations
+   on each paddock drive registered properties that its pseudo-elements read: where the sheep is (--graze-x,
+   2px a step, there and back), which way it faces (--graze-face), which leg frame shows (--graze-leg), and a
+   plain counter for poses (--graze-beat). ::before is the grass, a tiled mask with the bite cut out at the
+   sheep; ::after is the sheep. The first paddock holds a u: its ::before is the head of a posed sheep, its
+   ::after what the pose adds. b elements stand at the right end. Amber is the gate's alone: the frame is
+   about me, the grass is about the item. */
+@property --graze-x {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --graze-face {
+  syntax: "<integer>";
+  inherits: true;
+  initial-value: 0;
+}
+
+@property --graze-leg {
+  syntax: "<integer>";
+  inherits: true;
+  initial-value: 0;
+}
+
+@property --graze-doze {
+  syntax: "<integer>";
+  inherits: true;
+  initial-value: 0;
+}
+
+@property --graze-beat {
+  syntax: "<integer>";
+  inherits: true;
+  initial-value: 0;
+}
+
+@property --graze-trip {
+  syntax: "<integer>";
+  inherits: true;
+  initial-value: 0;
+}
+
+@property --graze-dip {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --graze-bump {
+  syntax: "<integer>";
+  inherits: true;
+  initial-value: 0;
+}
+
+@property --graze-fence {
+  syntax: "<integer>";
+  inherits: true;
+  initial-value: 0;
+}
+
+@property --graze-visit {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: -24px;
+}
+
+.working-mark {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 8px;
+  z-index: 5;
+  display: flex;
+  pointer-events: none;
+}
+
+/* A card that is not working and has no room for a sheep shows no mark. */
+.working-mark[data-variant=glint][data-rest] {
+  display: none;
+}
+
+/* Paddocks are stretches of the edge; the last takes what is left over. */
+.working-mark>i {
+  position: relative;
+  flex: 0 0 var(--graze-span);
+}
+
+.working-mark>i:last-of-type {
+  flex-grow: 1;
+}
+
+.working-mark>i>u {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+/* Later paddocks start further along their walk, so a flock is never in step. */
+.working-mark[data-variant=graze]>i {
+  --graze-lead: calc(var(--graze-paddock) * var(--graze-steps) * -.19s);
+  animation: graze-walk calc(var(--graze-steps) * .25s) steps(var(--graze-steps)) var(--graze-lead) infinite alternate,graze-face calc(var(--graze-steps) * .5s) steps(2) var(--graze-lead) infinite,graze-leg .333s steps(2) calc(var(--graze-paddock) * -.1s) infinite;
+}
+
+/* The tile carries on from one paddock into the next. */
+.working-mark[data-variant]>i::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 4px;
+  background: linear-gradient(var(--working-tuft-low) 2px,var(--working-tuft) 2px);
+  mask-image: var(--working-tufts);
+  mask-size: 128px 6px;
+  mask-repeat: repeat-x;
+  mask-position: var(--graze-offset) 0;
+}
+
+/* The bite travels with the sheep: bare ground under and behind it, and dimmer stubs where the grass comes back. */
+.working-mark[data-variant=graze]>i::before {
+  background: linear-gradient(var(--working-tuft-low),var(--working-tuft-low)) calc(var(--graze-x) - 16px + var(--graze-face) * var(--bite-back,34px)) 0 / 12px 4px no-repeat,linear-gradient(var(--working-tuft-low) 2px,var(--working-tuft) 2px);
+  mask-image: var(--working-tufts),var(--bite-mask,var(--working-bite));
+  mask-size: 128px 6px,var(--bite-width,32px) 8px;
+  mask-repeat: repeat-x,no-repeat;
+  mask-position: var(--graze-offset) 0,calc(var(--graze-x) - 16px + var(--graze-face) * 14px) calc(var(--graze-face) * -4px);
+  mask-composite: subtract;
+}
+
+.working-mark[data-variant=graze]>i::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--animal-fur,linear-gradient(90deg,var(--working-sheep-head) 4px,var(--working-sheep-body) 4px 14px,var(--working-sheep-head) 14px) calc(var(--graze-x) - 4px + var(--graze-face) * 4px) 0 / 18px 8px no-repeat);
+  mask-image: var(--animal-walk,var(--working-sheep));
+  mask-size: var(--animal-width,14px) var(--animal-strip,48px);
+  mask-repeat: no-repeat;
+  mask-position: var(--graze-x) calc((var(--graze-face) * 2 + var(--graze-leg)) * -8px);
+}
+
+/* Poses. The item's own sheep stands still a little way into its paddock, on whole grass, drawn from one sprite:
+   its silhouette on ::after in the body colour and its head on the u in the head colour. --graze-beat counts the
+   pose's steps. */
+.working-mark[data-variant=graze]:is([data-pose=gate],[data-pose=asking],[data-pose=fallen],[data-pose=shearing],[data-pose=asleep],[data-pose=ended],[data-pose=mill])>i:first-child::before {
+  background: linear-gradient(var(--working-tuft-low) 2px,var(--working-tuft) 2px);
+  mask-image: var(--working-tufts);
+  mask-size: 128px 6px;
+  mask-repeat: repeat-x;
+  mask-position: 0 0;
+  mask-composite: add;
+}
+
+.working-mark[data-variant=graze]:is([data-pose=gate],[data-pose=asking],[data-pose=fallen],[data-pose=shearing])>i:first-child {
+  --sprite-width: 14px;
+  --stand: 8px;
+  --graze-x: var(--stand);
+  animation: graze-beat var(--beat-time) steps(var(--beats)) infinite;
+}
+
+.working-mark[data-variant=graze]:is([data-pose=gate],[data-pose=asking],[data-pose=fallen],[data-pose=shearing])>i:first-child::after {
+  background: var(--animal-fur,var(--working-sheep-body));
+  mask-image: var(--sprite);
+  mask-size: var(--sprite-width) 8px;
+  mask-position: var(--graze-x) 0;
+}
+
+.working-mark[data-variant=graze]:is([data-pose=gate],[data-pose=asking],[data-pose=fallen],[data-pose=shearing])>i:first-child>u::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--working-sheep-head);
+  mask-image: var(--sprite-head);
+  mask-size: var(--sprite-width) 8px;
+  mask-repeat: no-repeat;
+  mask-position: var(--graze-x) 0;
+}
+
+/* What a pose adds stands in a box 12px high; a card whose text comes that close shows the pose without it. */
+.working-mark[data-variant=graze]:is([data-pose=gate],[data-pose=asking],[data-pose=fallen],[data-pose=shearing],[data-pose=command],[data-pose=graze])>i:first-child>u::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 12px;
+  mask-repeat: no-repeat;
+}
+
+.working-mark[data-variant=graze][data-snug]:is([data-pose=gate],[data-pose=fallen],[data-pose=shearing],[data-pose=graze])>i:first-child>u::after,
+.working-mark[data-snug]>i>em,
+.working-mark[data-snug]>b[data-prop=mill] {
+  content: none;
+  display: none;
+}
+
+/* Permission prompt: it stands at a closed amber gate and nudges it, one step in eight. */
+.working-mark[data-variant=graze][data-pose=gate]>i:first-child {
+  --sprite: var(--working-stand);
+  --sprite-head: var(--working-stand-head);
+  --beats: 8;
+  --beat-time: 1.33s;
+  --graze-x: calc(var(--stand) + clamp(0,var(--graze-beat) - 6,1) * 2px);
+}
+
+.working-mark[data-variant=graze][data-pose=gate]>i:first-child>u::after {
+  background: var(--act-attention);
+  mask-image: var(--working-gate);
+  mask-size: 12px 10px;
+  mask-position: calc(var(--stand) + var(--animal-width,14px) + 4px) 100%;
+}
+
+/* A question, or waiting for me: it faces out of the card and blinks. */
+.working-mark[data-variant=graze][data-pose=asking]>i:first-child {
+  --sprite: var(--working-front);
+  --sprite-head: var(--working-front-head);
+  --sprite-width: 10px;
+  --beats: 9;
+  --beat-time: 2.34s;
+}
+
+.working-mark[data-variant=graze][data-pose=asking]>i:first-child>u::after {
+  background: var(--working-eye);
+  mask-image: var(--working-eyes);
+  mask-size: calc(10px * clamp(0,8 - var(--graze-beat),1)) 8px;
+  mask-position: var(--graze-x) 100%;
+}
+
+/* Stopped with an error: on its back, one leg twitching now and then. */
+.working-mark[data-variant=graze][data-pose=fallen]>i:first-child {
+  --sprite: var(--working-back);
+  --sprite-head: var(--working-back-head);
+  --beats: 7;
+  --beat-time: 1.68s;
+}
+
+.working-mark[data-variant=graze][data-pose=fallen]>i:first-child>u::after {
+  background: linear-gradient(var(--working-sheep-body),var(--working-sheep-body)) calc(var(--graze-x) + 6px) 2px / calc(2px * clamp(0,1 - var(--graze-beat),1)) 2px no-repeat;
+}
+
+/* Compacting: the wool flies off, the sheep is thin and all one tone for a while, and the wool is back. --shorn is 1
+   for beats 3 to 7 of 11. */
+.working-mark[data-variant=graze][data-pose=shearing]>i:first-child {
+  --sprite-head: var(--working-stand-head);
+  --beats: 11;
+  --beat-time: 3.67s;
+  --shorn: calc(clamp(0,var(--graze-beat) - 2,1) * clamp(0,8 - var(--graze-beat),1));
+}
+
+.working-mark[data-variant=graze][data-pose=shearing]>i:first-child::after {
+  background: linear-gradient(var(--working-sheep-head),var(--working-sheep-head)) var(--graze-x) 0 / calc(14px * var(--shorn)) 8px no-repeat,var(--working-sheep-body);
+  mask-image: var(--working-stand),var(--working-shorn);
+  mask-size: calc(14px * (1 - var(--shorn))) 8px,calc(14px * var(--shorn)) 8px;
+  mask-position: var(--graze-x) 0;
+}
+
+.working-mark[data-variant=graze][data-pose=shearing]>i:first-child>u::before {
+  mask-size: calc(14px * (1 - var(--shorn))) 8px;
+}
+
+.working-mark[data-variant=graze][data-pose=shearing]>i:first-child>u::after {
+  background: var(--working-sheep-body);
+  mask-image: var(--working-wool);
+  mask-size: calc(14px * clamp(0,2 - var(--graze-beat),1)) 4px;
+  mask-position: calc(var(--graze-x) + 2px - var(--graze-beat) * 2px) calc(2px - var(--graze-beat) * 2px);
+}
+
+/* Running a command: it pushes a block along its paddock, left to right, and starts again. */
+.working-mark[data-variant=graze][data-pose=command]>i:first-child {
+  animation: graze-push calc(var(--graze-run) * .28s) steps(var(--graze-run)) infinite,graze-leg .333s steps(2) infinite;
+}
+
+.working-mark[data-variant=graze][data-pose=command]>i:first-child>u::after {
+  --block: color-mix(in srgb,var(--working-sheep-head) 55%,var(--act-deep));
+  background: linear-gradient(var(--working-sheep-head),var(--working-sheep-head)) calc(var(--graze-x) + 16px) 4px / 8px 2px no-repeat,linear-gradient(var(--working-sheep-head),var(--working-sheep-head)) calc(var(--graze-x) + 16px) 4px / 2px 8px no-repeat,linear-gradient(var(--block),var(--block)) calc(var(--graze-x) + 16px) 4px / 8px 8px no-repeat;
+}
+
+/* Another model: a small bell under the neck of a sheep that walks. */
+.working-mark[data-variant=graze][data-bell]:is([data-pose=graze],[data-pose=command])>i:first-child::after {
+  --bell-x: calc(var(--graze-x) + 10px - var(--graze-face) * 8px);
+  background: linear-gradient(var(--working-zed-ink),var(--working-zed-ink)) var(--bell-x) 6px / 2px 2px no-repeat,linear-gradient(90deg,var(--working-sheep-head) 4px,var(--working-sheep-body) 4px 14px,var(--working-sheep-head) 14px) calc(var(--graze-x) - 4px + var(--graze-face) * 4px) 0 / 18px 8px no-repeat;
+  mask-image: linear-gradient(black,black),var(--working-sheep);
+  mask-size: 2px 2px,14px 48px;
+  mask-position: var(--bell-x) 6px,var(--graze-x) calc(((1 - var(--graze-trip)) * (var(--graze-face) * 2 + var(--graze-leg)) + var(--graze-trip) * (4 + var(--graze-face))) * -8px);
+}
+
+/* A worktree: the item's sheep keeps to a small pen, two posts and a dotted rail. A pen with no other sheep leaves a
+   stretch of grass beyond it. */
+.working-mark>i>em {
+  position: absolute;
+  inset: auto 0 0;
+  height: 10px;
+  background: linear-gradient(var(--working-sheep-head),var(--working-sheep-head)) 0 0 / 2px 10px no-repeat,linear-gradient(var(--working-sheep-head),var(--working-sheep-head)) 100% 0 / 2px 10px no-repeat,repeating-linear-gradient(90deg,var(--working-sheep-head) 0 2px,transparent 2px 4px) 0 0 / 100% 2px no-repeat;
+}
+
+.working-mark[data-variant=graze]>i[data-empty] {
+  animation: none;
+}
+
+.working-mark[data-variant=graze]>i[data-empty]::after {
+  content: none;
+}
+
+.working-mark[data-variant=graze]>i[data-empty]::before {
+  background: linear-gradient(var(--working-tuft-low) 2px,var(--working-tuft) 2px);
+  mask-image: var(--working-tufts);
+  mask-size: 128px 6px;
+  mask-repeat: repeat-x;
+  mask-position: var(--graze-offset) 0;
+  mask-composite: add;
+}
+
+/* Asleep: while the item only waits on its helpers its own sheep lies a little way into its paddock. --graze-doze
+   steps 0 to 5 in three seconds: a z rises beside the head for the first three steps, dimmer on the third, and is
+   gone for the rest. */
+.working-mark[data-variant=graze][data-pose=asleep]>i:first-child {
+  --graze-x: 8px;
+  --graze-zed-x: calc(var(--graze-x) + 14px + var(--graze-doze) * 2px);
+  --graze-zed-y: calc(4px - var(--graze-doze) * 2px);
+  animation: graze-doze 3s steps(6) infinite;
+}
+
+.working-mark[data-variant=graze][data-pose=asleep]>i:first-child::after {
+  inset: auto 0 0;
+  height: 12px;
+  --zed: color-mix(in srgb,var(--working-zed-ink) calc(100% - clamp(0,var(--graze-doze) - 1,1) * 45%),transparent);
+  background: linear-gradient(var(--zed),var(--zed)) var(--graze-zed-x) var(--graze-zed-y) / 4px 6px no-repeat,linear-gradient(var(--working-sheep-head),var(--working-sheep-head)) calc(var(--graze-x) + 10px) 8px / 4px 2px no-repeat,linear-gradient(var(--working-sheep-head),var(--working-sheep-head)) calc(var(--graze-x) + 12px) 10px / 2px 2px no-repeat,linear-gradient(var(--working-sheep-body),var(--working-sheep-body)) var(--graze-x) 6px / 14px 6px no-repeat;
+  mask-image: var(--working-zed),var(--working-lying);
+  mask-size: calc(4px * clamp(0,3 - var(--graze-doze),1)) 6px,14px 6px;
+  mask-repeat: no-repeat;
+  mask-position: var(--graze-zed-x) var(--graze-zed-y),var(--graze-x) 6px;
+}
+
+/* Text within 12px of the edge leaves the z no room to rise: the sheep sleeps without it. */
+.working-mark[data-variant=graze][data-pose=asleep][data-snug]>i:first-child {
+  --graze-doze: 3;
+  animation: none;
+}
+
+/* Session ended, and idle beside a shell or watcher: no sheep. An ended session's grass has grown tall, each
+   stalk with a dimmer tip. */
+.working-mark[data-variant=graze]:is([data-pose=ended],[data-pose=mill])>i {
+  animation: none;
+}
+
+.working-mark[data-variant=graze]:is([data-pose=ended],[data-pose=mill])>i::after {
+  content: none;
+}
+
+.working-mark[data-variant=graze][data-pose=ended]>i:first-child::before {
+  height: 6px;
+  background: var(--working-tuft);
+  mask-image: var(--working-tall);
+  mask-size: 128px 8px;
+}
+
+.working-mark[data-variant=graze][data-pose=ended]>i:first-child>u::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 6px;
+  background: var(--working-tuft-low);
+  mask-image: var(--working-tall-tips);
+  mask-size: 128px 8px;
+  mask-repeat: repeat-x;
+}
+
+/* The pinwheel: a post, a bright hub and two arms that turn in four steps a second. */
+.working-mark>b {
+  position: absolute;
+  bottom: 0;
+}
+
+.working-mark>b[data-prop=mill] {
+  right: 20px;
+  width: 6px;
+  height: 10px;
+  background: linear-gradient(var(--working-sheep-body),var(--working-sheep-body)) 2px 2px / 2px 2px no-repeat,linear-gradient(var(--working-tuft-low),var(--working-tuft-low)) 2px 4px / 2px 6px no-repeat;
+}
+
+.working-mark>b[data-prop=mill]::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 4px;
+  background: var(--working-zed-ink);
+  mask-image: var(--working-mill);
+  mask-size: 6px 24px;
+  mask-repeat: no-repeat;
+  animation: graze-mill 1s steps(4) infinite;
+}
+
+/* Finished tasks: one flower each at the right end, 12px apart, the newest opening from a bud every few seconds. */
+.working-mark>b[data-prop=flowers] {
+  right: 0;
+  width: calc(var(--flowers) * 12px);
+  height: 8px;
+}
+
+.working-mark>b[data-prop=flowers]::before,
+.working-mark>b[data-prop=flowers]::after {
+  content: "";
+  position: absolute;
+  inset: 0 12px 0 0;
+  background: repeating-linear-gradient(90deg,transparent 0 2px,var(--working-sheep-body) 2px 4px,transparent 4px 12px) 0 2px / 100% 2px no-repeat,linear-gradient(var(--working-sheep-head),var(--working-sheep-head)) 0 4px / 100% 4px no-repeat,var(--working-zed-ink);
+  mask-image: var(--working-flower);
+  mask-size: 12px 8px;
+  mask-repeat: repeat-x;
+}
+
+.working-mark>b[data-prop=flowers]::after {
+  inset: 0 0 0 auto;
+  width: 12px;
+  mask-image: var(--working-bloom);
+  mask-size: 12px 16px;
+  mask-repeat: no-repeat;
+  mask-position: 0 -8px;
+  animation: graze-bloom 3.3s step-end infinite;
+}
+
+.working-mark>b[data-prop=mill] {
+  margin-right: calc(var(--flowers) * 12px);
+}
+
+/* Moments play once, on a card whose own sheep grazes. The mark's animation starts at --moment-delay, the time the
+   moment happened. Two takes of every moment share their keyframes under two names, so the next one of a kind is
+   a new animation and plays again. A helper that finished trots out past the right edge. */
+.working-mark[data-variant=graze][data-moment=leave] {
+  animation: graze-leave 1.5s steps(15) var(--moment-delay) 1,graze-trot .333s steps(2) var(--moment-delay) 5;
+}
+
+.working-mark[data-variant=graze][data-moment=leave][data-take=b] {
+  animation-name: graze-leave-b,graze-trot-b;
+}
+
+/* A helper that started walks in from the right, facing left. */
+.working-mark[data-variant=graze][data-moment=enter] {
+  animation: graze-enter 1.5s steps(15) var(--moment-delay) 1,graze-trot .333s steps(2) var(--moment-delay) 5;
+}
+
+.working-mark[data-variant=graze][data-moment=enter][data-take=b] {
+  animation-name: graze-enter-b,graze-trot-b;
+}
+
+.working-mark[data-moment=enter]>b[data-prop=visitor] {
+  background: linear-gradient(90deg,var(--working-sheep-head) 4px,var(--working-sheep-body) 4px);
+  mask-position: 0 calc((2 + var(--graze-leg)) * -8px);
+}
+
+/* A tool failed: the grazing sheep stumbles, head down and a step lower, and carries on. */
+.working-mark[data-variant=graze][data-moment=stumble] {
+  animation: graze-stumble .5s step-end var(--moment-delay) 1;
+}
+
+.working-mark[data-variant=graze][data-moment=stumble][data-take=b] {
+  animation-name: graze-stumble-b;
+}
+
+.working-mark[data-variant=graze][data-pose=graze]>i:first-child::after {
+  translate: calc(var(--graze-recoil) * (var(--graze-face) * 2 - 1)) var(--graze-dip);
+  mask-position: var(--graze-x) calc(((1 - var(--graze-trip)) * (var(--graze-face) * 2 + var(--graze-leg)) + var(--graze-trip) * (4 + var(--graze-face))) * -8px);
+}
+
+/* A tool was denied: a stretch of fence stands in its way for a moment and it bounces back off it. */
+.working-mark[data-variant=graze][data-moment=bump] {
+  animation: graze-bump 1.2s steps(6) var(--moment-delay) 1;
+}
+
+.working-mark[data-variant=graze][data-moment=bump][data-take=b] {
+  animation-name: graze-bump-b;
+}
+
+.working-mark[data-variant=graze][data-pose=graze]>i:first-child {
+  --graze-recoil: calc(clamp(0,min(var(--graze-bump) - 1,6 - var(--graze-bump)),2) * 2px);
+}
+
+.working-mark[data-variant=graze][data-pose=graze]>i:first-child>u::after {
+  background: var(--working-sheep-head);
+  mask-image: var(--working-fence);
+  mask-size: calc(10px * var(--graze-fence)) 10px;
+  mask-position: calc(var(--graze-x) + var(--animal-width,14px) + 2px - var(--graze-face) * (var(--animal-width,14px) + 14px)) 100%;
+}
+
+.working-mark>b[data-prop=visitor] {
+  right: var(--graze-visit);
+  width: 14px;
+  height: 8px;
+  background: linear-gradient(90deg,var(--working-sheep-body) 10px,var(--working-sheep-head) 10px);
+  mask-image: var(--working-sheep);
+  mask-size: 14px 48px;
+  mask-repeat: no-repeat;
+  mask-position: 0 calc(var(--graze-leg) * -8px);
+}
+
+/* The raccoon (Settings → Map → Working animal) walks the same paddocks on the same beats, two pixels wider and in
+   three tones: ::after is its grey fur, and an s in every paddock lays its dark band and tail rings (::before) and its
+   pale ear tips and muzzle (::after) over the fur, from masks of the same sprite at the same place. The sheep's rules
+   read --animal-* and --bite-* where only the sprite and its size differ. Kits, the smaller helpers, have their own
+   strip and the sheep's bite. */
+.map-card {
+  --working-raccoon-fur: var(--act-working-raccoon);
+  --working-raccoon-band: var(--act-working-raccoon-band);
+  --working-raccoon-pale: var(--act-working-raccoon-pale);
+  --working-can-ink: var(--act-working-raccoon-can);
+}
+
+.working-mark[data-animal=raccoon] {
+  --animal-fur: var(--working-raccoon-fur);
+  --animal-dark: var(--working-raccoon-band);
+  --animal-light: var(--working-raccoon-pale);
+  --animal-walk: var(--working-raccoon-walk);
+  --animal-walk-dark: var(--working-raccoon-walk-dark);
+  --animal-walk-light: var(--working-raccoon-walk-light);
+  --animal-width: 18px;
+  --animal-strip: 48px;
+  --helper-walk: var(--working-raccoon-walk);
+  --helper-walk-dark: var(--working-raccoon-walk-dark);
+  --helper-walk-light: var(--working-raccoon-walk-light);
+  --helper-width: 18px;
+  --helper-strip: 48px;
+  --bite-mask: var(--working-raccoon-bite);
+  --bite-width: 36px;
+  --bite-back: 38px;
+}
+
+.working-mark[data-animal=raccoon][data-kits] {
+  --helper-walk: var(--working-raccoon-kit);
+  --helper-walk-dark: var(--working-raccoon-kit-dark);
+  --helper-walk-light: var(--working-raccoon-kit-light);
+  --helper-width: 14px;
+  --helper-strip: 32px;
+}
+
+.working-mark[data-animal=raccoon]>i:not(:first-child) {
+  --animal-walk: var(--helper-walk);
+  --animal-walk-dark: var(--helper-walk-dark);
+  --animal-walk-light: var(--helper-walk-light);
+  --animal-width: var(--helper-width);
+  --animal-strip: var(--helper-strip);
+}
+
+.working-mark[data-animal=raccoon][data-kits]>i:not(:first-child) {
+  --bite-mask: var(--working-bite);
+  --bite-width: 32px;
+  --bite-back: 34px;
+}
+
+.working-mark>i>s {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.working-mark[data-variant=graze]>i>s::before,
+.working-mark[data-variant=graze]>i>s::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--animal-dark);
+  mask-image: var(--animal-walk-dark);
+  mask-size: var(--animal-width) var(--animal-strip);
+  mask-repeat: no-repeat;
+  mask-position: var(--graze-x) var(--animal-frame,calc((var(--graze-face) * 2 + var(--graze-leg)) * -8px));
+}
+
+.working-mark[data-variant=graze]>i>s::after {
+  background: var(--animal-light);
+  mask-image: var(--animal-walk-light);
+}
+
+.working-mark[data-variant=graze]:is([data-pose=ended],[data-pose=mill])>i>s::before,
+.working-mark[data-variant=graze]:is([data-pose=ended],[data-pose=mill])>i>s::after {
+  content: none;
+}
+
+/* The item's own raccoon stumbles and bounces off the fence as one: its tones follow its fur. */
+.working-mark[data-animal=raccoon][data-variant=graze][data-pose=graze]>i:first-child {
+  --animal-frame: calc(((1 - var(--graze-trip)) * (var(--graze-face) * 2 + var(--graze-leg)) + var(--graze-trip) * (4 + var(--graze-face))) * -8px);
+}
+
+.working-mark[data-animal=raccoon][data-variant=graze][data-pose=graze]>i:first-child>s::before,
+.working-mark[data-animal=raccoon][data-variant=graze][data-pose=graze]>i:first-child>s::after {
+  translate: calc(var(--graze-recoil) * (var(--graze-face) * 2 - 1)) var(--graze-dip);
+}
+
+.working-mark[data-animal=raccoon][data-variant=graze][data-bell]:is([data-pose=graze],[data-pose=command])>i:first-child::after {
+  --bell-x: calc(var(--graze-x) + 14px - var(--graze-face) * 12px);
+  background: linear-gradient(var(--working-zed-ink),var(--working-zed-ink)) var(--bell-x) 6px / 2px 2px no-repeat,var(--animal-fur);
+  mask-image: linear-gradient(black,black),var(--animal-walk);
+  mask-size: 2px 2px,var(--animal-width) var(--animal-strip);
+}
+
+/* A posed raccoon is one sprite in three masks, standing where the sheep stands; it has no head layer. */
+.working-mark[data-animal=raccoon][data-variant=graze]:is([data-pose=gate],[data-pose=asking],[data-pose=fallen],[data-pose=shearing])>i:first-child {
+  --sprite-width: 18px;
+  --animal-walk-dark: var(--sprite-dark);
+  --animal-walk-light: var(--sprite-light);
+  --animal-width: var(--sprite-width);
+  --animal-strip: 8px;
+  --animal-frame: 0px;
+}
+
+.working-mark[data-animal=raccoon][data-variant=graze]:is([data-pose=gate],[data-pose=asking],[data-pose=fallen],[data-pose=shearing])>i:first-child>u::before {
+  content: none;
+}
+
+.working-mark[data-animal=raccoon][data-variant=graze]:is([data-pose=gate],[data-pose=shearing])>i:first-child {
+  --sprite: var(--working-raccoon-stand);
+  --sprite-dark: var(--working-raccoon-stand-dark);
+  --sprite-light: var(--working-raccoon-stand-light);
+}
+
+/* Asking: it faces out, and a blink closes the pale gap in its band on the last beat. */
+.working-mark[data-animal=raccoon][data-variant=graze][data-pose=asking]>i:first-child {
+  --sprite: var(--working-raccoon-front);
+  --sprite-dark: var(--working-raccoon-front-dark);
+  --sprite-light: var(--working-raccoon-front-light);
+  --sprite-width: 10px;
+}
+
+.working-mark[data-animal=raccoon][data-variant=graze][data-pose=asking]>i:first-child>u::after {
+  background: var(--animal-dark);
+  mask-image: var(--working-raccoon-blink);
+  mask-size: calc(10px * clamp(0,var(--graze-beat) - 7,1)) 8px;
+}
+
+.working-mark[data-animal=raccoon][data-variant=graze][data-pose=fallen]>i:first-child {
+  --sprite: var(--working-raccoon-back);
+  --sprite-dark: var(--working-raccoon-back-dark);
+  --sprite-light: var(--working-raccoon-back-light);
+}
+
+.working-mark[data-animal=raccoon][data-variant=graze][data-pose=fallen]>i:first-child>u::after {
+  background: linear-gradient(var(--animal-fur),var(--animal-fur)) calc(var(--graze-x) + 10px) 2px / calc(2px * clamp(0,1 - var(--graze-beat),1)) 2px no-repeat;
+}
+
+/* Compacting: the raccoon washes its paws instead of losing wool. For beats 0 to 6 of 11 its paws are up and two
+   drops rise above it; then it stands as before. */
+.working-mark[data-animal=raccoon][data-variant=graze][data-pose=shearing]>i:first-child {
+  --washing: clamp(0,7 - var(--graze-beat),1);
+}
+
+.working-mark[data-animal=raccoon][data-variant=graze][data-pose=shearing]>i:first-child::after {
+  background: var(--animal-fur);
+  mask-image: var(--working-raccoon-stand),var(--working-raccoon-odd);
+  mask-size: calc(18px * (1 - var(--washing))) 8px,calc(18px * var(--washing)) 8px;
+}
+
+.working-mark[data-animal=raccoon][data-variant=graze][data-pose=shearing]>i:first-child>s::after {
+  mask-image: var(--working-raccoon-stand-light),var(--working-raccoon-odd-light);
+  mask-size: calc(18px * (1 - var(--washing))) 8px,calc(18px * var(--washing)) 8px;
+}
+
+.working-mark[data-animal=raccoon][data-variant=graze][data-pose=shearing]>i:first-child>u::after {
+  background: linear-gradient(var(--act-info),var(--act-info)) calc(var(--graze-x) + 10px) calc(8px - var(--graze-beat) * 2px) / calc(2px * var(--washing)) 2px no-repeat,linear-gradient(var(--act-info),var(--act-info)) calc(var(--graze-x) + 14px) calc(6px - var(--graze-beat) * 2px) / calc(2px * var(--washing)) 2px no-repeat;
+  mask-image: none;
+}
+
+/* Running a command: it pushes a small trash can instead of a block. */
+.working-mark[data-animal=raccoon][data-variant=graze][data-pose=command]>i:first-child>u::after {
+  background: var(--working-can-ink);
+  mask-image: var(--working-can);
+  mask-size: 8px 8px;
+  mask-position: calc(var(--graze-x) + 20px) 4px;
+}
+
+/* Asleep: curled up, its tail over its nose. */
+.working-mark[data-animal=raccoon][data-variant=graze][data-pose=asleep]>i:first-child {
+  --graze-zed-x: calc(var(--graze-x) + 18px + var(--graze-doze) * 2px);
+  --animal-walk-dark: var(--working-raccoon-lying-dark);
+  --animal-walk-light: var(--working-raccoon-lying-light);
+  --animal-strip: 6px;
+  --animal-frame: 2px;
+}
+
+.working-mark[data-animal=raccoon][data-variant=graze][data-pose=asleep]>i:first-child::after {
+  background: linear-gradient(var(--zed),var(--zed)) var(--graze-zed-x) var(--graze-zed-y) / 4px 6px no-repeat,var(--animal-fur);
+  mask-image: var(--working-zed),var(--working-raccoon-lying);
+  mask-size: calc(4px * clamp(0,3 - var(--graze-doze),1)) 6px,18px 6px;
+}
+
+/* A helper that arrives or leaves is a kit, or a raccoon when helpers are the same size. */
+.working-mark[data-animal=raccoon]>b[data-prop=visitor] {
+  --visitor-frame: calc(var(--graze-leg) * -8px);
+  width: var(--helper-width);
+  background: var(--animal-fur);
+  mask-image: var(--helper-walk);
+  mask-size: var(--helper-width) var(--helper-strip);
+  mask-position: 0 var(--visitor-frame);
+}
+
+.working-mark[data-animal=raccoon][data-moment=enter]>b[data-prop=visitor] {
+  --visitor-frame: calc((2 + var(--graze-leg)) * -8px);
+  background: var(--animal-fur);
+  mask-position: 0 var(--visitor-frame);
+}
+
+.working-mark[data-animal=raccoon]>b[data-prop=visitor]::before,
+.working-mark[data-animal=raccoon]>b[data-prop=visitor]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--animal-dark);
+  mask-image: var(--helper-walk-dark);
+  mask-size: var(--helper-width) var(--helper-strip);
+  mask-repeat: no-repeat;
+  mask-position: 0 var(--visitor-frame);
+}
+
+.working-mark[data-animal=raccoon]>b[data-prop=visitor]::after {
+  background: var(--animal-light);
+  mask-image: var(--helper-walk-light);
+}
+
+/* No room for a sheep: the tufts stay whole and a short mint glint runs through them, left to right. */
+.working-mark[data-variant=glint] {
+  height: 4px;
+}
+
+.working-mark[data-variant=glint]>i {
+  flex: 1 1 auto;
+  animation: graze-glint calc(var(--glint-steps) * .125s) steps(var(--glint-steps)) infinite;
+}
+
+.working-mark[data-variant=glint]>i:not(:first-child),
+.working-mark[data-variant=glint]>b {
+  display: none;
+}
+
+.working-mark[data-variant=glint]>i::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--act-accent);
+  mask-image: var(--working-tufts),linear-gradient(90deg,rgb(0 0 0 / 50%) 4px,black 4px);
+  mask-size: 128px 6px,8px 4px;
+  mask-repeat: repeat-x,no-repeat;
+  mask-position: 0 0,calc(var(--graze-x) - 8px) 0;
+  mask-composite: intersect;
+}
+
+@keyframes graze-walk {
+  to {
+    --graze-x: calc(var(--graze-steps) * 2px);
+  }
+}
+
+@keyframes graze-glint {
+  to {
+    --graze-x: calc(var(--glint-steps) * 2px);
+  }
+}
+
+@keyframes graze-push {
+  to {
+    --graze-x: calc(var(--graze-run) * 2px);
+  }
+}
+
+@keyframes graze-face {
+  to {
+    --graze-face: 2;
+  }
+}
+
+@keyframes graze-doze {
+  to {
+    --graze-doze: 6;
+  }
+}
+
+@keyframes graze-beat {
+  to {
+    --graze-beat: var(--beats);
+  }
+}
+
+@keyframes graze-leg {
+  to {
+    --graze-leg: 2;
+  }
+}
+
+@keyframes graze-mill {
+  to {
+    mask-position: 0 -24px;
+  }
+}
+
+@keyframes graze-leave {
+  from {
+    --graze-visit: 30px;
+  }
+  to {
+    --graze-visit: -24px;
+  }
+}
+
+@keyframes graze-leave-b {
+  from {
+    --graze-visit: 30px;
+  }
+  to {
+    --graze-visit: -24px;
+  }
+}
+
+@keyframes graze-enter {
+  from {
+    --graze-visit: -24px;
+  }
+  to {
+    --graze-visit: 30px;
+  }
+}
+
+@keyframes graze-enter-b {
+  from {
+    --graze-visit: -24px;
+  }
+  to {
+    --graze-visit: 30px;
+  }
+}
+
+@keyframes graze-stumble {
+  0% {
+    --graze-trip: 1;
+    --graze-dip: 2px;
+  }
+  34% {
+    --graze-trip: 1;
+    --graze-dip: 0px;
+  }
+  100% {
+    --graze-trip: 1;
+  }
+}
+
+@keyframes graze-stumble-b {
+  0% {
+    --graze-trip: 1;
+    --graze-dip: 2px;
+  }
+  34% {
+    --graze-trip: 1;
+    --graze-dip: 0px;
+  }
+  100% {
+    --graze-trip: 1;
+  }
+}
+
+@keyframes graze-bump {
+  from {
+    --graze-bump: 0;
+    --graze-fence: 1;
+  }
+  to {
+    --graze-bump: 6;
+    --graze-fence: 1;
+  }
+}
+
+@keyframes graze-bump-b {
+  from {
+    --graze-bump: 0;
+    --graze-fence: 1;
+  }
+  to {
+    --graze-bump: 6;
+    --graze-fence: 1;
+  }
+}
+
+@keyframes graze-bloom {
+  0% {
+    mask-position: 0 0;
+  }
+  30% {
+    mask-position: 0 -8px;
+  }
+}
+
+@keyframes graze-trot {
+  to {
+    --graze-leg: 2;
+  }
+}
+
+@keyframes graze-trot-b {
+  to {
+    --graze-leg: 2;
+  }
+}
+
+/* Pause the map behind an expanded item, including its hidden visited surfaces. */
+.map-area:not([data-focus=""]) .working-mark,
+.map-area:not([data-focus=""]) .working-mark>i,
+.map-area:not([data-focus=""]) .working-mark>b::after {
+  animation-play-state: paused;
+}
+
+/* Undermap and reduced motion show each state's resting frame: tufts, every grazing sheep standing a little way
+   into its paddock, a pose without its motion, and no moment. */
+.map-area[data-layer=below] .working-mark[data-variant],
+.map-area[data-layer=below] .working-mark[data-variant]>i,
+.map-area[data-layer=below] .working-mark[data-variant]>b::after {
+  animation: none !important;
+}
+
+.map-area[data-layer=below] .working-mark[data-variant=graze]>i {
+  --graze-x: max(0px,24px - var(--graze-paddock) * 6px);
+  --graze-beat: 3;
+  --graze-doze: 3;
+}
+
+.map-area[data-layer=below] .working-mark[data-variant=graze]:is([data-pose=gate],[data-pose=asking],[data-pose=fallen],[data-pose=shearing],[data-pose=asleep])>i:first-child {
+  --graze-x: 8px;
+}
+
+.map-area[data-layer=below] .working-mark[data-variant=glint]>i::after {
+  content: none;
+}
+
+@media (prefers-reduced-motion:reduce) {
+  .working-mark[data-variant],
+  .working-mark[data-variant]>i,
+  .working-mark[data-variant]>b::after {
+    animation: none !important;
+  }
+  .working-mark[data-variant=graze]>i {
+    --graze-x: max(0px,24px - var(--graze-paddock) * 6px);
+    --graze-beat: 3;
+    --graze-doze: 3;
+  }
+  .working-mark[data-variant=graze]:is([data-pose=gate],[data-pose=asking],[data-pose=fallen],[data-pose=shearing],[data-pose=asleep])>i:first-child {
+    --graze-x: 8px;
+  }
+  .working-mark[data-variant=glint]>i::after {
+    content: none;
+  }
+}
+
+/* Far-zoom icons keep only a still mint stripe below the icon, at least 2px on screen; solid under 16px. */
+.working-mark[data-icon] {
+  left: 0;
+  right: 0;
+  top: calc(100% + max(3px,1.5px / var(--map-zoom)));
+  bottom: auto;
+  height: max(4px,2px / var(--map-zoom));
+  z-index: 6;
+  background: repeating-linear-gradient(90deg,var(--act-accent) 0 7px,var(--act-deep) 7px 11px);
+  content-visibility: visible;
+}
+
+/* A working icon's stepped edge is under a pixel wide at this zoom; leaving it out keeps a 500-item map as cheap to pan as before. */
+.map-card.compact.working-card::after {
+  content: none;
+}
+
+.working-mark[data-icon][data-solid] {
+  background: var(--act-accent);
+}
+
+.working-label {
+  color: var(--act-working-ink);
+  font-weight: 650;
+}
+
+.map-trail {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: var(--act-fs-ui);
+  z-index: 110;
+  left: 22px;
+  top: 24px;
+  max-width: calc(100% - 384px);
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.map-trail span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-close svg,
+.item-seen svg {
+  width: 16px;
+  height: 16px;
+}
+
+.map-area .react-flow__node.draggable,
+.map-card:not(.expanded) {
+  cursor: pointer;
+}
+
+.map-card.expanded {
+  cursor: default;
+}
+
+.map-area .react-flow__node.dragging,
+.map-card[data-dragging=true],
+.project-neighborhood-title[data-dragging=true] {
+  cursor: grabbing;
+}
+
+/* Hover lifts the face and brightens the edge; it never thickens it (a 2px edge means Asking me). */
+.map-card:not(.expanded):hover,
+.react-flow__node:focus-visible .map-card:not(.expanded) {
+  --card-edge: var(--tone);
+  background-image: linear-gradient(var(--act-card-lift),var(--act-card-lift));
+  box-shadow: inset 4px 4px 0 #ffffff10,inset -4px -4px 0 #0004,0 4px 0 var(--act-deep);
+}
+
+.map-card:not(.expanded):has(:focus-visible) {
+  --card-edge: var(--tone);
+}
+
+/* STATE-02: the frame is about me. Asking me: 2px bright amber. My turn: 1px amber.
+   Finished: no frame, the type edge stays. The tier shape in the corner slot says the same. */
+.map-card[data-tier=turn]:not(.expanded),
+.map-card[data-tier=turn]:not(.expanded):is(:hover,:has(:focus-visible)),
+.react-flow__node:focus-visible .map-card[data-tier=turn]:not(.expanded) {
+  --card-edge: var(--act-attention);
+}
+
+.map-card[data-tier=asking]:not(.expanded),
+.map-card[data-tier=asking]:not(.expanded):is(:hover,:has(:focus-visible)),
+.react-flow__node:focus-visible .map-card[data-tier=asking]:not(.expanded) {
+  --card-edge: var(--act-attention-asking);
+  --card-edge-width: 2px;
+}
+
+.map-card[data-tier=asking]:not(.expanded)::after {
+  -webkit-mask-box-image-source: var(--pixel-panel-border-thick);
+}
+
+/* A far-zoom icon wears the frame as a ring that stays 2px or 1px on screen; under 16px it is dropped. */
+.map-card.compact[data-tier=asking]:not([data-takeover]) {
+  box-shadow: inset 0 0 0 calc(2px / var(--map-zoom)) var(--act-attention-asking);
+}
+
+.map-card.compact[data-tier=turn]:not([data-takeover]) {
+  box-shadow: inset 0 0 0 calc(1px / var(--map-zoom)) var(--act-attention);
+}
+
+/* A ticket's reference, moved out of the title: a quiet tag at the left of the status row, never shortened. */
+.item-indicators>.card-reference {
+  flex: none;
+  color: var(--act-ink-faint);
+  font-family: var(--act-font-mono);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* The reason in words, where a second line exists; the age is text only. */
+.card-reason {
+  color: var(--act-attention);
+  font-weight: 600;
+}
+
+.card-reason[data-tier=asking] {
+  color: var(--act-attention-asking);
+}
+
+.card-reason[data-tier=finished] {
+  color: var(--act-attention-finished);
+}
+
+.card-reason-gap {
+  color: var(--act-ink-faint);
+  white-space: pre;
+}
+
+.card-reason .card-age {
+  color: var(--act-ink-faint);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: pre;
+}
+
+/* In the cue row the reason keeps its tier's amber over the row's dim ink. */
+.item-indicators>.card-reason {
+  color: var(--act-attention);
+}
+
+.item-indicators>.card-reason[data-tier=asking] {
+  color: var(--act-attention-asking);
+}
+
+.item-indicators>.card-reason[data-tier=finished] {
+  color: var(--act-attention-finished);
+}
+
+.item-indicators.card-reason-row>.card-reason {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-indicators.card-reason-row>.card-reason {
+  flex-shrink: 2;
+}
+
+.map-card .item-close,
+.map-card .item-seen {
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  padding: 5px;
+}
+
+/* The + straddles the right edge, outside the content, so it never covers status text. */
+/* The button is a transparent 28px pointer target; ::before draws the 16px tab. */
+.map-card .connect-handle,
+.map-card .connect-handle:hover {
+  position: absolute;
+  right: -15px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--act-ink);
+  line-height: 12px;
+  font-size: var(--act-fs-body);
+  border-radius: 0;
+  clip-path: none;
+  isolation: isolate;
+  opacity: 0;
+  cursor: crosshair;
+  z-index: 5;
+}
+
+.map-card .connect-handle::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  box-sizing: border-box;
+  z-index: -1;
+  border: 1px solid var(--tone);
+  background: var(--act-control);
+  clip-path: var(--pixel-control-shape);
+}
+
+.map-card .connect-handle:hover::before {
+  background: var(--act-control-hover);
+}
+
+.map-card .connect-handle:focus-visible {
+  box-shadow: none;
+}
+
+.map-card .connect-handle:focus-visible::before {
+  box-shadow: inset 0 0 0 2px var(--act-focus);
+}
+
+/* The panel clip-path bounds a collapsed card; overflow stays visible so the + tab outside it paints and takes the pointer. */
+.map-card:not(.expanded) {
+  overflow: visible;
+}
+
+.map-card:not(.expanded):is(:hover,:has(:focus-visible)),
+.react-flow__node:focus-visible .map-card:not(.expanded) {
+  clip-path: polygon(8px 0,calc(100% - 8px) 0,calc(100% - 8px) 4px,calc(100% - 4px) 4px,calc(100% - 4px) 8px,100% 8px,100% calc(50% - 14px),calc(100% + 15px) calc(50% - 14px),calc(100% + 15px) calc(50% + 14px),100% calc(50% + 14px),100% calc(100% - 8px),calc(100% - 4px) calc(100% - 8px),calc(100% - 4px) calc(100% - 4px),calc(100% - 8px) calc(100% - 4px),calc(100% - 8px) 100%,8px 100%,8px calc(100% - 4px),4px calc(100% - 4px),4px calc(100% - 8px),0 calc(100% - 8px),0 8px,4px 8px,4px 4px,8px 4px);
+}
+
+.map-card:hover .connect-handle,
+.map-card:has(:focus-visible) .connect-handle,
+.react-flow__node:focus-visible .connect-handle {
+  opacity: 1;
+}
+
+.expanded .card-heading {
+  flex: none;
+  border-bottom: 1px solid var(--act-control-hover);
+  padding-bottom: 8px;
+  gap: 9px;
+  min-height: 36px;
+  cursor: grab;
+}
+
+.expanded .card-heading :is(button,input,select,label,summary,[role=button],[role=menuitem]) {
+  cursor: default;
+}
+
+.map-trail .connected-items button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 4px;
+  border-radius: 3px;
+}
+
+.connected-items .item-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.map-card.compact .connect-handle {
+  right: -14px;
+  line-height: 10px;
+  font-size: var(--act-fs-ui);
+}
+
+.map-card.compact .connect-handle::before {
+  inset: 7px;
+}
+
+/* Over the card face only the drawn tab is a target; past the card edge the whole 28px is. */
+.react-flow__node .map-card .connect-handle {
+  clip-path: polygon(6px 6px, 13px 6px, 13px 0, 100% 0, 100% 100%, 13px 100%, 13px 22px, 6px 22px);
+}
+
+.react-flow__node .map-card.compact .connect-handle {
+  clip-path: polygon(7px 7px, 14px 7px, 14px 0, 100% 0, 100% 100%, 14px 100%, 14px 21px, 7px 21px);
+}
+
+.small-card.full-title-card {
+  padding-block: 8px;
+}
+
+.small-card.full-title-card .card-label strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 15px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--title-lines, 2);
+}
+
+/* Task titles lead without changing world footprints; --title-lines is the room the card has left (title-fit.ts). */
+.map-card:not(.expanded):not(.compact) .card-label {
+  flex: 1;
+  gap: 0;
+}
+
+.map-card:not(.expanded):not(.compact) .card-label strong {
+  font-size: 14px;
+  line-height: 17px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--title-lines, 2);
+}
+
+.map-card:not(.expanded) .card-summary {
+  margin-top: 8px;
+}
+
+.map-card.small-card:not(.expanded):not(.compact) .card-label strong {
+  font-size: var(--act-fs-body);
+  line-height: 15px;
+}
+
+.map-card.expanded {
+  box-shadow: none;
+  --card-edge: var(--act-line);
+  padding: 16px;
+}
+
+.tiny-card:not(.compact) {
+  padding: 3px 7px;
+}
+
+.tiny-card .card-summary {
+  display: none;
+}
+
+.map-card .item-open-icon {
+  padding: 0;
+  margin: 0;
+  min-width: 24px;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--tone);
+}
+
+.map-card .item-open-icon .item-glyph {
+  width: 17px;
+  height: 17px;
+}
+
+/* The to-do checkbox keeps the glyph's 23px layout slot and widens its pointer target to 29px. */
+.map-card .item-check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 29px;
+  min-width: 29px;
+  height: 29px;
+  margin: -3px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  clip-path: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.map-card .item-check:hover .item-glyph {
+  filter: brightness(1.25);
+}
+
+.map-card .item-check:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: -2px;
+}
+
+.map-card .item-open-icon:hover {
+  background: #b7d4ff22;
+  outline: 1px solid var(--tone);
+}
+
+.map-card .item-open-icon:focus-visible {
+  background: #b7d4ff22;
+  outline: var(--act-focus-ring);
+  outline-offset: 2px;
+}
+
+.map-card.tiny-card:not(.expanded):not(.compact) .card-label strong {
+  font-size: var(--act-fs-ui);
+  line-height: 14px;
+}
+
+.tiny-card .card-heading {
+  gap: 5px;
+  height: 100%;
+}
+
+/* Type-owned map presets fit their declared detail into their own footprint. */
+.map-profile-card:not(.expanded):not(.compact) {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+}
+
+.map-profile-card:not(.expanded) .card-label small {
+  font-size: var(--act-fs-meta);
+  margin-bottom: 3px;
+}
+
+.map-profile-card:not(.expanded) .card-summary,
+.map-size-fields {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  line-height: 14px;
+  flex: none;
+  margin: 4px 0 0;
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-dim);
+}
+
+.map-profile-card:not(.expanded) .card-summary {
+  margin-top: 4px;
+}
+
+.small-card .map-size-fields {
+  display: none;
+}
+
+/* A 12px corner tab with a three-step stair inside a 24px pointer target, shown on hover, focus and selection. */
+.map-card .item-resize-handle,
+.map-card .item-resize-handle:hover {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  width: 24px;
+  height: 24px;
+  padding: 0 3px 3px 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  clip-path: none;
+  color: var(--act-ink-soft);
+  opacity: 0;
+  cursor: nwse-resize;
+  touch-action: none;
+  z-index: 5;
+}
+
+.item-resize-handle svg {
+  display: block;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  background: var(--act-panel);
+  clip-path: var(--pixel-control-shape);
+  pointer-events: none;
+}
+
+.map-card:hover .item-resize-handle,
+.map-card:focus-within .item-resize-handle,
+.map-card[data-selected=true] .item-resize-handle,
+.map-card[data-resizing=true] .item-resize-handle {
+  opacity: 1;
+}
+
+.map-card .item-resize-handle:focus-visible {
+  opacity: 1;
+  box-shadow: none;
+}
+
+.map-card .item-resize-handle:focus-visible::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  box-shadow: inset 0 0 0 2px var(--act-focus);
+  clip-path: var(--pixel-control-shape);
+  pointer-events: none;
+}
+
+.map-area[data-resizing=true],
+.map-area[data-resizing=true] * {
+  cursor: nwse-resize !important;
+}
+
+.map-card {
+  --tone: var(--act-accent);
+  --card-edge: color-mix(in srgb,var(--tone) 45%,var(--act-control-hover));
+  --working-tuft: var(--tone);
+  --working-tuft-low: color-mix(in srgb,var(--tone) 45%,var(--act-control-hover));
+  --working-sheep-body: var(--act-working-sheep);
+  --working-sheep-head: var(--act-working-sheep-head);
+  --working-zed-ink: var(--act-accent);
+  --working-eye: var(--act-deep);
+  --card-edge-width: 1px;
+  color: var(--act-ink);
+  background: var(--act-raised);
+  border: 1px solid transparent;
+  border-radius: 0;
+  box-shadow: 0 4px 0 var(--act-deep);
+  overflow: clip;
+  overflow-clip-margin: border-box;
+  padding: 14px;
+  clip-path: var(--pixel-panel-shape);
+  position: relative;
+}
+
+/* The edge follows the stepped corners instead of being cut off at them. */
+.map-card::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: 4;
+  background: var(--card-edge);
+  -webkit-mask-box-image: var(--pixel-panel-border) 9 / 9px stretch;
+  pointer-events: none;
+}
+
+/* An item whose view is open keeps the lifted face of a hovered card, not a thicker edge. */
+.map-card[data-view-open=true] {
+  --card-edge: var(--tone);
+  background-image: linear-gradient(var(--act-card-lift),var(--act-card-lift));
+}
+
+@container (max-width:600px) {
+  .expanded .card-heading:has(.session-toolbar-slot:not(:empty)) {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .expanded .card-heading:has(.session-toolbar-slot:not(:empty)) .card-label {
+    flex: 1;
+    max-width: none;
+  }
+  .expanded .session-toolbar-slot {
+    order: 2;
+    flex: 1 0 100%;
+  }
+  .expanded .item-seen,
+  .expanded .item-close {
+    order: 1;
+  }
+  .expanded .item-needs span {
+    display: none;
+  }
+  .expanded .terminal-status {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .expanded .terminal-status .terminal-directory {
+    display: none;
+  }
+  .expanded .terminal-launch {
+    min-width: 0;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* Provider cues are independent of unread attention and never change card size. */
+.map-card:has(> .item-indicators):not(.expanded) {
+  display: flex;
+  flex-direction: column;
+}
+
+.item-indicators {
+  order: 2;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 6px;
+  min-width: 0;
+  font-size: var(--act-fs-caps);
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.item-indicators>span {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  color: var(--act-ink-dim);
+}
+
+.item-indicators>span>span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.item-indicators>span[data-short=truncated] {
+  flex-shrink: 100;
+}
+
+.item-indicators svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.item-indicators [data-tone=green] {
+  color: var(--act-tone-green);
+}
+
+.item-indicators [data-tone=blue] {
+  color: var(--act-info);
+}
+
+.item-indicators [data-tone=amber] {
+  color: var(--act-cue-waiting);
+}
+
+/* A rollout verdict with concerns needs the person, so it takes the Needs me amber. */
+.item-indicators [data-indicator=rollout-verdict][data-tone=amber] {
+  color: var(--act-attention);
+}
+
+.item-indicators [data-tone=violet] {
+  color: var(--act-tone-violet);
+}
+
+.item-indicators [data-tone=red] {
+  color: var(--act-tone-red);
+}
+
+/* A change the provider has not confirmed yet: the in-flight colour, not Needs me. */
+.item-indicators [data-indicator=pending] {
+  color: var(--act-pending);
+}
+
+.item-indicators.indicator-icons {
+  position: absolute;
+  right: 10px;
+  bottom: 3px;
+  gap: 4px;
+  margin: 0;
+}
+
+.indicator-icons>span>span {
+  display: none;
+}
+
+.compact .indicator-icons {
+  right: 3px;
+  bottom: 3px;
+  gap: 2px;
+}
+
+.compact .indicator-icons svg {
+  width: 9px;
+  height: 9px;
+}
+
+.small-card:has(.indicator-labels) {
+  padding-block: 3px;
+}
+
+.small-card:has(.indicator-labels) .card-heading {
+  height: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+.small-card .indicator-labels {
+  flex: none;
+  margin: 0 0 0 32px;
+  font-size: var(--act-fs-caps);
+  line-height: 12px;
+}
+
+/* Compact tickets reserve separate title/status rows, including saved short sizes. */
+.map-card.small-card.full-title-card:has(.indicator-labels) {
+  padding: 8px 11px;
+  gap: 4px;
+}
+
+.small-card.full-title-card:has(.indicator-labels) .card-heading {
+  flex: none;
+  height: auto;
+  align-items: flex-start;
+}
+
+.small-card.full-title-card:has(.indicator-labels) .item-glyph {
+  width: 19px;
+  height: 19px;
+}
+
+.small-card.full-title-card:has(.indicator-labels) .indicator-labels {
+  margin: 0;
+  line-height: 12px;
+}
+
+.small-card.full-title-card[data-tight-title=true]:has(.indicator-labels) .card-label strong {
+  -webkit-line-clamp: 1;
+  white-space: nowrap;
+  display: block;
+  line-height: 15px;
+}
+
+.small-card.full-title-card[data-tight-title=true]:has(.indicator-labels) {
+  padding-block: 6px;
+  gap: 3px;
+}
+
+.item-purpose {
+  max-width: 65ch;
+  line-height: 1.6;
+}
+
+/* FAR-ZOOM: overview bubbles carry a status glyph badge; done items are dimmed. */
+.map-card.compact .status-badge {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 1em;
+  height: 1em;
+  display: grid;
+  place-items: center;
+  background: var(--act-sunken);
+  box-shadow: inset 0 0 0 .09em var(--act-deep);
+  clip-path: polygon(15% 0,85% 0,85% 15%,100% 15%,100% 85%,85% 85%,85% 100%,15% 100%,15% 85%,0 85%,0 15%,15% 15%);
+}
+
+.status-badge .status-glyph {
+  width: 70%;
+  height: 70%;
+}
+
+.status-glyph {
+  width: .8em;
+  height: .8em;
+  flex: none;
+  color: var(--act-ink-dim);
+}
+
+.status-glyph svg {
+  width: 100%;
+  height: 100%;
+}
+
+.status-glyph[data-tone=green] {
+  color: var(--act-tone-green);
+}
+
+.status-glyph[data-tone=red] {
+  color: var(--act-bad);
+}
+
+.status-glyph[data-tone=amber] {
+  color: var(--act-cue-waiting);
+}
+
+.status-glyph[data-tone=violet] {
+  color: var(--act-tone-violet);
+}
+
+.status-glyph[data-tone=blue] {
+  color: var(--act-info);
+}
+
+.status-glyph[data-tone=mint] {
+  color: var(--act-accent);
+}
+
+.map-card[data-dimmed=true] {
+  opacity: .45;
+}
+
+.map-card[data-dimmed=true]:hover,
+.react-flow__node:focus-visible .map-card[data-dimmed=true] {
+  opacity: .85;
+}

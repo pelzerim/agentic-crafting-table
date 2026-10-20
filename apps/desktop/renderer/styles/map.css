@@ -1,0 +1,739 @@
+/* Top right holds only the connection status, which shows nothing while connected. */
+.map-status {
+  position: absolute;
+  right: 22px;
+  top: 16px;
+  display: flex;
+  align-items: center;
+  z-index: 120;
+  pointer-events: none;
+}
+
+.map-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.map-message>* {
+  pointer-events: auto;
+}
+
+.map-message h1 {
+  background: var(--act-bg);
+  padding: 8px 16px;
+  clip-path: var(--pixel-panel-shape);
+}
+
+.map-message p {
+  margin-top: 0;
+}
+
+/* First run: the core loop as a checklist. Centred in the empty workspace, docked
+ * at the bottom while the map holds only projects. */
+.first-run-card {
+  width: min(440px, calc(100% - 48px));
+  margin-top: var(--act-sp-6);
+  padding: var(--act-sp-2) 0 0;
+  background: var(--act-panel);
+  border: 1px solid var(--act-line-accent);
+  clip-path: var(--act-shape-panel);
+  text-align: left;
+}
+
+/* The card never takes map gestures: double- and right-clicks reach the map. */
+.map-message>.first-run-card,
+.first-run-card {
+  pointer-events: none;
+}
+
+.first-run-card button {
+  pointer-events: auto;
+}
+
+.first-run-card[data-docked] {
+  position: absolute;
+  left: 50%;
+  bottom: var(--act-sp-6);
+  z-index: 115;
+  margin: 0;
+  transform: translateX(-50%);
+}
+
+.first-run-card ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.first-run-card li {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: center;
+  gap: var(--act-sp-1) var(--act-sp-3);
+  padding: var(--act-sp-2) var(--act-sp-4);
+  border-bottom: 1px solid var(--act-line);
+}
+
+.first-run-check {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--act-line-control);
+  color: var(--act-ok);
+}
+
+.first-run-check .act-glyph {
+  width: 10px;
+  height: 10px;
+}
+
+.first-run-name {
+  font-size: var(--act-fs-body);
+  font-weight: var(--act-fw-medium);
+  color: var(--act-ink);
+}
+
+.first-run-state {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+  overflow: hidden;
+}
+
+.first-run-card li[data-done=true] .first-run-name {
+  color: var(--act-ink-dim);
+  text-decoration: line-through;
+}
+
+.first-run-card li small {
+  font: var(--act-fs-meta)/1.3 var(--act-font-mono);
+  color: var(--act-ink-dim);
+}
+
+.first-run-card li p {
+  grid-column: 2 / 4;
+  margin: 0;
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink-soft);
+}
+
+.first-run-card footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--act-sp-2) var(--act-sp-4);
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-dim);
+}
+
+.first-run-card .first-run-hide {
+  text-decoration: underline;
+}
+
+.map-locator {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  width: 112px;
+  height: 72px;
+  padding: 6px;
+  z-index: 110;
+  background: var(--act-surface);
+  border: 1px solid var(--act-line-control);
+  border-radius: 0;
+}
+
+.map-area {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.neighborhoods {
+  /* Below a muted project's cards and links (-2) and its cover (-1). */
+  z-index: -3;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.neighborhoods path {
+  stroke: none;
+}
+
+/* Biome grounds (BIOME-01) lie under the field SVG at the same depth; one opacity for the
+   whole layer, so overlapping projects cannot compound. */
+.neighborhood-biomes {
+  z-index: -3;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.biome-field canvas {
+  position: absolute;
+  image-rendering: pixelated;
+}
+
+.neighborhood-biomes[data-flat] canvas {
+  display: none;
+}
+
+.biome-field svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+}
+
+.neighborhood-hit-area {
+  fill: transparent;
+}
+
+.neighborhood-paint {
+  fill: #91b78b;
+}
+
+.neighborhood-field[data-attach-preview=true] .neighborhood-paint {
+  fill: #c3edb6;
+}
+
+/* Plots (MAP-24): inside the field's .24 opacity, .55/.275 give a .13/.066 tint in the plot's color, so the ground still shows through. */
+.plot-patch path {
+  fill: var(--act-plot-hue);
+  fill-opacity: .55;
+}
+
+.plot-patch path[data-shade="1"] {
+  fill-opacity: .275;
+}
+
+.plot-patch[data-hover] path {
+  fill-opacity: .8;
+}
+
+.plot-patch[data-hover] path[data-shade="1"] {
+  fill-opacity: .4;
+}
+
+.plot-signs {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+}
+
+.plot-sign {
+  position: absolute;
+  height: 20px;
+  transform-origin: top left;
+  pointer-events: auto;
+}
+
+.plot-sign .plot-sign-button,
+.plot-sign .plot-sign-input {
+  height: 20px;
+  max-width: 200px;
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-1_5);
+  padding: 0 var(--act-sp-2) 0 calc(var(--act-sp-1_5) + 3px);
+  border: 0;
+  font: var(--act-fw-medium) var(--act-fs-meta)/20px var(--act-font-ui);
+  color: var(--act-ink-soft);
+  white-space: nowrap;
+  background: var(--act-plot-sign);
+  box-shadow: inset 3px 0 0 var(--act-plot-tone), inset 0 0 0 1px var(--act-plot-sign-line);
+  cursor: pointer;
+}
+
+.plot-sign .plot-sign-input {
+  width: 200px;
+  color: var(--act-ink);
+  cursor: text;
+  box-shadow: inset 0 0 0 1px var(--act-focus);
+  outline: none;
+}
+
+.plot-sign[data-hover] .plot-sign-button {
+  color: var(--act-ink);
+}
+
+.plot-sign-button>span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plot-sign-button>svg {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  color: var(--act-plot-tone);
+}
+
+.plot-sign[data-source=local] .plot-sign-button>span {
+  color: var(--act-ink-dim);
+}
+
+.plot-tip {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  z-index: var(--act-z-overlay);
+  display: grid;
+  gap: var(--act-sp-0_5);
+  padding: var(--act-sp-1_5) var(--act-sp-2);
+  width: max-content;
+  max-width: 260px;
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-dim);
+  background: var(--act-raised);
+  box-shadow: var(--act-shadow-popover);
+  clip-path: var(--act-shape-panel);
+  pointer-events: none;
+}
+
+.plot-tip strong {
+  color: var(--act-ink);
+  font-weight: var(--act-fw-medium);
+}
+
+.react-flow__node[data-plot-dim] {
+  opacity: .5;
+}
+
+/* The post runs from the sign into its patch. */
+.plot-sign::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  width: 2px;
+  height: 6px;
+  background: var(--act-plot-sign-line);
+}
+
+.plot-sign:is([data-spot="0"], [data-spot="1"], [data-spot="2"])::after {
+  top: 100%;
+}
+
+.plot-sign:is([data-spot="3"], [data-spot="4"], [data-spot="5"])::after {
+  bottom: 100%;
+}
+
+.plot-sign[data-spot="-1"]::after {
+  display: none;
+}
+
+.react-flow__minimap {
+  width: 112px;
+  height: 72px;
+  background: var(--act-surface) !important;
+  border: 1px solid var(--act-line-control);
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.zoom-markers {
+  position: absolute;
+  right: 19px;
+  bottom: 86px;
+  width: 224px;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--act-sp-1);
+  z-index: 110;
+}
+
+.live-workspace .zoom-markers button {
+  display: grid;
+  place-items: center;
+  height: 20px;
+  padding: 0;
+  color: var(--act-ink-soft);
+  background: var(--act-surface);
+  border: 0;
+  border-image: var(--pixel-control-border) 5 / 5px / 0 stretch;
+}
+
+.live-workspace .zoom-markers .zoom-readout {
+  flex: none;
+  width: 42px;
+  font: var(--act-fw-medium) var(--act-fs-meta)/1 var(--act-font-mono);
+  color: var(--act-ink);
+}
+
+.zoom-track {
+  position: relative;
+  flex: 1;
+  height: 34px;
+}
+
+.zoom-track input {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.zoom-track input::-webkit-slider-runnable-track {
+  height: 6px;
+  background: linear-gradient(to right, var(--act-accent-bg) var(--zoom-fill), var(--act-sunken) var(--zoom-fill));
+  box-shadow: inset 0 0 0 1px var(--act-line-control);
+}
+
+.zoom-track input::-webkit-slider-thumb {
+  appearance: none;
+  width: 8px;
+  height: 12px;
+  margin-top: -3px;
+  background: var(--act-focus);
+  box-shadow: 0 0 0 1px var(--act-deep);
+}
+
+.zoom-track input:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: 2px;
+}
+
+.zoom-track i {
+  position: absolute;
+  top: 14px;
+  height: 4px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--act-ink-dim);
+  pointer-events: none;
+}
+
+.zoom-markers .zoom-track i.dashboard-threshold {
+  top: 13px;
+  width: 2px;
+  height: 5px;
+  margin-left: -1px;
+  box-shadow: none;
+}
+
+.zoom-tick-label {
+  position: absolute;
+  top: 21px;
+  display: grid;
+  width: 12px;
+  height: 12px;
+  place-items: center;
+  transform: translateX(-50%);
+  color: var(--act-ink-dim);
+  cursor: help;
+}
+
+.zoom-tick-label .item-icon {
+  width: 8px;
+  height: 8px;
+}
+
+.zoom-tick-label[data-tier=board] {
+  color: var(--act-accent);
+}
+
+
+/* React Flow's stylesheet loads later and paints edges from these variables. */
+.map-area {
+  --xy-edge-stroke: var(--act-link);
+  --xy-edge-stroke-width: 2;
+  --xy-edge-stroke-selected: var(--act-link-active);
+}
+
+/* Edge anchors only: links start from the + tab, so a press on a card edge drags the card. */
+.map-area .react-flow__node .react-flow__handle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.map-area:not([data-focus=""]) .map-locator,
+.map-area:not([data-focus=""]) .zoom-markers {
+  display: none;
+}
+
+/* The focused item's breadcrumb supplies the title; keep the map edge clear. */
+.map-area:not([data-focus=""]) .project-neighborhood-title {
+  visibility: hidden;
+}
+
+/* A partly visible neighbour: one faded line, no options, only an unread Needs me count. */
+.project-neighborhood-title[data-edge] {
+  opacity: .7;
+}
+
+.project-neighborhood-title[data-edge]>.project-title-plate {
+  flex-direction: row;
+  gap: 6px;
+}
+
+.project-neighborhood-title[data-edge] .project-title-row>button,
+.project-neighborhood-title[data-edge] :is(.tier-count-words,.tier-count-gap,.tier-count[data-kind=working],.tier-count[data-tier=finished]),
+.project-neighborhood-title[data-edge] .project-counts:not([data-needs-me=true]) {
+  display: none;
+}
+
+/* Project labels share the map's world geometry; text stays readable in screen space. */
+.project-neighborhood-title {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--act-ink-soft);
+  user-select: none;
+  padding: 4px 0;
+  background: transparent;
+}
+
+.project-neighborhood-title>.project-title-plate {
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px 4px 10px;
+  background: color-mix(in srgb, var(--act-bg) 85%, transparent);
+  clip-path: var(--pixel-control-shape);
+}
+
+.project-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.project-swatch {
+  flex: none;
+  width: 8px;
+  height: 8px;
+}
+
+.project-neighborhood-title strong {
+  font-size: var(--act-fs-panel);
+  font-weight: var(--act-fw-strong);
+  line-height: 20px;
+  color: var(--act-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-neighborhood-title small {
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-dim);
+}
+
+.project-neighborhood-title button {
+  flex: none;
+  height: 20px;
+  padding: 0 6px;
+  line-height: 1;
+  border: 1px solid var(--act-line-control);
+  background: var(--act-panel);
+  color: var(--act-ink-soft);
+}
+
+.project-neighborhood-title:hover strong,
+.react-flow__node:focus-visible .project-neighborhood-title strong {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
+  color: #e0ecd8;
+}
+
+.project-membership-edge .react-flow__edge-path {
+  stroke: var(--act-line-control);
+  stroke-dasharray: 3 5;
+  opacity: .65;
+}
+
+.map-area .react-flow__pane {
+  cursor: grab;
+}
+
+.map-area .react-flow__pane.dragging {
+  cursor: grabbing;
+}
+
+.context-edge .react-flow__edge-path {
+  stroke: var(--act-accent);
+  stroke-width: 1;
+  stroke-dasharray: 5 4;
+}
+
+/* The arrowhead scales with the stroke, so the inspected link stays light too. */
+.context-edge.connection-active .react-flow__edge-path,
+.explicit-edge.context-edge:hover .react-flow__edge-path {
+  stroke-width: 1.5;
+}
+
+.explicit-edge {
+  cursor: pointer;
+}
+
+.explicit-edge:hover .react-flow__edge-path {
+  stroke: var(--act-link-active);
+  stroke-width: 2.5;
+}
+
+.connection-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 125;
+}
+
+.connection-preview path {
+  fill: none;
+  stroke: var(--act-accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.map-item-highlights {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+  overflow: hidden;
+  fill: none;
+  stroke: var(--act-attention);
+  stroke-width: 3;
+  stroke-linecap: square;
+}
+
+.map-locator .locator-highlight {
+  fill: var(--act-attention);
+  stroke: var(--act-attention);
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+/* Inspection changes emphasis, never route or hit area. */
+.connection-muted .react-flow__edge-path {
+  opacity: .2;
+}
+
+.connection-resting .react-flow__edge-path {
+  stroke-opacity: .35;
+}
+
+.connection-active .react-flow__edge-path {
+  stroke: var(--act-link-active);
+  stroke-width: 2.5;
+}
+
+/* A hover link waits unseen until revealed; it keeps its place in the tab order and shows while focused. */
+.explicit-edge.link-concealed:not(:focus-visible) {
+  opacity: 0;
+}
+
+.explicit-edge.link-concealed:not(:focus-visible),
+.explicit-edge.link-concealed:not(:focus-visible) * {
+  pointer-events: none;
+}
+
+/* Retain location and explicit session controls; quiet routine chrome. */
+.connection-status {
+  display: flex;
+  align-items: center;
+  font-size: var(--act-fs-meta);
+}
+
+.connection-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Only a lost connection earns a chip: amber while reconnecting, mint for a moment once back. */
+.connection-chip i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  animation: connection-block 1s steps(4, jump-none) infinite;
+}
+
+@keyframes connection-block {
+  0% { transform: translate(0, 0); }
+  33% { transform: translate(3px, 0); }
+  67% { transform: translate(3px, 3px); }
+  100% { transform: translate(0, 3px); }
+}
+
+.connection-status[data-state=reconnected] .connection-chip i {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connection-chip i {
+    animation: none;
+  }
+}
+
+.map-selection {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 8;
+  overflow: visible;
+}
+
+/* Selection is solid light mint so it never reads as dashed work or amber attention. */
+.map-selection rect {
+  fill: transparent;
+  stroke: var(--act-selection);
+  stroke-width: 2;
+  shape-rendering: crispEdges;
+}
+
+.map-selection .selection-marquee {
+  fill: color-mix(in srgb, var(--act-accent) 12%, transparent);
+  stroke-width: 1;
+}
+
+.project-neighborhood-title .project-counts {
+  display: flex;
+  justify-content: center;
+  white-space: pre;
+}
+
+.project-neighborhood-title[data-edge] .tier-counts {
+  gap: 6px;
+}

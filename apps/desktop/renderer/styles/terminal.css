@@ -1,0 +1,232 @@
+.terminal-status span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-status small {
+  font-size: var(--act-fs-meta);
+}
+
+.terminal-content {
+  flex: 1;
+  min-height: 0;
+}
+
+.terminal-surface .xterm {
+  height: 100%;
+}
+
+/* Native session controls share one compact row; the terminal owns the rest. */
+.terminal-status {
+  flex: none;
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-dim);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 3px 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.terminal-status .terminal-state {
+  flex: 0 0 auto;
+  font-size: var(--act-fs-meta);
+}
+
+.terminal-status .terminal-directory {
+  flex: 1;
+  min-width: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-faint);
+}
+
+.terminal-status button {
+  padding: 4px 7px;
+  font-size: var(--act-fs-meta);
+  flex-shrink: 0;
+}
+
+.terminal-error {
+  color: #e3ab99;
+  font-size: var(--act-fs-ui);
+  padding: 4px 8px;
+}
+
+.session-toolbar-slot .terminal-status {
+  padding: 0;
+  min-height: 28px;
+}
+
+.native-terminal {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Fit xterm to an unpadded inner host so its last row stays inside the item. */
+
+.terminal-host {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+.terminal-host>.xterm {
+  height: 100%;
+}
+
+.terminal-status button,
+.map-card .item-seen,
+.map-card .item-close {
+  height: 28px;
+  min-height: 28px;
+  align-self: center;
+}
+
+/* Fit xterm to an unpadded inner host so its last row stays inside the item. */
+.terminal-surface {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--act-bg);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  border-radius: 0;
+}
+
+.live-workspace .terminal-status .session-stop:not(:disabled) {
+  color: #eccba0;
+  background: #3a3024;
+  border-color: #80664a;
+}
+
+/* The agent menu sits above the pixel-clipped item and never consumes terminal rows. */
+.native-session-menu {
+  position: fixed;
+  z-index: 1000;
+  width: min(260px,calc(100vw - 16px));
+  padding: 8px;
+  background: var(--act-panel);
+  color: var(--act-ink);
+  border: 1px solid var(--act-line-accent);
+  clip-path: var(--pixel-panel-shape);
+  border-image: var(--pixel-panel-border) 9 / 9px / 0 stretch;
+  box-shadow: var(--act-shadow-sm);
+}
+
+.native-session-menu button {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 9px 10px;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: var(--act-fs-ui);
+  clip-path: var(--pixel-control-shape);
+  cursor: pointer;
+}
+
+.native-session-menu button:hover:not(:disabled),
+.native-session-menu button:focus-visible {
+  background: var(--act-control-hover);
+  border-color: #8bb69a;
+}
+
+.native-session-menu button:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: -2px;
+}
+
+.native-session-menu button:disabled {
+  color: var(--act-ink-faint);
+  cursor: default;
+}
+
+.native-session-menu p {
+  margin: 8px 10px 5px;
+  font-size: var(--act-fs-meta);
+  line-height: 1.5;
+  color: var(--act-ink-dim);
+}
+
+.terminal-prompt-status {
+  flex: none;
+  color: var(--act-focus);
+  font-size: var(--act-fs-meta);
+  padding: 3px 8px;
+}
+
+.terminal-link-menu {
+  position: fixed;
+  z-index: 10000;
+  width: 260px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: 8px;
+  background: var(--act-panel);
+  color: var(--act-ink);
+  box-shadow: 0 0 0 2px #718b76,4px 4px 0 2px var(--act-deep);
+  font-size: var(--act-fs-ui);
+}
+
+.terminal-link-menu p {
+  margin: 3px 4px 8px;
+  color: var(--act-ink-dim);
+  font-size: var(--act-fs-meta);
+  overflow-wrap: anywhere;
+}
+
+.terminal-link-destination {
+  max-height: 58px;
+  overflow: auto;
+  user-select: text;
+}
+
+.terminal-link-menu button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 9px 8px;
+  cursor: pointer;
+}
+
+.terminal-link-menu button:hover {
+  background: var(--act-control-hover);
+  outline: 1px solid #97be9e;
+  outline-offset: -1px;
+}
+
+.terminal-link-menu button:focus {
+  background: var(--act-control-hover);
+  outline: var(--act-focus-ring);
+  outline-offset: -2px;
+}
+
+.terminal-link-menu button:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+.terminal-link-menu [role=alert] {
+  color: #efbd9f;
+}

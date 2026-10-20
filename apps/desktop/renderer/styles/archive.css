@@ -1,0 +1,161 @@
+.archive-browser {
+  width: 460px;
+  z-index: 190;
+  --settings-card: var(--act-card);
+}
+
+.archive-entries {
+  display: flex;
+  flex-direction: column;
+  gap: var(--act-sp-3);
+}
+
+.archive-group {
+  margin: 0;
+}
+
+.archive-group-title {
+  margin: 0 0 var(--act-sp-1_5);
+  font-size: var(--act-fs-caps);
+  font-weight: var(--act-fw-strong);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--act-section);
+}
+
+/* The archive uses the settings list system: one card per group, rows with a
+ * leading glyph, Restore as the action and Delete behind ⋯. */
+.archive-browser .settings-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--act-card);
+  border: 1px solid var(--act-line);
+  clip-path: var(--pixel-control-shape);
+}
+
+.archive-browser .settings-card>*+* {
+  border-top: 1px solid var(--act-hover);
+}
+
+.archive-browser .settings-list-item {
+  min-height: 48px;
+  padding: var(--act-sp-2) var(--act-sp-3);
+}
+
+.live-workspace .archive-browser .settings-list-actions button {
+  height: 26px;
+  padding: 0 var(--act-sp-2);
+  font-size: var(--act-fs-ui);
+  border-image: var(--pixel-control-border) 5 / 5px / 0 stretch;
+}
+
+.live-workspace .archive-browser .settings-list-actions .archive-more {
+  width: 28px;
+  padding: 0;
+  font-weight: var(--act-fw-strong);
+}
+
+/* The ⋯ menu opens in the row itself: list cards clip to their pixel shape. */
+.archive-row-menu {
+  display: flex;
+  flex-direction: row-reverse;
+  gap: var(--act-sp-1);
+}
+
+.archive-menu {
+  display: flex;
+  padding: var(--act-sp-0_5);
+  background: var(--act-panel);
+  border: 1px solid var(--act-line-accent);
+}
+
+.live-workspace .archive-menu [role=menuitem] {
+  width: 100%;
+  text-align: left;
+  color: var(--act-danger-ink);
+  background: transparent;
+  border: 0;
+  border-image: none;
+}
+
+.live-workspace .archive-menu [role=menuitem]:hover,
+.live-workspace .archive-menu [role=menuitem]:focus-visible {
+  background: var(--act-danger-fill);
+}
+
+.live-workspace .archive-browser .settings-confirm button {
+  height: 26px;
+  padding: 0 var(--act-sp-2);
+  font-size: var(--act-fs-ui);
+}
+
+.live-workspace .archive-browser .settings-danger[data-solid] {
+  color: var(--act-danger-ink);
+  background: var(--act-danger-fill);
+  border: 0;
+  border-image: none;
+  font-weight: var(--act-fw-strong);
+}
+
+.archive-error {
+  margin: 0;
+  color: var(--act-bad);
+  font-size: var(--act-fs-ui);
+}
+
+.archive-browser>.recording-storage {
+  margin-top: var(--act-sp-3);
+  border-top: 1px solid var(--act-line);
+  padding-top: var(--act-sp-3);
+}
+
+/* One home, one tab per kind of archived thing. */
+.archive-browser .settings-segmented {
+  display: flex;
+  gap: var(--act-sp-0_5);
+  padding: var(--act-sp-0_5);
+  background: var(--act-sunken);
+  border: 1px solid var(--act-line-control);
+  clip-path: var(--pixel-control-shape);
+}
+
+.live-workspace .archive-browser .settings-segmented button {
+  flex: 1;
+  height: 28px;
+  padding: 0 var(--act-sp-2);
+  color: var(--act-ink-dim);
+  background: transparent;
+  border: 0;
+  border-image: none;
+  font-size: var(--act-fs-ui);
+}
+
+.live-workspace .archive-browser .settings-segmented button[aria-pressed=true] {
+  color: var(--act-ink-on-selected);
+  background: var(--act-selected);
+  box-shadow: inset 0 -2px var(--act-accent);
+}
+
+.archive-browser .settings-segmented .settings-count {
+  margin-left: var(--act-sp-1_5);
+  font: var(--act-fs-meta) var(--act-font-mono);
+}
+
+.archive-browser .session-manager {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.archive-browser .session-manager legend,
+.archive-browser .session-manager .settings-section-description {
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink-dim);
+}
+
+.archive-browser .recording-storage .setting-hint {
+  margin: 0 0 var(--act-sp-2);
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink-dim);
+}

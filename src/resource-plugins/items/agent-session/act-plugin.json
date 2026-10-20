@@ -1,0 +1,15 @@
+{
+  "id": "agent.session",
+  "name": "Agent sessions",
+  "version": "1.0.0",
+  "apiRange": "^1.0.0",
+  "entries": {
+    "definitions": "plugin.ts",
+    "renderer": "renderer.ts"
+  },
+  "contributes": {
+    "itemTypes": [
+      "agent.session"
+    ]
+  }
+}

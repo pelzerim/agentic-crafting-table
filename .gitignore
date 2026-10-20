@@ -1,0 +1,36 @@
+# Dependencies and generated output
+node_modules
+dist/
+!tests/fixtures/plugins/**/dist/
+build/
+release/
+coverage/
+test-results/
+playwright-report/
+*.tsbuildinfo
+__pycache__/
+*.pyc
+.DS_Store
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local workspace state and terminal output; use explicit fixtures for tests
+.local/
+.runtime/
+*.state.json
+*.state.json.lock/
+*.state.json.*.tmp
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.log
+*.log.[1-5]
+
+# Example plugin releases are packed in their own repositories
+examples/plugins/*/act-plugin.integrity.json

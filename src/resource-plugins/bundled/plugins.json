@@ -1,0 +1,16 @@
+[
+  "agent-session",
+  "terminal-session",
+  "github-pull-request",
+  "github-rollout",
+  "claude-artifact",
+  "code-review",
+  "github-review-run",
+  "linear-ticket",
+  "notion-page",
+  "slack-message",
+  "bookmark",
+  "web-link",
+  "todo",
+  "note"
+]

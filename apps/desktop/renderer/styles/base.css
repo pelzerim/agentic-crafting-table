@@ -1,0 +1,123 @@
+:root {
+  font-family: var(--act-font-ui);
+  color: var(--act-ink);
+  background: var(--act-bg);
+  font-synthesis: none;
+  color-scheme: dark;
+}
+
+.live-workspace {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.live-workspace button:where(:not(.btn)) {
+  border: 1px solid var(--act-line-control);
+  background: var(--act-control);
+  color: var(--act-ink);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: var(--act-fs-ui);
+}
+
+.live-workspace button:where(:not(.btn)):hover {
+  background: var(--act-control-hover);
+}
+
+.live-workspace button:where(:not(.btn)):disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.workspace {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+strong {
+  font-weight: 600;
+}
+
+.empty-table {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  background-image: radial-gradient(var(--act-control-hover) 1px,transparent 1px);
+  background-size: 24px 24px;
+}
+
+.intro {
+  padding: 48px;
+  text-align: center;
+  background: var(--act-bg);
+}
+
+.eyebrow {
+  font-size: var(--act-fs-meta);
+  letter-spacing: 2px;
+  color: var(--act-accent);
+}
+
+h1 {
+  font-size: 32px;
+  letter-spacing: -1px;
+  font-weight: 500;
+  margin: 18px 0 12px;
+}
+
+p {
+  color: var(--act-ink-dim);
+  font-size: 14px;
+}
+
+.status {
+  display: inline-block;
+  margin-top: 22px;
+  padding: 8px 12px;
+  background: var(--act-control);
+  color: var(--act-accent);
+  font-size: var(--act-fs-ui);
+  border-radius: 5px;
+}
+
+footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 26px;
+  background: var(--act-surface);
+  border-top: 1px solid var(--act-control-hover);
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-dim);
+}
+
+.connected-items {
+  display: flex;
+  gap: 4px;
+  min-width: 28px;
+  overflow: auto;
+  pointer-events: auto;
+  flex-shrink: 0;
+  max-width: 180px;
+}

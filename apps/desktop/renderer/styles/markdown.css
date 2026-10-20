@@ -1,0 +1,170 @@
+.markdown-content {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  color: var(--act-ink-soft);
+}
+
+.markdown-content>:first-child {
+  margin-top: 0;
+}
+
+.markdown-content>:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content p,
+.markdown-content ul,
+.markdown-content ol,
+.markdown-content blockquote {
+  max-width: 70ch;
+  margin: 10px 0 16px;
+  color: inherit;
+}
+
+.markdown-content p {
+  white-space: normal;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  max-width: 70ch;
+  margin: 24px 0 10px;
+  line-height: 1.35;
+  letter-spacing: normal;
+  color: var(--act-ink);
+  font-weight: 600;
+}
+
+.markdown-content h1 {
+  font-size: var(--act-fs-display);
+}
+
+.markdown-content h2 {
+  font-size: 21px;
+}
+
+.markdown-content h3 {
+  font-size: var(--act-fs-title);
+}
+
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  font-size: var(--act-fs-panel);
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  padding-left: 24px;
+}
+
+.markdown-content li {
+  margin: 4px 0;
+}
+
+.markdown-content li>ul,
+.markdown-content li>ol {
+  margin: 4px 0;
+}
+
+.markdown-content li:has(>input[type=checkbox]) {
+  list-style: none;
+}
+
+.markdown-content input[type=checkbox] {
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+  margin: 0 6px 2px -20px;
+  accent-color: var(--act-accent);
+}
+
+.markdown-content blockquote {
+  border-left: 3px solid var(--act-ink-faint);
+  padding: 0 16px;
+  color: #aabfb1;
+}
+
+.markdown-content blockquote p {
+  margin: 8px 0;
+}
+
+.markdown-content a[href] {
+  color: #b4d5be;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.markdown-content a[href]:hover {
+  color: #e1f0e4;
+}
+
+.markdown-content code {
+  font: var(--act-fs-ui)/1.6 var(--act-font-mono);
+  background: var(--act-sunken);
+  border-radius: 3px;
+  padding: 2px 5px;
+}
+
+.markdown-content pre {
+  max-width: 100%;
+  margin: 16px 0;
+  overflow: auto;
+  white-space: pre;
+  overflow-wrap: normal;
+  padding: 14px;
+  background: var(--act-sunken);
+  border: 1px solid var(--act-control-hover);
+  border-radius: 4px;
+}
+
+.markdown-content pre code {
+  padding: 0;
+  background: none;
+  border-radius: 0;
+}
+
+.markdown-content table {
+  display: block;
+  max-width: 100%;
+  overflow: auto;
+  border-collapse: collapse;
+  margin: 16px 0;
+}
+
+.markdown-content th,
+.markdown-content td {
+  padding: 8px 12px;
+  border: 1px solid var(--act-line);
+  text-align: left;
+  min-width: 100px;
+}
+
+.markdown-content th {
+  background: var(--act-hover);
+  color: var(--act-ink);
+}
+
+.markdown-content tr:nth-child(even) {
+  background: var(--act-panel);
+}
+
+.markdown-content [align=center] {
+  text-align: center;
+}
+
+.markdown-content [align=right] {
+  text-align: right;
+}
+
+.markdown-content hr {
+  border: 0;
+  border-top: 1px solid var(--act-line);
+  margin: 24px 0;
+}

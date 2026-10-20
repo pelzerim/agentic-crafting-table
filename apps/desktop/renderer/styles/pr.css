@@ -1,0 +1,1034 @@
+/* Provider details live inside the expanded map item. */
+.pr-detail {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 20px;
+  color: #cfddd1;
+  overflow: hidden;
+}
+
+.pr-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-bottom: 14px;
+}
+
+.pr-header a {
+  color: #9ebba5;
+  text-decoration: none;
+  font-size: var(--act-fs-ui);
+  overflow-wrap: anywhere;
+}
+
+.pr-header .pr-open {
+  color: var(--act-ink);
+  background: var(--act-control);
+  padding: 8px 11px;
+  border: 1px solid var(--act-line-strong);
+  border-image: var(--pixel-control-border) 5 / 5px / 0 stretch;
+  clip-path: var(--pixel-control-shape);
+  white-space: nowrap;
+}
+
+.pr-header .pr-open:hover {
+  background: var(--act-control-hover);
+  color: var(--act-ink);
+}
+
+.pr-header .pr-open:focus-visible {
+  outline: 0;
+  box-shadow: inset 0 0 0 2px var(--act-focus);
+}
+
+.pr-reference {
+  color: #9ebba5;
+  font-size: var(--act-fs-ui);
+  overflow-wrap: anywhere;
+}
+
+.pr-header button {
+  margin-left: auto;
+}
+
+.pr-state {
+  color: var(--act-accent);
+  font-size: var(--act-fs-ui);
+  padding: 5px 9px;
+  background: var(--act-control);
+  box-shadow: 2px 0 var(--act-control-hover), -2px 0 var(--act-control-hover), 0 2px var(--act-control-hover), 0 -2px var(--act-control-hover);
+}
+
+.pr-state[data-state="merged"] {
+  color: var(--act-tone-violet);
+  background: #342942;
+}
+
+.pr-state[data-state="closed"] {
+  color: #eab5ab;
+  background: #412a28;
+}
+
+.pr-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0 14px;
+  border-bottom: 1px solid var(--act-hover);
+}
+
+.pr-content {
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+  padding: 20px 4px 28px 0;
+  user-select: text;
+}
+
+.pr-content h2 {
+  font-size: 22px;
+  line-height: 1.4;
+  margin: 0 0 12px;
+}
+
+.pr-meta,
+.pr-commits {
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink-faint);
+}
+
+.pr-refs {
+  color: #c1b0d7;
+  font-size: 14px;
+  margin: 18px 0 6px;
+}
+
+.pr-description {
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 24px 0 0;
+}
+
+.pr-description.markdown-content {
+  margin: 16px 0 24px;
+  white-space: normal;
+}
+
+.pr-description-toggle,
+.pr-review-toggle {
+  display: block;
+  margin: 18px 0 12px;
+}
+
+.pr-review-actions[hidden],
+.pr-description[hidden] {
+  display: none;
+}
+
+.pr-discussion {
+  margin-top: 24px;
+  border-top: 1px solid var(--act-control-hover);
+  padding-top: 16px;
+}
+
+.pr-discussion>h3 {
+  font-size: 14px;
+  margin: 0 0 16px;
+}
+
+.pr-comment {
+  padding: 16px 0;
+  border-top: 1px solid var(--act-control-hover);
+}
+
+.pr-comment:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.pr-comment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink-dim);
+}
+
+.pr-comment-meta a {
+  color: #bdd9c6;
+  text-decoration: none;
+}
+
+.pr-comment-meta a:hover {
+  text-decoration: underline;
+}
+
+.pr-comment-meta small {
+  font-size: var(--act-fs-meta);
+}
+
+.pr-error {
+  color: var(--act-pending);
+  font-size: var(--act-fs-body);
+  line-height: 1.5;
+}
+
+.pr-review-status {
+  font-size: var(--act-fs-ui);
+  color: var(--muted);
+}
+
+.pr-review-status:empty,
+.pr-review-actions:empty {
+  display: none;
+}
+
+.wr-detail {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--act-sp-6);
+  color: var(--act-ink);
+  user-select: text;
+}
+
+.wr-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--act-sp-4);
+  padding: 0 0 var(--act-sp-3);
+  font-size: var(--act-fs-ui);
+  border-bottom: 1px solid var(--act-hover);
+}
+
+.wr-links:empty {
+  display: none;
+}
+
+.wr-notice {
+  margin: 0 0 var(--act-sp-4);
+  padding: var(--act-sp-2) var(--act-sp-3);
+  font-size: var(--act-fs-ui);
+  color: var(--act-pending);
+  background: var(--act-pending-bg);
+  border-left: 3px solid var(--act-pending-line);
+}
+
+.wr-notice[hidden] {
+  display: none;
+}
+
+.wr-report {
+  margin: var(--act-sp-4) 0 0;
+  font: inherit;
+  font-size: var(--act-fs-body);
+  line-height: 1.65;
+}
+
+.workflow-reconciliation > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.workflow-report {
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pr-workflow-action small {
+  max-width: 260px;
+}
+
+/* Model, action and availability travel together when wrapping. */
+.pr-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.pr-review-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1 1 230px;
+  min-width: 210px;
+  padding: 12px;
+  background: var(--act-panel);
+  border: 1px solid var(--act-line);
+}
+
+.pr-review-action>strong {
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink);
+}
+
+.pr-review-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.pr-review-action select {
+  min-width: 0;
+  flex: 1;
+  max-width: 170px;
+  color: var(--act-ink);
+  background: var(--act-sunken);
+  border: 1px solid var(--act-line-control);
+  border-radius: 3px;
+  padding: 6px;
+  font: var(--act-fs-ui) system-ui;
+  height: 34px;
+}
+
+.pr-review-action button {
+  margin: 0 !important;
+  height: 34px;
+  min-height: 34px;
+}
+
+.pr-review-action small {
+  color: var(--act-ink-dim);
+  font-size: var(--act-fs-meta);
+  line-height: 1.5;
+}
+
+.pr-workflow-help {
+  font-size: var(--act-fs-meta);
+  color: #cabb9e;
+}
+
+.pr-workflow-help summary {
+  cursor: pointer;
+}
+
+.pr-workflow-help p {
+  font-size: var(--act-fs-meta);
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+
+/* One recovery decision, with verified candidate identity beside its actions. */
+.workflow-reconciliation {
+  display: grid;
+  justify-items: start;
+  max-width: 760px;
+  gap: 14px;
+}
+
+.workflow-reconciliation h2 {
+  font-size: 19px;
+  margin: 6px 0 0;
+}
+
+.workflow-reconciliation>p {
+  margin: 0;
+  line-height: 1.6;
+  max-width: 68ch;
+}
+
+.workflow-candidate {
+  padding: 14px;
+  border: 1px solid #53674f;
+  background: var(--act-raised);
+  width: 100%;
+}
+
+.workflow-candidate header {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: var(--act-fs-ui);
+}
+
+.workflow-candidate pre {
+  font-size: var(--act-fs-body);
+  color: var(--act-ink);
+  white-space: pre-wrap;
+}
+
+.workflow-candidate-actions {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.workflow-candidate-actions a {
+  font-size: var(--act-fs-ui);
+  color: #b4d5be;
+}
+
+.live-workspace .workflow-confirm-absent {
+  color: var(--act-neutral);
+  border-color: var(--act-line);
+  background: transparent;
+  font-size: var(--act-fs-ui);
+}
+
+.workflow-report[hidden] {
+  display: none;
+}
+
+.workflow-candidate time {
+  color: var(--act-ink-dim);
+  font-size: var(--act-fs-meta);
+  display: inline-block;
+  width: 160px;
+  max-width: 100%;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pr-state[data-state=approved] {
+  color: var(--act-tone-green);
+}
+
+.pr-state[data-state=changes-requested] {
+  color: var(--act-pending);
+  background: var(--act-pending-bg);
+}
+
+.pr-state[data-state=queued] {
+  color: var(--act-pending);
+  background: var(--act-pending-bg);
+}
+
+.pr-comment-count {
+  color: var(--act-info);
+  font-size: var(--act-fs-ui);
+}
+
+/* Review desk: one identity, conversation and connected map items. */
+.pr-desk {
+  padding: 0;
+  color: var(--act-ink);
+  container-type: inline-size;
+}
+
+.pr-desk>.pr-content {
+  padding: 24px 26px 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.pr-desk>.pr-content::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.pr-desk>.pr-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pr-desk>.pr-content::-webkit-scrollbar-thumb {
+  background: var(--act-line-control);
+}
+
+.pr-desk .pr-metadata {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.pr-desk .pr-refs {
+  font-size: var(--act-fs-meta);
+  line-height: 1.6;
+  margin: 0;
+  padding: 2px 6px;
+  background: #30383a;
+  border-radius: 3px;
+  overflow-wrap: anywhere;
+}
+
+.pr-desk .pr-description-panel {
+  padding: 0 0 20px;
+  min-width: 0;
+}
+
+.pr-desk .pr-description {
+  margin: 0 0 14px;
+}
+
+.pr-desk .pr-commits {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: var(--act-fs-meta);
+}
+
+/* Conversation-first review desk: one column and distinct, expandable cards. */
+.pr-desk .pr-meta {
+  color: var(--act-ink-soft);
+  line-height: 1.6;
+  font-size: var(--act-fs-meta);
+}
+
+.pr-desk .pr-tools {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 0 18px;
+  justify-content: flex-start;
+  gap: 24px;
+  margin-bottom: 14px;
+  align-items: flex-start;
+}
+
+.pr-desk .pr-desk-columns {
+  border-top: 1px solid var(--act-line);
+}
+
+.pr-desk .pr-discussion {
+  border: 0;
+  margin: 0;
+  padding: 20px 0;
+  min-width: 0;
+}
+
+.pr-desk .pr-conversation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.pr-desk .pr-conversation-header h3 {
+  font-size: var(--act-fs-body);
+  margin: 0;
+  color: var(--act-ink);
+}
+
+/* Sits beside the title; the filter stays at the far end. */
+.pr-desk .pr-conversation-header .pr-seen-all {
+  margin-right: auto;
+  min-height: var(--act-control-size);
+  padding: 0 var(--act-sp-2);
+  font-size: var(--act-fs-meta);
+}
+
+.pr-desk .pr-thread {
+  margin-bottom: 16px;
+  padding: 2px;
+}
+
+.pr-desk .pr-comment {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: var(--act-control);
+  border: 1px solid #4d705c;
+  border-left: 3px solid var(--act-accent);
+  border-image: var(--pixel-control-border) 5 / 5px / 0 stretch;
+  clip-path: var(--pixel-control-shape);
+  box-shadow: inset 3px 0 var(--act-accent);
+}
+
+.pr-desk .pr-comment[data-reply=true] {
+  margin: 8px 0 0 28px;
+  background: var(--act-panel);
+  border-color: #3f5948;
+  box-shadow: inset 2px 0 var(--act-line-strong);
+}
+
+.pr-desk .pr-comment[data-seen=false] {
+  border-color: color-mix(in srgb,var(--act-info) 55%,var(--act-line-strong));
+  box-shadow: inset 4px 0 var(--act-info);
+}
+
+.pr-desk .pr-comment[data-seen=true] {
+  box-shadow: inset 2px 0 var(--act-line-strong);
+}
+
+.pr-desk .pr-comment[data-seen=true] .pr-comment-meta>a {
+  font-weight: 500;
+  color: var(--act-ink-soft);
+}
+
+.pr-comment[data-seen=true] .pr-comment-new {
+  display: none;
+}
+
+.pr-desk .pr-comment-message {
+  min-width: 0;
+  flex: 1;
+}
+
+.pr-desk .pr-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  font-size: var(--act-fs-caps);
+  color: var(--act-ink-soft);
+  border: 1px solid #405b49;
+  border-radius: 3px;
+  background: var(--act-panel);
+}
+
+.pr-desk .pr-comment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: var(--act-fs-meta);
+  line-height: 1.5;
+}
+
+.pr-desk .pr-comment-meta>a {
+  font-weight: 650;
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink);
+}
+
+.pr-desk .pr-comment-quick {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.pr-desk .pr-comment-quick button,
+.pr-desk .pr-comment-controls button {
+  background: transparent;
+  border: 0;
+  clip-path: none;
+  padding: 3px 0;
+  min-height: 24px;
+  font-size: var(--act-fs-meta);
+  color: #a8c4b3;
+}
+
+.pr-desk .pr-comment-quick button:hover,
+.pr-desk .pr-comment-controls button:hover {
+  color: #ddf5e7;
+  text-decoration: underline;
+}
+
+.pr-desk .pr-comment-controls {
+  gap: 18px;
+  margin-top: 8px;
+}
+
+.pr-desk .pr-comment-controls select {
+  font-size: var(--act-fs-meta);
+  padding: 3px;
+}
+
+.pr-desk .pr-comment-preview {
+  display: block;
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  clip-path: none;
+  color: var(--act-ink);
+  font-size: var(--act-fs-body);
+  font-family: inherit;
+  line-height: 1.65;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.pr-desk .pr-comment-preview:hover {
+  color: #f1fff6;
+}
+
+.pr-desk .pr-comment-preview[hidden] {
+  display: none;
+}
+
+.pr-desk .pr-comment .markdown-content {
+  font-size: var(--act-fs-body);
+  line-height: 1.65;
+}
+
+.pr-desk .pr-comment-state[data-state=APPROVED] {
+  color: var(--act-accent);
+}
+
+.pr-desk .pr-comment-state[data-state=CHANGES_REQUESTED] {
+  color: var(--act-attention);
+}
+
+.pr-desk .pr-comment-state[data-state=DISMISSED] {
+  color: #a7aaa5;
+}
+
+.pr-desk .pr-thread-context,
+.pr-desk .pr-thread-path {
+  display: block;
+  font-size: var(--act-fs-meta);
+  color: #b5b2d7;
+  padding: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+
+.pr-desk .pr-seen {
+  border-top: 1px solid var(--act-line);
+  padding-top: 14px;
+  margin-top: 18px;
+}
+
+.pr-desk .pr-seen>summary {
+  color: #a9bfb0;
+  font-size: var(--act-fs-ui);
+  cursor: pointer;
+  padding: 4px 0 14px;
+}
+
+.pr-desk .pr-seen[hidden] {
+  display: none;
+}
+
+.pr-desk .pr-related {
+  padding: 0;
+  background: none;
+  border: 0;
+  min-width: 0;
+  flex: 1;
+}
+
+.pr-desk .pr-related[hidden] {
+  display: none;
+}
+
+.pr-desk .pr-related>summary,
+.pr-desk .pr-description-panel>summary,
+.pr-desk .pr-filters>summary {
+  cursor: pointer;
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink-soft);
+  padding: 8px 0;
+}
+
+.pr-desk .pr-connected-reviews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.pr-desk .pr-linked-review {
+  position: relative;
+  display: flex;
+  flex: 1 1 240px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  text-align: left;
+  background: #25302d;
+  color: var(--act-ink-soft);
+  border: 1px solid #526358;
+  border-image: var(--pixel-control-border) 5 / 5px / 0 stretch;
+  clip-path: var(--pixel-control-shape);
+  white-space: normal;
+}
+
+.pr-desk .pr-linked-review strong {
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink);
+}
+
+.pr-desk .pr-linked-summary {
+  font-size: var(--act-fs-ui);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.pr-desk .pr-linked-state,
+.pr-desk .pr-linked-revision {
+  font-size: var(--act-fs-caps);
+  color: #adc4b5;
+}
+
+.pr-desk .pr-linked-review[data-revision=stale] .pr-linked-revision {
+  color: #ecc186;
+}
+
+.pr-desk .pr-linked-review:hover {
+  background: var(--act-selected);
+}
+
+.pr-desk .pr-linked-review:hover .pr-linked-state,
+.pr-desk .pr-linked-review:hover .pr-linked-summary {
+  color: var(--act-ink-on-selected);
+}
+
+.pr-desk .pr-filter-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: var(--act-fs-ui);
+  padding: 12px;
+  background: var(--act-control);
+  border: 1px solid #526358;
+}
+
+.pr-desk .pr-filter-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pr-desk .pr-filters {
+  max-width: 100%;
+}
+
+.pr-desk .pr-filter-note {
+  display: block;
+  margin-top: 12px;
+  color: var(--act-ink-dim);
+  font-size: var(--act-fs-meta);
+}
+
+.pr-desk>.pr-error,
+.pr-desk>.pr-review-status:not(:empty) {
+  margin: 0;
+  padding: 8px 20px;
+  background: #342d21;
+}
+
+@container (max-width:540px) {
+  .pr-desk>.pr-content {
+    padding: 16px 14px 0;
+  }
+  .pr-desk .pr-comment {
+    padding: 12px;
+    gap: 8px;
+  }
+  .pr-desk .pr-comment[data-reply=true] {
+    margin-left: 14px;
+  }
+  .pr-desk .pr-avatar {
+    display: none;
+  }
+  .pr-desk .pr-comment-quick {
+    margin-left: 0;
+  }
+  .pr-desk .pr-review-action {
+    min-width: 0;
+    flex-basis: 100%;
+  }
+}
+
+.pr-comment-controls {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.pr-comment-controls button,
+.pr-comment-controls select {
+  font-size: var(--act-fs-ui);
+  padding: 5px 9px;
+  min-height: 28px;
+}
+
+.pr-comment[data-seen=true] {
+  opacity: .7;
+}
+
+.pr-comment[data-seen=true]:focus-within,
+.pr-comment[data-seen=true]:hover {
+  opacity: 1;
+}
+
+.pr-comment-feedback {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+}
+
+.pr-reply-editor:not([hidden]) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.pr-reply-editor textarea {
+  width: 100%;
+  min-height: 100px;
+  resize: vertical;
+  font: inherit;
+  background: var(--act-sunken);
+  color: inherit;
+  border: 1px solid var(--act-line-control);
+  padding: 10px;
+}
+
+.pr-reply-editor small {
+  width: 100%;
+}
+
+.pr-comment .markdown-content details {
+  border-left: 2px solid var(--act-line-control);
+  padding-left: 12px;
+}
+
+.pr-comment .markdown-content summary {
+  cursor: pointer;
+  padding: 6px 0;
+}
+
+/* One state-chosen primary action; the others are neutral. Hue marks status, not the action. */
+.pr-primary-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-1_5);
+}
+
+.pr-primary-actions>button {
+  display: inline-block;
+  margin: 0;
+  min-height: 26px;
+  padding: var(--act-sp-0_5) var(--act-sp-3);
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink-soft);
+  background: var(--act-control);
+  border-color: var(--act-line-control);
+}
+
+.pr-primary-actions>button[hidden] {
+  display: none;
+}
+
+.pr-primary-actions>button:enabled:hover {
+  background: var(--act-control-hover);
+}
+
+.pr-primary-actions>button:disabled {
+  opacity: .55;
+  cursor: default;
+}
+
+.pr-primary-actions .pr-review-toggle::after,
+.pr-primary-actions .pr-merge:enabled::after,
+.pr-primary-actions .pr-show-ship:enabled::after {
+  content: ' ▾';
+}
+
+.pr-primary-actions .pr-review-toggle[data-primary] {
+  color: var(--act-accent);
+  background: var(--act-accent-bg);
+  border-color: var(--act-line-accent);
+}
+
+.pr-primary-actions .pr-merge[data-primary]:enabled {
+  color: var(--act-copper-ink);
+  background: var(--act-copper-fill);
+  border-color: var(--act-copper-line);
+}
+
+.pr-desk .pr-tools {
+  gap: 0 var(--act-sp-6);
+}
+
+.pr-desk .pr-tools>details:not([open]) {
+  flex: none;
+}
+
+.pr-desk .pr-tools>details[open] {
+  flex: 1 1 100%;
+}
+
+/* Auto deploy's and the review loop's lines sit under the frame bar while they run, and keep their last word (done, clean or halted). */
+.pr-desk>.pr-auto-deploy-status,
+.pr-desk>.pr-review-loop-status {
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-3);
+  margin: 0;
+  padding: 6px 20px;
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink);
+  background: var(--act-sunken);
+  border-bottom: 1px solid var(--act-line);
+}
+
+.pr-desk>.pr-auto-deploy-status[hidden],
+.pr-desk>.pr-review-loop-status[hidden] {
+  display: none;
+}
+
+.pr-desk>.pr-auto-deploy-status[data-state=halted],
+.pr-desk>.pr-review-loop-status[data-state=halted] {
+  color: var(--act-pending);
+  background: var(--act-pending-bg);
+  border-bottom-color: var(--act-pending-line);
+}
+
+.pr-desk>.pr-auto-deploy-status[data-state=done],
+.pr-desk>.pr-review-loop-status[data-state=clean] {
+  color: var(--act-tone-green);
+}
+
+.pr-auto-deploy-text,
+.pr-review-loop-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pr-auto-deploy-stop,
+.pr-review-loop-open,
+.pr-review-loop-stop {
+  flex: none;
+  font: inherit;
+  color: var(--act-ink);
+  background: var(--act-control);
+  border: 1px solid var(--act-line-control);
+  border-radius: 4px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
+.pr-auto-deploy-stop:hover,
+.pr-review-loop-open:hover,
+.pr-review-loop-stop:hover {
+  background: var(--act-control-hover);
+}
+
+/* Auto validate sits in the frame bar, left of Actions. */
+.view-header .pr-auto-validate {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--act-sp-1_5);
+  margin-right: var(--act-sp-1);
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink-dim);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.view-header .pr-auto-validate input {
+  margin: 0;
+  accent-color: var(--act-accent);
+  cursor: pointer;
+}

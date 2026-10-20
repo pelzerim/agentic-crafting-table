@@ -1,0 +1,254 @@
+/* Reminders (MAP-REMINDERS): a rail tool. Due is mint, never amber, which is Needs me's. */
+.reminders-title {
+  margin: 0;
+}
+
+.reminders-tool .rail-panel-body {
+  padding: 0 0 var(--act-sp-2);
+  overflow: auto;
+}
+
+/* Slot: a mint dot and count while due, a dim dot while snoozed, one pulse ring when one comes due. */
+.reminders-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  background: var(--act-ink-faint);
+  box-shadow: 0 0 0 1px var(--act-deep);
+}
+
+.reminders-tool[data-due] .reminders-dot {
+  background: var(--act-accent);
+}
+
+.reminders-count {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  min-width: 15px;
+  height: 14px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  font-size: var(--act-fs-caps);
+  line-height: 12px;
+  font-weight: 800;
+  color: var(--act-ink-on-accent);
+  background: var(--act-accent);
+  border: 1px solid var(--act-deep);
+}
+
+.reminders-pulse {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  animation: reminders-pulse 1.1s ease-out 1 forwards;
+}
+
+@keyframes reminders-pulse {
+  from {
+    box-shadow: 0 0 0 0 var(--act-accent);
+    opacity: .9;
+  }
+  to {
+    box-shadow: 0 0 0 14px var(--act-accent);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reminders-pulse {
+    display: none;
+  }
+}
+
+.reminders-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reminders-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--act-sp-1) var(--act-sp-3);
+  padding: var(--act-sp-2) var(--act-sp-3);
+  border-bottom: 1px solid var(--act-line);
+}
+
+.reminders-row[data-state=due] {
+  background: var(--act-accent-bg);
+}
+
+.reminders-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--act-fs-body);
+  font-weight: 650;
+  color: var(--act-ink);
+}
+
+.reminders-row:is([data-state=done],[data-state=missed],[data-state=off]) .reminders-label {
+  color: var(--act-ink-faint);
+}
+
+.reminders-row[data-state=done] .reminders-label {
+  text-decoration: line-through;
+  text-decoration-color: var(--act-line-strong);
+}
+
+.reminders-schedule {
+  grid-column: 1 / -1;
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-faint);
+}
+
+.reminders-state {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--act-sp-2);
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-soft);
+}
+
+.reminders-row[data-state=due] .reminders-state > span {
+  font-weight: 650;
+  color: var(--act-accent);
+}
+
+.live-workspace .reminders-tool .reminders-edit {
+  color: var(--act-ink-faint);
+}
+
+.reminders-edit .act-glyph,
+.reminders-remove-rule .act-glyph {
+  width: 10px;
+  height: 10px;
+}
+
+.live-workspace .reminders-tool .reminders-add {
+  display: block;
+  width: 100%;
+  padding: var(--act-sp-2) var(--act-sp-3);
+  text-align: left;
+  color: var(--act-accent);
+}
+
+.reminders-empty {
+  margin: var(--act-sp-3);
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink-faint);
+}
+
+.reminders-error {
+  margin: var(--act-sp-2) var(--act-sp-3) 0;
+  font-size: var(--act-fs-meta);
+  color: var(--act-error);
+}
+
+/* The row is also the editor. */
+.reminders-editor {
+  display: grid;
+  gap: var(--act-sp-2);
+  padding: var(--act-sp-2) var(--act-sp-3);
+  background: var(--act-raised);
+  border-bottom: 1px solid var(--act-line);
+}
+
+.reminders-editor input:not([type=checkbox]) {
+  font: inherit;
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink);
+  background: var(--act-sunken);
+  border: 1px solid var(--act-line-control);
+  padding: 3px 6px;
+}
+
+.reminders-rule {
+  display: grid;
+  gap: var(--act-sp-1);
+}
+
+.reminders-days,
+.reminders-rule-tools,
+.reminders-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--act-sp-1);
+}
+
+.live-workspace .reminders-tool .reminders-day {
+  width: 36px;
+  border: 1px solid var(--act-line-control);
+  border-radius: 0;
+  background: var(--act-sunken);
+  color: var(--act-ink-faint);
+  font-size: var(--act-fs-meta);
+}
+
+.live-workspace .reminders-tool .reminders-day[aria-pressed=true] {
+  background: var(--act-selected);
+  border-color: var(--act-line-accent);
+  color: var(--act-ink-bright);
+}
+
+.live-workspace .reminders-tool :is(.reminders-rule-tools, .reminders-add-rule) > button {
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-soft);
+}
+
+.live-workspace .reminders-tool .reminders-add-rule {
+  justify-self: start;
+  color: var(--act-accent);
+}
+
+.reminders-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--act-sp-1);
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-soft);
+}
+
+.reminders-spacer {
+  flex: 1;
+}
+
+/* The notice beside the rail, level with the Reminders slot, while the window is in front. */
+.reminders-notice {
+  position: absolute;
+  z-index: 120;
+  display: grid;
+  gap: var(--act-sp-1);
+  width: 240px;
+  box-sizing: border-box;
+  padding: var(--act-sp-2) var(--act-sp-3);
+  color: var(--act-ink-soft);
+  background: var(--act-panel);
+  border: 2px solid var(--act-accent);
+  box-shadow: 3px 3px 0 var(--act-bg);
+}
+
+.reminders-notice strong {
+  font-size: var(--act-fs-body);
+  color: var(--act-ink);
+}
+
+.reminders-notice-time {
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-faint);
+}
+
+.reminders-notice-actions {
+  display: flex;
+  gap: var(--act-sp-1);
+}
+
+.reminders-notice .reminders-error {
+  margin: 0;
+}

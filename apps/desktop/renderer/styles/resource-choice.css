@@ -1,0 +1,111 @@
+.resource-choice-menu {
+  position: fixed;
+  z-index: 180;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 180px;
+  max-width: min(340px,calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: 6px;
+  background: var(--act-panel);
+  color: var(--act-ink);
+  border: 1px solid var(--act-line-accent);
+  border-radius: 7px;
+  box-shadow: var(--act-shadow-lg);
+  font-size: var(--act-fs-ui);
+}
+
+.resource-choice-menu button:hover,
+.resource-choice-menu button:focus-visible {
+  background: var(--act-selected);
+}
+
+.resource-choice-menu [aria-checked=true]:after,
+.canvas-menu [aria-checked=true]:after {
+  content: '✓';
+  margin-left: auto;
+  color: var(--act-tone-green);
+}
+
+.resource-choice-menu [aria-checked=true]:disabled,
+.canvas-menu [aria-checked=true]:disabled {
+  opacity: 1;
+  color: var(--act-tone-green);
+  cursor: default;
+}
+
+.resource-choice-prompt {
+  margin: 2px 4px 6px;
+  max-width: 300px;
+  color: var(--act-pending);
+  line-height: 1.35;
+}
+
+.resource-choice-menu [role=alert] {
+  margin: 2px 4px;
+  max-width: 300px;
+  line-height: 1.35;
+}
+
+.resource-choice-cancel {
+  color: var(--act-neutral);
+}
+
+.resource-choice-menu button small {
+  display: block;
+  margin-top: 2px;
+  color: var(--act-ink-dim);
+  font-size: var(--act-fs-meta);
+}
+
+.resource-choice-menu button:hover small,
+.resource-choice-menu button:focus-visible small {
+  color: var(--act-ink-on-selected);
+}
+
+.resource-choice-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 7px 9px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  font: inherit;
+  flex-wrap: wrap;
+}
+
+.resource-choice-menu button:disabled {
+  opacity: .55;
+  cursor: default;
+}
+
+.resource-choice-text {
+  display: grid;
+  flex-basis: 100%;
+  gap: 4px;
+  margin: 0 0 4px;
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink-soft);
+}
+
+.resource-choice-text textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 60px;
+  max-height: 200px;
+  padding: 6px 8px;
+  resize: vertical;
+  color: var(--act-ink);
+  background: var(--act-sunken);
+  border: 1px solid var(--act-line-control);
+  line-height: 1.4;
+}
+
+.resource-choice-text textarea:focus-visible {
+  outline: 2px solid var(--act-focus);
+  outline-offset: -2px;
+}

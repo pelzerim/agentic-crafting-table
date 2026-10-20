@@ -1,0 +1,631 @@
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--act-sp-1_5);
+  height: 30px;
+  padding: 0 var(--act-sp-3);
+  font: var(--act-fw-medium) var(--act-fs-ui)/1 var(--act-font-ui);
+  white-space: nowrap;
+  color: var(--act-ink);
+  background: var(--act-control);
+  border: 1px solid var(--act-line-control);
+  border-radius: 0;
+  border-image: var(--pixel-control-border) 5 / 5px / 0 stretch;
+  clip-path: var(--act-shape-control);
+  cursor: pointer;
+}
+
+.btn[data-size=sm] {
+  height: 26px;
+  padding: 0 9px;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--act-control-hover);
+}
+
+.btn:focus-visible {
+  outline: 0;
+  box-shadow: inset 0 0 0 2px var(--act-focus);
+  border-image-source: var(--pixel-focus-border);
+}
+
+.btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.btn[aria-busy=true] {
+  opacity: .8;
+  cursor: wait;
+}
+
+:is(.btn,.live-workspace button)[aria-busy=true]::before {
+  content: "";
+  display: inline-block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: act-spin .8s steps(4) infinite;
+}
+
+.btn[aria-busy=true]::before {
+  margin-right: 0;
+}
+
+@keyframes act-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.btn,.live-workspace button)[aria-busy=true]::before {
+    animation: none;
+    border-right-color: currentColor;
+    opacity: .6;
+  }
+}
+
+.btn[data-variant=primary] {
+  color: var(--act-ink-on-accent);
+  background: var(--act-accent);
+  border-color: var(--act-accent);
+  border-image: none;
+  font-weight: var(--act-fw-strong);
+}
+
+.btn[data-variant=primary]:hover:not(:disabled) {
+  background: color-mix(in srgb,var(--act-accent) 85%,var(--act-ink-bright));
+}
+
+.btn[data-variant=primary]:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--act-ink-on-accent);
+}
+
+.btn:is([data-variant=quiet],[data-variant=icon]) {
+  color: var(--act-ink-soft);
+  background: transparent;
+  border-color: transparent;
+  border-image: none;
+}
+
+.btn:is([data-variant=quiet],[data-variant=icon]):hover:not(:disabled) {
+  color: var(--act-ink);
+  background: var(--act-hover);
+}
+
+.btn[data-variant=icon] {
+  width: 30px;
+  padding: 0;
+}
+
+.btn[data-variant=icon][data-size=sm] {
+  width: 26px;
+}
+
+.btn[data-variant=icon] svg {
+  width: 12px;
+  height: 12px;
+}
+
+.btn[data-variant=danger] {
+  color: var(--act-error);
+  background: transparent;
+  border-color: var(--act-error);
+  border-image: none;
+}
+
+.btn[data-variant=danger]:hover:not(:disabled) {
+  background: var(--act-error-bg);
+}
+
+.btn[data-variant=danger-solid] {
+  color: var(--act-danger-ink);
+  background: var(--act-danger-fill);
+  border-color: var(--act-danger-fill);
+  border-image: none;
+  font-weight: var(--act-fw-strong);
+}
+
+.btn[data-variant=danger-solid]:hover:not(:disabled) {
+  background: color-mix(in srgb,var(--act-danger-fill) 88%,var(--act-danger-ink));
+}
+
+.btn[data-variant=danger-solid]:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--act-danger-ink);
+}
+
+.btn[data-variant=copper] {
+  color: var(--act-copper);
+  background: var(--act-copper-bg);
+  border-color: var(--act-copper-line);
+  border-image: none;
+}
+
+.btn[data-variant=copper]:hover:not(:disabled) {
+  background: color-mix(in srgb,var(--act-copper-bg) 80%,var(--act-copper));
+}
+
+.btn:is([data-variant=danger],[data-variant=copper],[data-variant=quiet],[data-variant=icon]):focus-visible {
+  box-shadow: inset 0 0 0 2px var(--act-focus);
+}
+
+.act-glyph {
+  width: 10px;
+  height: 10px;
+  flex: none;
+}
+
+.act-toast {
+  --tone: var(--act-ok);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  width: 300px;
+  max-width: 100%;
+  padding: var(--act-sp-2);
+  color: var(--act-ink);
+  background: var(--act-panel);
+  border: 1px solid var(--act-line-accent);
+  border-image: var(--pixel-control-border) 5 / 5px / 0 stretch;
+  clip-path: var(--act-shape-control);
+  box-shadow: var(--act-shadow-sm);
+  font-size: var(--act-fs-ui);
+  pointer-events: auto;
+}
+
+.act-toast[data-tone=unblocked] {
+  --tone: var(--act-info);
+}
+
+.act-toast[data-tone=undo] {
+  --tone: var(--act-ink-dim);
+}
+
+.act-toast:is([data-tone=recovery],[data-tone=info]) {
+  --tone: var(--act-info);
+}
+
+.act-toast[data-tone=error] {
+  --tone: var(--act-error);
+  background: var(--act-error-bg);
+  border-color: var(--act-danger-fill);
+  border-image: none;
+}
+
+.act-toast-glyph {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  color: var(--tone);
+  background: color-mix(in srgb,var(--tone) 16%,var(--act-bg));
+  clip-path: var(--act-shape-control);
+}
+
+.act-toast-glyph .act-glyph {
+  width: 14px;
+  height: 14px;
+}
+
+.act-toast-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.act-toast-text :is(strong,small) {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.act-toast-text strong {
+  font-weight: 600;
+}
+
+.act-toast[data-tone=error] .act-toast-text strong {
+  white-space: normal;
+  color: var(--act-error);
+}
+
+.act-toast-text small {
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-dim);
+}
+
+.act-toast>.btn {
+  flex: none;
+}
+
+.act-toast-close .act-glyph {
+  width: 10px;
+  height: 10px;
+}
+
+.act-details {
+  flex-basis: 100%;
+  max-height: 120px;
+  overflow: auto;
+  margin: 0;
+  padding: var(--act-sp-1_5) var(--act-sp-2);
+  font: var(--act-fs-meta)/1.5 var(--act-font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--act-ink-soft);
+  background: var(--act-deep);
+  clip-path: var(--act-shape-control);
+}
+
+.floating-panel-header {
+  gap: var(--act-sp-2);
+}
+
+.floating-panel-header h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--act-fs-panel);
+  font-weight: var(--act-fw-strong);
+  letter-spacing: .01em;
+}
+
+.floating-panel-grip {
+  color: var(--act-ink-faint);
+}
+
+.floating-panel-header .floating-panel-close {
+  width: 28px;
+  height: 28px;
+}
+
+.act-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--act-sp-1_5);
+  margin: 0;
+  font-size: var(--act-fs-meta);
+  line-height: 1.5;
+  color: var(--act-ink-dim);
+}
+
+.act-notice>span {
+  flex: 1;
+  min-width: 0;
+}
+
+.act-notice[data-tone=error] {
+  color: var(--act-error);
+}
+
+.act-notice[data-tone=pending] {
+  color: var(--act-pending);
+}
+
+.act-notice[data-tone=ok] {
+  color: var(--act-ok);
+}
+
+.act-notice .act-glyph {
+  width: 8px;
+  height: 8px;
+  align-self: center;
+}
+
+.act-notice .act-details-toggle {
+  height: auto;
+  padding: 0;
+  color: inherit;
+  text-decoration: underline dotted;
+}
+
+.act-chip {
+  --chip-bg: color-mix(in srgb,var(--act-neutral) 14%,transparent);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  height: 20px;
+  padding: 0 7px;
+  font: var(--act-fw-medium) var(--act-fs-meta)/1 var(--act-font-ui);
+  white-space: nowrap;
+  color: var(--act-neutral);
+  background: var(--chip-bg);
+  clip-path: polygon(2px 0,calc(100% - 2px) 0,calc(100% - 2px) 2px,100% 2px,100% calc(100% - 2px),calc(100% - 2px) calc(100% - 2px),calc(100% - 2px) 100%,2px 100%,2px calc(100% - 2px),0 calc(100% - 2px),0 2px,2px 2px);
+}
+
+.act-chip[data-tone=ok] {
+  --chip-bg: var(--act-accent-bg);
+  color: var(--act-ok);
+}
+
+.act-chip[data-tone=pending] {
+  --chip-bg: var(--act-pending-bg);
+  color: var(--act-pending);
+}
+
+.act-chip[data-tone=error] {
+  --chip-bg: var(--act-error-bg);
+  color: var(--act-error);
+}
+
+.act-chip[data-tone=info] {
+  --chip-bg: var(--act-info-bg);
+  color: var(--act-info);
+}
+
+.act-chip[data-tone=agent] {
+  --chip-bg: var(--act-copper-bg);
+  color: var(--act-agent-claude);
+}
+
+.act-chip[data-variant=outline] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+.act-chip[data-variant=mono] {
+  height: 18px;
+  padding: 0 6px;
+  font: var(--act-fw-strong) var(--act-fs-caps)/1 var(--act-font-mono);
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.act-chip .act-glyph {
+  width: 8px;
+  height: 8px;
+}
+
+.act-combobox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.act-combobox-caption {
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-soft);
+}
+
+.act-combobox-field {
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-2);
+  height: 32px;
+  padding: 0 var(--act-sp-2) 0 10px;
+  color: var(--act-ink-dim);
+  background: var(--act-sunken);
+  border: 1px solid var(--act-line-control);
+  clip-path: var(--act-shape-control);
+}
+
+.act-combobox-field:focus-within {
+  box-shadow: inset 0 0 0 2px var(--act-focus);
+}
+
+.act-combobox-field .act-glyph {
+  width: 11px;
+  height: 11px;
+}
+
+.act-combobox-field .act-combobox-chevron {
+  width: 9px;
+  height: 9px;
+  color: var(--act-ink-soft);
+}
+
+.live-workspace .act-combobox .act-combobox-field input[role=combobox] {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  font-size: var(--act-fs-body);
+  color: var(--act-ink);
+  background: transparent;
+  border: 0;
+  clip-path: none;
+  box-shadow: none;
+  outline: 2px solid transparent;
+}
+
+.act-combobox-field input::placeholder {
+  color: var(--act-ink-dim);
+}
+
+.act-combobox-list {
+  max-height: 220px;
+  overflow: auto;
+  padding: var(--act-sp-1);
+  background: var(--act-card);
+  border: 1px solid var(--act-line-accent);
+  border-image: var(--pixel-panel-border) 9 / 9px / 0 stretch;
+  clip-path: var(--act-shape-panel);
+  box-shadow: var(--act-shadow-sm);
+}
+
+.act-combobox-group {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 8px 3px;
+  font: var(--act-fw-strong) var(--act-fs-caps)/1 var(--act-font-ui);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--act-ink-faint);
+}
+
+.act-combobox-group span {
+  letter-spacing: 0;
+}
+
+.act-combobox-option {
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-2);
+  min-height: 30px;
+  padding: 0 var(--act-sp-2);
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink);
+  cursor: pointer;
+}
+
+.act-combobox-option[data-active] {
+  background: var(--act-selected);
+  color: var(--act-ink-on-selected);
+  box-shadow: inset 2px 0 var(--act-accent);
+}
+
+.act-combobox-option[aria-selected=true] .act-combobox-label {
+  font-weight: var(--act-fw-strong);
+}
+
+.act-combobox-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.act-combobox-option small {
+  flex: none;
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-faint);
+}
+
+.act-combobox-option[data-active] small {
+  color: var(--act-ink-on-selected);
+}
+
+.act-combobox-icon {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.act-combobox-icon .item-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.act-combobox-empty {
+  margin: 0;
+  padding: var(--act-sp-2);
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-faint);
+}
+
+.act-directory-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--act-sp-2);
+  min-width: 0;
+}
+
+/* In a narrow form the button drops below, so the path keeps the full row. */
+.act-directory-row .act-combobox-field {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.act-directory-row .act-combobox-field > .act-glyph[data-glyph=folder] {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.act-directory-row .btn {
+  flex: none;
+}
+
+.act-directory-path {
+  display: flex;
+}
+
+/* The parent gives way first and loses its start, so the folder name always shows. */
+.act-directory-parent {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+  color: var(--act-ink-dim);
+}
+
+.act-combobox-option[data-active] .act-directory-parent {
+  color: inherit;
+}
+
+.act-directory-name {
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: var(--act-fw-strong);
+}
+
+.act-directory-field .act-combobox-list[popover] {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  color: var(--act-ink);
+}
+
+.act-segmented-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.act-segmented {
+  display: flex;
+  padding: 2px;
+  background: var(--act-sunken);
+  border: 1px solid var(--act-line-control);
+  clip-path: var(--act-shape-control);
+}
+
+.live-workspace .act-segmented button {
+  flex: 1;
+  height: 28px;
+  padding: 0 var(--act-sp-2);
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink-soft);
+  background: transparent;
+  border: 0;
+  border-image: none;
+  box-shadow: none;
+}
+
+.live-workspace .act-segmented button[aria-checked=true] {
+  color: var(--act-ink-bright);
+  background: var(--act-selected);
+  box-shadow: inset 0 0 0 1px var(--act-accent);
+}
+
+.live-workspace .act-segmented button:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--act-focus);
+}
+
+.act-segmented-help {
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-dim);
+}

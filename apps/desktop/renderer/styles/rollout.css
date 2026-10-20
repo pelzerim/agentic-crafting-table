@@ -1,0 +1,109 @@
+/* Rollout observation: status stays separate from unread attention. */
+.rollout-detail {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 22px;
+  overflow: hidden;
+  color: #d2dfd7;
+}
+
+.rollout-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.rollout-header>a {
+  margin-left: auto;
+  font-size: var(--act-fs-ui);
+}
+
+.rollout-detail h2 {
+  font-size: 21px;
+  line-height: 1.4;
+  margin: 22px 0 6px;
+  overflow-wrap: anywhere;
+}
+
+.rollout-commit {
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink-dim);
+  margin: 6px 0 12px;
+}
+
+.rollout-error,
+.rollout-gate {
+  font-size: var(--act-fs-body);
+  color: var(--act-pending);
+}
+
+.rollout-gate {
+  padding: 10px 12px;
+  background: #302d22;
+  border-left: 3px solid #bc995e;
+}
+
+.rollout-content {
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+  scrollbar-gutter: stable;
+}
+
+.rollout-content h3 {
+  font-size: var(--act-fs-body);
+  font-weight: 500;
+  margin-top: 22px;
+}
+
+.rollout-run-title {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.rollout-jobs {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.rollout-jobs li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 10px 0;
+  border-bottom: 1px solid #30473c;
+  font-size: var(--act-fs-body);
+}
+
+.rollout-jobs a {
+  color: #d2dfd7;
+  overflow-wrap: anywhere;
+}
+
+.rollout-job-state {
+  font-size: var(--act-fs-ui);
+  white-space: nowrap;
+  color: var(--act-ink-dim);
+}
+
+.rollout-job-state[data-state=success] {
+  color: var(--act-accent);
+}
+
+.rollout-job-state[data-state=failure],
+.rollout-job-state[data-state=timed_out] {
+  color: var(--act-tone-red);
+}
+
+.rollout-job-state[data-state=in_progress] {
+  color: var(--act-info);
+}
+
+.rollout-job-state[data-state=waiting] {
+  color: var(--act-pending);
+}

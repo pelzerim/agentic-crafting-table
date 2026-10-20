@@ -1,0 +1,204 @@
+/* Standup report (STANDUP-01): a floating panel like Settings, opened from the rail's Actions menu. */
+.inline-editor.standup-panel {
+  width: min(700px, calc(100% - 120px));
+  max-height: calc(100% - 64px);
+  overflow: hidden;
+}
+
+.standup-range-label {
+  margin: 0 var(--act-sp-2) 0 auto;
+  color: var(--act-ink-faint);
+  font: var(--act-fs-meta)/1 var(--act-font-mono);
+  white-space: nowrap;
+}
+
+.standup-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: var(--act-sp-2) var(--act-sp-3);
+  padding-bottom: var(--act-sp-2);
+  border-bottom: 1px solid var(--act-line);
+}
+
+.standup-controls .act-segmented button {
+  white-space: nowrap;
+}
+
+.standup-body {
+  flex: 1;
+  min-height: 140px;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: var(--act-sp-3);
+}
+
+.standup-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-2);
+  margin: 0;
+  color: var(--act-ink-dim);
+  font-size: var(--act-fs-ui);
+}
+
+.standup-group {
+  display: grid;
+}
+
+.standup-group > h3 {
+  display: flex;
+  gap: var(--act-sp-2);
+  margin: 0 0 var(--act-sp-1);
+  font: var(--act-fw-strong) var(--act-fs-caps)/1.2 var(--act-font-mono);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--act-copper);
+}
+
+.standup-group > h3 span {
+  color: var(--act-ink-faint);
+}
+
+.standup-story {
+  display: grid;
+  gap: var(--act-sp-1);
+  padding: var(--act-sp-2) 0;
+  border-bottom: 1px solid var(--act-line);
+}
+
+.standup-group > .standup-story:last-child {
+  border-bottom: 0;
+}
+
+.standup-story-head {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: var(--act-sp-2);
+  align-items: start;
+}
+
+.inline-editor .standup-story-head input[type=checkbox] {
+  margin: 2px 0 0;
+}
+
+.standup-story-head h4 {
+  margin: 0;
+  font: var(--act-fw-strong) var(--act-fs-body)/1.35 var(--act-font-ui);
+  color: var(--act-ink);
+}
+
+.standup-story[data-off] h4,
+.standup-story[data-off] .standup-bullets {
+  color: var(--act-ink-faint);
+  text-decoration: line-through;
+}
+
+.standup-project,
+.standup-state {
+  font: var(--act-fs-meta)/1.4 var(--act-font-mono);
+  color: var(--act-ink-faint);
+  white-space: nowrap;
+}
+
+.standup-state {
+  padding: 0 6px;
+  color: var(--act-ink-on-accent);
+  background: var(--act-ok);
+}
+
+.standup-state[data-state=ongoing] {
+  background: var(--act-info);
+}
+
+.standup-state[data-state=blocked] {
+  color: var(--act-ink-on-attention);
+  background: var(--act-pending);
+}
+
+.standup-bullets {
+  display: grid;
+  gap: 2px;
+  max-width: 66ch;
+  margin: 0 0 0 26px;
+  padding-left: 14px;
+  color: var(--act-ink-soft);
+  font-size: var(--act-fs-body);
+  line-height: 1.45;
+}
+
+.standup-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--act-sp-1);
+  margin-left: 26px;
+}
+
+.standup-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  height: 20px;
+  padding: 0 6px;
+  font: var(--act-fs-meta)/1 var(--act-font-mono);
+  color: var(--act-ink-dim);
+  background: var(--act-sunken);
+  border: 1px solid var(--act-line);
+  border-radius: 3px;
+}
+
+.standup-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.standup-chip {
+  cursor: pointer;
+}
+
+button.standup-chip:hover,
+button.standup-chip:focus-visible {
+  color: var(--act-ink);
+  border-color: var(--act-line-accent);
+}
+
+.standup-empty,
+.standup-note,
+.standup-read {
+  margin: 0;
+  color: var(--act-ink-dim);
+  font-size: var(--act-fs-ui);
+}
+
+.standup-read {
+  color: var(--act-ink-faint);
+  font: var(--act-fs-meta)/1.4 var(--act-font-mono);
+}
+
+.standup-rewrite {
+  display: flex;
+  gap: var(--act-sp-2);
+  padding-top: var(--act-sp-2);
+  border-top: 1px solid var(--act-line);
+}
+
+.inline-editor .standup-rewrite input {
+  flex: 1;
+  min-width: 160px;
+}
+
+.standup-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--act-sp-2);
+}
+
+.standup-footer > span {
+  margin-right: auto;
+  color: var(--act-ink-faint);
+  font-size: var(--act-fs-ui);
+}

@@ -1,0 +1,108 @@
+import { openProjectPicker } from './project-picker.ts';
+import { test, expect, _electron as electron } from '@playwright/test';
+import { mkdtemp, mkdir, rm, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { once } from 'node:events';
+import { connectWorkspace } from '../../packages/workspace-service/client.ts';
+import { connectSupervisor } from '../../packages/session-runtime/client.ts';
+import { exitWithoutShutdown } from './exit-without-shutdown.ts';
+
+test('Codex creation uses native models, context/MCP, live attachment and same-conversation recovery', async () => {
+  test.setTimeout(90_000);
+  const directory = await mkdtemp(join(tmpdir(), 'craft-codex-ui-')), bin = join(directory, 'bin'), repo = join(directory, 'repo');
+  await mkdir(bin); await mkdir(repo);
+  await writeFile(join(bin, 'codex'), `#!${process.execPath}\nimport ${JSON.stringify(pathToFileURL(resolve('tests/fixtures/native-codex.mjs')).href)};\n`, { mode: 0o700 });
+  const env = { ...process.env, ACT_TEST_DATA_DIR: directory, CODEX_FIXTURE_HOME: repo, PATH: `${bin}:${process.env.PATH}` };
+  let app = await electron.launch({ args: ['.'], env });
+  try {
+    let page = await app.firstWindow();
+    await page.getByRole('button', { name: 'Create your first project' }).click();
+    await page.getByLabel('Title', { exact: true }).fill('Codex project');
+    await page.getByLabel('Project summary', { exact: true }).fill('NATIVE_CODEX_BRIEF');
+    await page.getByLabel('Project working directory', { exact: true }).fill(repo);
+    await page.getByRole('button', { name: 'Create project', exact: true }).click();
+    const newAgent = async () => {
+      await openProjectPicker(page, 'Codex project');
+      await page.getByRole('button', { name: 'Agent session', exact: true }).click();
+      await page.getByLabel('Provider', { exact: true }).selectOption('codex');
+    };
+    await newAgent();
+    await expect(page.getByLabel('Model', { exact: true })).toHaveValue('gpt-6-astra');
+    await expect(page.getByLabel('Model', { exact: true }).locator('option')).toContainText(['Choose…', 'Astra', 'fixture-choice']);
+    await page.getByLabel('Model', { exact: true }).selectOption('fixture-choice');
+    await page.getByLabel('Title', { exact: true }).fill('Native Codex');
+    await expect(page.getByLabel('Working directory', { exact: true })).toHaveValue(repo);
+    await page.getByRole('button', { name: 'Start Codex', exact: true }).click();
+    await page.getByRole('article', { name: 'Native Codex', exact: true }).click();
+    await expect(page.locator('.xterm-accessibility')).toContainText('NATIVE_READY:');
+    const read = async () => (await page.evaluate(() => window.craftingTable.workspaceRead())).state;
+    const resource = (await read()).resources.find(resource => resource.data.provider === 'codex')!;
+    const node = (await read()).nodes.find(node => node.resourceId === resource.id)!;
+    const firstId = String(resource.data.sessionId);
+    await expect.poll(async () => (await read()).resources.find(item => item.id === resource.id)?.data.nativeStartedAt).toBeTruthy();
+    const first = await page.evaluate(id => window.craftingTable.sessionRead(id), firstId), nativeId = first.session.native!.nativeSessionId;
+    const plan = JSON.parse(await readFile(join(directory, 'agent-launches', firstId, 'plan.json'), 'utf8'));
+    expect(plan.launch.native.model).toBe('fixture-choice'); expect(plan.launch.native.initialPrompt).toBeUndefined();
+    const saved = JSON.parse(await readFile(join(repo, 'native-codex.json'), 'utf8'));
+    expect(saved.context[0].role).toBe('developer'); expect(saved.context[0].content[0].text).toContain('Keep the map in sync');
+    expect(saved.context[1].role).toBe('user'); expect(saved.context[1].content[0].text).toContain('NATIVE_CODEX_BRIEF');
+    await expect(page.locator('.xterm-helper-textarea')).toBeFocused(); await page.keyboard.type('sync\n');
+    await expect(page.locator('.xterm-accessibility')).toContainText('MCP_SYNC_DONE');
+    expect((await read()).nodes.find(node => node.id === 'codex-result')?.projectId).toBe(node.projectId);
+    await expect(page.locator('.terminal-error')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Back to project' }).click();
+    await page.evaluate(id => window.craftingTable.sessionInput(id, 'work\r'), firstId);
+    await expect.poll(async () => (await read()).nodes.find(item => item.id === node.id)?.activity).toBe('working');
+    await page.evaluate(id => window.craftingTable.sessionInput(id, 'done\r'), firstId);
+    await expect(page.getByRole('status', { name: 'Native Codex finished' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toHaveAttribute('title', 'Needs me · 1 finished');
+    await page.getByRole('status', { name: 'Native Codex finished' }).getByRole('button', { name: 'Open', exact: true }).click();
+    await expect(page.locator('.map-area')).toHaveAttribute('data-focus', node.id);
+    await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toHaveAttribute('title', 'Needs me · 1 finished');
+    await page.getByRole('button', { name: 'Mark seen', exact: true }).click();
+    await expect(page.getByRole('button', { name: /^Needs me:/ })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Back to project' }).click();
+    await newAgent(); await page.getByRole('button', { name: 'Continue session', exact: true }).click();
+    await page.getByRole('option', { name: /Native Codex/ }).click();
+    await page.getByRole('button', { name: 'Resume session', exact: true }).click();
+    await expect(page.getByRole('form', { name: 'New item' })).toHaveCount(0);
+    expect((await read()).resources.filter(item => item.data.provider === 'codex')).toHaveLength(1);
+    expect((await page.evaluate(id => window.craftingTable.sessionRead(id), firstId)).session.pid).toBe(first.session.pid);
+    await page.getByRole('article', { name: 'Native Codex', exact: true }).click();
+    await expect(page.locator('.xterm-helper-textarea')).toBeFocused(); await page.keyboard.type('wait\n');
+    await expect.poll(async () => (await page.evaluate(id => window.craftingTable.sessionRead(id), firstId)).chunks.map(chunk => chunk.data).join('')).toContain('NATIVE_INPUT:wait');
+    await expect.poll(async () => (await read()).nodes.find(item => item.id === node.id)?.attention).toBe('input');
+    await expect(page.locator('.xterm-accessibility')).toContainText('NATIVE_APPROVAL_WAITING');
+    await page.keyboard.type('work\n');
+    await expect.poll(async () => (await read()).nodes.find(item => item.id === node.id)?.activity).toBe('working');
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = (async () => ({ response: 0, checkboxChecked: false })) as any; });
+    const closed = app.waitForEvent('close'); await app.evaluate(({ app }) => { app.quit(); }); await closed;
+    app = await electron.launch({ args: ['.'], env }); page = await app.firstWindow();
+    await expect.poll(async () => (await page.evaluate(() => window.craftingTable.recoveryStatus())).entries[0]?.state, { timeout: 20_000 }).toBe('restored');
+    const resumed = (await read()).resources.find(item => item.id === resource.id)!;
+    expect(resumed.data.nativeSessionId).toBe(nativeId); expect(resumed.data.sessionId).not.toBe(firstId);
+    const after = await page.evaluate(id => window.craftingTable.sessionRead(id), String(resumed.data.sessionId));
+    expect(after.session.archivedAt).toBeUndefined(); expect(after.session.predecessorId).toBe(firstId);
+    expect(after.chunks.map(chunk => chunk.data).join('')).toContain('do not repeat completed actions');
+    await page.getByRole('article', { name: 'Native Codex', exact: true }).click();
+    await page.getByRole('button', { name: 'Stop session', exact: true }).click();
+    await expect(page.locator('.native-terminal')).toHaveAttribute('data-session-state', 'exited');
+    await expect(page.locator('.xterm-accessibility')).toContainText(`NATIVE_READY:${nativeId}`);
+    await page.getByRole('button', { name: 'Agent session menu' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Add system prompt' })).toBeDisabled();
+    await expect(page.getByRole('menu', { name: 'Agent session actions' })).toContainText('currently available for Claude');
+    await page.getByRole('menuitem', { name: 'Resume / reconnect', exact: true }).click();
+    await expect(page.locator('.native-terminal')).toHaveAttribute('data-session-state', 'running');
+    await expect.poll(async () => (await read()).resources.find(item => item.id === resource.id)?.data.sessionId).not.toBe(resumed.data.sessionId);
+    expect((await read()).resources.find(item => item.id === resource.id)?.data.nativeSessionId).toBe(nativeId);
+  } finally {
+    await exitWithoutShutdown(app);
+    for (const connect of [() => connectWorkspace(directory), () => connectSupervisor(join(directory, 'runtime'))]) {
+      const client = await connect().catch(() => undefined);
+      if (client) { const disconnected = once(client, 'disconnected', { signal: AbortSignal.timeout(5000) }); await client.call('admin.shutdown'); await disconnected; client.close(); }
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
+});

@@ -1,0 +1,16 @@
+{
+  "id": "relocated",
+  "name": "Relocated items",
+  "version": "1.0.0",
+  "apiRange": "^1.0.0",
+  "description": "A fixture package that owns an item type the app used to bundle.",
+  "entries": {
+    "definitions": "dist/definitions.mjs",
+    "renderer": "dist/renderer.mjs"
+  },
+  "contributes": {
+    "itemTypes": ["legacy.box"],
+    "css": ["dist/renderer.css"]
+  },
+  "legacyIds": ["legacy.box"]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "claude.artifact",
+  "name": "Claude artifacts",
+  "version": "1.1.0",
+  "apiRange": "^1.0.0",
+  "entries": {
+    "definitions": "plugin.ts",
+    "service": "service.ts",
+    "renderer": "renderer.ts"
+  },
+  "contributes": {
+    "itemTypes": [
+      "claude.artifact"
+    ],
+    "css": [
+      "styles.css"
+    ]
+  }
+}

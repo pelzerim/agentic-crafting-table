@@ -1,0 +1,539 @@
+.session-toolbar-slot:empty,
+.session-toolbar-slot[hidden],
+.item-frame-slot:empty,
+.item-frame-slot[hidden] {
+  display: none;
+}
+
+.item-frame-slot {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+.session-toolbar-slot {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Expanded surfaces move in screen space; their original graph cards stay put. */
+
+.item-view[hidden] {
+  display: none;
+}
+
+/* A view flying back to its card is only a picture of it; the card underneath takes the press. */
+.item-view[data-returning],
+.item-view[data-returning] * {
+  pointer-events: none !important;
+}
+
+.item-view[data-dragging=true] .card-heading {
+  cursor: grabbing;
+}
+
+.item-view .card-heading:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: 2px;
+}
+
+.item-view .item-view-resize-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  padding: 3px;
+  border: 0;
+  background: transparent;
+  color: #a8c5b0;
+  opacity: .55;
+  cursor: nwse-resize;
+  touch-action: none;
+  z-index: 4;
+}
+
+.item-view-resize-handle svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+}
+
+.item-view .item-view-resize-handle:hover,
+.item-view[data-resizing=true] .item-view-resize-handle {
+  opacity: 1;
+}
+
+.item-view .item-view-resize-handle:focus-visible {
+  opacity: 1;
+  outline: var(--act-focus-ring);
+  outline-offset: -2px;
+}
+
+.item-view[data-resizing=true] {
+  user-select: none;
+}
+
+/* Expanded surfaces move in screen space; their original graph cards stay put. */
+.item-view {
+  position: absolute;
+  z-index: 100;
+  pointer-events: auto;
+  container-type: inline-size;
+}
+
+/* Host-owned view header. In the frame bar the slot and header dissolve into one grid:
+   row 1 is icon · title · blocked ··· actions · ⋯ · ↗ · ↻ · close and never wraps;
+   row 2 is chip · meta ··· freshness. */
+.view-header {
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink-dim);
+}
+
+.view-header:not(.in-frame) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--act-sp-1_5) var(--act-sp-2);
+  padding-bottom: var(--act-sp-3);
+  margin-bottom: var(--act-sp-4);
+  border-bottom: 1px solid var(--act-control-hover);
+}
+
+.view-header:not(.in-frame) > .view-header-status {
+  flex: 1 1 auto;
+}
+
+.view-header:not(.in-frame) > .view-header-tools {
+  margin-left: auto;
+}
+
+.frame-title {
+  display: contents;
+}
+
+.expanded .card-heading:has(> .item-frame-slot > .view-header) {
+  --view-title-min: calc(var(--act-sp-8) * 6);
+  display: grid;
+  grid-template-columns: auto minmax(var(--view-title-min), 1fr) auto auto;
+  grid-template-areas: "icon title tools close" "status status status status";
+  align-items: center;
+  gap: var(--act-sp-1_5) var(--act-sp-2);
+}
+
+/* Mark seen is a fixed control beside the close X; it never folds into More actions. */
+.expanded .card-heading:has(> .item-frame-slot > .view-header):has(> .item-seen) {
+  grid-template-columns: auto minmax(var(--view-title-min), 1fr) auto auto auto;
+  grid-template-areas: "icon title tools seen close" "status status status status status";
+}
+
+/* Blocker chips need room too; header actions move behind More actions before they shrink. */
+.expanded .card-heading:not([data-view-tight]):has(> .frame-title > .blocked-chips):has(> .item-frame-slot > .view-header) {
+  --view-title-min: calc(var(--act-sp-8) * 12);
+}
+
+.expanded .card-heading[data-view-tight]:has(> .item-frame-slot > .view-header) {
+  --view-title-min: 0px;
+}
+
+.expanded .card-heading:has(> .item-frame-slot > .view-header) > .item-frame-slot,
+.item-frame-slot > .view-header.in-frame {
+  display: contents;
+}
+
+.expanded .card-heading:has(> .item-frame-slot > .view-header) > .item-glyph {
+  grid-area: icon;
+}
+
+.expanded .card-heading:has(> .item-frame-slot > .view-header) > .frame-title {
+  grid-area: title;
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-2);
+  min-width: 0;
+}
+
+.frame-title > .card-label {
+  flex: 0 1 auto;
+}
+
+.expanded .card-heading:has(> .item-frame-slot > .view-header) .frame-title > .card-label {
+  max-width: none;
+}
+
+.frame-title > .blocked-chips {
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
+  max-width: 50%;
+  overflow: hidden;
+}
+
+.frame-title > .blocked-chips > span {
+  flex: none;
+}
+
+.frame-title > .blocked-chips > button {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.expanded .card-heading:has(> .item-frame-slot > .view-header) > .item-seen {
+  grid-area: seen;
+  width: var(--act-control-size);
+  height: var(--act-control-size);
+  min-height: 0;
+  padding: var(--act-sp-1);
+}
+
+.expanded .card-heading:has(> .item-frame-slot > .view-header) > .item-close {
+  grid-area: close;
+  width: var(--act-control-size);
+  height: var(--act-control-size);
+  min-height: 0;
+  padding: var(--act-sp-1);
+}
+
+.view-header.in-frame > .view-header-tools {
+  grid-area: tools;
+}
+
+.view-header.in-frame > .view-header-status {
+  grid-area: status;
+}
+
+.view-header-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-1_5);
+  white-space: nowrap;
+}
+
+.view-header-status {
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-2);
+  min-width: 0;
+}
+
+.view-header-status:not(:has(> :not([hidden]))) {
+  display: none;
+}
+
+.view-header-status > .view-chip {
+  padding: var(--act-sp-0_5) var(--act-sp-2);
+}
+
+.view-header-status > .view-freshness {
+  flex: none;
+  margin-left: auto;
+}
+
+.view-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--act-sp-1_5);
+  padding: var(--act-sp-0_5) var(--act-sp-2);
+  font: var(--act-fw-medium) var(--act-fs-ui)/1.5 var(--act-font-ui);
+  white-space: nowrap;
+  color: var(--act-neutral);
+  background: var(--act-raised);
+  border: 1px solid transparent;
+  border-radius: 0;
+}
+
+.view-chip[hidden] {
+  display: none;
+}
+
+.view-chip[data-tone=green] {
+  color: var(--act-tone-green);
+  background: var(--act-accent-bg);
+}
+
+.view-chip[data-tone=blue] {
+  color: var(--act-info);
+  background: var(--act-info-bg);
+}
+
+.view-chip[data-tone=amber] {
+  color: var(--act-cue-waiting);
+  background: var(--act-control);
+}
+
+.view-chip[data-tone=violet] {
+  color: var(--act-tone-violet);
+  background: var(--act-control);
+}
+
+.view-chip[data-tone=red] {
+  color: var(--act-tone-red);
+  background: var(--act-error-bg);
+}
+
+/* The expected state of a change the provider has not confirmed yet. */
+.view-chip[data-pending] {
+  color: var(--act-pending);
+  background: var(--act-pending-bg);
+  border: 1px dashed var(--act-pending-line);
+}
+
+/* Only a chip that opens a menu shows ▾ and a hover border. */
+button.view-chip {
+  cursor: pointer;
+  border-color: var(--act-line-control);
+}
+
+button.view-chip[aria-haspopup]::after {
+  content: '▾';
+  font-size: var(--act-fs-caps);
+}
+
+button.view-chip:hover:not(:disabled),
+button.view-chip[aria-expanded=true] {
+  border-color: currentColor;
+}
+
+.live-workspace button.view-chip:disabled {
+  opacity: 1;
+  cursor: default;
+  border-color: transparent;
+}
+
+button.view-chip:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: 2px;
+}
+
+.view-meta {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.view-meta[hidden] {
+  display: none;
+}
+
+.view-actions {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-1_5);
+}
+
+.view-actions:empty {
+  display: none;
+}
+
+.view-header .view-actions :is(button, a) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--act-sp-1);
+  height: var(--act-control-size);
+  min-height: 0;
+  margin: 0;
+  padding-block: 0;
+  white-space: nowrap;
+}
+
+.view-header .view-actions :is(button, a)[hidden] {
+  display: none;
+}
+
+/* A collapsed action sits invisibly under ⋯ so a menu it opens anchors below ⋯. */
+.view-header .view-actions [data-view-overflow] {
+  position: absolute;
+  top: 0;
+  right: calc(-1 * (var(--act-control-size) + var(--act-sp-1_5)));
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* One menu holds every action behind a labelled button; the collapsed actions stay inside the row. */
+.view-header[data-menu] .view-actions [data-view-overflow] {
+  right: 0;
+}
+
+.view-more.view-menu {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  padding: 0 var(--act-sp-3);
+  font-size: var(--act-fs-ui);
+}
+
+.view-more.view-menu::after {
+  content: ' ▾';
+  white-space: pre;
+}
+
+.view-more.view-menu[data-primary] {
+  color: var(--act-accent);
+  border-color: var(--act-line-accent);
+}
+
+.view-more-menu .view-menu-rule {
+  height: 1px;
+  margin: var(--act-sp-1) 0;
+  background: var(--act-line);
+}
+
+.view-more-menu button[data-primary] {
+  color: var(--act-accent);
+}
+
+.view-way-out {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-1_5);
+}
+
+.view-actions:not(:empty) ~ .view-way-out {
+  padding-left: var(--act-sp-2);
+  border-left: 1px solid var(--act-line);
+}
+
+.view-header-tools button {
+  margin: 0;
+}
+
+.view-open,
+.view-refresh,
+.view-more {
+  display: grid;
+  place-items: center;
+  width: var(--act-control-size);
+  height: var(--act-control-size);
+  padding: 0;
+  font-size: var(--act-fs-body);
+  line-height: 1;
+  color: var(--act-ink-soft);
+  text-decoration: none;
+  background: var(--act-control);
+  border: 1px solid var(--act-line-control);
+}
+
+.view-open[hidden],
+.view-refresh[hidden],
+.view-more[hidden] {
+  display: none;
+}
+
+.view-open:hover,
+.view-refresh:hover:not(:disabled),
+.view-more:hover,
+.view-more[aria-expanded=true] {
+  color: var(--act-ink-bright);
+  background: var(--act-control-hover);
+}
+
+.view-open:focus-visible,
+.view-refresh:focus-visible,
+.view-more:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: 2px;
+}
+
+.view-freshness {
+  font-size: var(--act-fs-meta);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--act-ink-dim);
+}
+
+.view-freshness[hidden] {
+  display: none;
+}
+
+.view-freshness[data-stale] {
+  color: var(--act-cue-waiting);
+}
+
+.view-freshness[data-stale]::before {
+  content: '? ';
+}
+
+.view-stale-banner {
+  margin: 0 0 var(--act-sp-4);
+  padding: var(--act-sp-2) var(--act-sp-3);
+  font-size: var(--act-fs-ui);
+  color: var(--act-cue-waiting);
+  background: var(--act-control);
+  border-left: 3px solid var(--act-line-strong);
+}
+
+.view-stale-banner[hidden] {
+  display: none;
+}
+
+/* One empty state for every empty body. */
+.view-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--act-sp-1_5);
+  margin: var(--act-sp-8) auto;
+  max-width: 48ch;
+  text-align: center;
+  color: var(--act-ink-dim);
+}
+
+.view-empty-glyph {
+  width: 16px;
+  height: 16px;
+  background: var(--act-line-strong);
+  box-shadow: 4px 4px 0 var(--act-deep) inset, -4px -4px 0 var(--act-deep) inset;
+}
+
+.view-empty .view-empty-line {
+  margin: 0;
+  font-size: var(--act-fs-body);
+  color: var(--act-ink-soft);
+}
+
+.view-empty .view-empty-detail {
+  margin: 0;
+  font-size: var(--act-fs-ui);
+}
+
+/* Sub-resource links share one link-out style. */
+a.view-link-out {
+  color: var(--act-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+a.view-link-out::after {
+  content: ' ↗' / '';
+}
+
+.view-skeleton {
+  display: grid;
+  gap: var(--act-sp-3);
+  max-width: 70ch;
+  padding: var(--act-sp-2) 0;
+}
+
+.view-skeleton i {
+  display: block;
+  height: 10px;
+  background: var(--act-raised);
+}
+
+.view-skeleton i:nth-child(2) {
+  width: 86%;
+}
+
+.view-skeleton i:nth-child(3) {
+  width: 58%;
+}

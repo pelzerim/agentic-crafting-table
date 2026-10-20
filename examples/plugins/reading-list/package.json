@@ -1,0 +1,15 @@
+{
+  "name": "act-plugin-reading-list",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Example Agentic Crafting Table plugin: a reading list with link checks",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit -p .",
+    "pack": "node scripts/act-plugin.mjs pack .",
+    "verify": "node scripts/act-plugin.mjs verify .",
+    "release": "npm run build && npm run pack && npm run verify"
+  }
+}

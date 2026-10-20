@@ -1,0 +1,33 @@
+name: Validate
+on: [push, pull_request]
+jobs:
+  desktop:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run test:runtime
+      - run: npm run test:desktop -- --update-snapshots=none
+      - run: npm run package
+      - run: npm run test:package
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-metrics
+          path: |
+            test-results/**/performance.json
+            test-results/**/map-performance.json
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: desktop-test-results
+          path: |
+            test-results/
+            playwright-report/

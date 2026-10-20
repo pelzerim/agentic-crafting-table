@@ -1,0 +1,22 @@
+{
+  "id": "slack.message",
+  "name": "Slack messages",
+  "version": "1.0.0",
+  "apiRange": "^1.0.0",
+  "entries": {
+    "definitions": "plugin.ts",
+    "service": "service.ts",
+    "renderer": "renderer.ts"
+  },
+  "contributes": {
+    "itemTypes": [
+      "slack.message"
+    ],
+    "accountTypes": [
+      "slack"
+    ]
+  },
+  "legacyIds": [
+    "slack"
+  ]
+}

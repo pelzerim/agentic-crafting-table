@@ -1,0 +1,491 @@
+/* The Needs me sheet: rows scroll under the shared rail header. */
+.attention-list .rail-panel-body {
+  gap: 10px;
+  padding: 12px;
+  overflow: auto;
+}
+
+.live-workspace .attention-list .rail-panel-resize {
+  border: 0;
+  background: transparent;
+}
+
+.attention-list .rail-panel-body > * {
+  flex: none;
+}
+
+.attention-list .rail-panel-body > p {
+  margin: 0;
+  font-size: var(--act-fs-ui);
+}
+
+.live-workspace .rail-panel-header .needs-me-title {
+  margin: 0;
+  font-size: var(--act-fs-body);
+  font-weight: 650;
+  color: var(--act-ink);
+}
+
+.attention-entry small {
+  color: var(--act-ink-dim);
+}
+
+.attention-row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.attention-entry {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow-wrap: anywhere;
+  flex: 1;
+  min-width: 0;
+}
+
+.live-workspace .attention-row:has(.attention-actions) > .attention-entry {
+  padding-right: 88px;
+}
+
+/* Row actions sit inside the row's card, on its right edge, as labelled buttons. */
+.attention-actions {
+  position: absolute;
+  top: var(--act-sp-2);
+  right: var(--act-sp-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--act-sp-1);
+  width: 72px;
+}
+
+.attention-actions .btn {
+  justify-content: flex-start;
+  padding: 0 var(--act-sp-2);
+  background: var(--act-raised);
+}
+
+.attention-actions .act-glyph {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.live-workspace .attention-dismiss {
+  color: var(--act-ink);
+}
+
+.attention-dismiss .act-glyph {
+  color: var(--act-ok);
+}
+
+.live-workspace .attention-locate {
+  color: var(--act-attention);
+}
+
+.attention-entry .attention-summary {
+  display: block;
+  color: #d1ddd4;
+  font-size: var(--act-fs-ui);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.attention-row:hover .attention-entry,
+.attention-row:focus-within .attention-entry {
+  border-color: var(--act-attention);
+}
+
+/* STATE-02: Needs me tiers. One silhouette per tier on the amber ramp; the shape carries the tier,
+   brightness repeats it, and every mark sits next to the tier or reason in words. */
+.tier-mark {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--act-attention);
+}
+
+.tier-mark[data-tier=asking] {
+  color: var(--act-attention-asking);
+}
+
+.tier-mark[data-tier=finished] {
+  color: var(--act-attention-finished);
+}
+
+.tier-counts {
+  display: inline-flex;
+  align-items: center;
+  white-space: pre;
+}
+
+.tier-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 600;
+  color: var(--act-attention);
+}
+
+.tier-count[data-tier=asking] {
+  color: var(--act-attention-asking);
+}
+
+.tier-count[data-tier=finished] {
+  color: var(--act-attention-finished);
+}
+
+.tier-count[data-kind=working] {
+  color: var(--act-working-ink);
+}
+
+.tier-count .tier-mark,
+.tier-count .status-glyph {
+  width: 10px;
+  height: 10px;
+}
+
+.tier-count-gap {
+  color: var(--act-ink-faint);
+}
+
+.tier-counts[data-compact] .tier-count-words {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.attention-indicator {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 16px;
+  height: 16px;
+  z-index: 5;
+  display: grid;
+}
+
+/* A dark keyline drawn as the glyph's own stroke: no filter, so hundreds of marks stay cheap to pan. */
+.attention-indicator .tier-mark {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.attention-indicator .tier-mark path {
+  stroke: var(--act-panel);
+  stroke-width: 1px;
+  paint-order: stroke;
+}
+
+/* A done card shows a pixel check where Needs me would sit; unread attention still wins the slot. */
+.done-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  background: var(--act-ok);
+  color: var(--act-ink-on-accent);
+  box-shadow: 0 0 0 2px var(--act-panel);
+  clip-path: polygon(20% 0,80% 0,80% 20%,100% 20%,100% 80%,80% 80%,80% 100%,20% 100%,20% 80%,0 80%,0 20%,20% 20%);
+}
+
+.done-check svg {
+  width: 80%;
+  height: 80%;
+}
+
+/* Far zoom, from 16px on screen: the shape keeps its corner and the type icon stays readable.
+   The inline size follows the camera, so the icon's own proportions win here. */
+.map-card.compact .attention-indicator {
+  top: 0;
+  right: 0;
+  width: 56% !important;
+  height: 56% !important;
+}
+
+/* Takeover, under 16px: a corner mark would be a few pixels, so the tier shape replaces the icon
+   and the card's frame and face are dropped. Asking me and My turn are found at a glance. */
+.map-card.compact[data-takeover] {
+  background: transparent;
+  box-shadow: none;
+}
+
+.map-card.compact[data-takeover]::after,
+.map-card.compact[data-takeover] :is(.card-heading,.status-badge,.item-indicators,.blocked-badge) {
+  display: none;
+}
+
+.map-card.compact[data-takeover] .attention-indicator {
+  inset: -8%;
+  width: 116% !important;
+  height: 116% !important;
+}
+
+.project-neighborhood-title small[data-needs-me=true] {
+  color: var(--act-attention);
+}
+
+.attention-entry span {
+  color: var(--act-attention);
+  font-size: var(--act-fs-ui);
+  display: flex;
+  align-items: center;
+}
+
+.attention-entry .attention-reason .tier-mark {
+  margin-right: 6px;
+}
+
+.attention-entry .attention-reason[data-tier=asking] {
+  color: var(--act-attention-asking);
+}
+
+.attention-entry .attention-reason[data-tier=finished] {
+  color: var(--act-attention-finished);
+}
+
+.attention-entry .attention-age {
+  display: inline;
+  white-space: pre;
+  color: var(--act-ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* One list, three groups: Asking me, My turn, then Finished at the bottom. */
+.attention-tier {
+  display: flex;
+  flex-direction: column;
+  gap: var(--act-sp-2);
+}
+
+.attention-tier h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: var(--act-sp-1) 0 0;
+  color: var(--act-attention);
+  font-size: var(--act-fs-caps);
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.attention-tier[data-tier=asking] h3 {
+  color: var(--act-attention-asking);
+}
+
+.attention-tier[data-tier=finished] h3 {
+  color: var(--act-attention-finished);
+}
+
+.attention-tier h3 .tier-mark {
+  width: 10px;
+  height: 10px;
+}
+
+.attention-tier h3 small {
+  margin-left: auto;
+  color: var(--act-ink-faint);
+  font-size: var(--act-fs-caps);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.needs-me-tiers {
+  display: inline-flex;
+  padding: 1px 7px;
+  font-size: var(--act-fs-meta);
+  background: var(--act-pending-bg);
+}
+
+.needs-me-tiers .tier-count-gap {
+  display: inline-block;
+  width: 7px;
+  overflow: hidden;
+  color: transparent;
+}
+
+.attention-earlier {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--act-line);
+}
+
+.attention-earlier h3 {
+  margin: 0 0 var(--act-sp-1_5);
+  color: var(--act-ink-faint);
+  font-size: var(--act-fs-meta);
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+/* Earlier rows are one compact line: title · reason, then when it was seen. */
+.attention-earlier .attention-row {
+  border-bottom: 1px solid var(--act-line);
+}
+
+.live-workspace .attention-earlier .attention-entry {
+  flex-direction: row;
+  align-items: baseline;
+  gap: var(--act-sp-1_5);
+  padding: var(--act-sp-1_5) var(--act-sp-2);
+  background: transparent;
+  border: 0;
+  clip-path: none;
+  color: var(--act-ink-soft);
+  font-size: var(--act-fs-meta);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.live-workspace .attention-earlier .attention-row:has(.attention-actions) > .attention-entry {
+  padding-right: 40px;
+}
+
+.attention-earlier .attention-entry strong {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--act-ink-soft);
+  font-weight: 600;
+}
+
+.attention-earlier .attention-entry span {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--act-ink-dim);
+  font-size: var(--act-fs-meta);
+}
+
+.attention-earlier .attention-entry .attention-time {
+  margin-left: auto;
+  flex: none;
+  color: var(--act-ink-faint);
+  font-size: var(--act-fs-meta);
+}
+
+.attention-earlier .attention-row:hover .attention-entry,
+.attention-earlier .attention-row:focus-within .attention-entry {
+  background: var(--act-hover);
+}
+
+.attention-earlier .attention-actions {
+  top: 50%;
+  right: var(--act-sp-1);
+  width: auto;
+  transform: translateY(-50%);
+}
+
+.live-workspace .attention-earlier .attention-actions button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  justify-content: center;
+  color: var(--act-ink-soft);
+}
+
+.live-workspace .attention-earlier .attention-entry:disabled {
+  opacity: .6;
+  cursor: default;
+}
+
+.attention-more {
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-2);
+  padding: var(--act-sp-1_5) var(--act-sp-2);
+  color: var(--act-ink-dim);
+  font-size: var(--act-fs-meta);
+}
+
+.attention-more i {
+  width: 6px;
+  height: 6px;
+  background: var(--act-accent);
+}
+
+.attention-more-error {
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-2);
+  margin: 0;
+  padding: var(--act-sp-1_5) var(--act-sp-2);
+  color: var(--act-bad);
+  background: var(--act-error-bg);
+  font-size: var(--act-fs-meta);
+}
+
+.attention-more-error .btn {
+  margin-left: auto;
+}
+
+/* A hovered row whose card sits under the panel points at it on the minimap instead. */
+.live-workspace:has(.attention-list[data-occluded]) .map-locator .locator-highlight {
+  animation: locator-pulse 1s steps(2, jump-none) infinite;
+}
+
+@keyframes locator-pulse {
+  to { stroke-width: 4; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-workspace:has(.attention-list[data-occluded]) .map-locator .locator-highlight {
+    animation: none;
+    stroke-width: 4;
+  }
+}
+
+/* The open item says its own state in the frame bar, next to Mark seen. */
+.item-needs {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 280px;
+  padding: 3px 8px;
+  font-size: var(--act-fs-meta);
+  color: var(--act-attention);
+  background: var(--act-needs-me-fill);
+  white-space: nowrap;
+}
+
+.item-needs[data-tier=asking] {
+  color: var(--act-attention-asking);
+}
+
+.item-needs[data-tier=finished] {
+  color: var(--act-attention-finished);
+}
+
+.item-needs b {
+  flex: none;
+  font-weight: 650;
+}
+
+.item-needs span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.live-workspace .item-seen {
+  color: var(--act-attention);
+  background: var(--act-needs-me-fill);
+  border-color: var(--act-needs-me-edge);
+  border-image: none;
+}

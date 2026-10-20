@@ -1,0 +1,15 @@
+{
+  "id": "workspace.note",
+  "name": "Notes",
+  "version": "1.0.0",
+  "apiRange": "^1.0.0",
+  "entries": {
+    "definitions": "plugin.ts",
+    "service": "service.ts"
+  },
+  "contributes": {
+    "itemTypes": [
+      "workspace.note"
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { WorkspaceControl, MemoryStore } from '../../packages/core/control.ts';
+import { itemFootprint } from '../graph/footprints.ts';
+import { presentResource, presentationIcon } from './views.ts';
+import { registryFromDescriptions } from './describe.client.ts';
+import { todoConnector } from './items/todo/connector.ts';
+
+test('to-do completion keeps shared text geometry and legacy notes survive without entering discovery or context', async () => {
+  const control = new WorkspaceControl(new MemoryStore());
+  await control.apply({ type: 'item.add', id: 'todo', resourceId: 'task', pluginId: 'workspace.todo', title: 'Ship the fix', data: { notes: 'Historical text' }, position: { x: 200, y: 100 } }, 0);
+  const before = await control.read(), definition = control.registry.describe().find(plugin => plugin.id === 'workspace.todo')!;
+  assert.deepEqual(definition.fields, {});
+  assert.deepEqual(definition.dataSchema?.properties, {});
+  const rendererRegistry = registryFromDescriptions(control.registry.describe());
+  const view = presentResource(rendererRegistry, before.resources[0]);
+  assert.deepEqual(view.fields, []);
+  assert.equal(presentationIcon(view), 'square');
+  assert.deepEqual(await todoConnector.getContext!(before.resources[0], AbortSignal.timeout(1000)), { resourceId: 'task', title: 'Ship the fix', content: 'Task: Ship the fix' });
+  await control.apply({ type: 'node.complete', id: 'todo' }, before.revision);
+  const done = await control.read(), footprint = itemFootprint(done.nodes[0], done.resources, rendererRegistry);
+  assert.equal(footprint.width, itemFootprint(before.nodes[0], before.resources, control.registry).width);
+  assert.equal(footprint.height, itemFootprint(before.nodes[0], before.resources, control.registry).height, 'done to-dos keep their size');
+  assert.equal(presentationIcon(view, Boolean(done.nodes[0].completedAt)), 'square-check');
+  assert.deepEqual(done.resources, before.resources);
+  const reloaded = new WorkspaceControl(new MemoryStore(JSON.parse(JSON.stringify(done))));
+  await reloaded.apply({ type: 'node.reopen', id: 'todo' }, done.revision);
+  const reopened = await reloaded.read();
+  assert.deepEqual(reopened.resources, before.resources);
+  assert.deepEqual(itemFootprint(reopened.nodes[0], reopened.resources, reloaded.registry), itemFootprint(before.nodes[0], before.resources, control.registry));
+});

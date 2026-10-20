@@ -1,0 +1,483 @@
+/* Below the map: a portal button under the to-dos, a crimson layer, and transitions. */
+
+.live-workspace .below-portal:hover:not(:disabled) {
+  background: radial-gradient(circle at 50% 55%,#9b5cff66,transparent 70%),#1c1428;
+  transform: translateY(-1px);
+  box-shadow: 3px 4px 0 #0a0710,0 0 0 2px #140f1c,0 0 18px -2px #9b5cffcc;
+}
+
+.live-workspace .below-portal:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: 2px;
+}
+
+.live-workspace .below-portal:disabled {
+  cursor: progress;
+  opacity: 1;
+}
+
+.live-workspace .below-portal[data-layer=below] {
+  background: radial-gradient(circle at 50% 55%,#7fb87d55,transparent 68%),var(--act-sunken);
+  border-color: #4d6b52;
+  box-shadow: 3px 3px 0 var(--act-bg),0 0 0 2px var(--act-card),0 0 12px -4px #7fb87daa;
+}
+
+.live-workspace .below-portal[data-layer=below]:hover:not(:disabled) {
+  background: radial-gradient(circle at 50% 55%,#9cd29a55,transparent 70%),var(--act-card);
+  box-shadow: 3px 4px 0 var(--act-bg),0 0 0 2px var(--act-card),0 0 18px -2px #9cd29acc;
+}
+
+.portal-art {
+  width: 26px;
+  height: 32px;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0 3px #9b5cff88);
+}
+
+.live-workspace .below-portal[data-layer=below] .portal-art {
+  filter: drop-shadow(0 0 3px #9cd29a88);
+}
+
+.below-particle {
+  position: absolute;
+  z-index: 2;
+  width: 6px;
+  height: 6px;
+  pointer-events: none;
+  will-change: transform,opacity;
+}
+
+.live-workspace[data-layer=below] {
+  background: var(--act-undermap);
+}
+
+.map-area[data-layer=below] {
+  background: var(--act-undermap);
+}
+
+.map-area[data-layer=below] .map-card {
+  box-shadow: 0 4px 0 #080405,inset 0 0 0 999px #3a141626;
+}
+
+.map-area[data-layer=below] .project-neighborhood-title {
+  color: var(--act-undermap-ink);
+}
+
+.below-bar {
+  position: absolute;
+  z-index: 112;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 12px;
+  background: #241214e6;
+  border: 1px solid var(--act-undermap-edge);
+  color: var(--act-undermap-ink);
+  font-size: var(--act-fs-body);
+  white-space: nowrap;
+}
+
+.below-bar button {
+  background: var(--act-error-bg);
+  border: 1px solid #8a4a42;
+  color: inherit;
+  padding: 4px 9px;
+  font-size: var(--act-fs-ui);
+  border-radius: 2px;
+}
+
+.below-bar button:hover {
+  background: #4a2525;
+}
+
+.below-empty p {
+  color: var(--act-undermap-ink-dim);
+}
+
+.below-rise {
+  position: absolute;
+  z-index: 112;
+  left: 50%;
+  bottom: 70px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--act-undermap-ink-dim);
+  font-size: var(--act-fs-ui);
+  pointer-events: none;
+}
+
+.below-rise i {
+  display: block;
+  width: 0;
+  max-width: 160px;
+  height: 8px;
+  background: repeating-linear-gradient(90deg,#9cd29a 0 6px,#7fb87d 6px 12px);
+  outline: 1px solid var(--act-undermap-edge);
+  outline-offset: 1px;
+  align-self: flex-start;
+  margin-left: calc(50% - 80px);
+}
+
+.below-fx {
+  position: absolute;
+  z-index: 105;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.below-sink {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.below-sink-mover {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+
+.below-sink-card {
+  position: absolute !important;
+  inset: 0;
+  transform: none !important;
+}
+
+.below-sink-tint {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  will-change: opacity;
+}
+
+.below-ring,
+.below-wipe {
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+
+.below-ring {
+  position: absolute;
+  z-index: 1;
+}
+
+.below-wipe {
+  position: fixed;
+  z-index: 140;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Below the map: a portal button under the to-dos, a crimson layer, and transitions. */
+/* The collapsed to-do tool is just an icon inside its slot. */
+.live-workspace .below-portal {
+  position: absolute;
+  z-index: 114;
+  left: 18px;
+  top: 170px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  color: inherit;
+  border: 1px solid #4a3270;
+  transition: box-shadow .15s,transform .15s;
+  width: 44px;
+  height: 44px;
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.live-workspace .below-portal:hover:not(:disabled),
+.live-workspace .below-portal[data-layer=below],
+.live-workspace .below-portal[data-layer=below]:hover:not(:disabled) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.live-workspace .below-portal:hover:not(:disabled) .portal-art {
+  filter: drop-shadow(0 0 6px #b98cff);
+}
+
+/* Undermap mirror layout (MAP-18): month lines are part of the layer; text keeps a readable size down to the dashboard zoom. */
+.undermap-months,
+.undermap-plates {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+.undermap-month {
+  position: absolute;
+  height: 44px;
+  box-sizing: border-box;
+  border-top: 2px solid var(--act-undermap-edge);
+  color: var(--act-undermap-ink);
+  font: var(--act-fw-strong) clamp(14px, calc(13px / var(--map-zoom, 1)), 26px)/1 var(--act-font-mono);
+  letter-spacing: .08em;
+  white-space: nowrap;
+  image-rendering: pixelated;
+}
+
+.undermap-month,
+.live-workspace .undermap-month>button {
+  clip-path: none;
+  border-image: none;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  gap: 1em;
+}
+
+.live-workspace .undermap-month>button {
+  clip-path: none;
+  border-image: none;
+  box-shadow: none;
+  height: 100%;
+  margin: 0;
+  padding: 0 .8em 0 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.undermap-month[data-open=false] {
+  border-top-style: dashed;
+  color: var(--act-undermap-ink-dim);
+}
+
+.live-workspace .undermap-month>button:hover,
+.live-workspace .undermap-month>button:focus-visible {
+  color: var(--act-undermap-ink);
+  background: color-mix(in srgb, var(--act-undermap-edge), transparent 70%);
+}
+
+.live-workspace .undermap-month>button:focus-visible {
+  outline: 2px solid var(--act-focus);
+  outline-offset: -2px;
+}
+
+.undermap-month-range {
+  color: var(--act-undermap-ink-dim);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.undermap-month[data-open=false] .undermap-month-range {
+  opacity: .75;
+}
+
+.undermap-month-disclosure {
+  color: var(--act-undermap-accent);
+}
+
+.live-workspace .undermap-more {
+  border-image: none;
+  box-shadow: none;
+  position: absolute;
+  height: 30px;
+  padding: 0 .9em;
+  border: 1px dashed var(--act-undermap-edge);
+  background: var(--act-undermap-surface);
+  color: var(--act-undermap-ink);
+  font: var(--act-fw-strong) clamp(13px, calc(12px / var(--map-zoom, 1)), 20px)/1 var(--act-font-mono);
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.live-workspace .undermap-more:hover,
+.live-workspace .undermap-more:focus-visible {
+  box-shadow: none;
+  border-style: solid;
+  border-color: var(--act-undermap-accent);
+}
+
+.live-workspace .undermap-more:focus-visible {
+  outline: 2px solid var(--act-focus);
+  outline-offset: 1px;
+}
+
+.undermap-plate {
+  position: absolute;
+  transform-origin: top center;
+  min-width: 190px;
+  max-width: 300px;
+  padding: 8px 10px;
+  border: 1px solid var(--act-undermap-edge);
+  border-top: 3px solid var(--project-color, var(--act-undermap-edge));
+  background: var(--act-undermap-surface);
+  color: var(--act-undermap-ink);
+  font: var(--act-fs-ui)/1.3 var(--act-font-ui);
+  pointer-events: auto;
+}
+
+.live-workspace .undermap-plate-title {
+  clip-path: none;
+  border-image: none;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.undermap-plate-title>i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  background: var(--project-color, var(--act-undermap-edge));
+}
+
+.undermap-plate-title>strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--act-fs-body);
+}
+
+.undermap-plate ul {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--act-undermap-ink-dim);
+  font: var(--act-fs-caps)/1.6 var(--act-font-mono);
+  letter-spacing: .06em;
+}
+
+.undermap-plate li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.undermap-plate li>b {
+  color: var(--act-undermap-ink);
+}
+
+.undermap-plate p {
+  margin: 4px 0 0;
+  color: var(--act-undermap-ink-dim);
+  font-size: var(--act-fs-caps);
+}
+
+.undermap-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.undermap-search input {
+  width: 230px;
+  height: 24px;
+  box-sizing: border-box;
+  padding: 0 26px 0 8px;
+  border: 1px solid var(--act-undermap-edge);
+  border-radius: 0;
+  background: var(--act-undermap);
+  color: var(--act-undermap-ink);
+  font: var(--act-fs-ui) var(--act-font-ui);
+}
+
+.undermap-search input::placeholder {
+  color: var(--act-undermap-ink-dim);
+}
+
+.undermap-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.undermap-search input:focus-visible {
+  border-color: var(--act-undermap-accent);
+  outline: 1px solid var(--act-focus);
+  outline-offset: 0;
+}
+
+.undermap-search kbd {
+  position: absolute;
+  right: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--act-undermap-edge);
+  color: var(--act-undermap-ink-dim);
+  font: var(--act-fs-caps)/14px var(--act-font-mono);
+  pointer-events: none;
+}
+
+.undermap-search-results {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 10px);
+  width: 380px;
+  border: 1px solid var(--act-undermap-edge);
+  background: var(--act-undermap-surface);
+  white-space: normal;
+}
+
+.undermap-search-results ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.undermap-search-results li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.undermap-search-results li[aria-selected=true] {
+  background: color-mix(in srgb, var(--act-undermap-accent), transparent 78%);
+}
+
+.undermap-search-results li>strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--act-fw-medium, 500);
+}
+
+.undermap-search-results li>span,
+.undermap-search-results p {
+  color: var(--act-undermap-ink-dim);
+  font-size: var(--act-fs-meta);
+}
+
+.undermap-search-results p {
+  margin: 0;
+  padding: 5px 9px;
+}
+
+.undermap-search-count {
+  border-top: 1px solid var(--act-undermap-edge);
+}

@@ -1,0 +1,19 @@
+/* Claude artifact panel: a link out to claude.ai, never an embedded page. */
+.claude-artifact-view{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--act-surface);color:var(--act-ink);font-size:var(--act-fs-body)}
+.claude-artifact-body{display:flex;flex-direction:column;gap:10px;padding:16px 18px;overflow:auto}
+.claude-artifact-title{margin:0;font-size:var(--act-fs-title);line-height:1.3;overflow-wrap:anywhere}
+.claude-artifact-link{color:var(--act-ink-dim);font-family:var(--act-font-mono);font-size:var(--act-fs-meta);overflow-wrap:anywhere;text-decoration:underline;text-decoration-color:var(--act-line-strong);text-underline-offset:3px}
+.claude-artifact-actions{display:flex;gap:8px}
+.claude-artifact-note{margin:0;color:var(--act-ink-faint);font-size:var(--act-fs-meta)}
+.claude-artifact-facts{display:grid;gap:4px;margin:0;font-size:var(--act-fs-ui)}
+.claude-artifact-facts[hidden]{display:none}
+.claude-artifact-facts div{display:flex;gap:8px}
+.claude-artifact-facts dt{color:var(--act-ink-dim);min-width:72px}
+.claude-artifact-facts dd{margin:0}
+.claude-artifact-facts code{font-family:var(--act-font-mono)}
+.claude-artifact-related{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:var(--act-fs-ui)}
+.claude-artifact-related:empty{display:none}
+.claude-artifact-related strong{color:var(--act-ink-dim);font-weight:500}
+.claude-artifact-source{border:1px solid var(--act-line);background:var(--act-raised);color:var(--act-ink);padding:2px 8px;cursor:pointer;font:inherit}
+.claude-artifact-source:hover{background:var(--act-hover)}
+.claude-artifact-source:focus-visible{outline:2px solid var(--act-focus);outline-offset:1px}

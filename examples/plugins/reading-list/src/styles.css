@@ -1,0 +1,38 @@
+/* Reading link view. Every colour, size and font is a design token (--act-*); no hex values. */
+.reading-link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--act-sp-3);
+  padding: var(--act-sp-6);
+  color: var(--act-ink);
+  font: var(--act-fs-body)/1.5 var(--act-font-ui);
+}
+.reading-link-body {
+  display: grid;
+  gap: var(--act-sp-2);
+}
+.reading-link-title {
+  margin: 0;
+  font-size: var(--act-fs-panel);
+  font-weight: var(--act-fw-strong);
+  color: var(--act-ink-bright);
+  overflow-wrap: anywhere;
+}
+.reading-link-check {
+  margin: 0;
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink-dim);
+}
+.reading-link-check[data-state=broken] {
+  color: var(--act-bad);
+}
+.reading-link-note {
+  margin: 0;
+  padding: var(--act-sp-3);
+  background: var(--act-sunken);
+  border-left: 2px solid var(--act-line-strong);
+  white-space: pre-wrap;
+}
+@container (max-width: 560px) {
+  .reading-link { padding: var(--act-sp-4); }
+}

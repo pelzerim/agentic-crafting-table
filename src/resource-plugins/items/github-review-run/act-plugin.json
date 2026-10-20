@@ -1,0 +1,18 @@
+{
+  "id": "github.review-run",
+  "name": "GitHub review runs",
+  "version": "1.0.0",
+  "apiRange": "^1.0.0",
+  "entries": {
+    "definitions": "plugin.ts",
+    "renderer": "renderer.ts"
+  },
+  "contributes": {
+    "itemTypes": [
+      "github.review-run"
+    ],
+    "settingsPages": [
+      "github.review-run"
+    ]
+  }
+}

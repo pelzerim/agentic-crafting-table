@@ -1,0 +1,2 @@
+/* Keep the masked native timestamp/identity line independent of glyph widths. */
+.recording-storage-row > small:first-of-type { align-self: stretch; }

@@ -1,0 +1,645 @@
+/* Tool rail: a vertical Minecraft-style hotbar and the one origin of every menu. Slots are drawn here; their tools sit on top. */
+.tool-rail {
+  position: absolute;
+  z-index: 113;
+  width: 52px;
+  box-sizing: border-box;
+  background: #1b1b1bd9;
+  border: 2px solid #000;
+  box-shadow: 3px 3px 0 #0008;
+  pointer-events: none;
+}
+
+.tool-rail-slot {
+  position: absolute;
+  left: 2px;
+  width: 44px;
+  height: 44px;
+  margin-top: -2px;
+  box-sizing: border-box;
+  background: #3a3a3a8c;
+  border: 2px solid #8b8b8b;
+  box-shadow: inset 2px 2px 0 #2a2a2a,inset -2px -2px 0 #5c5c5c;
+}
+
+.tool-rail-slot[data-active] {
+  border-color: #f5f5f5;
+  box-shadow: inset 2px 2px 0 #2a2a2a,inset -2px -2px 0 #5c5c5c,0 0 0 2px #000;
+}
+
+/* Actions and Settings sit apart from the tools, below a notch in the frame. */
+.tool-rail-divider {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  margin-top: -3px;
+  background: var(--act-line-strong);
+}
+
+/* Pinned: the selected-slot plate, so a sheet that stays open looks different from a peek. */
+.tool-rail-slot[data-pinned] {
+  background: var(--act-accent-bg);
+  box-shadow: inset 0 0 0 2px var(--act-deep),inset 0 0 0 4px var(--act-accent),0 0 0 2px var(--act-deep);
+}
+
+/* Slot names: a pixel tooltip after a short pause, only while the slot's own sheet is closed. */
+.tool-rail-tip {
+  position: absolute;
+  left: 56px;
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-2);
+  height: 24px;
+  padding: 0 var(--act-sp-1) 0 var(--act-sp-2);
+  white-space: nowrap;
+  font-size: var(--act-fs-ui);
+  font-weight: var(--act-fw-medium);
+  color: var(--act-ink);
+  background: var(--act-panel);
+  clip-path: var(--act-shape-control);
+  border-image: var(--pixel-control-border) 5 / 5px / 0 stretch;
+  box-shadow: var(--act-shadow-sm);
+  opacity: 0;
+  visibility: hidden;
+}
+
+.live-workspace:has(.needs-me-tool[data-open=false] > .rail-panel-toggle:is(:hover,:focus-visible)) .tool-rail-tip[data-slot=attention],
+.live-workspace:has(.rail-settings > .rail-panel-toggle:is(:hover,:focus-visible)) .tool-rail-tip[data-slot=settings],
+.live-workspace:has(.rail-actions > .rail-panel-toggle[aria-expanded=false]:is(:hover,:focus-visible)) .tool-rail-tip[data-slot=actions],
+.live-workspace:has(.todo-overlay[data-open=false] > .rail-panel-toggle:is(:hover,:focus-visible)) .tool-rail-tip[data-slot=todos],
+.live-workspace:has(.reminders-tool[data-open=false] > .rail-panel-toggle:is(:hover,:focus-visible)) .tool-rail-tip[data-slot=reminders],
+.live-workspace:has(.github-inbox[data-open=false] > .rail-panel-toggle:is(:hover,:focus-visible)) .tool-rail-tip[data-slot=inbox],
+.live-workspace:has(.below-portal:is(:hover,:focus-visible)) .tool-rail-tip[data-slot=undermap] {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Slot badges: what waits behind a closed tool. Only Needs me is amber. */
+.github-inbox-count,
+.needs-me-count,
+.todo-triage-count {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  min-width: 15px;
+  height: 14px;
+  padding: 0 3px;
+  font-size: var(--act-fs-caps);
+  line-height: 12px;
+  font-weight: 800;
+  color: var(--act-ink-on-attention);
+  background: var(--act-attention);
+  border: 1px solid var(--act-deep);
+}
+
+.github-inbox-count,
+.todo-triage-count {
+  color: var(--act-deep);
+  background: var(--act-ink-soft);
+}
+
+.github-inbox-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.github-inbox-filters span {
+  opacity: .75;
+  margin-left: 2px;
+}
+
+.github-inbox-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  min-height: 0;
+}
+
+.github-inbox-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.github-inbox-main small {
+  font-size: var(--act-fs-meta);
+}
+
+.github-inbox-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Inbox states live in the body: skeleton rows, a connect call to action, an alert with Retry. */
+.github-inbox-error {
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-2);
+  margin: 0 0 var(--act-sp-2);
+  padding: var(--act-sp-1_5) var(--act-sp-2);
+  font-size: var(--act-fs-ui);
+  color: var(--act-bad);
+  background: var(--act-error-bg);
+  border: 1px solid var(--act-error);
+}
+
+.github-inbox-error span {
+  flex: 1;
+  min-width: 0;
+}
+
+.github-inbox-error .act-glyph {
+  width: 12px;
+  height: 12px;
+}
+
+.live-workspace .github-inbox .rail-panel-header .github-inbox-refresh {
+  margin-left: auto;
+  padding: 0;
+  border-color: transparent;
+}
+
+.github-inbox-loading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.github-inbox-skeleton {
+  display: grid;
+  gap: var(--act-sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.github-inbox-skeleton li {
+  display: grid;
+  grid-template-columns: 1fr 72px;
+  grid-template-rows: 8px 10px;
+  gap: var(--act-sp-1_5) var(--act-sp-3);
+  padding: var(--act-sp-3) var(--act-sp-1);
+  border-bottom: 1px solid var(--act-line);
+}
+
+.github-inbox-skeleton i {
+  background: var(--act-control);
+}
+
+.github-inbox-skeleton i:first-child {
+  width: 40%;
+}
+
+.github-inbox-skeleton b {
+  grid-row: 1 / 3;
+  grid-column: 2;
+  background: var(--act-control);
+}
+
+.github-inbox-connect {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--act-sp-2) var(--act-sp-4);
+  align-items: center;
+  padding: var(--act-sp-4) var(--act-sp-1);
+}
+
+.github-inbox-connect .item-icon {
+  grid-row: 1 / 3;
+  width: 40px;
+  height: 40px;
+  color: var(--act-ink-faint);
+}
+
+.github-inbox-connect p {
+  margin: 0;
+  font-size: var(--act-fs-body);
+  color: var(--act-ink);
+}
+
+.github-inbox-connect .btn {
+  justify-self: start;
+}
+
+.github-inbox-empty {
+  margin: 8px 4px;
+  font-size: var(--act-fs-ui);
+}
+
+.rail-panel {
+  position: absolute;
+  z-index: 115;
+  width: 44px;
+  height: 44px;
+}
+
+.rail-panel[data-open=true] {
+  z-index: 118;
+}
+
+.github-inbox[data-open=true],
+.needs-me-tool[data-open=true] {
+  z-index: 119;
+}
+
+/* Needs me: the slot takes the highest tier present. Asking me: amber fill, bright edge and diamond.
+   My turn: amber fill and triangle. Finished only: no fill, a dim dot. A plain "!" at zero. */
+.live-workspace .rail-panel-toggle .needs-me-shape {
+  width: 16px;
+  height: 16px;
+}
+
+.live-workspace .rail-panel-toggle.needs-me-quiet.needs-me-tier-finished {
+  border: 2px solid var(--act-needs-me-edge);
+}
+
+.live-workspace .rail-panel-toggle.needs-me-button.needs-me-tier-asking,
+.live-workspace .rail-panel-toggle.needs-me-button.needs-me-tier-asking:hover {
+  color: var(--act-attention-asking);
+  border-color: var(--act-attention-asking);
+}
+
+.needs-me-tier-asking .needs-me-count {
+  background: var(--act-attention-asking);
+}
+
+.live-workspace .rail-panel-toggle.needs-me-button,
+.live-workspace .rail-panel-toggle.needs-me-button:hover {
+  color: var(--act-attention);
+  background: var(--act-needs-me-fill);
+  border: 2px solid var(--act-needs-me-edge);
+}
+
+.live-workspace .rail-panel-toggle.needs-me-button:hover {
+  border-color: var(--act-attention);
+}
+
+.live-workspace .needs-me-tool[data-open=true] .needs-me-button {
+  border-color: var(--act-ink-bright);
+}
+
+.live-workspace .needs-me-tool[data-pinned] .needs-me-button {
+  background: transparent;
+  border-color: transparent;
+}
+
+.needs-me-count {
+  right: -1px;
+  bottom: -1px;
+}
+
+.live-workspace .rail-panel-toggle {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  clip-path: none;
+  background: transparent;
+  color: var(--act-ink);
+}
+
+.live-workspace .rail-panel-toggle:hover {
+  background: #ffffff14;
+}
+
+.live-workspace .rail-panel-toggle:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: -2px;
+}
+
+.rail-panel-toggle .item-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.rail-panel-sheet {
+  position: absolute;
+  left: var(--sheet-x);
+  top: var(--sheet-y);
+  display: flex;
+  width: calc(var(--panel-width) + var(--panel-aside));
+  max-width: calc(100vw - 90px);
+  max-height: min(620px,calc(100vh - 130px));
+  box-sizing: border-box;
+  color: var(--act-ink-soft);
+  background: var(--act-panel);
+  border: 1px solid var(--act-line-strong);
+  box-shadow: 3px 3px 0 var(--act-bg),0 0 0 2px var(--act-card);
+  transform-origin: left top;
+  animation: rail-sheet-in 110ms ease-out;
+}
+
+.rail-panel[data-sized=true] .rail-panel-sheet {
+  height: var(--panel-height);
+  max-height: calc(100vh - 130px);
+}
+
+.rail-panel[data-open=false] .rail-panel-sheet {
+  display: none;
+}
+
+@keyframes rail-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  .rail-panel-sheet {
+    animation: none;
+  }
+}
+
+.rail-panel-main {
+  display: flex;
+  flex-direction: column;
+  width: var(--panel-width);
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.rail-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--act-line);
+  flex: none;
+  white-space: nowrap;
+}
+
+.rail-panel-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.live-workspace .rail-panel-header > .rail-panel-close {
+  flex: none;
+  padding: 0;
+  border-color: transparent;
+}
+
+.rail-panel-header strong,
+.live-workspace .rail-panel-header .todo-title,
+.live-workspace .rail-panel-header .reminders-title {
+  font-size: var(--act-fs-body);
+  font-weight: 650;
+  color: var(--act-ink);
+}
+
+.rail-panel-header small {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--act-ink-faint);
+  font-size: var(--act-fs-meta);
+}
+
+.rail-panel-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Sheets use plain buttons; Needs me rows keep their card look instead. */
+.live-workspace .rail-panel-sheet:where(:not(.attention-list)) button:where(:not(.btn)) {
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  padding: 3px;
+  color: inherit;
+  font-size: var(--act-fs-ui);
+}
+
+.live-workspace .rail-panel-sheet:where(:not(.attention-list)) button:where(:not(.btn)):hover:not(:disabled) {
+  background: var(--act-control-hover);
+}
+
+.live-workspace .rail-panel-sheet .rail-panel-resize {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
+  padding: 2px;
+  cursor: nwse-resize;
+  touch-action: none;
+  color: #8aab91;
+  z-index: 3;
+}
+
+.rail-panel-resize svg {
+  width: 12px;
+  height: 12px;
+}
+
+.rail-panel-resize:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: -2px;
+}
+
+.rail-panel[data-resizing=true] .rail-panel-sheet {
+  animation: none;
+}
+
+.rail-panel[data-sized=true] .todo-list {
+  max-height: none;
+}
+
+.live-workspace .rail-panel-header .todo-attach-control {
+  margin-left: auto;
+}
+
+.todo-overlay[data-dragging=true] .rail-panel-header {
+  cursor: grabbing;
+}
+
+.github-inbox .rail-panel-body {
+  padding: 8px 10px 10px;
+}
+
+.github-inbox .github-inbox-filters {
+  flex: none;
+}
+
+.live-workspace .github-inbox .rail-panel-header button,
+.live-workspace .github-inbox-list li>button {
+  border: 1px solid var(--act-line-control);
+  padding: 4px 9px;
+  font-size: var(--act-fs-meta);
+}
+
+.live-workspace .github-inbox-filters [role=tab] {
+  border-radius: 0;
+  border: 1px solid var(--act-line);
+  padding: 3px 8px;
+  font-size: var(--act-fs-meta);
+}
+
+.live-workspace .github-inbox-filters [role=tab][aria-selected=true] {
+  background: var(--act-selected);
+  border-color: var(--act-accent);
+  color: var(--act-ink-bright);
+}
+
+.github-inbox-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  border-top: 1px solid var(--act-line);
+}
+
+.github-inbox-main small,
+.github-inbox-empty {
+  color: var(--act-ink-faint);
+}
+
+.github-inbox-main a {
+  font-weight: 600;
+  font-size: var(--act-fs-body);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--act-ink);
+}
+
+.github-inbox-main a:hover {
+  text-decoration: underline;
+  color: var(--act-accent);
+}
+
+.github-inbox-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  flex: none;
+}
+
+.github-inbox-list li[data-seen] .github-inbox-main {
+  opacity: .62;
+}
+
+.github-inbox-list li[data-seen] .github-inbox-main a {
+  font-weight: 500;
+}
+
+.live-workspace .github-inbox-list .github-inbox-hide {
+  color: var(--act-ink-soft);
+  border-color: var(--act-line);
+}
+
+.live-workspace .github-inbox-list .github-inbox-hide:hover:not(:disabled) {
+  color: var(--act-error);
+  border-color: var(--act-danger-fill);
+}
+
+/* Controls card: every workspace key, from the shortcut registry. */
+.controls-card {
+  position: absolute;
+  z-index: var(--act-z-modal);
+  left: 50%;
+  top: 72px;
+  width: min(560px, calc(100% - 48px));
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  padding: var(--act-sp-4) var(--act-sp-6) var(--act-sp-3);
+  color: var(--act-ink);
+  background: var(--act-panel);
+  clip-path: var(--act-shape-panel);
+  border-image: var(--pixel-panel-border) 9 / 9px / 0 stretch;
+  box-shadow: var(--act-shadow-md);
+}
+
+.controls-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--act-sp-2);
+}
+
+.controls-card h2 {
+  margin: 0;
+  font-size: var(--act-fs-panel);
+  font-weight: var(--act-fw-strong);
+}
+
+.controls-groups {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--act-sp-3) var(--act-sp-8);
+}
+
+.controls-card h3 {
+  margin: 0 0 var(--act-sp-1);
+  padding-bottom: var(--act-sp-1);
+  border-bottom: 1px solid var(--act-line);
+  font-size: var(--act-fs-caps);
+  font-weight: var(--act-fw-strong);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--act-ink-faint);
+}
+
+.controls-card dl {
+  margin: 0;
+}
+
+.controls-card dl div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 26px;
+  font-size: var(--act-fs-ui);
+}
+
+.controls-card dd {
+  margin: 0;
+}
+
+.controls-card kbd,
+.tool-rail-tip kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 var(--act-sp-1);
+  box-sizing: border-box;
+  font: var(--act-fw-strong) var(--act-fs-caps)/1 var(--act-font-mono);
+  color: var(--act-ink-soft);
+  background: var(--act-sunken);
+  border: 1px solid var(--act-line-control);
+  box-shadow: inset 0 -2px 0 var(--act-deep);
+}
+
+.controls-card > p {
+  margin: var(--act-sp-3) 0 0;
+  padding-top: var(--act-sp-2);
+  border-top: 1px solid var(--act-line);
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-faint);
+}

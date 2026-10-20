@@ -1,0 +1,446 @@
+/* Note tiles: the text is the card face. Line metrics match GROW_LINE in item-map-sizes.ts. */
+.map-card.paper-card {
+  --paper: var(--act-paper-mint);
+  --paper-ink: var(--act-paper-ink);
+  --card-edge: color-mix(in srgb, var(--paper) 55%, var(--act-deep));
+  color-scheme: light;
+  background: var(--paper);
+  color: var(--paper-ink);
+  padding: 0;
+  cursor: text;
+}
+
+/* A working note grows grass in its paper's edge colour. On a light paper the sheep is dark so it shows. */
+.map-card.paper-card {
+  --working-tuft: color-mix(in srgb, var(--paper) 55%, var(--act-deep));
+  --working-tuft-low: color-mix(in srgb, var(--paper) 78%, var(--act-deep));
+  --working-sheep-body: var(--act-accent-bg);
+  --working-sheep-head: var(--act-deep);
+  --working-zed-ink: var(--act-accent-bg);
+  --working-eye: var(--paper);
+  --working-raccoon-fur: color-mix(in srgb, var(--paper) 45%, var(--act-deep));
+  --working-raccoon-band: var(--act-deep);
+  --working-raccoon-pale: color-mix(in srgb, var(--paper) 88%, white);
+  --working-can-ink: color-mix(in srgb, var(--paper) 30%, var(--act-deep));
+}
+
+.map-card.paper-card[data-paper=sky] { --paper: var(--act-paper-sky); }
+.map-card.paper-card[data-paper=lilac] { --paper: var(--act-paper-lilac); }
+.map-card.paper-card[data-paper=peach] { --paper: var(--act-paper-peach); }
+
+.map-card.paper-card[data-paper=slate] {
+  --paper: var(--act-paper-slate);
+  --paper-ink: var(--act-paper-slate-ink);
+  --card-edge: var(--act-line-strong);
+  --working-tuft: var(--act-line-strong);
+  --working-tuft-low: var(--act-line);
+  --working-sheep-body: var(--act-working-sheep);
+  --working-sheep-head: var(--act-working-sheep-head);
+  --working-zed-ink: var(--act-accent);
+  --working-eye: var(--act-deep);
+  --working-raccoon-fur: var(--act-working-raccoon);
+  --working-raccoon-band: var(--act-working-raccoon-band);
+  --working-raccoon-pale: var(--act-working-raccoon-pale);
+  --working-can-ink: var(--act-working-raccoon-can);
+  color-scheme: dark;
+}
+
+.map-card.paper-card:not(.expanded):hover,
+.react-flow__node:focus-visible .map-card.paper-card:not(.expanded) {
+  --card-edge: color-mix(in srgb, var(--paper) 35%, var(--act-deep));
+  background-image: none;
+  box-shadow: 0 6px 0 var(--act-deep);
+}
+
+.map-area .react-flow__node.dragging .map-card.paper-card,
+.map-card.paper-card[data-dragging=true] {
+  cursor: grabbing;
+}
+
+.paper-tape {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 5;
+  width: 44px;
+  height: 8px;
+  translate: -50% 0;
+  background: var(--act-paper-tape);
+  opacity: 0;
+  cursor: grab;
+}
+
+.map-card.paper-card:hover .paper-tape,
+.map-card.paper-card:focus-within .paper-tape,
+.react-flow__node:focus-visible .paper-tape {
+  opacity: 1;
+}
+
+.paper-fold {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 5;
+  width: 12px;
+  height: 12px;
+  background: color-mix(in srgb, var(--paper) 62%, var(--act-deep));
+  clip-path: polygon(0 0, 4px 0, 4px 4px, 8px 4px, 8px 8px, 12px 8px, 12px 12px, 0 12px);
+}
+
+.paper-face {
+  position: absolute;
+  inset: 13px;
+  overflow: hidden;
+  font-size: var(--act-fs-body);
+  line-height: 20px;
+  overflow-wrap: anywhere;
+  color: var(--paper-ink);
+}
+
+.paper-face[data-faded] {
+  mask-image: linear-gradient(to bottom, var(--act-deep) calc(100% - 40px), transparent);
+}
+
+.paper-face[data-scrolls] {
+  overflow-y: auto;
+}
+
+.paper-first {
+  font-weight: var(--act-fw-strong);
+}
+
+.paper-face :is(p, ul, ol, blockquote, pre, h1, h2, h3, h4, h5, h6, table) {
+  margin: 0;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.paper-face :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: var(--act-fw-strong);
+}
+
+.paper-face :is(ul, ol) {
+  padding-left: 18px;
+}
+
+.paper-face li:has(> input[type=checkbox]) {
+  list-style: none;
+  margin-left: -18px;
+}
+
+.paper-face li:has(> input:checked) {
+  color: color-mix(in srgb, var(--paper-ink) 55%, transparent);
+  text-decoration: line-through;
+}
+
+.paper-face input[type=checkbox] {
+  width: 13px;
+  height: 13px;
+  margin: 0 6px 0 0;
+  vertical-align: -2px;
+  accent-color: var(--paper-ink);
+  cursor: pointer;
+}
+
+.paper-face input[type=checkbox]:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: 2px;
+}
+
+.paper-face code {
+  padding: 0 3px;
+  background: color-mix(in srgb, var(--paper-ink) 10%, transparent);
+  font-family: var(--act-font-mono);
+  font-size: var(--act-fs-ui);
+}
+
+.paper-face pre {
+  white-space: pre-wrap;
+}
+
+.paper-face a {
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.paper-face blockquote {
+  padding-left: 8px;
+  border-left: 2px solid color-mix(in srgb, var(--paper-ink) 35%, transparent);
+}
+
+.map-card.paper-card .paper-more {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  z-index: 6;
+  translate: -50% 0;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--paper-ink) 45%, transparent);
+  background: var(--paper);
+  color: var(--paper-ink);
+  font-size: var(--act-fs-meta);
+  font-weight: var(--act-fw-medium);
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.map-card.paper-card .paper-more:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: 2px;
+}
+
+.map-card.paper-card.compact {
+  padding: 0;
+}
+
+.paper-editor {
+  position: absolute;
+  inset: 13px;
+  z-index: 3;
+  width: calc(100% - 26px);
+  height: calc(100% - 26px);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: var(--paper-ink);
+  caret-color: var(--paper-ink);
+  font: inherit;
+  font-size: var(--act-fs-body);
+  line-height: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+
+.paper-editor.nowheel {
+  overflow-y: auto;
+}
+
+.paper-editor:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: 11px;
+}
+
+.paper-editor::selection {
+  background: color-mix(in srgb, var(--act-info-line) 70%, transparent);
+  color: var(--act-ink-bright);
+}
+
+.paper-error {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 4px;
+  z-index: 6;
+  padding: 2px 6px;
+  background: var(--act-error-bg);
+  color: var(--act-error);
+  font-size: var(--act-fs-meta);
+}
+
+.paper-tools {
+  position: absolute;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--act-panel);
+  border: 1px solid var(--act-line);
+  box-shadow: var(--act-shadow-sm);
+  clip-path: var(--act-shape-control);
+  color: var(--act-ink-soft);
+  font-size: var(--act-fs-meta);
+  white-space: nowrap;
+  cursor: default;
+}
+
+.paper-tools [role=radiogroup] {
+  display: flex;
+  gap: 4px;
+}
+
+.live-workspace .paper-tools .paper-swatch {
+  --paper: var(--act-paper-mint);
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--act-line-strong);
+  border-radius: 0;
+  background: var(--paper);
+}
+
+.live-workspace .paper-tools .paper-swatch[data-paper=sky] { --paper: var(--act-paper-sky); }
+.live-workspace .paper-tools .paper-swatch[data-paper=lilac] { --paper: var(--act-paper-lilac); }
+.live-workspace .paper-tools .paper-swatch[data-paper=peach] { --paper: var(--act-paper-peach); }
+.live-workspace .paper-tools .paper-swatch[data-paper=slate] { --paper: var(--act-paper-slate); }
+
+.live-workspace .paper-tools .paper-swatch[aria-checked=true] {
+  box-shadow: 0 0 0 2px var(--act-panel), 0 0 0 3px var(--act-focus);
+}
+
+.live-workspace .paper-tools .paper-list {
+  height: 22px;
+  padding: 0 8px;
+  font-size: var(--act-fs-meta);
+}
+
+.paper-tools button:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: 2px;
+}
+
+.map-card.paper-card[data-writer] .paper-tape {
+  background: var(--act-paper-agent-tape);
+  opacity: 1;
+}
+
+.paper-tape[data-flash] {
+  animation: paper-flash 400ms steps(2, jump-none) 3;
+}
+
+@keyframes paper-flash {
+  50% { background: var(--act-copper); translate: -50% -2px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .paper-tape[data-flash] { animation: none; }
+}
+
+.map-card.paper-card[data-writer] .paper-face {
+  bottom: 33px;
+}
+
+.paper-byline {
+  position: absolute;
+  left: 13px;
+  right: 13px;
+  bottom: 13px;
+  height: 20px;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--paper-ink) 70%, transparent);
+  font-size: var(--act-fs-meta);
+  line-height: 20px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.paper-byline::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  vertical-align: 1px;
+  background: var(--act-copper-line);
+}
+
+.paper-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  width: 100%;
+  height: 0;
+}
+
+.paper-conflict {
+  position: absolute;
+  bottom: 8px;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--act-copper-bg);
+  border: 1px solid var(--act-copper-line);
+  border-left: 4px solid var(--act-copper);
+  color: var(--act-copper);
+  font-size: var(--act-fs-meta);
+  white-space: nowrap;
+}
+
+.paper-compare {
+  position: absolute;
+  left: 0;
+  width: max(100%, 240px);
+  max-height: 240px;
+  overflow: auto;
+  padding: 8px 10px;
+  background: var(--act-panel);
+  border: 1px solid var(--act-copper-line);
+  color: var(--act-ink-soft);
+  font-size: var(--act-fs-ui);
+}
+
+.paper-compare p {
+  margin: 0 0 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.live-workspace :is(.paper-conflict, .paper-compare) button {
+  height: 22px;
+  padding: 0 8px;
+  font-size: var(--act-fs-meta);
+}
+
+.paper-overlay button:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Mid zoom: the generated title at about 12px on screen, with checklist progress or a line count. */
+.paper-mid {
+  position: absolute;
+  inset: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: calc(6px / var(--map-zoom, 1));
+  overflow: hidden;
+  color: var(--paper-ink);
+}
+
+.paper-mid-title {
+  flex: none;
+  max-height: 3.75em;
+  overflow: hidden;
+  font-size: calc(var(--act-fs-ui) / var(--map-zoom, 1));
+  font-weight: var(--act-fw-strong);
+  line-height: 1.25;
+  overflow-wrap: break-word;
+}
+
+.paper-progress {
+  display: flex;
+  align-items: center;
+  gap: calc(6px / var(--map-zoom, 1));
+  font-size: calc(var(--act-fs-meta) / var(--map-zoom, 1));
+  font-family: var(--act-font-mono);
+}
+
+.paper-progress i {
+  flex: 1;
+  height: calc(6px / var(--map-zoom, 1));
+  background: color-mix(in srgb, var(--paper-ink) 18%, transparent);
+}
+
+.paper-progress b {
+  display: block;
+  height: 100%;
+  background: var(--paper-ink);
+}
+
+.paper-hint kbd {
+  padding: 0 4px;
+  border: 1px solid var(--act-line-control);
+  font-family: var(--act-font-mono);
+  font-size: var(--act-fs-caps);
+}

@@ -1,0 +1,20 @@
+{
+  "id": "reading-list",
+  "name": "Reading list",
+  "version": "1.0.0",
+  "apiRange": "^1.1.0",
+  "description": "Links to read later, with a note, tags and a broken-link check.",
+  "entries": {
+    "definitions": "dist/definitions.mjs",
+    "service": "dist/service.mjs",
+    "renderer": "dist/renderer.mjs"
+  },
+  "contributes": {
+    "itemTypes": ["reading-list.link"],
+    "runtimeOperations": ["reading-list.read-state", "reading-list.unread"],
+    "mcpTools": ["reading_list_unread"],
+    "settingsPages": ["reading-list.link"],
+    "agentGuide": ["reading-list.guide"],
+    "css": ["dist/renderer.css"]
+  }
+}

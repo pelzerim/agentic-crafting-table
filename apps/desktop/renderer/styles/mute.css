@@ -1,0 +1,209 @@
+/* Muted project (MAP-25): night over the neighbourhood. One static layer per project;
+   the only motion anywhere is one short linear opacity change, and nothing loops. */
+.mute-covers {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  /* Above the muted project's own cards and links (-2), below every other card and plate. */
+  z-index: -1;
+  pointer-events: none;
+}
+
+.mute-cover {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 120ms linear;
+  animation: mute-cover-in 120ms linear;
+}
+
+.mute-cover[data-peek] {
+  opacity: 0;
+}
+
+.mute-cover[data-leaving] {
+  animation: mute-cover-out 120ms linear forwards;
+}
+
+@keyframes mute-cover-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes mute-cover-out {
+  to {
+    opacity: 0;
+  }
+}
+
+.mute-cover path {
+  stroke: none;
+}
+
+.mute-veil {
+  fill: var(--act-mute-veil);
+}
+
+/* A drop target is accepted under the cover without opening it. */
+.mute-cover[data-attach] .mute-veil {
+  fill: var(--act-mute-veil-attach);
+}
+
+.mute-cards {
+  fill: var(--act-mute-card);
+}
+
+.mute-notes {
+  fill: var(--act-mute-note);
+}
+
+.mute-stars {
+  fill: var(--act-mute-star);
+}
+
+.mute-stars[data-dim] {
+  opacity: .5;
+}
+
+.mute-hit {
+  fill: transparent;
+  pointer-events: fill;
+  cursor: default;
+}
+
+.mute-cover[data-parted] .mute-hit {
+  cursor: pointer;
+}
+
+/* Covered cards are not painted and their working sheep does not walk. Look, don't touch while peeking.
+   React Flow sets both properties inline, hence !important. */
+.map-area .react-flow__node.muted-member {
+  pointer-events: none !important;
+}
+
+.map-area .react-flow__node.muted-member:not(.muted-peek) {
+  visibility: hidden !important;
+}
+
+.react-flow__node.muted-member:not(.muted-peek) .working-mark,
+.react-flow__node.muted-member:not(.muted-peek) .working-mark>i,
+.react-flow__node.muted-member:not(.muted-peek) .working-mark>b::after {
+  animation-play-state: paused;
+}
+
+/* The plate keeps the name and its menu; line two says Muted and turns into Unmute. */
+.project-neighborhood-title .project-muted {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 66px;
+  height: 18px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--act-mute-ink);
+  font-size: var(--act-fs-meta);
+  line-height: 1;
+}
+
+.project-muted .act-glyph {
+  width: 8px;
+  height: 8px;
+  flex: none;
+}
+
+.project-muted-action,
+.project-muted:is(:hover, :focus-visible) .project-muted-state {
+  display: none;
+}
+
+.project-muted:is(:hover, :focus-visible) .project-muted-action {
+  display: inline;
+}
+
+.project-neighborhood-title .project-muted:is(:hover, :focus-visible) {
+  color: var(--act-ink);
+  background: var(--act-panel);
+  box-shadow: inset 0 0 0 1px var(--act-line-control);
+}
+
+.project-neighborhood-title .project-muted:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: 1px;
+}
+
+.project-neighborhood-title[data-edge] .project-muted span {
+  display: none;
+}
+
+/* Needs me: rows of muted projects wait behind one quiet line. */
+.attention-muted {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: var(--act-sp-2);
+  border-top: 1px solid var(--act-line);
+}
+
+.live-workspace .attention-muted-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-1_5);
+  width: 100%;
+  height: 24px;
+  padding: 0 var(--act-sp-1);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--act-ink-faint);
+  font-size: var(--act-fs-meta);
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  text-align: left;
+}
+
+.attention-muted-toggle span {
+  flex: 1;
+}
+
+.attention-muted-toggle .act-glyph {
+  width: 8px;
+  height: 8px;
+  flex: none;
+}
+
+.live-workspace .attention-muted-toggle:hover {
+  background: transparent;
+  color: var(--act-ink-soft);
+}
+
+.attention-muted-toggle[aria-expanded=true] [data-glyph=chevron] {
+  transform: rotate(180deg);
+}
+
+.attention-muted .tier-mark,
+.attention-muted .attention-entry .attention-reason {
+  color: var(--act-mute-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mute-cover {
+    transition: none;
+    animation: none;
+  }
+
+  .mute-cover[data-leaving] {
+    display: none;
+  }
+}

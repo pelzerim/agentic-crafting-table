@@ -1,0 +1,169 @@
+.settings-editor h3 {
+  font-size: var(--act-fs-body);
+  margin: 8px 0 2px;
+  color: var(--act-section);
+}
+
+.settings-editor .setting-toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  font-size: var(--act-fs-body);
+}
+
+.settings-editor input[type=checkbox] {
+  width: 16px;
+  height: 16px;
+  accent-color: #a6c9af;
+}
+
+.settings-editor .setting-hint {
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-dim);
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+
+.settings-editor textarea {
+  font-family: var(--act-font-mono);
+}
+
+.settings-editor [role=alert] {
+  font-size: var(--act-fs-ui);
+  color: #e3ab99;
+  overflow-wrap: anywhere;
+}
+
+/* The movable settings shell keeps navigation and actions visible while content scrolls. */
+.settings-editor {
+  z-index: 180;
+  max-height: calc(100% - 30px);
+  width: 820px;
+  max-width: calc(100% - 40px);
+  height: min(660px,calc(100% - 40px));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-editor .editor-heading,
+.settings-actions {
+  flex: none;
+}
+
+.settings-editor .editor-heading h2 {
+  margin: 0;
+}
+
+.settings-content {
+  min-height: 0;
+  min-width: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 14px 10px 12px 20px;
+}
+
+.settings-content section[hidden],
+.settings-content [data-advanced][hidden] {
+  display: none;
+}
+
+.settings-actions {
+  border-top: 1px solid var(--act-line);
+  padding-top: 10px;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-actions button[type=submit] {
+  margin-left: 0;
+}
+
+/* Tree navigation and pages share a single draft, without nested accordions. */
+.settings-layout {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  border-top: 1px solid var(--act-line);
+  border-bottom: 1px solid var(--act-line);
+}
+
+.settings-sidebar {
+  width: 218px;
+  flex: none;
+  overflow: auto;
+  padding: 10px 10px 10px 0;
+  border-right: 1px solid var(--act-line);
+  background: var(--act-surface);
+}
+
+.settings-tree,
+.settings-tree ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-tree [role=treeitem] {
+  outline: none;
+}
+
+.settings-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 34px;
+  padding: 7px 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  font-size: var(--act-fs-ui);
+  line-height: 17px;
+  border-radius: 3px;
+}
+
+.settings-tree-label {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Only branches carry a chevron, at the row's end; leaves have no bullet. */
+.settings-tree-toggle {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--act-ink-faint);
+}
+
+.settings-tree-toggle[data-open=true] svg {
+  transform: rotate(90deg);
+}
+
+.settings-tree [aria-selected=true]>.settings-tree-row {
+  background: var(--act-selected);
+  color: #c9e7d3;
+  border-color: #6a9075;
+  box-shadow: inset 3px 0 #a0cda8;
+}
+
+.settings-tree-row:hover {
+  background: var(--act-hover);
+  border-color: #496650;
+}
+
+.settings-tree [role=treeitem]:focus-visible>.settings-tree-row {
+  outline: var(--act-focus-ring);
+  outline-offset: -2px;
+}
+
+.settings-tree [role=group] {
+  margin-left: 15px;
+  border-left: 1px solid var(--act-line);
+}
+
+.settings-tree [role=group][hidden] {
+  display: none;
+}

@@ -1,0 +1,829 @@
+/* Items' editable titles would take a dragged to-do row as text; the map takes it instead. */
+.map-area[data-todo-drag] .react-flow__node,
+.map-area[data-todo-drag] .react-flow__node * {
+  pointer-events: none !important;
+}
+
+.todo-drop-ghost {
+  position: absolute;
+  z-index: 124;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  min-width: 24px;
+  padding: 0 8px;
+  border: 2px dashed var(--act-accent);
+  background: #24372abb;
+  color: #d5eddb;
+  font: 600 var(--act-fs-ui)/1.2 var(--act-font-ui);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.todo-drop-ghost .item-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.todo-drop-ghost span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.todo-title {
+  margin: 0;
+  font-size: var(--act-fs-body);
+  font-weight: 650;
+}
+
+.todo-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 2px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+}
+
+.todo-row:hover {
+  background: var(--act-hover);
+  box-shadow: inset 0 0 0 1px #536c58;
+}
+
+.todo-row[data-spotlight] {
+  background: var(--act-hover);
+  box-shadow: inset 0 0 0 1px var(--act-accent);
+}
+
+.todo-row input[type=checkbox] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--act-accent);
+  flex: none;
+  cursor: pointer;
+}
+
+.todo-row-title {
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  background: none;
+  border: 0;
+  padding: 3px 0;
+  font-size: var(--act-fs-ui);
+}
+
+.todo-row-title:disabled {
+  opacity: 1;
+  color: inherit;
+  cursor: default;
+}
+
+.todo-row[data-completed=true] .todo-row-title {
+  text-decoration: line-through;
+  color: #819087;
+}
+
+.todo-links {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border: 0;
+  background: transparent;
+  flex: none;
+}
+
+.todo-links small {
+  font-size: var(--act-fs-meta);
+}
+
+/* Row actions: one cluster of pixel icon buttons, shown on row hover or focus. */
+.todo-row-actions {
+  display: flex;
+  gap: var(--act-sp-0_5);
+  flex: none;
+  opacity: 0;
+}
+
+.todo-row:hover .todo-row-actions,
+.todo-row:focus-within .todo-row-actions {
+  opacity: 1;
+}
+
+.live-workspace .todo-overlay .todo-row-actions button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--act-ink-soft);
+  background: var(--act-control);
+  border-image: var(--pixel-control-border) 5 / 5px / 0 stretch;
+}
+
+.live-workspace .todo-overlay .todo-row-actions button:hover:not(:disabled) {
+  color: var(--act-ink-bright);
+}
+
+.todo-row-actions .item-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.todo-new input {
+  min-width: 0;
+  flex: 1;
+  height: 30px;
+  background: var(--act-sunken);
+  border: 1px solid var(--act-line);
+  border-radius: 3px;
+  color: var(--act-ink);
+  padding: 5px 8px;
+  font-size: var(--act-fs-ui);
+}
+
+.live-workspace .todo-overlay .todo-add {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--act-ink-dim);
+  background: var(--act-control);
+  border-image: var(--pixel-control-border) 5 / 5px / 0 stretch;
+}
+
+.live-workspace .todo-overlay .todo-add:not(:disabled) {
+  color: var(--act-ink-on-accent);
+  background: var(--act-accent);
+}
+
+.live-workspace .todo-overlay .todo-add:disabled {
+  opacity: 1;
+}
+
+.todo-add .item-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.todo-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--act-sp-3);
+  margin: var(--act-sp-4) var(--act-sp-0_5);
+}
+
+.todo-empty > .item-icon {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  color: var(--act-ink-faint);
+}
+
+.todo-empty p {
+  display: grid;
+  gap: var(--act-sp-1);
+  margin: 0;
+}
+
+.todo-empty strong {
+  font-size: var(--act-fs-body);
+  color: var(--act-ink);
+}
+
+.todo-empty span {
+  font-size: var(--act-fs-ui);
+  color: var(--act-ink-dim);
+}
+
+.todo-overlay [data-drop-target=true],
+.todo-overlay[data-drop-target=true] {
+  outline: 2px solid #b4d69b;
+  outline-offset: -2px;
+  background: var(--act-control-hover);
+}
+
+.todo-attachment-hint {
+  display: flex;
+  font-size: var(--act-fs-meta);
+  line-height: 1.4;
+  padding: 5px 10px;
+  gap: 6px;
+  background: #34452b;
+}
+
+.todo-attachment-hint button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  padding: 0 4px;
+}
+
+.todo-content p[role=alert] {
+  font-size: var(--act-fs-meta);
+  color: var(--act-error);
+  padding: 0 10px;
+}
+
+.todo-reference-list button {
+  font-size: var(--act-fs-meta);
+  background: transparent;
+  border: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 5px;
+}
+
+.live-workspace .todo-overlay button {
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  padding: 3px;
+  color: inherit;
+  font-size: var(--act-fs-ui);
+}
+
+.live-workspace .todo-overlay button:hover {
+  background: var(--act-control-hover);
+}
+
+.live-workspace .todo-overlay .todo-title {
+  font-size: var(--act-fs-body);
+  font-weight: 650;
+}
+
+.live-workspace .todo-overlay .todo-row-title {
+  padding: 3px 0;
+}
+
+.live-workspace .todo-overlay .todo-row-title[aria-disabled=true] {
+  cursor: default;
+}
+
+.live-workspace .todo-overlay .todo-reference-list button {
+  padding: 5px;
+  font-size: var(--act-fs-meta);
+}
+
+.todo-overlay[data-map-dragging=true] * {
+  pointer-events: none;
+}
+
+.todo-row .inline-title-editor {
+  padding: 0;
+  text-decoration: none;
+}
+
+/* Attachments use the same plugin presentation as map items. */
+.todo-attachment {
+  --tone: var(--act-accent);
+  display: flex;
+}
+
+.todo-attachment.tone-violet {
+  --tone: #bea3f1;
+}
+
+.todo-attachment.tone-rose {
+  --tone: #dfa7b4;
+}
+
+.todo-attachment.tone-neutral {
+  --tone: var(--act-ink-dim);
+}
+
+.todo-links .item-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--tone);
+}
+
+.todo-links .brand-claude {
+  color: var(--act-agent-claude);
+}
+
+.todo-links .brand-codex {
+  color: var(--act-agent-codex);
+}
+
+.todo-links .brand-linear {
+  color: var(--act-brand-linear);
+}
+
+.todo-links .brand-github {
+  color: var(--act-brand-github);
+}
+
+.todo-reference-panel {
+  width: 258px;
+  min-width: 0;
+  flex: none;
+  padding: 10px 12px;
+  background: var(--act-card);
+  border-left: 1px solid var(--act-line-control);
+  max-height: 430px;
+  overflow: auto;
+}
+
+.todo-reference-panel header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.todo-reference-panel header strong {
+  flex: 1;
+  font-size: var(--act-fs-ui);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.todo-reference-list {
+  z-index: 2;
+  top: 30px;
+  right: 0;
+  position: static;
+  max-width: none;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+}
+
+.todo-reference-list>div {
+  display: flex;
+  align-items: center;
+  border-top: 1px solid var(--act-selected);
+}
+
+.todo-reference-list button:first-child {
+  flex: 1;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+  min-width: 0;
+}
+
+.todo-reference-list .item-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.todo-pin-mark {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  width: 5px;
+  height: 5px;
+  background: var(--act-ink-soft);
+  box-shadow: 0 0 0 1px var(--act-panel);
+}
+
+.todo-attachment.tone-teal {
+  --tone: #87c7bf;
+}
+
+.todo-attachment.tone-amber {
+  --tone: #d8b576;
+}
+
+.todo-attachment.tone-blue {
+  --tone: #a4b8e2;
+}
+
+.todo-attachment.tone-indigo {
+  --tone: #afa3df;
+}
+
+.todo-attach-control {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  background: transparent;
+  border: 0;
+}
+
+.todo-attach-control .item-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.todo-choose-item {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  font-size: var(--act-fs-meta);
+}
+
+.todo-choose-item select {
+  width: 100%;
+  min-width: 0;
+  background: var(--act-sunken);
+  color: var(--act-ink);
+  border: 1px solid var(--act-line-accent);
+  padding: 5px;
+}
+
+
+/* Task order is independent of map position. Grips keep text editing unambiguous. */
+.todo-order-grip {
+  flex: 0 0 16px;
+  width: 16px;
+  min-width: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: grab;
+}
+
+.todo-order-grip:active {
+  cursor: grabbing;
+}
+
+.todo-group h3 {
+  font-size: var(--act-fs-caps);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--act-ink-faint);
+  font-weight: 600;
+  margin: 12px 2px 5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.todo-provider-title {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todo-group-count {
+  margin-left: 2px;
+  padding: 0 4px;
+  color: var(--act-ink);
+  background: var(--act-control-hover);
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+/* Keep the moving task/group visible as a destination placeholder. */
+.todo-row[data-reordering="true"],
+.todo-group[data-send-target],
+.todo-group[data-reordering="true"] {
+  background: #98d8af20;
+  outline: 1px dashed var(--mint, var(--act-accent));
+  outline-offset: -1px;
+}
+
+/* The dragged row stays where the drag began, without height, while its gap shows where it would land. */
+.todo-row-source {
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+.todo-list {
+  flex: 1;
+  min-height: 0;
+  max-height: min(420px,calc(100vh - 250px));
+  overflow: auto;
+  padding: 0 10px;
+}
+
+.todo-new {
+  display: flex;
+  gap: 6px;
+  padding: 10px;
+  border-top: 1px solid var(--act-line);
+  flex: none;
+}
+
+/* TODO-11: a to-do's context opens under its row; the row itself only carries the glyph. */
+.todo-context-glyph {
+  color: var(--act-ink-soft);
+}
+
+.todo-context-glyph[aria-expanded=true] {
+  color: var(--act-accent);
+}
+
+.todo-context-glyph .act-glyph {
+  display: block;
+  width: 9px;
+  height: 9px;
+}
+
+.todo-context {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 2px 6px 22px;
+  padding: 6px 8px;
+  background: var(--act-card);
+  border-left: 2px solid var(--act-line-control);
+}
+
+.todo-context-text,
+.todo-context textarea {
+  max-height: 180px;
+  overflow-y: auto;
+  font-size: var(--act-fs-meta);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.todo-context-text {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+.todo-context textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 84px;
+  padding: 4px 6px;
+  resize: vertical;
+  color: inherit;
+  background: var(--act-control);
+  border: 1px solid var(--act-line-control);
+}
+
+.todo-context-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.todo-context-meta {
+  flex: 1;
+  min-width: 0;
+  color: var(--act-ink-soft);
+  font-size: var(--act-fs-meta);
+}
+
+.live-workspace .todo-overlay .todo-context-actions button {
+  padding: 2px 8px;
+  font-size: var(--act-fs-meta);
+  background: var(--act-control);
+  border-image: var(--pixel-control-border) 5 / 5px / 0 stretch;
+}
+
+.live-workspace .todo-overlay .todo-context-actions button[data-destructive] {
+  color: var(--act-error);
+}
+
+/* TODO-12: the list by when. Groups are From Linear, Next, Later and a folded Done; the project is a chip. */
+.todo-summary {
+  color: var(--act-ink-faint);
+  font: var(--act-fs-meta) var(--act-font-mono);
+  white-space: nowrap;
+}
+
+.live-workspace .todo-overlay .todo-group-projects {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  color: var(--act-ink-soft);
+}
+
+.live-workspace .todo-overlay .todo-group-projects[aria-pressed=true] {
+  color: var(--act-accent);
+  background: var(--act-control-hover);
+}
+
+.todo-group-projects .act-glyph {
+  width: 12px;
+  height: 12px;
+}
+
+.todo-overlay .todo-group-projects + .todo-attach-control {
+  margin-left: 0;
+}
+
+.todo-group[data-group=inbox] h3 {
+  color: var(--act-brand-linear);
+}
+
+.live-workspace .todo-overlay .todo-group-fold,
+.live-workspace .todo-overlay .todo-group-menu {
+  margin-left: auto;
+  padding: 0 4px;
+  color: var(--act-ink-faint);
+  font: var(--act-fs-meta) var(--act-font-mono);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.todo-group-menu .act-glyph {
+  display: block;
+  width: 9px;
+  height: 9px;
+}
+
+.todo-group[data-drop-group] {
+  background: var(--act-hover);
+  outline: 1px dashed var(--act-accent);
+  outline-offset: -1px;
+}
+
+.todo-hint {
+  margin: 2px 4px 6px;
+  color: var(--act-ink-faint);
+  font-size: var(--act-fs-meta);
+}
+
+.todo-limit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 4px 2px 6px;
+  color: var(--act-attention);
+  font-size: var(--act-fs-meta);
+}
+
+.live-workspace .todo-overlay .todo-limit button {
+  padding: 1px 8px;
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink);
+  background: var(--act-control);
+  border-image: var(--pixel-control-border) 5 / 5px / 0 stretch;
+}
+
+.todo-row:focus-visible {
+  outline: 2px solid var(--act-focus);
+  outline-offset: -2px;
+}
+
+.todo-chips {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 42%;
+  overflow: hidden;
+}
+
+/* A waiting ticket keeps its whole title on the first line; its chips and Next / Later / ✕ go under it. */
+.todo-row[data-inbox] {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: 32px;
+  padding-block: 3px;
+  row-gap: 2px;
+}
+
+.todo-row[data-inbox] .todo-row-title {
+  flex: 1 1 calc(100% - 48px);
+}
+
+.todo-row[data-inbox] .todo-chips {
+  max-width: none;
+  flex: 1 1 auto;
+  margin-left: 42px;
+}
+
+.todo-chip {
+  flex: none;
+  max-width: 120px;
+  padding: 0 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--act-ink-dim);
+  border: 1px solid var(--act-line);
+  font: 10.5px/16px var(--act-font-mono);
+}
+
+.live-workspace .todo-overlay button.todo-chip {
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, var(--act-brand-linear) 45%, transparent);
+  border-radius: 0;
+  color: var(--act-brand-linear);
+  font: 10.5px/16px var(--act-font-mono);
+}
+
+.todo-state {
+  color: var(--act-ink-faint);
+}
+
+.todo-age {
+  color: var(--act-attention);
+  border-color: color-mix(in srgb, var(--act-attention) 45%, transparent);
+}
+
+.todo-project {
+  max-width: 100%;
+  color: var(--act-deep);
+  background: var(--chip);
+  border-color: transparent;
+}
+
+/* Projects line up in one column at the right edge of every row, empty when a row has none; links sit just left of it. */
+.todo-list {
+  container-type: inline-size;
+}
+
+.todo-project-cell {
+  display: flex;
+  flex: 0 0 76px;
+  min-width: 0;
+}
+
+@container (max-width: 280px) {
+  .todo-project-cell {
+    flex-basis: 56px;
+  }
+}
+
+/* Grouped by project, the group's heading names the project, so its rows drop the column. */
+.todo-project-group .todo-project-cell,
+.todo-row[data-inbox] .todo-project-cell:empty {
+  display: none;
+}
+
+.todo-inbox-mark {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  flex: none;
+}
+
+.todo-inbox-mark .item-icon {
+  width: 13px;
+  height: 13px;
+  color: var(--act-brand-linear);
+}
+
+.todo-take {
+  display: flex;
+  gap: 3px;
+  flex: none;
+}
+
+.live-workspace .todo-overlay .todo-take button {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-soft);
+  background: var(--act-control);
+  border-image: var(--pixel-control-border) 5 / 5px / 0 stretch;
+}
+
+.live-workspace .todo-overlay .todo-take button:hover:not(:disabled) {
+  color: var(--act-ink-bright);
+}
+
+.todo-take .act-glyph {
+  width: 8px;
+  height: 8px;
+}
+
+.todo-project-group h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 4px 2px;
+  color: var(--act-ink-dim);
+  font-size: var(--act-fs-meta);
+  font-weight: 600;
+}
+
+.todo-project-group h4 i {
+  width: 8px;
+  height: 8px;
+  background: var(--act-ink-faint);
+}
