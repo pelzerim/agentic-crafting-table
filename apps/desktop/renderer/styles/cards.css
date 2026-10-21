@@ -1201,6 +1201,11 @@
   overflow: hidden;
   white-space: nowrap;
   pointer-events: none;
+  transition: transform 160ms ease-out;
+}
+
+.live-workspace[data-chrome-docked] .map-trail {
+  transform: translateY(-64px);
 }
 
 .map-trail span {
@@ -1209,7 +1214,8 @@
 }
 
 .item-close svg,
-.item-seen svg {
+.item-seen svg,
+.item-keep svg {
   width: 16px;
   height: 16px;
 }
@@ -1330,7 +1336,8 @@
 }
 
 .map-card .item-close,
-.map-card .item-seen {
+.map-card .item-seen,
+.map-card .item-keep {
   height: 30px;
   flex: none;
   display: grid;
@@ -1720,6 +1727,7 @@
     flex: 1 0 100%;
   }
   .expanded .item-seen,
+  .expanded .item-keep,
   .expanded .item-close {
     order: 1;
   }

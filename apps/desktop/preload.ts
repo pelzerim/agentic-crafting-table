@@ -58,6 +58,8 @@ const bridge: DesktopBridge = {
   attentionHistory: (offset = 0, limit = 10) => invoke('attention.history', { offset, limit }),
   standupOpen: request => invoke('standup.open', request),
   standupStatus: () => invoke('standup.status', {}),
+  updatesStatus: () => invoke('updates.status'),
+  updatesCheck: () => invoke('updates.check'),
   remindersSave: list => invoke('reminders.save', { list }),
   remindersDone: id => invoke('reminders.done', { id }),
   remindersSnooze: (id, minutes) => invoke('reminders.snooze', { id, minutes }),

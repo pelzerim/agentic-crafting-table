@@ -57,7 +57,7 @@ export function localArtifactTitle(path: string): string | undefined {
   } catch { return undefined; } finally { if (descriptor !== undefined) closeSync(descriptor); }
 }
 
-type HookFields = { event: string | undefined; notificationType?: string; toolName?: string; recipient?: string; agentId?: string; teammate?: string; taskId?: string; model?: string; previousModel?: string; interrupt?: true; worktree?: true;
+type HookFields = { event: string | undefined; lastMessage?: string; notificationType?: string; toolName?: string; recipient?: string; agentId?: string; teammate?: string; taskId?: string; model?: string; previousModel?: string; interrupt?: true; worktree?: true;
   backgroundTasks?: { id: string; type: string; status?: string; name?: string }[]; launched?: { id: string; kind: 'subagent' }; artifact?: ReturnType<typeof publishedArtifact> };
 
 /** Fields of a Claude Code hook payload that the table uses. Turns inside a
@@ -68,7 +68,8 @@ type HookFields = { event: string | undefined; notificationType?: string; toolNa
  * waits, so its tool starting and TeammateIdle are what tell the two apart. These
  * are forwarded without any of their content. So are the signals the item's sheep reads (AGENT-07e): a subagent starting,
  * compaction, a failed or denied tool, a task, a model switch. Only the tool's name, a task or model id, the teammate a
- * message goes to and two flags leave the session: no other input, error text, reason, subject or path. */
+ * message goes to and two flags leave the session: no other input, error text, reason, subject or path. The one
+ * text that does is the assistant's last message on Stop, bounded, for the line its Needs me row shows. */
 export function hookFields(event: Input, nativeSessionId: string): HookFields | undefined {
   if (event.session_id !== nativeSessionId) return;
   const name = text(event.hook_event_name), agentId = text(event.agent_id);
@@ -89,8 +90,9 @@ export function hookFields(event: Input, nativeSessionId: string): HookFields | 
   const recipient = to && TEAMMATE_NAME.test(to) ? to : undefined;
   const taskId = name === 'TaskCreated' || name === 'TaskCompleted' ? limited(event.task_id) : undefined;
   const model = name === 'SessionStart' ? limited(event.model) : name === 'PostModelSwitch' ? limited(event.to_model) : undefined, previousModel = name === 'PostModelSwitch' ? limited(event.from_model) : undefined;
+  const lastMessage = name === 'Stop' ? text(event.last_assistant_message)?.slice(0, 2000) : undefined;
   return {
-    event: name, ...(text(event.notification_type) ? { notificationType: text(event.notification_type) } : {}), ...(text(event.tool_name) ? { toolName: text(event.tool_name) } : {}), ...(recipient ? { recipient } : {}),
+    event: name, ...(lastMessage ? { lastMessage } : {}), ...(text(event.notification_type) ? { notificationType: text(event.notification_type) } : {}), ...(text(event.tool_name) ? { toolName: text(event.tool_name) } : {}), ...(recipient ? { recipient } : {}),
     ...(name === 'SubagentStop' && agentId ? { agentId } : {}), ...(backgroundTasks ? { backgroundTasks } : {}), ...(launched ? { launched: { id: launched, kind: 'subagent' as const } } : {}),
     ...(artifact ? { artifact } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(previousModel ? { previousModel } : {}),
     ...(name === 'PostToolUseFailure' && event.is_interrupt === true ? { interrupt: true as const } : {}), ...(WORKTREE.test(text(event.cwd) ?? '') ? { worktree: true as const } : {}),

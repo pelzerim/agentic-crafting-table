@@ -73,8 +73,8 @@ export function attentionNote(text: string | undefined): string | undefined {
 }
 const unread = (node: AttentionNode) => node.attentionSeenVersion === undefined || node.attentionSeenVersion !== (node.attentionVersion ?? 0);
 const isReason = (value: unknown): value is AttentionReason => typeof value === 'string' && Object.hasOwn(attentionReasons, value);
-function signals(node: AttentionNode) {
-  if (!unread(node)) return [];
+function signals(node: AttentionNode, seen = false) {
+  if (!seen && !unread(node)) return [];
   const all = [{ reason: node.attention, note: node.attentionNote }, ...Object.entries(node.attentionSources ?? {}).map(([source, reason]) => ({ reason, note: node.attentionNotes?.[source] }))];
   return all.filter((signal): signal is { reason: AttentionReason; note: string | undefined } => isReason(signal.reason));
 }
@@ -85,7 +85,7 @@ export function nodeAttentionReasons(node: AttentionNode): AttentionReason[] {
 /** Notes and details of unread signals across nodes (aliases), in reason order. */
 export function attentionDetails(nodes: readonly AttentionNode[]) {
   const order = Object.keys(attentionReasons) as AttentionReason[];
-  const all = nodes.flatMap(signals).sort((a, b) => order.indexOf(a.reason) - order.indexOf(b.reason));
+  const all = nodes.flatMap(node => signals(node)).sort((a, b) => order.indexOf(a.reason) - order.indexOf(b.reason));
   const noted = new Set(all.filter(signal => signal.note).map(signal => signal.reason));
   return { notes: [...new Set(all.flatMap(signal => signal.note ? [signal.note] : []))],
     details: [...new Set(all.filter(signal => signal.note || !noted.has(signal.reason)).map(signal => signal.note ?? attentionReasons[signal.reason]))] };
@@ -97,6 +97,21 @@ export function attentionReceipt(nodes: readonly AttentionNode[], id: string) {
   const target = nodes.find(node => node.id === id);
   return { id, versions: Object.fromEntries(nodes.filter(node => target && (node.id === id || target.resourceId && node.resourceId === target.resourceId))
     .filter(node => nodeAttentionReasons(node).length).map(node => [node.id, node.attentionVersion ?? 0])) };
+}
+
+/** The tier a receipt would bring back, while every cycle it names is unchanged and still has a reason;
+ * undefined once the item moved on, so an open that was acknowledged cannot be un-seen by mistake. */
+export function attentionRestorable(nodes: readonly AttentionNode[], receipt: { id: string; versions: Record<string, number> }): { tier: AttentionTier } | undefined {
+  const named = Object.entries(receipt.versions);
+  if (!named.length) return undefined;
+  const reasons = new Set<AttentionReason>();
+  for (const [id, version] of named) {
+    const node = nodes.find(node => node.id === id);
+    if (!node || (node.attentionVersion ?? 0) !== version) return undefined;
+    for (const signal of signals(node, true)) reasons.add(signal.reason);
+  }
+  const tier = attentionTier([...reasons]);
+  return tier ? { tier } : undefined;
 }
 
 /** The tier one node shows on its own card, with its reason in words and since when. */

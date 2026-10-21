@@ -172,7 +172,7 @@ export class TriageCoordinator {
       if (!dirty) return;
       const envelope: CommandEnvelope = { commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'provider', id: connection.id }, commands };
       try {
-        this.store.commitObservation(ledger(connection.id), saved.revision, { ...saved.value, entries: [...entries.values()] }, commands.length ? { envelope, reduce: state => reduceCommands(state, commands, envelope.expectedRevision, this.control.registry, this.store.readMapSizes(), envelope.actor) } : undefined);
+        this.store.commitObservation(ledger(connection.id), saved.revision, { ...saved.value, entries: [...entries.values()] }, commands.length ? { envelope, reduce: state => reduceCommands(state, commands, envelope.expectedRevision, this.control.registry, this.store.readMapLayout(), envelope.actor) } : undefined);
         if (commands.length) await this.changed(); return;
       } catch (error) { if (!['REVISION_CONFLICT', 'OBSERVATION_CONFLICT'].includes((error as { code?: string }).code ?? '')) throw error; }
     }

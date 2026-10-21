@@ -39,7 +39,9 @@ post-install note so `nvm` works in a new shell. In the repository directory run
 `npm --version` starts with `11.`.
 
 **3. The repository.** If this directory is not already the ACT checkout, clone
-`https://github.com/pelzerim/agentic-crafting-table.git` and work in it. Then `npm ci`. Check it ends without errors
+`https://github.com/pelzerim/agentic-crafting-table.git` and work in it. Check out the
+newest release: `git checkout "$(git tag --list 'v*' --sort=-v:refname | head -1)"`
+(check `git describe --tags` prints a `vX.Y.Z`). Then `npm ci`. Check it ends without errors
 (Electron is downloaded and native modules are rebuilt during install; that takes a minute).
 
 **4. Run from source.** `npm run dev`. Tell me to look for a window that says
@@ -86,4 +88,6 @@ security find-generic-password -s dev.agentcraftingtable.slack -a default >/dev/
 
 Then tell me to open the app, create a project with a working directory, start an
 **Agent session** with Claude, and go to **Settings → Connections** to connect the
-accounts we set up. Give me the report from rule 6.
+accounts we set up. Tell me that the app shows a notice when a newer release exists and
+that updating is `npm run update` in this checkout with the app quit. Give me the report
+from rule 6.

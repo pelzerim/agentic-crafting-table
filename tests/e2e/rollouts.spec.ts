@@ -88,10 +88,10 @@ test('Rollout imports a job URL, syncs map approval/failure/completion, renders 
     await expect(page.locator('.act-toast')).toContainText('Web / Release');
     await card().click(); await expect(page.locator('.view-meta')).toContainText('attempt 2');
     // A passed rollout is Finished: listed in Needs me, not counted.
-    await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toHaveAttribute('title', 'Needs me · 1 finished');
+    await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toHaveAttribute('title', 'Needs me · 1 finished · Right-click to hold open');
     await page.getByRole('button', { name: 'Needs me', exact: true }).click();
     await page.getByRole('button', { name: /^Dismiss .* from Needs me$/ }).click();
-    await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toHaveAttribute('title', 'Needs me · nothing needs me');
+    await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toHaveAttribute('title', 'Needs me · nothing needs me · Right-click to hold open');
     await page.getByRole('button', { name: 'Close needs me', exact: true }).click();
     providers.fail(401); await page.getByRole('button', { name: 'Refresh', exact: true }).click();
     await expect(page.locator('.rollout-error')).toContainText('Couldn’t refresh from GitHub.'); await expect(page.locator('.view-freshness')).toHaveText(/^Saved copy · /);

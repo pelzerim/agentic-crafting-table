@@ -9,3 +9,14 @@ export function splitReference(title: string): { reference: string; rest: string
   const match = title.trim().match(LEADING), rest = match?.[2].trim();
   return match && rest ? { reference: match[1], rest } : undefined;
 }
+
+/** What a card shows as its tag and title: a leading ticket reference first, else the short reference the
+ * item's type declares ("#48" for a pull request), trimmed off the end of a placeholder title such as
+ * "owner/repo #48". A card with nothing left for its title keeps the title whole. */
+export function cardReference(title: string, declared: string | undefined): { reference: string; rest: string } | undefined {
+  const split = splitReference(title);
+  if (split) return split;
+  if (!declared || declared.includes('—')) return undefined;
+  const trimmed = title.trim(), rest = trimmed.endsWith(declared) ? trimmed.slice(0, -declared.length).trim() : trimmed;
+  return rest ? { reference: declared, rest } : undefined;
+}

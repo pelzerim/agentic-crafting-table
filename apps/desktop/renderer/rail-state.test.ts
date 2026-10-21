@@ -29,3 +29,14 @@ test('a rail slot opens on hover only after the pointer rests on it, never while
   dwell.leave(); dwell.enter(10, 10); dwell.click(); t.mock.timers.tick(1000); assert.equal(opened, 1, 'a click decides for this visit');
   dwell.leave(); dwell.enter(10, 10); dwell.dispose(); t.mock.timers.tick(1000); assert.equal(opened, 1);
 });
+
+test('a held tool stays open through every close until it is released; other tools open over it and hand it back', () => {
+  const rail = new RailState();
+  rail.hold('todos'); assert.deepEqual(rail.snapshot(), { open: 'todos', pinned: 'todos', held: 'todos' });
+  rail.close('todos'); rail.unpin('todos'); rail.clear();
+  assert.deepEqual(rail.snapshot(), { open: 'todos', pinned: 'todos', held: 'todos' }, 'Escape, a map click or travel keep it');
+  rail.pin('inbox'); assert.deepEqual(rail.snapshot(), { open: 'inbox', pinned: 'inbox', resume: 'todos', held: 'todos' });
+  rail.close('inbox'); assert.deepEqual(rail.snapshot(), { open: 'todos', pinned: 'todos', held: 'todos' }, 'closing the other returns the held one');
+  rail.hold('inbox'); assert.deepEqual(rail.snapshot(), { open: 'inbox', pinned: 'inbox', held: 'inbox' }, 'holding another tool moves the hold');
+  rail.hold('inbox'); assert.deepEqual(rail.snapshot(), {}, 'holding the held tool again releases and closes it');
+});

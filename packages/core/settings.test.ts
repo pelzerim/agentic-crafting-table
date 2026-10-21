@@ -95,3 +95,9 @@ test('saved menus default to none, keep ids per item type (also of types not ins
     assert.equal(settingsSchema.safeParse({ menus: { [key]: value } }).success, false, JSON.stringify(value).slice(0, 60));
   for (const key of ['order', 'hidden'] as const) assert.equal(settingsSchema.safeParse({ menus: { [key]: { note: Array(201).fill('open') } } }).success, false);
 });
+
+test('snapping to the grid is off by default and only accepts a boolean', () => {
+  assert.equal(settingsSchema.parse({}).snapToGrid, false);
+  assert.equal(settingsSchema.parse({ snapToGrid: true }).snapToGrid, true);
+  for (const value of ['yes', 1, null]) assert.equal(settingsSchema.safeParse({ snapToGrid: value }).success, false, String(value));
+});

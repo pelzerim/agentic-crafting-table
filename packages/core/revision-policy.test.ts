@@ -28,7 +28,7 @@ test('every command type is classified, and nothing else is', () => {
 test('the classification is the reviewed one', () => {
   const kind = (type: string) => { const free = COMMAND_REVISION_RULES[type as WorkspaceCommand['type']].free; return typeof free === 'function' ? 'conditional' : free ? 'free' : 'required'; };
   const grouped = { free: commandTypes.filter(type => kind(type) === 'free'), conditional: commandTypes.filter(type => kind(type) === 'conditional'), required: commandTypes.filter(type => kind(type) === 'required') };
-  assert.deepEqual(grouped.free, ['attention.acknowledge', 'item.add', 'item.create', 'node.title.generated', 'node.todo.label', 'project.create', 'todo.context']);
+  assert.deepEqual(grouped.free, ['attention.acknowledge', 'attention.restore', 'item.add', 'item.create', 'node.title.generated', 'node.todo.label', 'project.create', 'todo.context']);
   assert.deepEqual(grouped.conditional, ['attention.set', 'link.save', 'node.attach', 'node.todo', 'node.update', 'todo.save']);
   assert.deepEqual(grouped.required, ['item.bind', 'item.convert', 'item.resolve', 'item.update', 'layout.repair', 'link.remove', 'node.archive', 'node.below', 'node.complete', 'node.delete', 'node.hide',
     'node.move', 'node.reopen', 'node.resize', 'node.restore', 'node.show', 'node.surface', 'nodes.action', 'nodes.move', 'nodes.send', 'project.mute', 'todo.archive', 'todo.dismiss', 'todo.move', 'todo.place', 'todo.remove', 'todo.restore',

@@ -359,6 +359,9 @@ export interface ResourcePluginViews {
 export interface ResourceMenuGroup {
   id: string; label: string;
   children: readonly { id: string; label: string; description?: string }[];
+  /** Offered to a selection of items that all have this group, as `label` with the named children only; a pick
+   * runs that child once per selected item. */
+  selection?: { label: string; children: readonly string[] };
   /** Provider-defined choices; loading never executes the apply action. */
   /** With `runtime`, load/apply are operations of that workspace runtime action
    * instead of provider resource actions. */

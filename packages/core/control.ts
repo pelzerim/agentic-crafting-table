@@ -1,7 +1,8 @@
 import { TODO_CONTEXT_LIMIT, checklistContext, checklistContextFields, groupWorkspaceTodos, mapTodoContext, mapTodoContextFields, mapTodoNode, todoEntries, todoList } from '../../src/graph/todos.ts';
 import { indicatorsSchema } from '../../src/resource-plugins/indicators.ts';
 import { mapDimensionsSchema, resolveMapSize } from './item-map-sizes.ts';
-import type { ItemMapSizes } from './item-map-sizes.ts';
+import type { MapLayout } from '../../src/graph/snap.ts';
+import { snapPosition } from '../../src/graph/snap.ts';
 import * as z from 'zod/v4';
 import { resourceCardinality } from '../../src/graph/resource-links.ts';
 import { ITEM_SIZES, existingRelationship, saveLink } from '../../src/graph/graph.ts';
@@ -69,6 +70,8 @@ const node = z.object({
   bell: z.literal(true).optional(), pen: z.literal(true).optional(),
   moment: moment.optional(),
   summary: z.string().max(4000).default(''),
+  /** The last line an agent said when its turn ended, shown in its Needs me row (STATE-02). */
+  lastLine: z.string().min(1).max(200).optional(),
   workingDirectory: z.string().max(4096).optional(),
   color: projectColorSchema.optional(),
   activity: activity.default('unknown'),
@@ -111,6 +114,8 @@ export const viewSchema = z.object({
   inboxPanel: z.object({ width: z.number().min(260).max(900).optional(), height: z.number().min(160).max(1000).optional() }).optional(),
   attentionPanel: z.object({ width: z.number().min(260).max(900).optional(), height: z.number().min(160).max(1000).optional() }).optional(),
   remindersPanel: z.object({ width: z.number().min(260).max(900).optional(), height: z.number().min(160).max(1000).optional() }).optional(),
+  /** Update offers the person closed, by subject (`app` or `plugin:<id>`) and the tag dismissed; a newer tag is offered again. */
+  dismissedUpdates: z.record(z.string().regex(/^(app|plugin:[A-Za-z0-9._-]{1,80})$/), z.string().max(80)).optional(),
 });
 export const stateSchema = z.object({
   version: z.literal(1), revision: z.number().int().nonnegative(),
@@ -139,7 +144,8 @@ const otherCommands = [
   z.object({ type: z.literal('item.convert'), id, pluginId: id, connectionId: id.optional(), keepTitle: z.boolean().optional() }),
   z.object({ type: z.literal('attention.set'), id, source: id, reason: attentionReason.nullable(), note: attentionNoteInput.optional(), eventId: id.optional() }),
   z.object({ type: z.literal('attention.acknowledge'), id, versions: z.record(id, z.number().int().nonnegative()) }),
-  z.object({ type: z.literal('node.update'), id, indicators: indicatorsSchema.optional(), title: title.optional(), summary: z.string().max(4000).optional(), workingDirectory: z.string().max(4096).optional(), color: projectColorSchema.optional(), activity: activity.optional(), attention: attention.optional(), attentionNote: attentionNoteInput.optional(),
+  z.object({ type: z.literal('attention.restore'), id, versions: z.record(id, z.number().int().nonnegative()) }),
+  z.object({ type: z.literal('node.update'), id, indicators: indicatorsSchema.optional(), title: title.optional(), summary: z.string().max(4000).optional(), lastLine: z.string().min(1).max(200).nullable().optional(), workingDirectory: z.string().max(4096).optional(), color: projectColorSchema.optional(), activity: activity.optional(), attention: attention.optional(), attentionNote: attentionNoteInput.optional(),
     helpers: z.number().int().min(0).max(999).optional().describe('How many helpers (subagents, teammates) the item has busy right now; 0 clears it. Kept only while the item is working.'),
     waiting: z.boolean().optional().describe('The item itself only waits on its busy helpers. Kept only while it is working and has helpers.'),
     pose: z.enum([...POSES, 'none']).optional().describe('What the item itself is doing or held by; none clears it. Kept only while its activity and attention allow it.'),
@@ -299,7 +305,7 @@ export function receiptRevision(input: string | undefined): number | undefined {
   catch { return undefined; }
 }
 export interface WorkspaceStore {
-  readMapSizes?(): ItemMapSizes;
+  readMapLayout?(): MapLayout;
   read(): Promise<WorkspaceState>;
   update(change: (state: WorkspaceState) => WorkspaceState): Promise<WorkspaceState>;
   commit?(envelope: CommandEnvelope, change: (state: WorkspaceState) => WorkspaceState): Promise<CommandResult>;
@@ -343,12 +349,12 @@ export class WorkspaceControl {
   read() { return this.store.read(); }
   async apply(input: unknown, expectedRevision: number) {
     const command = commandSchema.parse(input);
-    return this.store.update(state => reduceCommands(state, [command], expectedRevision, this.registry, this.store.readMapSizes?.() ?? {}));
+    return this.store.update(state => reduceCommands(state, [command], expectedRevision, this.registry, this.store.readMapLayout?.()));
   }
   async dispatch(input: unknown): Promise<CommandResult> {
     const envelope = envelopeSchema.parse(input);
     if (!this.store.commit) throw new Error('This legacy store does not support durable command envelopes');
-    const result = await this.store.commit(envelope, state => reduceCommands(state, envelope.commands, envelope.expectedRevision, this.registry, this.store.readMapSizes?.() ?? {}, envelope.actor));
+    const result = await this.store.commit(envelope, state => reduceCommands(state, envelope.commands, envelope.expectedRevision, this.registry, this.store.readMapLayout?.(), envelope.actor));
     const alreadyOnMap = itemsAlreadyOnMap(result.state, envelope, this.registry);
     return alreadyOnMap.length ? { ...result, alreadyOnMap } : result;
   }
@@ -358,11 +364,11 @@ export class WorkspaceControl {
 const PLACEMENT = new Set<WorkspaceCommand['type']>(['node.move', 'nodes.move', 'node.attach', 'node.resize']);
 
 /** Reduce a whole command batch against an isolated draft; failures never mutate input. The user's own batch of placements lands on the current revision instead of failing on a stale one. */
-export function reduceCommands(before: WorkspaceState, commands: readonly WorkspaceCommand[], expectedRevision: number, registry: ResourcePluginRegistry, sizes: ItemMapSizes = {}, actor?: CommandEnvelope['actor']): WorkspaceState {
+export function reduceCommands(before: WorkspaceState, commands: readonly WorkspaceCommand[], expectedRevision: number, registry: ResourcePluginRegistry, layout: MapLayout = { sizes: {} }, actor?: CommandEnvelope['actor']): WorkspaceState {
   const placement = actor?.kind === 'user' && commands.every(command => PLACEMENT.has(command.type));
   if (before.revision !== expectedRevision && !placement) throw new RevisionConflict(expectedRevision, before.revision);
   const state = structuredClone(before), standIns = new Map<string, string>();
-  for (const command of commands) applyToDraft(state, redirected(command, standIns), registry, sizes, actor, standIns);
+  for (const command of commands) applyToDraft(state, redirected(command, standIns), registry, layout, actor, standIns);
   // A count of busy helpers describes working: whatever ends that drops it in the same revision.
   for (const node of state.nodes) {
     if (node.helpers !== undefined && node.activity !== 'working') delete node.helpers;
@@ -389,7 +395,8 @@ function stampWriter(state: WorkspaceState, registry: ResourcePluginRegistry, pl
   return next;
 }
 
-function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry: ResourcePluginRegistry, sizes: ItemMapSizes, actor?: CommandEnvelope['actor'], standIns = new Map<string, string>()): void {
+function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry: ResourcePluginRegistry, layout: MapLayout, actor?: CommandEnvelope['actor'], standIns = new Map<string, string>()): void {
+      const { sizes, snap } = layout;
       const refusal = actor?.kind === 'agent' ? agentCommandRefusal(command) : undefined;
       if (refusal) throw new Error(refusal);
       const find = (key: string) => {
@@ -411,10 +418,10 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
       /** A spot chosen in context is already clear by the shared layout rule, where a populated project's anchor is no obstacle. */
       const place = (created: WorkspaceState['nodes'][number], position: { x: number; y: number } | undefined, requested: { x: number; y: number } | undefined) => {
         if (!position) throw new Error(POSITION_REQUIRED);
-        created.position = position;
+        created.position = snapPosition(position, snap);
         const others = state.nodes.filter(node => isDrawn(node, state.nodes)).map(footprint);
         state.nodes.push(created);
-        created.position = freePosition(footprint(created), position === requested ? others : layoutFootprints(state.nodes, state.resources, registry, sizes).filter(box => box.id !== created.id));
+        created.position = freePosition(footprint(created), position === requested ? others : layoutFootprints(state.nodes, state.resources, registry, sizes).filter(box => box.id !== created.id), ITEM_GAP, snap);
       };
       /** The nodes a creation is placed beside: an agent's links and its own node, or what the host named for it. */
       const anchorsOf = (near: readonly string[] | undefined, linked: readonly string[] = []) => actor?.kind === 'agent' ? creationAnchors(linked, actor.id) : near;
@@ -466,19 +473,19 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
       /** A list-only to-do becomes one map to-do; an imported one also gains the item it was imported for. Returns the new node ids. */
       const placeChecklist = (entry: TodoEntry, nodeId: string, resourceId: string, position: { x: number; y: number }, projectId?: string) => {
         const record = state.todos.find(todo => todo.id === entry.id)!, ids = [nodeId];
-        applyToDraft(state, { type: 'item.add', id: nodeId, resourceId, pluginId: 'workspace.todo', title: entry.title, data: {}, position, projectId }, registry, sizes);
+        applyToDraft(state, { type: 'item.add', id: nodeId, resourceId, pluginId: 'workspace.todo', title: entry.title, data: {}, position, projectId }, registry, layout);
         const created = find(nodeId);
         if (entry.todoOrder !== undefined && entry.horizon !== 'inbox') created.todoOrder = entry.todoOrder;
         if (record.horizon === 'next' || record.horizon === 'later') created.todoHorizon = record.horizon;
         if (record.touchedAt) created.todoTouchedAt = record.touchedAt;
         Object.assign(created, mapTodoContextFields(checklistContext(record)));
-        if (entry.completed) applyToDraft(state, { type: 'node.complete', id: created.id }, registry, sizes);
-        for (const [index, targetId] of entry.nodeIds.entries()) applyToDraft(state, { type: 'link.save', link: { id: `${nodeId}:todo:${index}`, sourceId: created.id, targetId, kind: 'reference', label: '' } }, registry, sizes);
+        if (entry.completed) applyToDraft(state, { type: 'node.complete', id: created.id }, registry, layout);
+        for (const [index, targetId] of entry.nodeIds.entries()) applyToDraft(state, { type: 'link.save', link: { id: `${nodeId}:todo:${index}`, sourceId: created.id, targetId, kind: 'reference', label: '' } }, registry, layout);
         if (record.triage) {
           const item = record.triage.item, itemId = `${nodeId}:item`;
           applyToDraft(state, { type: 'item.add', id: itemId, resourceId: `${resourceId}:item`, pluginId: item.pluginId, title: item.title, data: item.data, ...(item.connectionId ? { connectionId: item.connectionId } : {}), projectId,
-            position: { x: created.position.x, y: created.position.y + 2 * ITEM_GAP } }, registry, sizes);
-          applyToDraft(state, { type: 'link.save', link: { id: `${nodeId}:todo:item`, sourceId: created.id, targetId: itemId, kind: 'reference', label: '' } }, registry, sizes);
+            position: { x: created.position.x, y: created.position.y + 2 * ITEM_GAP } }, registry, layout);
+          applyToDraft(state, { type: 'link.save', link: { id: `${nodeId}:todo:item`, sourceId: created.id, targetId: itemId, kind: 'reference', label: '' } }, registry, layout);
           created.todoTicketId = itemId; ids.push(itemId);
         }
         // Conversion replaces the checklist record, not the task or its attachments.
@@ -592,6 +599,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
         case 'node.update': {
           const target = find(command.id);
           if (command.workingDirectory !== undefined && target.resourceId) throw new Error('Working directory defaults belong to projects; existing session directories are immutable');
+          if (command.lastLine === null) delete target.lastLine; else if (command.lastLine !== undefined) target.lastLine = command.lastLine;
           if (command.color !== undefined && target.resourceId) throw new Error('Neighborhood colors belong to projects');
           if (command.color !== undefined) target.color = command.color.toLowerCase();
           if (command.attention && command.attention !== 'none' && command.attention !== target.attention) { target.attentionVersion = (target.attentionVersion ?? 0) + 1; target.attentionAt = new Date().toISOString(); }
@@ -649,9 +657,16 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           }
           break;
         }
+        case 'attention.restore': {
+          const target = find(command.id);
+          for (const node of state.nodes.filter(node => node.id === target.id || target.resourceId && node.resourceId === target.resourceId)) {
+            if (Object.hasOwn(command.versions, node.id) && command.versions[node.id] === (node.attentionVersion ?? 0)) delete node.attentionSeenVersion;
+          }
+          break;
+        }
         case 'node.resize': {
           if (command.dimensions) {
-            state.nodes = resizeItem(state.nodes, state.resources, registry, { id: command.id, dimensions: command.dimensions, position: command.position }, sizes);
+            state.nodes = resizeItem(state.nodes, state.resources, registry, { id: command.id, dimensions: command.dimensions, position: command.position }, sizes, snap);
             break;
           }
           const target = find(command.id);
@@ -664,12 +679,12 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           delete target.mapDimensions;
           const after = itemFootprint(target, state.resources, registry, sizes);
           if (!isArchived(target, state.nodes) && (after.width > before.width || after.height > before.height)) {
-            state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: target.id, position: target.position }], sizes);
+            state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: target.id, position: target.position }], sizes, snap);
           }
           break;
         }
         case 'node.move': {
-          state.nodes = moveItems(state.nodes, state.resources, registry, [command], sizes);
+          state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: command.id, position: snapPosition(command.position, snap) }], sizes, snap);
           break;
         }
         case 'node.attach': {
@@ -680,11 +695,11 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           break;
         }
         case 'nodes.move': {
-          state.nodes = moveItems(state.nodes, state.resources, registry, command.positions, sizes);
+          state.nodes = moveItems(state.nodes, state.resources, registry, command.positions, sizes, snap);
           break;
         }
         case 'layout.repair': {
-          state.nodes = repairLayout(state.nodes, state.resources, registry, sizes);
+          state.nodes = repairLayout(state.nodes, state.resources, registry, sizes, snap);
           break;
         }
         case 'nodes.action': {
@@ -692,7 +707,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           if (command.action === 'below') { sendBelowDraft(command.ids); break; }
           for (const id of command.ids) applyToDraft(state, command.action === 'add-todo' || command.action === 'remove-todo'
             ? { type: 'node.todo', id, enabled: command.action === 'add-todo' }
-            : { type: `node.${command.action}`, id }, registry, sizes);
+            : { type: `node.${command.action}`, id }, registry, layout);
           break;
         }
         case 'node.archive': state.nodes = archiveNode(state.nodes, command.id, new Date().toISOString()); break;
@@ -719,7 +734,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           // Placed in context like a new item (MAP-14), clear of what took its place while it was hidden.
           const others = state.nodes.filter(node => node !== target), context = creationContext(others, command.near ?? [], target.projectId);
           const position = context.anchor || context.projectId ? itemPlacement(others, footprint, context, footprint(target)) : undefined;
-          target.position = freePosition({ ...footprint(target), ...(position ?? {}) }, layoutFootprints(others, state.resources, registry, sizes));
+          target.position = freePosition({ ...footprint(target), ...snapPosition(position ?? target.position, snap) }, layoutFootprints(others, state.resources, registry, sizes), ITEM_GAP, snap);
           break;
         }
         case 'node.surface': {
@@ -730,19 +745,19 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           const target = find(command.id);
           if (target.resourceId) {
             const obstacles = layoutFootprints(state.nodes.filter(node => node.id !== target.id), state.resources, registry, sizes);
-            target.position = freePosition(itemFootprint(target, state.resources, registry, sizes), obstacles);
-          } else state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: target.id, position: target.position }], sizes);
+            target.position = freePosition({ ...itemFootprint(target, state.resources, registry, sizes), ...snapPosition(target.position, snap) }, obstacles, ITEM_GAP, snap);
+          } else state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: target.id, position: snapPosition(target.position, snap) }], sizes, snap);
           break;
         }
         case 'node.restore':
           state.nodes = restoreNode(state.nodes, command.id);
           if (!isDrawn(find(command.id), state.nodes)) break; // Returns to Undermap, where it was archived from, or stays hidden.
-          state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: command.id, position: find(command.id).position }], sizes);
+          state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: command.id, position: find(command.id).position }], sizes, snap);
           break;
         case 'node.complete': find(command.id).completedAt ??= new Date().toISOString(); touchNode(find(command.id)); break;
         case 'node.reopen':
           delete find(command.id).completedAt; delete find(command.id).todoDoneAt; touchNode(find(command.id));
-          state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: command.id, position: find(command.id).position }], sizes);
+          state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: command.id, position: find(command.id).position }], sizes, snap);
           break;
         case 'node.delete': {
           const target = find(command.id);
@@ -808,8 +823,8 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           if (command.projectId) project(command.projectId);
           if (entry.source === 'map') {
             // A move, as when dragging the item on the map: only a drop inside another project transfers it.
-            if (command.projectId && command.projectId !== find(entry.nodeId!).projectId) applyToDraft(state, { type: 'node.attach', id: entry.nodeId!, projectId: command.projectId }, registry, sizes);
-            applyToDraft(state, { type: 'node.move', id: entry.nodeId!, position: command.position }, registry, sizes);
+            if (command.projectId && command.projectId !== find(entry.nodeId!).projectId) applyToDraft(state, { type: 'node.attach', id: entry.nodeId!, projectId: command.projectId }, registry, layout);
+            applyToDraft(state, { type: 'node.move', id: entry.nodeId!, position: command.position }, registry, layout);
           } else placeChecklist(entry, command.nodeId, command.resourceId, command.position, command.projectId);
           break;
         }
@@ -870,13 +885,13 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
               if (record.horizon === 'inbox') { record.horizon = 'next'; delete record.dismissed; }
             } else if (target && !entry.completed) {
               // An item kept in the list completes in the list only; its provider is never written from here.
-              if (target.inTodoList) target.todoDoneAt = new Date().toISOString(); else applyToDraft(state, { type: 'node.complete', id: target.id }, registry, sizes, actor);
+              if (target.inTodoList) target.todoDoneAt = new Date().toISOString(); else applyToDraft(state, { type: 'node.complete', id: target.id }, registry, layout, actor);
             }
           } else {
             if (entry.providerDone) throw new Error('This item is done in its provider. Reopen it on the map to bring it back.');
             if (record) { if (record.completed) { record.completed = false; delete record.doneAt; } record.horizon = command.horizon; delete record.dismissed; }
             else {
-              if (target!.todoDoneAt) delete target!.todoDoneAt; else if (target!.completedAt) applyToDraft(state, { type: 'node.reopen', id: target!.id }, registry, sizes, actor);
+              if (target!.todoDoneAt) delete target!.todoDoneAt; else if (target!.completedAt) applyToDraft(state, { type: 'node.reopen', id: target!.id }, registry, layout, actor);
               find(target!.id).todoHorizon = command.horizon;
             }
             if (command.index !== undefined || entry.horizon !== command.horizon) fileTodo(entry, command.horizon, command.index ?? Infinity);

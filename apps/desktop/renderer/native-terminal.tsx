@@ -89,9 +89,9 @@ class NativeChannel implements TerminalChannel {
 
 type TerminalOptions = NativeTerminalOptions;
 
-function SessionMenu({ open, setOpen, resume, resumeDisabled, prompt, promptDisabled, message }: {
+function SessionMenu({ open, setOpen, resume, resumeDisabled, prompt, promptDisabled, message, stop, stopDisabled }: {
   open: boolean; setOpen(open: boolean): void;
-  resume?(): void; resumeDisabled: boolean; prompt(): void; promptDisabled: boolean; message: string;
+  resume?(): void; resumeDisabled: boolean; prompt(): void; promptDisabled: boolean; message: string; stop(): void; stopDisabled: boolean;
 }) {
   const trigger = useRef<HTMLButtonElement>(null), menu = useRef<HTMLDivElement>(null);
   const close = (focus = false) => { setOpen(false); if (focus) trigger.current?.focus(); };
@@ -125,6 +125,8 @@ function SessionMenu({ open, setOpen, resume, resumeDisabled, prompt, promptDisa
       <button role="menuitem" disabled={resumeDisabled || !resume} onClick={() => { close(true); resume?.(); }}>Resume / reconnect</button>
       <button role="menuitem" disabled={promptDisabled} aria-describedby="agent-prompt-explanation" onClick={() => { close(true); prompt(); }}>Add system prompt</button>
       <p id="agent-prompt-explanation">{message}</p>
+      <hr />
+      <button role="menuitem" className="session-stop" disabled={stopDisabled} onClick={() => { close(true); stop(); }}>Stop session</button>
     </div>, document.body)}
   </>;
 }
@@ -235,6 +237,7 @@ function NativeTerminal({ sessionId, active, options }: { sessionId: string; act
     if (stopNeedsConfirm(session, Boolean(options.agentMenu), activity)) setConfirmStop(true); else stop();
   };
   const state = sessionChip(session?.state, Boolean(session?.stopRequestedAt));
+  const stopDisabled = busy || !session || !['starting', 'running'].includes(session.state) || !!session.stopRequestedAt;
   const toolbar = <div className="terminal-status">
       <span className="view-chip terminal-state" data-tone={state.tone}>{state.label}</span>
       {options.launchLabel && <small className="terminal-launch" title="Launch provider and model; the native session may change its model">{options.launchLabel}</small>}
@@ -248,12 +251,13 @@ function NativeTerminal({ sessionId, active, options }: { sessionId: string; act
           resume={options.resume && (() => { void action(options.resume!); })} resumeDisabled={busy}
           prompt={() => { void action(async () => setPromptStatus(await options.prompt!('queue'))); }}
           promptDisabled={busy || !options.prompt || session?.state !== 'running' || !!session.stopRequestedAt || promptStatus?.state === 'queued' || promptStatus?.state === 'unavailable'}
-          message={options.prompt ? promptStatus?.message ?? 'Adds the workbench guide and current project context with your next prompt. Claude’s own system instructions stay intact.' : 'Adding context to a running session is currently available for Claude.'} />
+          message={options.prompt ? promptStatus?.message ?? 'Adds the workbench guide and current project context with your next prompt. Claude’s own system instructions stay intact.' : 'Adding context to a running session is currently available for Claude.'}
+          stop={() => { void requestStop(); }} stopDisabled={stopDisabled} />
       </> : <>
         {options.resume && <button disabled={busy || (options.resumeWhenStopped && (!session || ['running', 'starting'].includes(session.state)))} onClick={() => { void action(options.resume!); }}>{options.resumeLabel ?? 'Resume / reconnect'}</button>}
+        <span className="terminal-stop-divider" aria-hidden="true" />
+        <button className="session-stop" aria-busy={busy || undefined} disabled={stopDisabled} onClick={() => { void requestStop(); }}>Stop session</button>
       </>}
-      <span className="terminal-stop-divider" aria-hidden="true" />
-      <button className="session-stop" aria-busy={busy || undefined} disabled={busy || !session || !['starting', 'running'].includes(session.state) || !!session.stopRequestedAt} onClick={() => { void requestStop(); }}>Stop session</button>
     </div>;
   return <div className="native-terminal" data-session-state={session?.state ?? 'connecting'}>
     {options.toolbar ? active && createPortal(toolbar, options.toolbar) : toolbar}

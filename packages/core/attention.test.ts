@@ -118,3 +118,21 @@ test('attention notes follow their source: set, restated, replaced, cleared and 
   assert.equal(state.nodes[0].attentionNote, undefined);
   assert.equal(stateSchema.parse(JSON.parse(JSON.stringify(state))).nodes[0].attentionNotes?.other, 'Rollout finished');
 });
+
+test('attention.restore puts the cycle an open acknowledged back into Needs me; a newer turn or a stale receipt is left alone', async () => {
+  const control = new WorkspaceControl(new MemoryStore());
+  const apply = async (command: unknown) => control.apply(command, (await control.read()).revision);
+  await apply({ type: 'item.add', id: 'a', resourceId: 'resource-a', pluginId: 'github.pull-request', title: 'a', position: { x: 0, y: 0 }, data: { owner: 'fixture', repo: 'repo', number: 1 } });
+  let state = await apply({ type: 'attention.set', id: 'a', source: 'turn', reason: 'input' });
+  const receipt = attentionReceipt(state.nodes, 'a');
+  state = await apply({ type: 'attention.acknowledge', ...receipt });
+  assert.equal(attentionItems(state.nodes).length, 0);
+  state = await apply({ type: 'attention.restore', ...receipt });
+  assert.equal(attentionItems(state.nodes).length, 1, 'the acknowledged cycle is unread again');
+  assert.equal(attentionItems(state.nodes)[0].tier, 'asking');
+  state = await apply({ type: 'attention.acknowledge', ...attentionReceipt(state.nodes, 'a') });
+  state = await apply({ type: 'attention.set', id: 'a', source: 'completion', reason: 'finished', eventId: 'turn-2' });
+  state = await apply({ type: 'attention.acknowledge', ...attentionReceipt(state.nodes, 'a') });
+  state = await apply({ type: 'attention.restore', ...receipt });
+  assert.equal(attentionItems(state.nodes).length, 0, 'a receipt from an older cycle restores nothing');
+});

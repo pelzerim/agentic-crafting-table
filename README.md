@@ -3,7 +3,7 @@
 **Your agents, pull requests, tickets and terminals on one map. Zoom in to work;
 zoom out to see what needs you.**
 
-![A short tour: an agent working in its own view; back out to its project, where agents, pull requests, a ticket, notes and a rollout are linked up; zooming out to the neighbouring projects; zooming out again to the project dashboards with their pull request pipelines](docs/media/demo.gif)
+![One story in 40 seconds: an agent working in its own view; back on the map two pull requests join its project; reviews are triggered from the right-click menu; two findings from one review are sent to the agent; the other pull request is merged from the menu; its rollout appears and a validation passes, with the report; the merged pull request, its rollout and its review are sent to the Undermap together; zooming out to the neighbouring projects and their pipelines](docs/media/demo.gif)
 
 ## Features
 
@@ -62,6 +62,7 @@ or `npm` install and a check, and [the setup prompt](docs/setup-prompt.md) is th
 same thing as a prompt you can hand to your agent.
 
 ```sh
+git checkout "$(git tag --list 'v*' --sort=-v:refname | head -1)"   # the newest release
 npm ci
 npm run dev              # build and start the app
 ```
@@ -73,7 +74,9 @@ npm run package          # stage a build in release/staged
 npm run install:local    # install it (quit the running app first)
 ```
 
-Then launch `release/mac-arm64/Agentic Crafting Table.app`.
+Then launch `release/mac-arm64/Agentic Crafting Table.app`. Releases are tags; the app
+tells you when a newer one exists, and `npm run update` (with the app quit) checks it
+out, builds it and installs it in place.
 
 First steps:
 1. **Create your first project** and give it a working directory.

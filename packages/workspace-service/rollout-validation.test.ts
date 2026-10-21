@@ -363,7 +363,7 @@ const merged = (f: Awaited<ReturnType<typeof fixture>>, data: object = {}) => f.
 ]);
 const listed = async (f: Awaited<ReturnType<typeof fixture>>) => ((await f.run({ operation: 'list' }) as any).validations as any[]).map(view => [view.label, view.agentNodeId, view.scope.attempt, view.automatic === true]);
 
-test('Auto validate: a rollout a pull request discovered is validated once per attempt, by a ready agent connected through that pull request', async () => {
+test('Auto validate without a starter: a rollout a pull request discovered is validated once per attempt, by a ready agent connected through that pull request', async () => {
   const f = await fixture();
   try {
     await merged(f);
@@ -390,7 +390,7 @@ test('Auto validate: a rollout a pull request discovered is validated once per a
   } finally { f.close(); }
 });
 
-test('Auto validate waits for a ready agent on each tick until the run completes, then gives up for that attempt', async () => {
+test('Auto validate without a starter waits for a ready agent on each tick until the run completes, then gives up for that attempt', async () => {
   const f = await fixture();
   try {
     await merged(f);
@@ -531,7 +531,7 @@ test('a restart neither loses nor repeats a stage: the settle is due from the pe
   } finally { f.close(); }
 });
 
-test('a staged stage waits for a ready agent and prefers the agent that validated the previous stage', async () => {
+test('a staged stage without a starter waits for a ready agent and prefers the agent that validated the previous stage', async () => {
   const f = await fixture();
   try {
     staged(f, f.now() - 60_000); await merged(f);
@@ -721,5 +721,68 @@ test('Auto validate counts a chat validation of a stage as covering it', async (
     assert.equal(f.inputs.length, 0, 'live is not asked for again');
     f.tick(10 * 60_000); await f.validations.reconcile();
     assert.deepEqual((await stages(f)).at(-1), ['V2', 'settle', 'requested', true], 'the settle still is');
+  } finally { f.close(); }
+});
+
+/** The fixture's run as a phased rollout: staging, then two production phases behind the same gate. */
+function phased(f: Awaited<ReturnType<typeof fixture>>, done: number, gated: boolean, completed = false) {
+  const names = ['apply (staging)', 'apply (prod-1)', 'apply (prod-2)'];
+  f.observation.jobs = names.map((name, index) => ({ id: 301 + index, run_id: 101, name, status: index < done ? 'completed' : index === done && gated ? 'waiting' : index === done ? 'in_progress' : 'queued',
+    conclusion: index < done ? 'success' : null, started_at: '2026-09-30T13:00:00Z', completed_at: index < done ? '2026-09-30T13:05:00Z' : null }));
+  f.observation.gates = gated ? [{ environment: { id: 7, name: 'production' }, wait_timer: 0, current_user_can_approve: true, reviewers: [] }] as RolloutObservation['gates'] : [];
+  f.observation.run = { ...f.observation.run!, status: completed ? 'completed' : 'in_progress', conclusion: completed ? 'success' : null };
+}
+const phases = async (f: Awaited<ReturnType<typeof fixture>>) => ((await f.run({ operation: 'list' }) as any).validations as any[]).map(view => [view.label, view.scope.focus, view.scope.jobs, view.automatic === true]);
+
+test('Auto validate on a gated run validates each phase once its gate waits, and the rest when the run ends: each approval leads to the next validation', async () => {
+  const f = await fixture();
+  try {
+    phased(f, 0, true); await merged(f);
+    await f.validations.reconcile();
+    assert.deepEqual(await phases(f), [], 'a gate before anything ran asks nothing');
+    phased(f, 1, true); await f.validations.reconcile();
+    assert.deepEqual(await phases(f), [['V1', 'before production (apply (prod-1))', [301], true]]);
+    assert.match(f.inputs[0].data, /focus: before production \(apply \(prod-1\)\)\./);
+    await f.run({ ...report('V1', 1, final('passed')), agentNodeId: 'author' }); await f.apply([{ type: 'node.update', id: 'author', activity: 'idle' }]);
+    phased(f, 1, false); await f.validations.reconcile(); await f.validations.reconcile();
+    assert.equal((await phases(f)).length, 1, 'approved: nothing while the next phase runs');
+    phased(f, 2, true); await f.validations.reconcile();
+    assert.deepEqual((await phases(f)).at(-1), ['V2', 'before production (apply (prod-2))', [302], true], 'the second gate on the same environment is its own phase');
+    await f.validations.reconcile();
+    assert.equal((await phases(f)).length, 2, 'once per phase');
+    await f.run({ ...report('V2', 1, final('passed')), agentNodeId: 'author' }); await f.apply([{ type: 'node.update', id: 'author', activity: 'idle' }]);
+    phased(f, 3, false, true); await f.validations.reconcile();
+    assert.deepEqual((await phases(f)).at(-1), ['V3', 'whole run', [303], true]);
+    await f.validations.reconcile();
+    assert.equal((await phases(f)).length, 3);
+  } finally { f.close(); }
+});
+
+test('one click scopes to the phase that ran since the last validation, even right after an approval, and is not swallowed by a chat validation', async () => {
+  const f = await fixture();
+  try {
+    phased(f, 1, true);
+    const { validationId, ...unnamed } = report('V1', 1);
+    await f.run({ ...unnamed, agentNodeId: 'direct' });
+    const click = () => f.run({ operation: 'trigger', sourceResourceId: 'rollout-r', value: 'direct', requestId: randomUUID(), phased: true }) as Promise<any>;
+    await f.run({ ...report('V1', 2, final('passed')), agentNodeId: 'direct' });
+    phased(f, 2, false);
+    const second = await click();
+    assert.equal(second.attached, undefined, 'a chat validation does not answer a phased request');
+    assert.deepEqual((await phases(f)).at(-1), ['V2', 'through apply (prod-1)', [301, 302], false]);
+    await f.run({ ...report('V2', 1, final('passed')), agentNodeId: 'direct' });
+    const again = await click();
+    assert.deepEqual([again.sent, again.attached, again.validationId], [false, true, 'V2'], 'nothing new ran: the last phase validation is shown');
+  } finally { f.close(); }
+});
+
+test('a phased request sent again with its id answers as the first time, even after its phase was covered', async () => {
+  const f = await fixture();
+  try {
+    phased(f, 1, true);
+    const requestId = randomUUID(), click = () => f.run({ operation: 'trigger', sourceResourceId: 'rollout-r', value: 'direct', requestId, phased: true });
+    const first = await click();
+    assert.deepEqual(await click(), first);
+    assert.equal(f.inputs.length, 2, 'sent once');
   } finally { f.close(); }
 });

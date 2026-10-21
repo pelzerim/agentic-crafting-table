@@ -5,7 +5,7 @@ const ISSUE = /^[A-Z][A-Z0-9]*-[1-9]\d*$/;
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/;
 export const LINEAR_QUERIES = Object.freeze({
   viewer: 'query CraftingTableViewer { viewer { id name } organization { id name urlKey previousUrlKeys } }',
-  issue: 'query CraftingTableIssue($id: String!) { viewer { id name } organization { id name urlKey previousUrlKeys } issue(id: $id) { id identifier previousIdentifiers title description url updatedAt archivedAt state { id name type } team { id } } }',
+  issue: 'query CraftingTableIssue($id: String!) { viewer { id name } organization { id name urlKey previousUrlKeys } issue(id: $id) { id identifier previousIdentifiers title description url updatedAt archivedAt state { id name type } team { id } attachments(first: 50) { nodes { url } } } }',
   workflow: 'query CraftingTableWorkflow($id: String!) { viewer { id name } organization { id name urlKey previousUrlKeys } team(id: $id) { id states(first: 250) { nodes { id name type position } pageInfo { hasNextPage } } } }',
   assigned: 'query CraftingTableAssigned($after: String, $states: [String!]!, $priorities: [Float!]!) { viewer { id name assignedIssues(first: 50, after: $after, orderBy: updatedAt, filter: { state: { type: { in: $states } }, priority: { in: $priorities } }) { nodes { id identifier title url updatedAt priority state { id name type } team { id key name } } pageInfo { hasNextPage endCursor } } } organization { id name urlKey previousUrlKeys } }',
 });
@@ -24,7 +24,21 @@ const subset = <T>(value: unknown, allowed: readonly T[]): value is T[] => Array
 export interface LinearReadVariables { id?: string; after?: string; states?: readonly string[]; priorities?: readonly number[] }
 export interface LinearTransport { read(operation: keyof typeof LINEAR_QUERIES, variables: LinearReadVariables, signal: AbortSignal): Promise<unknown>; updateState?(id: string, stateId: string, signal: AbortSignal): Promise<unknown> }
 export interface LinearAccount { id: string; name: string; workspace: string; slug: string; previousSlugs: string[] }
-export interface LinearIssue { id: string; identifier: string; previousIdentifiers: string[]; title: string; description: string; url: string; updatedAt: string; archived: boolean; teamId: string; state: { id: string; name: string; type: string } }
+/** A GitHub pull request attached to an issue (Linear's GitHub integration). */
+export type LinearPull = { owner: string; repo: string; number: number };
+export interface LinearIssue { id: string; identifier: string; previousIdentifiers: string[]; title: string; description: string; url: string; updatedAt: string; archived: boolean; teamId: string; state: { id: string; name: string; type: string }; pulls: LinearPull[] }
+const PULL_URL = /^https:\/\/github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})\/pull\/([1-9]\d{0,9})(?:[/?#]|$)/;
+/** The GitHub pull requests among an issue's attachments, each once (owner and repository compared without case). */
+export function attachedPulls(attachments: unknown): LinearPull[] {
+  const nodes = (attachments as { nodes?: unknown } | null | undefined)?.nodes, pulls = new Map<string, LinearPull>();
+  for (const node of Array.isArray(nodes) ? nodes.slice(0, 50) : []) {
+    const match = typeof (node as { url?: unknown })?.url === 'string' ? PULL_URL.exec((node as { url: string }).url) : null;
+    if (!match) continue;
+    const pull = { owner: match[1], repo: match[2], number: Number(match[3]) }, key = `${pull.owner}/${pull.repo}#${pull.number}`.toLowerCase();
+    if (!pulls.has(key)) pulls.set(key, pull);
+  }
+  return [...pulls.values()];
+}
 /** An open issue assigned to the credential's own user; list fields only. */
 export interface LinearAssignedIssue { id: string; identifier: string; title: string; url: string; updatedAt: string; priority: number; team: { id: string; key: string; name: string }; state: { id: string; name: string; type: string } }
 class LinearReadError extends Error {}
@@ -111,7 +125,7 @@ export class LinearClient {
     if (id.toLowerCase() !== issue.id.toLowerCase() && id !== issue.identifier && !issue.previousIdentifiers.includes(id)) throw invalid();
     let url; try { url = new URL(issue.url); } catch { throw invalid(); }
     if (url.protocol !== 'https:' || url.hostname !== 'linear.app' || url.username || url.password || url.hash || !(url.pathname === `/${account.slug}/issue/${issue.identifier}` || url.pathname.startsWith(`/${account.slug}/issue/${issue.identifier}/`)) || url.search) throw invalid();
-    return { id: issue.id.toLowerCase(), identifier: issue.identifier, previousIdentifiers: issue.previousIdentifiers, title: issue.title, description: issue.description ?? '', url: url.href, updatedAt: issue.updatedAt, archived: issue.archivedAt !== null, teamId: issue.team.id.toLowerCase(), state: { id: state.id.toLowerCase(), name: state.name, type: state.type } };
+    return { id: issue.id.toLowerCase(), identifier: issue.identifier, previousIdentifiers: issue.previousIdentifiers, title: issue.title, description: issue.description ?? '', url: url.href, updatedAt: issue.updatedAt, archived: issue.archivedAt !== null, teamId: issue.team.id.toLowerCase(), state: { id: state.id.toLowerCase(), name: state.name, type: state.type }, pulls: attachedPulls(issue.attachments) };
   }
   async workflow(id: string, workspace: string | undefined, signal: AbortSignal, fresh = false) {
     const issue = await this.issue(id, workspace, signal);

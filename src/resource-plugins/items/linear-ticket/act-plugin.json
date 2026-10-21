@@ -17,6 +17,9 @@
     ],
     "settingsPages": [
       "linear.ticket"
+    ],
+    "runtimeOperations": [
+      "linear.ticket.pulls"
     ]
   },
   "legacyIds": [

@@ -21,6 +21,7 @@ test('the double-click web setting belongs to the Map page', () => {
   const saved = settingsSchema.parse({});
   assert.deepEqual(draftChanges(saved, { ...saved, doubleClickOpensWeb: true }), ['Map']);
   assert.deepEqual(draftChanges(saved, { ...saved, hideImpliedLinks: false }), ['Map']);
+  assert.deepEqual(draftChanges(saved, { ...saved, snapToGrid: true }), ['Map']);
 });
 
 test('package settings belong to the item page that shows them, compared with their defaults filled in', () => {

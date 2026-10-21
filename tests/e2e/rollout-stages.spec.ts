@@ -17,6 +17,7 @@ const deploy = (preview?: number, live?: number): RolloutJob[] => [
 ];
 const check = (id: string, status: string) => ({ id, title: `Check ${id}`, status });
 
+// Claude cannot start a session in this harness, so each stage falls back to the agent connected through the pull request.
 test('a staged deploy run asks for one validation per stage, preview, live and 10 minutes later, and takes follow-up and unrequested reports', async () => {
   test.setTimeout(180_000);
   const github = githubFixture(), rollouts = rolloutFixture();
@@ -29,7 +30,7 @@ test('a staged deploy run asks for one validation per stage, preview, live and 1
     { type: 'link.save', link: { id: discoveredLinkId('pr-r', rolloutDiscoveryKey(101)), sourceId: 'pr', targetId: 'rollout', kind: 'reference', label: '' } },
     agent('claude', 'Claude · billing', 60),
     { type: 'link.save', link: { id: 'pr-claude', sourceId: 'pr', targetId: 'claude', kind: 'context', label: '' } },
-  ], { stageRules: STAGED_DEPLOY_RULES });
+  ], { stageRules: STAGED_DEPLOY_RULES, claudeMissing: true });
   try {
     const { page } = h, detail = page.locator('.rollout-detail'), card = (label: string) => detail.locator(`.rv-card[aria-label^="${label} · "]`);
     const prompted = (id: string) => expect.poll(async () => { await h.tick(); return h.output('claude'); }, { timeout: 60_000, intervals: [1_000] }).toContain(`validationId "${id}"`);

@@ -79,6 +79,8 @@ import { TodoSweeper } from './todo-sweeper.ts';
 import type { TriageAdapter } from './triage.ts';
 import { linearTriageAdapter } from '../provider-runtime/linear-triage.ts';
 import { StandupReports } from './standup.ts';
+import { UpdateChecker, tagsSource } from './updates.ts';
+import type { UpdateCheckerOptions } from './updates.ts';
 import { STANDUP_ENABLED } from '../core/standup.ts';
 
 /** Each package's settings presets, once per workspace, when the package loads; a preset whose target
@@ -91,7 +93,7 @@ function applySettingsPresets(store: SqliteStore, registry: ResourcePluginRegist
   }
 }
 
-export async function startWorkspaceService(directory: string, registry?: ResourcePluginRegistry, runtimeOptions?: RuntimeOptions, providers?: { titleClient?: ActivitySummaryClient; connections?: ProviderConnections; host?(registry: ResourcePluginRegistry): ResourcePluginHost; assignments?: AssignmentAdapter[]; triage?: { adapters: TriageAdapter[]; connections?: () => ProviderConnection[] }; reviews?: Record<string, ReviewSource>; workflows?: Record<string, WorkflowSource>; reviewRuntime?: ReviewRuntime; inboxClient?(connection: ProviderConnection): GitHubClient; pluginTimeoutMs?: number; reminderClock?: ReminderClockOptions; todoClock?: () => number }) {
+export async function startWorkspaceService(directory: string, registry?: ResourcePluginRegistry, runtimeOptions?: RuntimeOptions, providers?: { titleClient?: ActivitySummaryClient; connections?: ProviderConnections; host?(registry: ResourcePluginRegistry): ResourcePluginHost; assignments?: AssignmentAdapter[]; triage?: { adapters: TriageAdapter[]; connections?: () => ProviderConnection[] }; reviews?: Record<string, ReviewSource>; workflows?: Record<string, WorkflowSource>; reviewRuntime?: ReviewRuntime; inboxClient?(connection: ProviderConnection): GitHubClient; pluginTimeoutMs?: number; reminderClock?: ReminderClockOptions; todoClock?: () => number; updates?: Partial<UpdateCheckerOptions> }) {
   const paths = prepareWorkspace(directory), instanceId = randomUUID();
   const store = new SqliteStore(paths.database);
   // Installed packages load before the registry is built so they register exactly like bundled ones.
@@ -171,6 +173,8 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   const githubReader = (connection: ProviderConnection) => new GitHubClient(githubTransport(connections.resolve('github', connection.id).account));
   const inbox = new GitHubInbox(store, control, () => store.readSettings().value.connections, providers?.inboxClient ?? githubReader);
   // An injected provider set never falls through to a real GitHub account.
+  const updates = new UpdateChecker(store, { version: process.env.ACT_APP_VERSION ?? 'dev', tags: tagsSource(process.env), plugins: () => pluginState().installed.filter(plugin => !plugin.removed).map(({ id, name, version, source }) => ({ id, name, version, source })),
+    allowed: () => !closing && lifecycle.allowsBackgroundWork, ...providers?.updates });
   const standup = new StandupReports(store, control, { client: providers ? providers.titleClient ?? null : undefined, directory, enabled: STANDUP_ENABLED, allowed: () => !closing && lifecycle.allowsBackgroundWork,
     connections: () => store.readSettings().value.connections, github: providers ? providers.inboxClient : githubReader });
   const terminals = runtimeOptions ? new SessionCoordinator(store, control, runtimeOptions, broadcast) : undefined;
@@ -386,14 +390,16 @@ export async function startWorkspaceService(directory: string, registry?: Resour
           case 'github.inbox.seen': result = await inbox.seen(args); break;
           case 'standup.open': result = standup.open(args); break;
           case 'standup.status': result = standup.status(); break;
+          case 'updates.status': result = updates.status(); break;
+          case 'updates.check': await updates.check(); result = updates.status(); break;
           case 'reminders.save': result = reminders.save(reminderSaveSchema.parse(args).list); await broadcast(); break;
           case 'reminders.done': result = reminders.done(reminderDoneSchema.parse(args).id); await broadcast(); break;
           case 'reminders.snooze': { const input = reminderSnoozeSchema.parse(args); result = reminders.snooze(input.id, input.minutes); await broadcast(); break; }
           case 'attention.history': { const input = z.object({ offset: z.number().int().min(0).max(99).default(0), limit: z.number().int().min(1).max(100).default(10) }).strict().parse(args ?? {}); result = store.attentionHistory(input.offset, input.limit); break; }
           case 'lifecycle.active': result = await lifecycle.active(); break;
           case 'lifecycle.preview': result = { sessions: await lifecycle.active(), pending: lifecycle.pendingCount }; break;
-          case 'lifecycle.close': inbox.stop(); await agents?.pause(); await workflows.pause(); await servicePlugins.pause(); await findings?.close(); await loops.close(); await reviews?.close(); await architecture.close(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await resources.pause(); await summaries?.pause(); await titles?.pause(); await agentTitles?.pause(); await attachTitles?.pause(); await standup.pause(); await plots.pause(); await reminders.pause(); result = await lifecycle.close(); break;
-          case 'lifecycle.recover': { const input = z.object({ retry: z.boolean().default(false), startupId: z.string().uuid().optional() }).parse(args); result = lifecycle.recover(input.retry, input.startupId); summaries?.start(); titles?.start(); agentTitles?.start(); attachTitles?.start(); standup.start(); plots.start(); reminders.start(); assignments.start(); triage.start(); todoSweeper.start(); resources.start(); workflows.resume(); findings?.start(); loops.start(); servicePlugins.start(); agents?.start(); break; }
+          case 'lifecycle.close': inbox.stop(); await agents?.pause(); await workflows.pause(); await servicePlugins.pause(); await findings?.close(); await loops.close(); await reviews?.close(); await architecture.close(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await resources.pause(); await summaries?.pause(); await titles?.pause(); await agentTitles?.pause(); await attachTitles?.pause(); await standup.pause(); await updates.pause(); await plots.pause(); await reminders.pause(); result = await lifecycle.close(); break;
+          case 'lifecycle.recover': { const input = z.object({ retry: z.boolean().default(false), startupId: z.string().uuid().optional() }).parse(args); result = lifecycle.recover(input.retry, input.startupId); summaries?.start(); titles?.start(); agentTitles?.start(); attachTitles?.start(); standup.start(); updates.start(); plots.start(); reminders.start(); assignments.start(); triage.start(); todoSweeper.start(); resources.start(); workflows.resume(); findings?.start(); loops.start(); servicePlugins.start(); agents?.start(); break; }
           case 'agent.hook': if (!agents) throw new Error('Native agents are not configured'); result = await agents.hook(args); break;
           case 'plugins.discover': {
             const input = pluginDiscoverySchema.parse(args);
@@ -481,6 +487,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
       await agentTitles?.close();
       await attachTitles?.close();
       await standup.close();
+      await updates.close();
       await plots.close();
       await reminders.close();
       await resources.close();
@@ -537,6 +544,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
     agentTitles?.start();
     attachTitles?.start();
     standup.start();
+    updates.start();
     plots.start();
     reminders.start();
     assignments.start(); triage.start(); todoSweeper.start(); resources.start(); inbox.start(); loops.start(); servicePlugins.start(); agents?.start();

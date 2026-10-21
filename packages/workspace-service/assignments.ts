@@ -129,7 +129,7 @@ export class AssignmentCoordinator {
       }
       const envelope: CommandEnvelope = { commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'provider', id: connection.id }, commands };
       try {
-        this.store.commitObservation(scope(connection.id), saved.revision, { ...saved.value, entries: [...entries.values()] }, commands.length ? { envelope, reduce: state => reduceCommands(state, commands, envelope.expectedRevision, this.control.registry, this.store.readMapSizes(), envelope.actor) } : undefined);
+        this.store.commitObservation(scope(connection.id), saved.revision, { ...saved.value, entries: [...entries.values()] }, commands.length ? { envelope, reduce: state => reduceCommands(state, commands, envelope.expectedRevision, this.control.registry, this.store.readMapLayout(), envelope.actor) } : undefined);
         if (commands.length) await this.changed(); return;
       } catch (error) { if (!['REVISION_CONFLICT', 'OBSERVATION_CONFLICT'].includes((error as { code?: string }).code ?? '')) throw error; }
     }
@@ -153,7 +153,7 @@ export class AssignmentCoordinator {
       const entries = saved.value.entries.map(entry => entry.key === receipt.key && entry.cycle === receipt.cycle ? { ...entry, viewedAt: new Date(this.now()).toISOString() } : entry);
       const commands: WorkspaceCommand[] = [{ type: 'attention.set', id: nodeId, source: `${connection.providerId}.assignment`, reason: null }];
       const envelope: CommandEnvelope = { commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'user', id: 'item-view' }, commands };
-      try { this.store.commitObservation(scope(connection.id), saved.revision, { ...saved.value, entries }, { envelope, reduce: state => reduceCommands(state, commands, envelope.expectedRevision, this.control.registry, this.store.readMapSizes(), envelope.actor) }); await this.changed(); return { acknowledged: true }; }
+      try { this.store.commitObservation(scope(connection.id), saved.revision, { ...saved.value, entries }, { envelope, reduce: state => reduceCommands(state, commands, envelope.expectedRevision, this.control.registry, this.store.readMapLayout(), envelope.actor) }); await this.changed(); return { acknowledged: true }; }
       catch (error) { if (!['REVISION_CONFLICT', 'OBSERVATION_CONFLICT'].includes((error as { code?: string }).code ?? '')) throw error; }
     }
     throw new Error('Attention changed while opening the item. Refresh to acknowledge it.');

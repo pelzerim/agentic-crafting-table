@@ -154,7 +154,7 @@ test('Finished is listed and marked but not counted on the rail, the Dock or the
     const rail = page.getByRole('button', { name: /^Needs me/ }), badge = () => app.evaluate(({ app }) => app.getBadgeCount());
     // 4 asking + 4 my turn are counted; 3 finished are not.
     await expect(rail).toHaveAccessibleName('Needs me: 8');
-    await expect(rail).toHaveAttribute('title', 'Needs me · 4 asking · 4 my turn · 3 finished');
+    await expect(rail).toHaveAttribute('title', 'Needs me · 4 asking · 4 my turn · 3 finished · Right-click to hold open');
     await expect(rail.locator('.needs-me-count')).toHaveText('8');
     await expect(rail.locator('.tier-mark')).toHaveAttribute('data-tier', 'asking');
     await expect.poll(badge).toBe(8);
@@ -253,8 +253,8 @@ test('a ticket card shows its title without the reference, which sits left of th
     // Never truncated, and not amber.
     expect(await reference.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
     expect(await reference.evaluate(element => getComputedStyle(element).color)).not.toBe(await token(page, '--act-attention'));
-    // A title without a reference is untouched.
-    await expect(card(page, 'pr-67').locator('.card-reference')).toHaveCount(0);
+    // A title without a reference is untouched; a pull request shows the number its type declares as the same tag.
+    await expect(card(page, 'pr-67').locator('.card-reference')).toHaveText('#67');
     await expect(card(page, 'pr-67').locator('.card-label strong')).toHaveText('Remove old resizer');
     await keep(page, 'ticket-reference');
     // As an icon the card has no status row, so its name is the only place for the reference.

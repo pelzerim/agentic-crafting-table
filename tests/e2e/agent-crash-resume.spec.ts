@@ -9,6 +9,7 @@ import { once } from 'node:events';
 import { connectWorkspace } from '../../packages/workspace-service/client.ts';
 import { connectSupervisor } from '../../packages/session-runtime/client.ts';
 import { openProjectPicker } from './project-picker.ts';
+import { expectStopSession } from './agent-session.ts';
 
 async function sizeBy(page: Page, handle: Locator, dx: number, dy: number) {
   const grip = (await handle.boundingBox())!, x = grip.x + grip.width / 2, y = grip.y + grip.height / 2;
@@ -75,7 +76,7 @@ test('after a crash, Resume in a lost agent view attaches the new process and si
     await expect(page.locator('.terminal-surface')).toHaveAttribute('data-terminal-id', resumedId);
     await expect(page.locator('.native-terminal')).toHaveAttribute('data-session-state', 'running');
     await expect(page.locator('.xterm-accessibility')).toContainText('NATIVE_RESUMED:');
-    await expect(page.getByRole('button', { name: 'Stop session', exact: true })).toBeEnabled();
+    await expectStopSession(page, true);
     await expect(page.getByRole('button', { name: 'Resume', exact: true })).toHaveCount(0);
     const pty = async () => { const { cols, rows } = (await page.evaluate(id => window.craftingTable.sessionRead(id), resumedId)).session; return { cols, rows }; };
     // The new process starts at a default size; attaching must size it to the open view.

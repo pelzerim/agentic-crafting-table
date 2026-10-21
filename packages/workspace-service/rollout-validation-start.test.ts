@@ -182,12 +182,49 @@ test('the new agent works in the folder of the rollout\'s project, else of the d
   } finally { f.close(); }
 });
 
-test('Auto validate never starts an agent: with none connected it requests nothing', async () => {
+const connectAgent = (f: Awaited<ReturnType<typeof fixture>>, id: string) => f.apply([
+  { type: 'item.add', id, resourceId: `${id}-r`, pluginId: 'agent.session', title: `Agent ${id}`, projectId: 'changes', position: { x: 4300, y: 900 }, data: { provider: 'claude', sessionId: `${id}-session` } },
+  { type: 'link.save', link: { id: `pr-${id}`, sourceId: 'pr', targetId: id, kind: 'context', label: '' } },
+  { type: 'node.update', id, activity: 'idle' },
+]);
+
+test('Auto validate starts the rollout\'s hidden validation agent, even with an agent connected, and asks that agent again for the next attempt', async () => {
   const f = await fixture();
   try {
+    await connectAgent(f, 'author');
     await f.validations.reconcile(); f.tick(15_000); await f.validations.reconcile();
-    assert.equal(f.launches.length, 0); assert.deepEqual(await f.listed(), []);
+    assert.equal(f.launches.length, 1, 'once per attempt');
+    assert.deepEqual(f.launches[0].request.hidden, { label: 'validation agent' });
+    const [view] = await f.listed();
+    assert.deepEqual([view.label, view.automatic, view.agentHidden, view.agentNodeId === f.launches[0].request.nodeId], ['V1', true, true, true]);
+    assert.equal(f.inputs.length, 0, 'the connected agent is not asked');
+    assert.match(f.launches[0].hosted.prompt, /This is validation V1 for run 101, attempt 1/);
+    await f.run({ operation: 'report', agentNodeId: view.agentNodeId, validationId: 'V1', sequence: 1, ...FINAL });
+    await f.apply([{ type: 'node.update', id: view.agentNodeId, activity: 'idle' }]);
+    f.observation.run = { ...f.observation.run!, run_attempt: 2 }; f.observation.jobs = f.observation.jobs.map(job => ({ ...job, id: job.id + 100 }));
+    await f.validations.reconcile();
+    assert.equal(f.launches.length, 1, 'the idle hidden agent is asked again instead of a second session');
+    assert.deepEqual((await f.listed()).map(entry => [entry.label, entry.agentNodeId === view.agentNodeId, entry.automatic]), [['V1', true, true], ['V2', true, true]]);
+    assert.match(String((f.inputs[0] as { data: string }).data), /This is validation V2 for run 101, attempt 2/);
+    assert.match(String((f.inputs[0] as { data: string }).data), /You lead this validation/);
   } finally { f.close(); }
+});
+
+test('Auto validate falls back to a ready connected agent only while Claude cannot start a session here', async () => {
+  const f = await fixture();
+  try {
+    await connectAgent(f, 'author');
+    f.starter.unready = NOT_INSTALLED;
+    await f.validations.reconcile();
+    assert.equal(f.launches.length, 0);
+    assert.deepEqual((await f.listed()).map(entry => [entry.label, entry.agentNodeId, entry.automatic]), [['V1', 'author', true]]);
+    assert.equal((f.inputs[0] as { sessionId: string }).sessionId, 'author-session');
+  } finally { f.close(); }
+  const alone = await fixture({ starter: false });
+  try {
+    await alone.validations.reconcile(); alone.tick(15_000); await alone.validations.reconcile();
+    assert.deepEqual(await alone.listed(), [], 'nothing to ask and nothing to start');
+  } finally { alone.close(); }
 });
 
 const FINAL = { phase: 'final', verdict: 'passed', summary: 'Healthy', checks: [{ id: 'C1', title: 'Pods ready', status: 'passed' }] };

@@ -8,6 +8,7 @@ import { once } from 'node:events';
 import { connectWorkspace } from '../../packages/workspace-service/client.ts';
 import { connectSupervisor } from '../../packages/session-runtime/client.ts';
 import { exitWithoutShutdown } from './exit-without-shutdown.ts';
+import { stopSession } from './agent-session.ts';
 
 test('Codex creation uses native models, context/MCP, live attachment and same-conversation recovery', async () => {
   test.setTimeout(90_000);
@@ -57,10 +58,10 @@ test('Codex creation uses native models, context/MCP, live attachment and same-c
     await expect.poll(async () => (await read()).nodes.find(item => item.id === node.id)?.activity).toBe('working');
     await page.evaluate(id => window.craftingTable.sessionInput(id, 'done\r'), firstId);
     await expect(page.getByRole('status', { name: 'Native Codex finished' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toHaveAttribute('title', 'Needs me · 1 finished');
+    await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toHaveAttribute('title', 'Needs me · 1 finished · Right-click to hold open');
     await page.getByRole('status', { name: 'Native Codex finished' }).getByRole('button', { name: 'Open', exact: true }).click();
     await expect(page.locator('.map-area')).toHaveAttribute('data-focus', node.id);
-    await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toHaveAttribute('title', 'Needs me · 1 finished');
+    await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toHaveAttribute('title', 'Needs me · 1 finished · Right-click to hold open');
     await page.getByRole('button', { name: 'Mark seen', exact: true }).click();
     await expect(page.getByRole('button', { name: /^Needs me:/ })).toHaveCount(0);
     await page.getByRole('button', { name: 'Back to project' }).click();
@@ -87,7 +88,7 @@ test('Codex creation uses native models, context/MCP, live attachment and same-c
     expect(after.session.archivedAt).toBeUndefined(); expect(after.session.predecessorId).toBe(firstId);
     expect(after.chunks.map(chunk => chunk.data).join('')).toContain('do not repeat completed actions');
     await page.getByRole('article', { name: 'Native Codex', exact: true }).click();
-    await page.getByRole('button', { name: 'Stop session', exact: true }).click();
+    await stopSession(page);
     await expect(page.locator('.native-terminal')).toHaveAttribute('data-session-state', 'exited');
     await expect(page.locator('.xterm-accessibility')).toContainText(`NATIVE_READY:${nativeId}`);
     await page.getByRole('button', { name: 'Agent session menu' }).click();

@@ -97,6 +97,9 @@ test('the rollout view has one Actions menu: Approve and validate, Approve, Vali
     await expect.poll(async () => (await validations()).map(view => [view.label, view.agentHidden]), { timeout: 30_000 }).toEqual([['V1', true]]);
     const [started] = await agents();
     expect(started.hiddenAt).toBeTruthy(); expect((await validations())[0].agentNodeId).toBe(started.id);
+    // The validation covers the phase that ran before the approved gate, not the whole run.
+    expect((await validations())[0].scope).toMatchObject({ jobs: [201] });
+    expect((await validations())[0].scope.focus).not.toBe('whole run');
     expect(providers.approvals).toEqual([{ path: '/repos/fixture/web/actions/runs/101/pending_deployments', environmentIds: [7] }]);
     expect(await h.output('claude')).not.toContain('validationId');
     await expect(detail.locator('.rv-card[aria-label^="V1 · "]')).toBeVisible();
@@ -120,7 +123,7 @@ test('with no agent connected, Validate starts a hidden agent connected to the r
   const providers = { ...github, host(registry: ResourcePluginRegistry) { const host = github.host(registry); host.register('github.rollout', githubRolloutConnector(() => rollouts.client)); host.present('github.rollout', rolloutPresentation); return host; } };
   const h = await rolloutHarness(providers, [], (): WorkspaceCommand[] => [
     { type: 'item.add', id: 'rollout', resourceId: 'rollout-r', pluginId: 'github.rollout', title: 'Rollout', projectId: 'project', position: { x: 260, y: 200 }, data: { owner: 'fixture', repo: 'billing', runId: 101 } },
-    { type: 'item.add', id: 'pr', resourceId: 'pr-r', pluginId: 'github.pull-request', connectionId: 'github-fixture', title: 'PR', projectId: 'project', position: { x: 260, y: 420 }, data: { owner: 'fixture', repo: 'billing', number: 42 } },
+    { type: 'item.add', id: 'pr', resourceId: 'pr-r', pluginId: 'github.pull-request', connectionId: 'github-fixture', title: 'PR', projectId: 'project', position: { x: 260, y: 420 }, data: { owner: 'fixture', repo: 'billing', number: 42, autoValidate: false } },
     { type: 'link.save', link: { id: discoveredLinkId('pr-r', rolloutDiscoveryKey(101)), sourceId: 'pr', targetId: 'rollout', kind: 'reference', label: '' } },
   ], { summary: 'BILLING_BRIEF' });
   try {
@@ -131,7 +134,7 @@ test('with no agent connected, Validate starts a hidden agent connected to the r
     await detail.getByRole('button', { name: 'Show the jobs rail', exact: true }).click();
     await expect(detail.getByRole('list', { name: 'Rollout jobs' }).getByRole('listitem')).toHaveCount(3);
 
-    // Auto validate is on for the pull request, and still nobody is started without a click.
+    // Auto validate is off for the pull request, so nobody is started without a click.
     await h.tick(); await h.tick();
     expect(await agents()).toHaveLength(0); expect((await run({ operation: 'list' }) as any).validations).toHaveLength(0);
 
@@ -171,7 +174,7 @@ test('with no agent connected, Validate starts a hidden agent connected to the r
 
     // Repeating the same request starts nothing; the agent is offered like any connected one.
     const requestId = (await run({ operation: 'list' }) as any).validations[0].requestId;
-    expect(await run({ operation: 'trigger', sourceResourceId: 'rollout-r', value: 'validation-agent', requestId })).toMatchObject({ sent: true, validationId: 'V1', agentNodeId: agent.id });
+    expect(await run({ operation: 'trigger', sourceResourceId: 'rollout-r', value: 'validation-agent', requestId, phased: true })).toMatchObject({ sent: true, validationId: 'V1', agentNodeId: agent.id });
     expect(await agents()).toHaveLength(1); expect((await run({ operation: 'list' }) as any).validations).toHaveLength(1);
     await expect.poll(async () => ((await run({ operation: 'options' })) as any).options.map((option: any) => [option.id, Boolean(option.disabled)]), { timeout: 30_000 }).toEqual([[agent.id, false], ['new-agent', false]]);
 

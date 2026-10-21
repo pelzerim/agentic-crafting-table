@@ -12,6 +12,8 @@ import { isArchived, isBelow, isOffMap } from '../../src/graph/archive.ts';
 import { findingsPrompt, findingsRollup, ignoredFindings, parseReviewOutput } from '../../src/pull-requests/review-findings.ts';
 import type { FindingStatus, ParsedReview } from '../../src/pull-requests/review-findings.ts';
 
+const CLEAN_REVIEW_CUE = { id: 'findings', label: 'No findings', icon: 'check', tone: 'green', stage: 'done' } as const;
+
 const ids = z.array(z.string().regex(/^F[0-9]{1,4}$/)).max(200);
 const note = z.string().max(2000).optional();
 const loop = z.object({ round: z.number().int().min(1).max(5), of: z.number().int().min(1).max(5), branch: z.string().min(1).max(200).optional() }).strict().optional();
@@ -129,6 +131,10 @@ export class ReviewFindingsCoordinator {
       if (canonical(resource.data.findings ?? null) !== canonical(findings)) commands.push({ type: 'item.update', id: node.id, data: { ...resource.data, findings } });
       if (node.summary !== summary) commands.push({ type: 'node.update', id: node.id, summary });
       if (findings.urgent && node.attentionEvents?.findings !== `findings:${sessionId}`) commands.push({ type: 'attention.set', id: node.id, source: 'findings', reason: 'review', note: 'Review found urgent issues', eventId: `findings:${sessionId}` });
+      // A review that found nothing is a result, not a request: the card shows a green check and the finished entry leaves Needs me.
+      const clean = findings.format === 'findings' && !findings.mix.length, cue = clean ? [CLEAN_REVIEW_CUE] : [];
+      if (canonical(node.indicators ?? []) !== canonical(cue)) commands.push({ type: 'node.update', id: node.id, indicators: cue });
+      if (clean && node.attentionSources?.completion) commands.push({ type: 'attention.set', id: node.id, source: 'completion', reason: null });
     }
     if (commands.length) {
       try { await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'system', id: 'review-findings' }, commands }); dirty = true; }

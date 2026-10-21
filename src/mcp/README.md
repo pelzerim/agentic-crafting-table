@@ -209,7 +209,7 @@ there first. Passing a revision always keeps the strict check.
 | `node.todo` with `enabled: true` | Adding to the list twice changes nothing. |
 | `node.attach` of an item that has no project | Gives it its first project. |
 | `node.update` of `summary`, `activity`, `attention`, `attentionNote` on your own node; `attention.set` on your own node | A session reports its own status (desktop bridge only: it knows the caller's node). |
-| `attention.acknowledge`, `node.todo.label`, `node.title.generated` | They name the version or title they were written for. |
+| `attention.acknowledge`, `attention.restore`, `node.todo.label`, `node.title.generated` | They name the version or title they were written for. |
 
 Everything else needs the revision: `item.update` and the other item rewrites,
 any other `node.update`, moving, resizing and layout repair, `nodes.send`,

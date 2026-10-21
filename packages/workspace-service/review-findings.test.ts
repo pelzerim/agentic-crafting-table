@@ -12,6 +12,7 @@ import type { ReviewResult } from './reviews.ts';
 import { ReviewFindingsCoordinator } from './review-findings.ts';
 import type { AgentSpawner } from './review-findings.ts';
 import { sampleReview } from '../../tests/fixtures/review-findings.ts';
+import { attentionItems } from '../../src/graph/attention.ts';
 
 async function fixture(output = JSON.stringify(sampleReview), spawner?: AgentSpawner) {
   const directory = mkdtempSync(join(tmpdir(), 'craft-review-findings-')), store = new SqliteStore(join(directory, 'workspace.sqlite')), control = new WorkspaceControl(store);
@@ -222,5 +223,28 @@ test('a recipient held at a prompt is told apart from one that is working', asyn
     await f.apply([{ type: 'node.update', id: 'tests', activity: 'idle', attention: 'input', attentionNote: 'Agent needs permission', summary: 'Waiting for your input' }]);
     const options = await f.run({ operation: 'options' });
     assert.deepEqual(options.agents.map((agent: any) => [agent.nodeId, agent.status, agent.prompt ?? false]), [['impl', 'idle', false], ['tests', 'working', true], ['docs', 'working', false]]);
+  } finally { f.close(); }
+});
+
+test('a review with no findings shows a green check on the map and leaves Needs me; findings take the cue away again', async () => {
+  const clean = { schemaVersion: 1, summary: 'No issues.', findings: [], checked: ['Error handling', 'Tests'], tests: { ran: true, notes: 'Green.' } };
+  const f = await fixture(JSON.stringify(clean));
+  try {
+    await f.apply([{ type: 'attention.set', id: 'review', source: 'completion', reason: 'finished', note: 'Review ready', eventId: 'session:run-1' }]);
+    assert.equal(attentionItems((await f.control.read()).nodes).length, 1);
+    await f.findings.reconcile();
+    let node = (await f.control.read()).nodes.find(node => node.id === 'review')!;
+    assert.deepEqual(node.indicators, [{ id: 'findings', label: 'No findings', icon: 'check', tone: 'green', stage: 'done' }]);
+    assert.equal(node.summary, 'No findings\n2 areas checked');
+    assert.equal(attentionItems((await f.control.read()).nodes).length, 0, 'a clean review is not Needs me');
+    const revision = (await f.control.read()).revision; await f.findings.reconcile();
+    assert.equal((await f.control.read()).revision, revision, 'nothing is rewritten on the next look');
+    // The next round finds something: the cue goes, the roll-up and Needs me take over.
+    f.setResult({ state: 'complete', markdown: JSON.stringify(sampleReview), truncated: false });
+    await f.apply([{ type: 'item.update', id: 'review', data: { provider: 'claude', model: 'opus', sessionId: 'run-2', sourcePrId: 'pr', baseSha: 'b'.repeat(40), headSha: 'c'.repeat(40) } }]);
+    await f.findings.reconcile();
+    node = (await f.control.read()).nodes.find(node => node.id === 'review')!;
+    assert.deepEqual(node.indicators ?? [], []);
+    assert.equal(node.attentionSources?.findings, 'review');
   } finally { f.close(); }
 });

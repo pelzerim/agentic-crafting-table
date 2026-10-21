@@ -242,14 +242,11 @@ export class AutoDeploys {
     await this.finish(latest, decide(latest, { now: this.now(), tagging: false, rollouts: [] })); return false;
   }
 
-  /** Asks for the validation of one phase: a ready agent connected to the rollout, preferably through this pull request, else the
-   * rollout's own validation agent, started hidden when it has none. The request is recorded before it is sent. */
+  /** Asks for the validation of one phase from the rollout's own validation agent: its idle hidden agent again, else one started
+   * hidden. The request is recorded before it is sent. */
   private async validate(state: WorkspaceState, record: AutoDeployRecord, decision: Extract<AutoDeployDecision, { kind: 'validate' }>) {
-    const rollout = state.nodes.find(node => node.id === decision.rolloutNodeId)!, pull = this.pullNode(state, record)!;
-    const aliases = new Set(state.nodes.filter(node => node.resourceId === rollout.resourceId).map(node => node.id));
-    const preferred = new Set(connectedAgents(state, pull.id, id => !aliases.has(id)).map(agent => agent.nodeId));
-    const ready = (await this.readyAgents(state, rollout.id)).sort((a, b) => Number(preferred.has(b.nodeId)) - Number(preferred.has(a.nodeId)));
-    const check = { key: decision.key, rolloutNodeId: rollout.id, label: decision.label, requestId: stableUuid(`auto-deploy:${record.id}:validate:${decision.key}`), agent: ready[0]?.nodeId ?? VALIDATION_AGENT, requestedAt: this.now(), jobs: decision.jobs };
+    const rollout = state.nodes.find(node => node.id === decision.rolloutNodeId)!;
+    const check = { key: decision.key, rolloutNodeId: rollout.id, label: decision.label, requestId: stableUuid(`auto-deploy:${record.id}:validate:${decision.key}`), agent: VALIDATION_AGENT, requestedAt: this.now(), jobs: decision.jobs };
     this.save(settle({ ...record, checks: [...record.checks, check] }, decision, this.now())); await this.options.changed();
     return (await this.requestMissing(state, this.read(record.pullResourceId)!)).state === 'armed';
   }
@@ -299,8 +296,6 @@ export class AutoDeploys {
       return { ...agent, status, ready: status === 'idle' };
     }));
   }
-  private async readyAgents(state: WorkspaceState, nodeId: string) { return (await this.agentsOf(state, nodeId)).filter(agent => agent.ready); }
-
   /** Saves the record after a decision that ends the step, and keeps the pull request's Needs me in line with it. */
   private async finish(record: AutoDeployRecord | undefined, decision: AutoDeployDecision) {
     if (!record) return;

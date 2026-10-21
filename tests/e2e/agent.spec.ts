@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { connectWorkspace } from '../../packages/workspace-service/client.ts';
 import { connectSupervisor } from '../../packages/session-runtime/client.ts';
+import { stopSession } from './agent-session.ts';
 
 test('scripted native agent receives context, registers a PR through MCP, reconnects and resumes', async () => {
   test.setTimeout(60_000);
@@ -99,7 +100,8 @@ test('scripted native agent receives context, registers a PR through MCP, reconn
     const menu = page.getByRole('button', { name: 'Agent session menu' });
     await menu.focus(); await page.keyboard.press('ArrowDown');
     await expect(page.getByRole('menuitem', { name: 'Resume / reconnect', exact: true })).toBeFocused();
-    await page.keyboard.press('End'); await expect(page.getByRole('menuitem', { name: 'Add system prompt' })).toBeFocused();
+    await page.keyboard.press('End'); await expect(page.getByRole('menuitem', { name: 'Stop session', exact: true })).toBeFocused();
+    await page.keyboard.press('ArrowUp'); await expect(page.getByRole('menuitem', { name: 'Add system prompt' })).toBeFocused();
     await expect(page.getByRole('menu', { name: 'Agent session actions' })).toHaveScreenshot('agent-session-menu.png');
     await page.keyboard.press('Escape'); await expect(menu).toBeFocused();
     await expect(page.getByRole('menu', { name: 'Agent session actions' })).toHaveCount(0);
@@ -152,7 +154,8 @@ test('scripted native agent receives context, registers a PR through MCP, reconn
     // Stop must preserve an alternate-screen application despite its teardown bytes.
     await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.type('screen\n');
     await expect(page.locator('.xterm-accessibility')).toContainText('RETAIN_THIS_NATIVE_SCREEN');
-    await page.getByRole('button', { name: 'Stop session', exact: true }).click();
+    await expect(page.locator('.terminal-status').getByRole('button', { name: 'Stop session', exact: true })).toHaveCount(0);
+    await stopSession(page);
     await expect(page.locator('.native-terminal')).toHaveAttribute('data-session-state', 'exited');
     await expect(page.locator('.xterm-accessibility')).toContainText('RETAIN_THIS_NATIVE_SCREEN');
     await page.getByRole('button', { name: 'Agent session menu' }).click();

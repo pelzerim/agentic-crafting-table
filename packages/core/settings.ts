@@ -125,6 +125,8 @@ export const settingsSchema = z.object({
   hideImpliedLinks: z.boolean().default(true),
   workingMark: workingMarkSchema,
   doubleClickOpensWeb: z.boolean().default(false),
+  /** Item centres land on an invisible 48 px grid when moved or placed (MAP-30). */
+  snapToGrid: z.boolean().default(false),
   /** Absolute folder used for new launches when their project has none; empty means unset. */
   defaultWorkingDirectory: z.string().max(4096).default(''),
   quickItemTypes: z.array(z.string().min(1).max(200)).max(MAX_QUICK_ITEMS).refine(ids => new Set(ids).size === ids.length, 'Choose each type only once').default(DEFAULT_QUICK_ITEMS),
@@ -143,6 +145,8 @@ export const settingsSchema = z.object({
     standupDigests: z.boolean().default(true),
     standupRequestsPerReport: z.number().int().min(1).max(500).default(150),
   }).default({ enabled: false, model: 'haiku', intervalSeconds: 60, requestsPerHour: 12, requestsPerDay: 100, agentTitles: true, plotNames: true, attachTitles: true, standupDigests: true, standupRequestsPerReport: 150 }),
+  /** A daily look at the app's and installed packs' release tags (UPDATE-01). Nothing is downloaded or installed by it. */
+  updates: z.object({ check: z.boolean().default(true) }).default({ check: true }),
 });
 export const settingsWriteSchema = z.object({ expectedRevision: z.number().int().nonnegative(), value: settingsSchema });
 export type AppSettings = z.infer<typeof settingsSchema>;

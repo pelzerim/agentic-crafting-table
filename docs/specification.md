@@ -76,6 +76,20 @@ below.
 | MAP-15 | Show a grab cursor over the empty board, changing to grabbing during a pan. Show a pointing-hand cursor over item/project bubbles to indicate they open on click; switch to grabbing during an actual item drag. Use the normal arrow elsewhere. Keep native text-entry, terminal, resize and control cursors within expanded content. Cursor changes must not change the existing click-versus-drag behavior. |
 | MAP-16 | The New item type picker is a circle of individual pixel bubbles around the opening cursor position, each with a readable label and type icon. Bubbles read as raised UI above the map (opaque raised fill, top-left bevel, 2 px hard shadow) so map cards never show through them; the interaction layer itself stays transparent. While the ring is open, a transparent interaction layer shields all map items and connections, including gaps between choices: no background hover preview, highlight, tooltip or connector control. Clicking outside dismisses without activating the item underneath; map interaction resumes afterward. Keep the ring compact around an empty amber pixel bubble with a dashed edge at its center, visually distinct as an unfinished item; omit explanatory copy and the close X. Hovering a type or navigating to it with the keyboard transitions the center into a small preview using that type's icon, color, compact label and relative size. Initial focus alone keeps the blank draft. Leaving the choice returns the center to its unfinished appearance; All and pagination remain navigation rather than item previews. Previewing does not select, fetch, launch or create anything. Keep the center fixed as its local size/color/content transitions quickly; reduced motion settles immediately. Selecting grows this currently visible seed into the form. On opening, animate that center from zero size, then grow and spread the choices outward from the same center into their final ring positions with a quick, lightly staggered ease-out. Use scale/translation/opacity without bounce, camera movement or layout changes. Layer changes spread the new choices from the existing center. Reduced motion shows the final layout immediately; opening animations must not prevent dismissal or keyboard selection. Inside a project, omit Project from both layers without changing saved shortcut preferences. Its first layer contains the quick choices configured in Settings (SETTINGS-04), plus **All** only while non-project item types remain outside those choices. Project alone does not keep All visible; the board menu still provides New project. Selecting All replaces the quick-choice bubbles with another circular layer containing all remaining available item types; do not repeat the quick choices or show both layers at once. A right-click in that layer returns to the quick-choice layer. Another right-click closes the picker; a right-click from the initial layer closes it immediately. Consume these right-clicks without opening another context menu. Escape provides the same back/close sequence, and choices are keyboard accessible. Selecting a type grows the center bubble into its inline creation form, centered at that visual seed and clamped inside the canvas. Keep the original requested world position, project/connection context and collision-safe placement. The form has no close X; Back/right-click/Escape returns to choices, followed by another right-click/Escape to close. Editing existing items retains its normal close control. Merely opening, changing layers or dismissing the picker creates nothing. Keep the bubbles reachable near canvas edges without changing the requested world position; show an explicit empty state if All has no remaining choices. |
 
+**RAIL-HOLD — Holding a rail tool open.** Right-clicking a rail tool's slot (Needs me,
+To-dos, GitHub inbox, Reminders, every `RailPanel`) holds it open: Escape, a map click,
+opening an item, travelling to Undermap or a click on its own slot leave it open. Another
+tool still opens over it (by hover or click) and hands it back when it closes. The held
+slot carries an accent inset frame and a small lock in its top-left corner, its tooltip
+ends “Held open · Right-click to release” (otherwise “Right-click to hold open”) and its
+accessible description is “Held open”. Right-clicking the held slot again releases and
+closes it; right-clicking another slot moves the hold there. The hold lives for the
+window session and is not saved.
+
+**MAP-30 — Snap to grid.** An optional invisible 48 px grid that item centres land on
+when a position is decided, so connections run straight or at even angles; off by
+default. The rule and its settings switch are SETTINGS-SNAP-GRID.
+
 **MAP-19 — Independent expanded-view movement.** Drag anywhere on the expanded item's menu bar (including status, directory, provider/model text and empty space; excluding buttons and other interactive controls)
 to move its open view in screen space, without moving or resizing the map bubble,
 rewriting graph/camera state, rearranging neighbors or changing its connections.
@@ -292,7 +306,10 @@ Keeping Needs me open moves focus to its first row; a peek leaves focus alone. E
 closes it and returns focus to its slot, without also stepping the map back. Every slot
 shows "open" the same way (a highlighted slot frame), including Undermap while you are
 in it. The rail stays in place and usable while an item is open, so Needs me is always
-one click away. The GitHub
+one click away — unless the open item view reaches the rail column or the trail row: then
+the rail with its slot buttons (an open sheet stays) and the map trail slide off their
+edges together, Dock-style (160 ms; no motion under reduced motion), and return the moment
+the view closes or no longer reaches them. Their keys keep working while they are away. The GitHub
 inbox mirrors github.com/pulls/inbox: open PRs where your review is requested, you
 are assigned, you are the author or you are mentioned, merged per PR with reason
 chips, per connected account. The service refreshes it once a minute (honoring rate
@@ -1327,7 +1344,13 @@ of the close X, the same size, in the Needs me button's amber ink, fill and edge
 appears for every item frame (provider views with the shared header, agents and
 terminals) only while the open item or one of its aliases is listed in Needs me,
 sends the same acknowledgement as Seen, then hides. It is a fixed control like the
-X and never folds into More actions. Seen/Mark seen clears that
+X and never folds into More actions. **Close and keep in Needs me** is its counterpart
+for the checked types: when, and only when, opening the item acknowledged its entry, the
+same slot holds a pixel close X with the tier mark of that entry in its corner, in the same
+amber, named “Close and keep in Needs me”. It closes the item and puts back exactly the
+cycles the open acknowledged (`attention.restore` names their versions, as
+`attention.acknowledge` does); a newer cycle, a reason that has since cleared, or
+closing with the plain X ends the offer, and nothing else changes. Seen/Mark seen clears that
 resource from the list across aliases, not its underlying input request, error,
 process or user-done status. Persist the read state across app restarts. A later
 completion or new attention event makes it unread again; unchanged polling and
@@ -1391,7 +1414,12 @@ shortened or amber: cue labels shorten first. The item's title itself is unchang
 the card's accessible name and tooltip, Needs me rows, dashboards, to-dos, search and plot
 names keep “BIL-128 · Plan changes”. Where the status row shows no labels (far-zoom icons,
 cards under 48 px, cards whose cues are icons, an editable title) the title stays whole,
-so the reference never disappears.
+so the reference never disappears. A type may also declare a short reference for its items (`view.reference`,
+`#{number}` for pull requests): a card whose title carries no ticket reference shows that
+one as the same tag, trimmed off the end of a placeholder title such as "owner/repo #48",
+but only on a status row the card already has (a pull request's review state and
+comments), so the declared reference never adds a row or takes title lines. The large
+pull request size therefore lists the repository alone in its fields.
 
 Every attention signal carries a short reason from whatever triggered it: plain
 text, one line, sentence case, no trailing period, at most 48 characters (longer
@@ -1414,7 +1442,16 @@ view”…); a category that has a note anywhere on the item is not repeated as 
 label. Agents raising attention through MCP pass `attentionNote` / `note`.
 
 Each entry includes its saved AI/activity summary when available, separate from
-the attention reason and project name. Hovering or keyboard-focusing an entry
+the attention reason and project name. An agent's entry quotes instead the line it
+ended its last turn on (`lastLine`, in italics, two lines at most, the whole line as
+its tooltip): Claude's Stop hook carries the turn's last assistant message, the
+service redacts secrets, keeps its last non-empty line without Markdown markers and
+clips it to 160 characters, and the next prompt clears it. Only that line is stored;
+the message itself is neither kept nor sent to the renderer, and every other hook
+still leaves the session without text. Each group heading (Asking me, My turn,
+Finished, Earlier) is a fold toggle with a chevron; a folded group keeps its heading
+and count and hides its rows. Folds are remembered on this Mac (browser storage, not
+the workspace) and never change what is counted. Hovering or keyboard-focusing an entry
 highlights its bubbles on the map and minimap without moving the camera, opening
 content or acknowledging attention. Clear that highlight when the pointer/focus
 leaves, the entry disappears, or the list closes. A labelled crosshair “Map” button
@@ -1537,10 +1574,12 @@ an interactive terminal monochrome. Place session status, directory, resume/reco
 and stop controls in a single compact row at the top. Remove History/playback
 controls from all native terminal views. Keep ordinary scrollback and stopped
 output readable; this change does not delete recordings or native conversations.
-For agents, group **Resume / reconnect** and **Add system prompt** in a **Session**
-dropdown; keep Stop session directly accessible at the far right, set apart from the
-other controls. An agent whose session is lost or failed also shows **Resume**
-directly beside that dropdown; plain terminals keep their direct **New shell**. Stopping a running agent whose turn is working asks inline (“Stop
+For agents, group **Resume / reconnect**, **Add system prompt** and **Stop session** in a
+**Session** dropdown; Stop session is its last item, after a divider, in the amber the
+irreversible controls share, enabled only while the session is starting or running and no
+stop is pending. An agent whose session is lost or failed also shows **Resume**
+directly beside that dropdown; plain terminals keep their direct **New shell** and their
+direct **Stop session** at the far right. Stopping a running agent whose turn is working asks inline (“Stop
 Claude? The current turn is lost…” with **Keep running** focused and **Stop**); idle
 agents and shells stop at once (VIEW-05). The dropdown supports keyboard
 navigation, Escape and outside-click dismissal.
@@ -2108,6 +2147,23 @@ without a web page keep their middle click: a card or Needs me row in Needs me i
 marked seen, anything else does nothing. Inside an open item's frame a middle click
 still only marks it seen, and links keep their own middle click.
 
+**SETTINGS-SNAP-GRID — Snap to grid (MAP-30).** Settings → Map, section **Placing
+items**, has the switch **Snap to grid** (off by default; additive boolean
+`snapToGrid`, older settings read off). When on, an item's centre lands on the nearest
+point of an invisible 48 px grid whenever a position is decided: a card dropped after
+a drag, an arrow-key nudge (which then walks whole 48 px cells, 96 with Shift), a
+project dropped (its members follow by the same snapped offset), and the positions the
+table chooses itself — a new or shown item's spot beside its anchor, an item surfaced
+from Undermap, and the clear edge a neighbour is pushed to, which moves outward to the
+next grid point so it stays clear and on the grid. A card follows the pointer freely
+while dragging and snaps only on release. Nothing moves when the switch is turned on:
+items already on the map keep their positions until moved. A multi-selection moved
+together keeps the layout its items had, with the held item on the grid; a manual
+resize keeps the item's centre. The service applies the rule for every caller (UI, MCP,
+providers) from the saved setting, so a position an agent or provider gives is also
+snapped while the switch is on. The intention is tidy angles: items whose centres share
+the grid connect with straight or evenly angled lines.
+
 **SETTINGS-TERMINAL — Terminal screen reader support and scrollback.** Settings → General, section
 **Terminals**, has the switch **Screen reader support for terminals** (off by
 default; additive `terminal.screenReader`, older settings read off). It turns on
@@ -2303,7 +2359,7 @@ a command type without a row fails the suite) decides which commands may go
 without a revision:
 
 - Never needed: `item.add`, `item.create` (with their `links`), `project.create`,
-  `attention.acknowledge` (it names the versions it acknowledges),
+  `attention.acknowledge` and `attention.restore` (they name the versions they acknowledge or put back),
   `node.todo.label` and `node.title.generated` (they name the title they were
   written for), `todo.context` (it sets one text on a to-do and never moves,
   completes or removes anything; TODO-11).
@@ -2513,6 +2569,24 @@ whose session failed. A launch whose outcome is unknown keeps the validation req
 and the usual No report rule applies. The agent starts hidden, and an idle one is
 retired (see Validate in one click and Retiring hidden validation agents below).
 Starting one is human-only like every trigger.
+
+**Validations per phase.** A run attempt that waits, or has waited, at a deployment
+gate is validated per phase. A phase is the jobs that finished having run (not skipped,
+cancelled or neutral) and that no validation of the attempt was given (`scope.jobs`).
+Before a waiting gate it is named after the gate and the jobs it holds back (“before
+production (apply (prod-2))”), so a rollout that gates the same environment once per
+phase gets one phase per approval; at the end of the run it is the rest (“whole run”);
+between gates it runs “through <last finished job>”. **Validate** and **Approve and
+validate** send `phased: true`: the service scopes the request to the current phase
+(focus and jobs, prompt as for Auto deploy phases), a chat validation does not answer
+it, and when nothing new ran since the last phase validation it shows that one (“Showing
+V2 of the last phase instead of a second validation”). A repeated request id answers as
+the first did. With **Auto validate** on, a gated attempt is validated each time a gate
+waits after something new ran and once more when the run ended with jobs left, each
+with a request id derived from the jobs it covers, never while a validation of the
+attempt is open; approving a gate therefore leads to the next phase's validation when
+that phase reaches the next gate or the end. Stage rules, where configured, keep their
+own per-stage rule.
 
 **Validate in one click.** Validations run directly from the rollout view,
 without connecting an agent first; the agent stays hidden on the board and can be shown
@@ -2829,7 +2903,7 @@ carry a plain tooltip instead.
 | RES-01 | Pull request | URL-only creation; authenticated provider title, description, comparison summary and state inside the item. “Open pull request” opens its canonical GitHub URL directly, with state shown separately. The expanded view uses Review desk: repository/PR number in the movable frame, one content title, lifecycle/review state, compact author/diff metadata (branch details inside the description), and refresh. Conversation threads are ordered by latest activity with oldest-first replies grouped by GitHub parent identity, file/line context when available, author/date and canonical source links; bodyless approvals and other review activity are hidden by default. Settings → Items → GitHub pull request configures discussion comments, code comments/thread replies, written review feedback, bots/GitHub Actions and textless review activity. Default to human comments and replies. The map comment pill counts only unseen comments under the saved conversation filters and disappears at zero. Mark seen/unseen updates it immediately across aliases; edited comments and new replies count again. Count only known cached comments, without guessing unread totals outside bounded coverage. Keep approval/check status syncing independently of conversation visibility; retain cached content and seen receipts. A collapsed Connected reviews row above the single conversation column shows directly connected review summaries, state and revision freshness when expanded. No right-hand column. Root comments have distinct stepped cards and replies are inset. An unseen comment is marked new: a blue (info) bar on its left edge, a blue edge and a “New” chip after the author; a seen one has a quiet grey bar and a softer author name, and loses the chip. Every comment starts with a 180-code-point plain-text preview; click or keyboard expands safe full content independently of Seen. Human comments opens per-view visibility controls; persistent defaults remain in Settings. Missing or filtered code-thread parents have an explicit source link, never a fabricated root. Description is collapsed behind Show/Hide description, rendered as safe Markdown. Group the three review-launch actions under a collapsed Trigger Review button. Show discussion comments, inline code comments and review bodies with author/date, safe Markdown and sanitized HTML (including details/summary; no scripts, embedded images, events or active form fields). Comments have Copy link, Mark seen/unseen, Reply and, when linked, Fix with agent. Seen is local, persists across restart and aliases, collapses fully read threads under one Seen disclosure below unseen; edits or new replies resurface the thread. Preserve comment expansion and Seen disclosure state across unchanged polls. Replies post only on explicit submission: inline code replies stay in their root thread, discussion/review-summary replies link the original in the PR discussion. Preserve drafts during refresh. Fix prompts are explicitly sent to a selected connected idle agent, bound to this PR/comment and process; busy/stopped agents are unavailable. Journal writes/delivery before dispatch; do not automatically retry uncertain outcomes. On opening a PR after restart, immediately display its persisted description, state and comments with Seen receipts, even when the cache is expired or credentials are disconnected. Show that saved content is being refreshed and its last checked time; refresh in the background, retain content on failure, and never acknowledge newer attention from the saved preview alone. Retain saved comments when offline; large conversations explicitly show recent bounded coverage and a GitHub link. No Files/Discussion/Reviews tabs. Preserve immutable revisions for analyses. **Mark all seen:** beside “Conversation · N unseen” a button marks every comment loaded in the view as seen in one local request, filtered ones included; it shows only while one is unseen, never writes to GitHub, and a comment edited or added after the list was shown stays unseen. |
 | RES-02 | Types from a plugin pack | Not part of the public app. A plugin pack may contribute a type (for example an internal ticket tracker) with its account type and views; its own documentation holds the requirements. Saved items of a pack that is not installed stay as placeholders with their data. |
 | RES-03 | Notion | URL-only creation from `www.notion.so`, `*.notion.site`, `notion.com` and `app.notion.com/p/<workspace>/<slug>-<id>` links; provider title and readable page content with source link. Auth/error/loading states are explicit. **Title:** the item is named after the page's title property, read in full on the first read and again on every read that sees a new edit time, so renaming the page in Notion renames the item (and its resource) on the next poll; a page without a title is “Untitled”. As for every provider-titled type, Item settings shows the name read-only. The one exception is a web link upgraded under RES-10 whose title the person had chosen: that title is kept and later reads leave it alone, while the full view still shows the page title. **Comments:** pages are polled on the shared cadence (60 s, stretching to 10 min while unchanged; an unchanged page costs two page requests). Each read lists the page's open page-level comments plus inline discussions on blocks: up to 10 blocks already known to have discussions and the next 10 blocks of the page in turn (first 500 eligible blocks), so an inline comment on a block not yet visited appears within a few reads. Resolved discussions are not listed by Notion. Unread state is local, never written to Notion: a watermark per item (whole minute + ids of that minute) in the resource cache, surviving restarts. Comments present at the first observation are read; later comments by anyone but me are unread. “Me” is the connected integration (its bot, plus a user owner for OAuth integrations) and the IDs in Settings → Items → Notion page → Comments (“Your Notion user ID”); the Notion CLI's internal integration tokens cannot identify the person, so without that setting comments written by the person in Notion count. The map card shows the unread count with the shared comment cue, the same one a pull request uses for unseen comments (one builder, `unreadCommentsIndicator`; cue id `comments`, message glyph, blue, label “N unread comments”, which a narrow card shortens to glyph plus number; the count stays visible at the small size). Being an ordinary indicator it also is the item's far-zoom badge and its status in dashboard rows and previews. The full view's status chip reads “N unread comments” (in the meta line while Archived); both hide at zero. New unread comments raise Needs me (reason `comment`, source `notion.comments`) with “New comment” / “N new comments” once per batch; unchanged polls and restarts do not notify again. Opening the page link from the app (Open on Notion in the item menu, double-click to web, or ↗ Open in Notion in the full view) moves the watermark to that minute and clears the count, but does not withdraw Needs me: the entry stays until the person marks it seen (Seen in Needs me or Mark seen in the frame; STATE-02). Expanding the item changes neither. A later unread comment raises a new Needs me cycle. A missing Read comments capability (403) is an explicit degraded state (“Comments unavailable” in the full view, no badge); page content still loads, background polls ask again after 30 minutes and Refresh asks at once. |
-| RES-04 | Linear | URL-only creation; issue identifier, provider title, status and Markdown description rendered with an established library. Support headings, emphasis, nested/task lists, links, quotes, fenced code and tables; keep code/tables horizontally scrollable inside the view. Provider HTML stays inert, task checkboxes are read-only and links use the existing browser-opening path. Compact bubble shows identifier, title and a colored workflow status label. Default small footprint is 240×64: allow a two-line title beside the icon and place the status on a separate, left-aligned row with a clear gap. Preserve manually saved sizes; shorter cards use a single-line title to prevent overlap. Right-click → Change status and clicking the current status in the full view open the ticket team’s actual workflow states, including custom states. |
+| RES-04 | Linear | URL-only creation; issue identifier, provider title, status and Markdown description rendered with an established library. Support headings, emphasis, nested/task lists, links, quotes, fenced code and tables; keep code/tables horizontally scrollable inside the view. Provider HTML stays inert, task checkboxes are read-only and links use the existing browser-opening path. Compact bubble shows identifier, title and a colored workflow status label. Default small footprint is 240×64: allow a two-line title beside the icon and place the status on a separate, left-aligned row with a clear gap. Preserve manually saved sizes; shorter cards use a single-line title to prevent overlap. Right-click → Change status and clicking the current status in the full view open the ticket team’s actual workflow states, including custom states. **Linked pull requests.** The issue read asks for `attachments(first: 50) { nodes { url } }` and keeps the GitHub pull requests among them (`https://github.com/{owner}/{repo}/pull/{n}`, each once, owner and repository compared without case) as `pulls` in the cached detail. The ticket's map menu offers **Linked pull requests ▸ Add to the map** (runtime operation `linear.ticket.pulls`, human only; agents may read `options`): every listed pull request is attached as a pull request item with the default GitHub account, in the ticket's project, placed beside the ticket and linked from it (reference); one already in that project is reused, not added twice. The map flies to the first; one that cannot load is reported while the rest are added; a ticket Linear lists none on says so. Nothing is added without the click. |
 | RES-05 | Slack | Label the type simply “Slack”. Accept message/thread permalinks; preserve selected message and thread-root identities, show fetched content and attribution. Reads/context do not post replies. A newly attached item is named once with a 2–5 word AI summary of its selected message (and thread root); the attempt is spent before the call, so refreshes, edits, replies, restarts and failures never regenerate it, and refresh never overwrites a generated or renamed title. Until then, or on failure, the provider title (`#channel · excerpt`) stays. |
 | RES-06 | Web link | URL-only creation; detect page title with domain fallback. Activation opens a browser at the exact URL and preserves map location. Private/authenticated pages can remain links even when metadata is unavailable. A link whose URL a connected, more specific type claims is upgraded to that type (RES-10). |
 | RES-07 | Terminal | Label the type simply “Terminal”. The name is optional when starting one; left empty it is “Terminal · ” and the folder’s name (just “Terminal” without a folder). Local shell with stable identity, cwd, resize/input/output and reconnect history. A reference/context gesture must never execute text as a shell command. |
@@ -2872,15 +2946,17 @@ missing value reads on; the box applies at once, no Save). While it is on, every
 rollout this PR discovers (PR-05: the deploy runs that follow its merge) is validated
 without a click: when such a rollout first shows a run attempt that no validation
 covers (same run, attempt and commit), the service triggers a validation exactly as
-**Trigger validation** would, choosing a ready agent connected to the rollout and
-preferring one connected through this PR; with no agent ready it tries again on each
-of its reconcile ticks until the run completes, then gives up for that attempt. One
-automatic validation per attempt, journaled like a user trigger, and listed as
-“automatic” in the rollout's validations; it adds the direct connection like a manual
-trigger. Auto validate never starts an agent by itself: a new session
-spends model tokens, and doing that without a click is a separate decision, so with no
-ready connected agent it only keeps looking as described. Unchecking stops future
-automatic triggers and cancels nothing running.
+**Validate** in one click would: the rollout's own validation agent — its idle hidden
+validation agent asked again, else a new one started hidden (Validate in one click,
+Retiring hidden validation agents) — never an agent connected to the rollout, so the
+agent a person is working with is left alone. Only while Claude cannot start a session
+here (not installed, not signed in, the starter unavailable) does a ready connected
+agent take the request instead, preferring one connected through this PR, and the
+direct connection is then added like a manual trigger; with none ready either, the
+service tries again on each of its reconcile ticks until the run completes, then gives
+up for that attempt. One automatic validation per attempt (per phase for a gated run, see Validations per phase), journaled like a user
+trigger, and listed as “automatic” in the rollout's validations. Unchecking stops
+future automatic triggers and cancels nothing running.
 Agents still cannot trigger (human-only rule); the checkbox is the person's standing
 instruction.
 
@@ -2913,10 +2989,13 @@ validated too), plus its delay, counted from the last job's `completed_at`. Only
 latest due stage is asked for: one that falls due while an earlier one waits replaces it,
 and a stage nobody could take within an hour of falling due is left alone, so a restart
 hours later asks nothing. A stage is asked for when Auto validate is on for a pull
-request that discovered the rollout, a ready connected agent exists (the agent of the
-attempt's latest validation first, then one connected through that pull request, then
-any), and no validation of the attempt is still requested or running (and not resolved);
-otherwise each reconcile pass looks again. A stage counts as covered by its own request
+request that discovered the rollout and no validation of the attempt is still requested
+or running (and not resolved); otherwise each reconcile pass looks again. It goes to the
+rollout's validation agent like the whole-run case: the idle hidden agent that validated
+the earlier stages is asked again (it keeps their context), else a new one starts hidden
+with the stage in its scope and prompt; only while Claude cannot start a session does a
+ready connected agent take it (the agent of the attempt's latest validation first, then
+one connected through that pull request, then any), and without one the pass waits. A stage counts as covered by its own request
 (a request id derived from rollout, run, attempt, commit and stage, so it is sent once
 across passes and restarts, and a delayed stage's time comes from the stored job snapshot) or by
 a validation a person requested after it fell due. A stage's focus defaults to its
@@ -3142,9 +3221,9 @@ so aliases share it and it survives restarts; no table or migration):
    validated once at the end. A gate waiting before anything ran is approved without a
    validation.
 6. **Validate** each phase exactly as Trigger validation does (journaled request,
-   `V<n>`, hidden validation agent rules, reuse instead of repeat): a ready agent connected
-   to the rollout, preferably through this pull request, else the rollout's validation
-   agent (Validate in one click), which starts hidden when there is none. Each request is
+   `V<n>`, hidden validation agent rules, reuse instead of repeat): the rollout's validation
+   agent (Validate in one click), which starts hidden when there is none; an agent connected
+   to the rollout or this pull request is never asked. Each request is
    scoped to its phase, not the whole run: the trigger carries `phase { focus, jobs }`,
    the phase's label and the completed jobs no earlier validation of the rollout was
    given (`scope.focus`, `scope.jobs`), and the prompt says so (“one validation per
@@ -3438,7 +3517,11 @@ ids. Only an agent's report reads “Fixed” / “Fixed in <commit>” / “Fix
 map card (medium size) shows one pip per finding (solid open, hollow sent/queued,
 striped fixed or ignored), counts by severity/kind and progress (queued · sent ·
 fixed · ignored); critical or high bugs raise Needs me once
-per run. The PR's Connected reviews shows the same mix and progress. A text
+per run. A run that found nothing is a result, not a request: its card shows the
+cue **No findings** (green check, stage done) in place of the summary and its
+“Review ready” entry leaves Needs me; a later run with findings takes the cue away
+again. A result that is only text (no output, an error) keeps the entry. The PR's
+Connected reviews shows the same mix and progress. A text
 review can be sent whole. A finished review's header has **Copy whole report**
 (right of the title, also while the summary is collapsed): for findings it copies
 one Markdown document — the PR title, repository/number/URL and reviewed head,
@@ -3510,7 +3593,13 @@ Shift-left-drag on empty map selects a rectangle. Drag any selected item to move
 all selected items with their relative positions intact. Project moves include
 members once; group movement retains membership. Escape or a plain background
 click clears selection. Shared right-click actions apply atomically to the
-selection; omit single-item settings and provider launches.
+selection; omit single-item settings. A plugin menu group may name a selection
+form (`selection: { label, children }`): when every selected item has the group,
+the selection menu offers it under that label with those children only, and a pick
+runs the child once per item, each with its own toast and Open action. Pull requests
+offer **Review selection ▸ Claude / Codex** this way (one review per PR with the
+provider's default model, the existing per-PR de-duplication; `/review` is not
+offered for a selection because it posts to GitHub).
 
 ## 7. To-dos
 
@@ -3929,6 +4018,25 @@ trusted-code notice) still needs the person's explicit approval. Only
 credentials), the ref is optional and checked like the form's ref, and the link
 may carry nothing else; anything else is refused with a visible notice. The link is
 handled by the desktop app only; agents and MCP cannot trigger it.
+
+**UPDATE-01 — Updates follow release tags.** A release is a tag `vX.Y.Z` of the public
+repository; `package.json` carries the same version and the app reports it. The workspace
+service looks up the app's newest release tag (the GitHub tags API, without credentials)
+and, for every git-installed plugin pack, the newest tag of its source (`git ls-remote
+--tags` with the person's git) once a day while **Settings → General → Check for updates
+daily** is on (default on); **Check now** looks at once. A test run never reaches the
+network: it reads the tags URL the test names, or nothing. The window shows a newer
+release as an info notice in the notice corner, "<name> vX.Y.Z is available", until the
+person opens it or closes it; a closed notice stays closed for that version only
+(`view.dismissedUpdates`), a newer tag is offered again. For the app the notice opens
+Settings → General, whose About section shows the running version, the newest release,
+when it was checked or why it could not be, and the update command; for a pack it opens
+Settings → Plugins with the pack's source and new tag filled in for the usual review.
+Nothing is downloaded or installed by the check. `npm run update` in a checkout refuses
+while the app runs or tracked files have local changes, fetches tags, checks out the
+newest release (detached), then `npm ci`, `npm run package`, `npm run install:local`;
+`--dry-run` prints the plan. Builds without a release version (`dev`) are never offered
+an update.
 
 **QUALITY-01:** The same validation controls UI, MCP and provider-originated writes.
 Persist before announcing success. No duplicated processes/comments on uncertain

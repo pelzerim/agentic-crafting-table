@@ -72,6 +72,6 @@ test('notes share durable local creation, editing and agent context through prod
     assert.deepEqual(restored.links, before.links);
     assert.equal(restored.nodes.find(n => n.id === 'note')!.mapSize, 'large');
     assert.deepEqual(restored.nodes.find(n => n.id === 'note')!.mapDimensions, { width: 310, height: 170 });
-    assert.equal(service.store.readMapSizes()['workspace.note'].sizes.large?.width, 360);
+    assert.equal(service.store.readMapLayout().sizes['workspace.note'].sizes.large?.width, 360);
   } finally { await client.close(); await service.close(); await rm(directory, { recursive: true, force: true }); }
 });

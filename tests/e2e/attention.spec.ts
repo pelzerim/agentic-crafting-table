@@ -224,7 +224,7 @@ test('completion notices stack, expire without marking read, open items, and nev
   await expect(first).toBeVisible(); await expect(second).toBeVisible();
   await expect(first).toContainText('Agent finished'); await expect(second).toContainText('Finished · ready to view');
   // Finished work is listed in Needs me without being counted.
-  await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toHaveAttribute('title', 'Needs me · 2 finished');
+  await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toHaveAttribute('title', 'Needs me · 2 finished · Right-click to hold open');
   const a = (await first.boundingBox())!, b = (await second.boundingBox())!;
   expect(a.x).toBeLessThan(50); expect(a.y + a.height).toBeLessThan(b.y);
   await capture(page, 'completion-notices.png');
@@ -234,7 +234,7 @@ test('completion notices stack, expire without marking read, open items, and nev
   await page.getByRole('button', { name: 'Needs me', exact: true }).click();
   await page.getByRole('button', { name: 'Dismiss Claude · implementation from Needs me', exact: true }).click();
   await page.getByRole('button', { name: 'Close needs me', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toHaveAttribute('title', 'Needs me · 1 finished');
+  await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toHaveAttribute('title', 'Needs me · 1 finished · Right-click to hold open');
   await expect(second).toHaveCount(0, { timeout: 7000 });
   await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toBeVisible();
   await page.reload();
@@ -244,7 +244,7 @@ test('completion notices stack, expire without marking read, open items, and nev
   await expect(page.locator('.act-toast')).toHaveCount(0);
   await apply(page, [finish('agent', 'turn-two')]);
   await expect(first).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toHaveAttribute('title', 'Needs me · 2 finished');
+  await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toHaveAttribute('title', 'Needs me · 2 finished · Right-click to hold open');
 });
 
 
@@ -725,6 +725,35 @@ test('opening marks an item seen only for the types chosen in settings', async (
   await focus('pr'); await expect(seen).toBeVisible(); await expect(needs(2)).toBeVisible();
 });
 
+test('Close and keep in Needs me takes back the acknowledgement an open made and closes the item', async ({ visual: { page } }) => {
+  const needs = (count: number) => page.getByRole('button', { name: `Needs me: ${count}`, exact: true });
+  const seen = page.getByRole('button', { name: 'Mark seen', exact: true }), close = page.getByRole('button', { name: 'Back to project', exact: true });
+  const keep = page.getByRole('button', { name: 'Close and keep in Needs me', exact: true }), agent = page.getByRole('article', { name: 'Claude · implementation', exact: true });
+  const focus = (id: string) => expect(page.locator('.map-area')).toHaveAttribute('data-focus', id);
+  await markSeenOnOpen(page, ['agent.session']);
+  await expect(needs(2)).toBeVisible(); await expect(keep).toHaveCount(0);
+  await agent.click();
+  await focus('agent'); await expect(needs(1)).toBeVisible(); await expect(seen).toHaveCount(0);
+  await expect(keep).toBeVisible(); await expect(keep).toHaveAttribute('title', 'Close and keep in Needs me');
+  await expect(keep.locator('.tier-mark')).toHaveAttribute('data-tier', 'asking');
+  const amber = await page.evaluate(() => { const probe = document.createElement('i'); probe.style.color = 'var(--act-attention)'; document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; });
+  await expect(keep).toHaveCSS('color', amber);
+  await expect(keep).toHaveScreenshot('item-keep.png');
+  await keep.click();
+  await expect(page.locator('.map-area')).not.toHaveAttribute('data-focus', /.+/);
+  await expect(needs(2)).toBeVisible();
+  const node = (await read(page)).nodes.find(node => node.id === 'agent')!;
+  expect(node.attentionSeenVersion).toBeUndefined(); expect(node.attention).toBe('input');
+  // Opened again it is seen again and can be kept again; closing with the X keeps the acknowledgement, and the offer does not survive the item.
+  await agent.click();
+  await focus('agent'); await expect(needs(1)).toBeVisible(); await expect(keep).toBeVisible();
+  await close.click();
+  await expect(needs(1)).toBeVisible(); await expect(keep).toHaveCount(0);
+  await agent.click(); await focus('agent'); await expect(keep).toHaveCount(0); await expect(seen).toHaveCount(0);
+  await close.click();
+  await markSeenOnOpen(page, []);
+});
+
 test('opening does not mark an item seen while the window is in the background', async ({ visual: { app, page } }) => {
   const needs = (count: number) => page.getByRole('button', { name: `Needs me: ${count}`, exact: true });
   const close = page.getByRole('button', { name: 'Back to project', exact: true });
@@ -772,4 +801,25 @@ test('opening the web page of an item marks it seen for a chosen type', async ({
   await expect.poll(opened).toBe(2);
   await expect(page.getByRole('button', { name: 'Needs me: 1', exact: true })).toBeVisible();
   await expect(page.locator('.map-area')).toHaveAttribute('data-focus', '');
+});
+
+test('a Needs me row quotes the line the agent ended on, and each group folds from its heading, remembered after a reload', async ({ visual: { page } }) => {
+  await apply(page, [{ type: 'node.update', id: 'agent', lastLine: 'I pushed the fix to main and the checks are green.' }]);
+  await page.getByRole('button', { name: 'Needs me: 2', exact: true }).click();
+  const list = page.getByRole('dialog', { name: 'Needs me', exact: true }), entry = list.getByRole('button', { name: 'Open Claude · implementation', exact: true });
+  await expect(entry.locator('.attention-summary')).toHaveText('I pushed the fix to main and the checks are green.');
+  await expect(entry.locator('.attention-summary')).toHaveAttribute('data-said', 'true');
+  const turn = list.getByRole('group', { name: 'My turn', exact: true }), fold = turn.getByRole('button', { name: /^My turn · 1/ });
+  await expect(fold).toHaveAttribute('aria-expanded', 'true');
+  await expect(turn.getByRole('button', { name: 'Open Plan switcher', exact: true })).toBeVisible();
+  await fold.click();
+  await expect(fold).toHaveAttribute('aria-expanded', 'false');
+  await expect(turn.getByRole('button', { name: 'Open Plan switcher', exact: true })).toHaveCount(0);
+  await expect(entry).toBeVisible();
+  await page.reload(); await page.getByRole('button', { name: 'Needs me: 2', exact: true }).click();
+  await expect(list.getByRole('group', { name: 'My turn', exact: true }).getByRole('button', { name: /^My turn · 1/ })).toHaveAttribute('aria-expanded', 'false');
+  await list.getByRole('group', { name: 'My turn', exact: true }).getByRole('button', { name: /^My turn · 1/ }).click();
+  await expect(list.getByRole('button', { name: 'Open Plan switcher', exact: true })).toBeVisible();
+  await apply(page, [{ type: 'node.update', id: 'agent', lastLine: null }]);
+  await expect(entry.locator('.attention-summary')).toHaveText('Updating the plan switcher');
 });

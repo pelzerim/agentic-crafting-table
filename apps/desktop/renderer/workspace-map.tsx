@@ -21,6 +21,8 @@ import type { PluginInstallRequest } from './plugin-manager.tsx';
 import { ActionsTool } from './actions-tool.tsx';
 import { StandupPanel } from './standup-panel.tsx';
 import { STANDUP_ENABLED } from '../../../packages/core/standup.ts';
+import { pendingOffers, useUpdates } from './use-updates.ts';
+import { UpdateNotice } from './update-notice.tsx';
 import type { ProviderDescription } from '../../../packages/core/connections.ts';
 import { seenOnOpen } from '../../../packages/core/settings.ts';
 import type { OpenContext, SettingsSnapshot } from '../../../packages/core/settings.ts';
@@ -51,7 +53,7 @@ import { ItemIcon } from './icons.tsx';
 import { ConnectionStatus } from './connection-status.tsx';
 import { FirstRunCard } from './first-run.tsx';
 import { ResourceActionNotice, useResourceMenuActions } from './resource-menu-actions.tsx';
-import { NEEDS_ME, attentionCounts, attentionItems } from '../../../src/graph/attention.ts';
+import { NEEDS_ME, attentionCounts, attentionItems, attentionRestorable } from '../../../src/graph/attention.ts';
 import { needsMeIds } from '../../../src/graph/atlas.ts';
 import { splitAttention } from '../../../src/graph/mute.ts';
 import { doneArchiveDays, todoEntries as listTodos } from '../../../src/graph/todos.ts';
@@ -71,6 +73,7 @@ import { ControlsCard } from './controls-card.tsx';
 import { UNDERMAP_LOOSE, mirrorLayout, searchUndermap } from '../../../src/graph/undermap.ts';
 import type { MirrorLayout, UndermapMatch } from '../../../src/graph/undermap.ts';
 import { resolveMapSize, sizeAsDefault } from '../../../packages/core/item-map-sizes.ts';
+import { SNAP_PITCH } from '../../../src/graph/snap.ts';
 import { LARGE_ITEM_WIDTH } from '../../../src/graph/footprints.ts';
 import { UndermapSearch } from './undermap-search.tsx';
 import type { UndermapSearchHandle } from './undermap-search.tsx';
@@ -194,6 +197,9 @@ export function WorkspaceMap() {
   const [sessionRequestId, setSessionRequestId] = useState(0);
   const [sessionListView, setSessionListView] = useState<'active' | 'archived' | undefined>(undefined);
   const [installRequest, setInstallRequest] = useState<PluginInstallRequest>(), installRequests = useRef(0);
+  const [settingsSection, setSettingsSection] = useState<string>();
+  const updates = useUpdates(Boolean(snapshot));
+  const updateOffers = useMemo(() => pendingOffers(updates.status, view?.dismissedUpdates), [updates.status, view?.dismissedUpdates]);
   const [archiveOpen, setArchiveOpen] = useState(false), [removedLink, setRemovedLink] = useState<GraphLink>();
   const [layer, setLayer] = useState<'map' | 'below'>('map'), layerRef = useRef(layer); layerRef.current = layer;
   const [travelling, setTravelling] = useState(false), [riseCharge, setRiseCharge] = useState(0), [portalHot, setPortalHot] = useState(false);
@@ -350,7 +356,9 @@ export function WorkspaceMap() {
     const type = resourceId ? state?.resources.find(resource => resource.id === resourceId)?.pluginId : undefined;
     return seenOnOpen(type, settingsRef.current?.value.notifications ?? { seenOnOpen: [] }, context);
   }, []);
-  const { acknowledge, notices, opened, view: viewing } = useAttention(snapshot, accept, setError, seenOnOpenFor);
+  const { acknowledge, notices, opened, view: viewing, kept, restore } = useAttention(snapshot, accept, setError, seenOnOpenFor);
+  const [chromeDocked, setChromeDocked] = useState(false);
+  const keep = useMemo(() => { const tier = kept && snapshot ? attentionRestorable(snapshot.state.nodes, kept)?.tier : undefined; return tier ? { id: kept!.id, tier } : undefined; }, [kept, snapshot]);
   useEffect(() => {
     const open = () => { void window.craftingTable.takeNotificationTarget().then(target => { if (target?.nodeId) revealRef.current(target.nodeId); }).catch(() => {}); };
     const off = window.craftingTable.onNotificationOpen(open); open(); return off;
@@ -572,6 +580,14 @@ export function WorkspaceMap() {
     if (!editor) return;
     if (id.startsWith('send:')) { if (moveIds && id.length > 'send:'.length) moveToProject(moveIds, id.slice('send:'.length)); return; }
     if (selectedItems.length > 1) {
+      if (id.startsWith('plugin:')) {
+        // A selection's plugin entry runs once per item: each start keeps its own toast and Open action.
+        const action = menuActions.flatMap(group => group.children ?? []).find(action => action.id === id);
+        if (!action) return;
+        setEditor(undefined);
+        for (const node of selectedItems) { const resource = resources?.find(resource => resource.id === node.resourceId); if (resource) resourceMenu.start(node.id, resource, id.slice('plugin:'.length), action.label); }
+        return;
+      }
       if (!menuActions.some(action => action.id === id)) return;
       if (id === 'below' || id === 'surface') { moveLayer(selectedItems.map(node => node.id), id); return; }
       if (id === 'copy-url') { copyUrls(selectedItems.flatMap(node => webPage(resources?.find(resource => resource.id === node.resourceId))?.url ?? [])); return; }
@@ -633,12 +649,12 @@ export function WorkspaceMap() {
     'rail.settings': () => { setSessionListView(undefined); setSettingsOpen(true); },
     'shortcuts.help': () => { setControlsOpen(old => !old); },
   });
-  return <RailContext.Provider value={rail}><section ref={workspace} className="live-workspace" aria-label={below ? 'Undermap' : 'Project map'} data-layer={layer} data-travelling={travelling || undefined}>
+  return <RailContext.Provider value={rail}><section ref={workspace} className="live-workspace" aria-label={below ? 'Undermap' : 'Project map'} data-layer={layer} data-travelling={travelling || undefined} data-chrome-docked={chromeDocked || undefined}>
     {snapshot && plugins && view && settings && <ProjectMap key={layer} layer={layer} neighborhoodColor={below ? undermapColor : undefined} registry={registry} nodes={layerGraph.nodes} resources={layerResources} links={layerGraph.links}
-      onMarkSeen={acknowledge} onOpened={opened} onView={viewing} onMute={below ? undefined : setMuted}
+      onMarkSeen={acknowledge} keep={keep} onKeep={restore} onChromeCover={setChromeDocked} onOpened={opened} onView={viewing} onMute={below ? undefined : setMuted}
       overview={overviewOpen} onOverview={open => { setOverviewOpen(open); if (open) { rail.unpin('attention'); rail.close('attention'); } }} undermapCount={layerGraph.belowCount} onTravel={to => { rail.clear(); void travel(to); }}
       highlightedNodes={menuHighlight?.nodes ?? (below && foundBelow ? foundNodes : highlightedNodes)} highlightedLinks={menuHighlight?.links} menuFor={editor?.mode === 'menu' ? menuTargets : undefined} undermap={below ? undermapView : undefined}
-      attentionCounting={counting} itemMapSizes={settings.value.itemMapSizes} itemViews={settings.value.itemViews} viewBounds={view.itemViewBounds} onViewBounds={saveViewBounds} neighborhoodPadding={settings.value.neighborhoodPadding} neighborhoodAppearance={neighborhoodAppearance} dashboards={settings.value.mapDashboards} workingMark={settings.value.workingMark} plots={plots} onPlot={(projectId, request) => window.craftingTable.runtimeRun({ action: 'plot', nodeId: projectId, arguments: request }).then(() => {}, error => { if (request.operation !== 'seen') setError(error.message); })} plotNaming={settings.value.summaries.plotNames} hideImpliedLinks={settings.value.hideImpliedLinks} initialViewport={view.camera} onViewport={camera => { zoomRef.current = camera.zoom; saveView({ camera }); }} reveal={reveal} onRevealed={revealed => setReveal(current => current === revealed ? undefined : current)}
+      attentionCounting={counting} itemMapSizes={settings.value.itemMapSizes} itemViews={settings.value.itemViews} viewBounds={view.itemViewBounds} onViewBounds={saveViewBounds} neighborhoodPadding={settings.value.neighborhoodPadding} neighborhoodAppearance={neighborhoodAppearance} dashboards={settings.value.mapDashboards} workingMark={settings.value.workingMark} plots={plots} onPlot={(projectId, request) => window.craftingTable.runtimeRun({ action: 'plot', nodeId: projectId, arguments: request }).then(() => {}, error => { if (request.operation !== 'seen') setError(error.message); })} plotNaming={settings.value.summaries.plotNames} hideImpliedLinks={settings.value.hideImpliedLinks} snap={settings.value.snapToGrid ? SNAP_PITCH : undefined} initialViewport={view.camera} onViewport={camera => { zoomRef.current = camera.zoom; saveView({ camera }); }} reveal={reveal} onRevealed={revealed => setReveal(current => current === revealed ? undefined : current)}
       onItemDrag={below ? undefined : (id, point) => todoOverlay.current?.drag(id, point)} onItemDrop={below ? undefined : (id, point) => todoOverlay.current?.drop(id, point) ?? false}
       onLink={below ? undefined : anchor => {
         setEditor(undefined); setConnectionDraft(undefined);
@@ -718,6 +734,8 @@ export function WorkspaceMap() {
     <RecoveryStatus />
     {resourceMenu.notices.map(notice => <ResourceActionNotice key={notice.key} notice={notice} open={openResource} dismiss={() => resourceMenu.dismiss(notice.key)} />)}
     {notices.map(notice => <CompletionNotice key={notice.key} notice={notice} open={nodeId => notice.failed ? openResource(nodeId) : revealNode(nodeId)} />)}
+    {updateOffers.map(offer => <UpdateNotice key={offer.key} offer={offer} dismiss={() => saveView({ dismissedUpdates: { ...viewRef.current?.dismissedUpdates, [offer.key]: offer.latest } })}
+      open={() => { setSessionListView(undefined); if (offer.plugin) setInstallRequest({ id: ++installRequests.current, link: { source: offer.plugin.source, ref: offer.latest } }); else setSettingsSection('General'); setSettingsOpen(true); }} />)}
     {removedLink && linkNotice.visible && <Toast tone="undo" title="Connection removed" detail={`${snapshot?.state.nodes.find(node => node.id === removedLink.sourceId)?.title ?? 'Item'} → ${snapshot?.state.nodes.find(node => node.id === removedLink.targetId)?.title ?? 'item'}`}
       action={{ label: 'Undo', run: () => {
         if (snapshotRef.current?.state.links.some(link => link.id === removedLink.id)) { setError('This connection changed after removal. Undo cannot replace it.'); return; }
@@ -738,7 +756,7 @@ export function WorkspaceMap() {
     {controlsOpen && <ControlsCard close={() => setControlsOpen(false)} />}
     {standupOpen && <StandupPanel close={() => setStandupOpen(false)} reveal={nodeId => revealNode(nodeId, 'map')} openUrl={url => { void window.craftingTable.openUrl(url).catch(error => setError(error.message)); }}
       onMap={nodeId => { const nodes = snapshotRef.current?.state.nodes ?? [], node = nodes.find(candidate => candidate.id === nodeId); return Boolean(node && !isArchived(node, nodes)); }} />}
-    {settingsOpen && <Settings sessionRequestId={sessionRequestId} initialSessionView={sessionListView} installRequest={installRequest} nodeTitles={new Map(snapshot?.state.nodes.map(node => [node.id, node.title]) ?? [])} plugins={plugins ?? []} providers={providers} openArchive={() => setArchiveOpen(true)} clearOverlaps={() => apply([{ type: 'layout.repair' }])} close={() => { setSettingsOpen(false); setInstallRequest(undefined); }} />}
+    {settingsOpen && <Settings sessionRequestId={sessionRequestId} initialSessionView={sessionListView} installRequest={installRequest} initialSection={settingsSection} updates={updates} nodeTitles={new Map(snapshot?.state.nodes.map(node => [node.id, node.title]) ?? [])} plugins={plugins ?? []} providers={providers} openArchive={() => setArchiveOpen(true)} clearOverlaps={() => apply([{ type: 'layout.repair' }])} close={() => { setSettingsOpen(false); setInstallRequest(undefined); setSettingsSection(undefined); }} />}
     {editor?.mode === 'menu' && <CanvasMenu key={`${editor.nodeId ?? editor.linkId ?? ''}:${editor.screen.x}:${editor.screen.y}`} screen={editor.screen} avoid={editor.avoid} actions={menuActions}
       loadChoices={async action => {
         if (!selected || !action.choices) return [];

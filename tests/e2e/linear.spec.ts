@@ -3,6 +3,7 @@ import { test, expect, _electron as electron } from '@playwright/test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { startWorkspaceService } from '../../packages/workspace-service/server.ts';
 import { linearProviders } from '../fixtures/linear.ts';
 import { exitWithoutShutdown } from './exit-without-shutdown.ts';
@@ -197,4 +198,36 @@ test('Linear Done and the to-do checkbox mirror each other, restore the earlier 
     await expect(card).toHaveAttribute('data-completed', 'false');
     expect(providers.writes).toHaveLength(2);
   } finally { await exitWithoutShutdown(app); await service.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('a ticket offers Linked pull requests → Add to the map; it says so when Linear lists none and tries each one it lists', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-linear-pulls-')), providers = linearProviders();
+  const service = await startWorkspaceService(directory, undefined, undefined, providers);
+  const app = await electron.launch({ args: ['.', ...scrollbarArgs], env: { ...process.env, ACT_TEST_DATA_DIR: directory, TZ: 'UTC' } });
+  try {
+    const page = await app.firstWindow(); await resize(app, page, 1280, 800); await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.getByRole('button', { name: 'Create your first project' }).click(); await page.getByLabel('Title', { exact: true }).fill('Billing'); await page.getByRole('button', { name: 'Create project', exact: true }).click();
+    await openProjectPicker(page, 'Billing');
+    await page.getByRole('button', { name: 'From URL', exact: true }).click();
+    await page.getByLabel('Item URL').fill('https://linear.app/fixture/issue/BIL-128'); await page.getByRole('button', { name: 'Attach ticket', exact: true }).click();
+    const card = page.getByRole('article', { name: 'BIL-128 · Make plan changes predictable', exact: true });
+    await expect(card).toBeVisible();
+    const add = async () => {
+      await card.click({ button: 'right' });
+      await page.getByRole('menuitem', { name: 'Linked pull requests', exact: true }).hover();
+      await page.getByRole('menuitem', { name: 'Add to the map', exact: true }).click();
+    };
+    await add();
+    await expect(page.getByRole('alert').filter({ hasText: 'Linear lists no pull requests on BIL-128' })).toBeVisible();
+    await page.getByRole('button', { name: 'Dismiss error', exact: true }).click();
+    // Linear now lists one: the table attaches it as a pull request, which this fixture's host cannot load.
+    Object.assign(providers.data.issue, { attachments: { nodes: [{ url: 'https://github.com/fixture/billing/pull/42' }] } });
+    const expire = () => { const db = new DatabaseSync(service.store.file); db.exec('UPDATE resource_cache SET checked_at=0'); db.close(); };
+    await expect.poll(async () => { expire(); await service.resources.poll(); return ((await service.resources.cached((await service.control.read()).nodes.find(node => node.title.startsWith('BIL-128'))!.id))?.detail as any)?.pulls; }).toEqual([{ owner: 'fixture', repo: 'billing', number: 42 }]);
+    await add();
+    await expect(page.getByRole('alert').filter({ hasText: /Provider attachment is unavailable for this item type/ })).toBeVisible();
+  } finally {
+    await exitWithoutShutdown(app); await service.close();
+    await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
 });

@@ -11,7 +11,7 @@ export const githubPullRequest = defineResourcePlugin({
   icon: 'git-pull-request',
   brand: 'github',
   context: { fields: ['owner', 'repo', 'number'] },
-  contextMenu: [{ id: 'review', label: 'Trigger review', children: [
+  contextMenu: [{ id: 'review', label: 'Trigger review', selection: { label: 'Review selection', children: ['review.claude', 'review.codex'] }, children: [
     { id: 'review.claude', label: 'Claude', description: 'One-off Claude review · Opus by default' },
     { id: 'review.codex', label: 'Codex', description: 'One-off Codex review · Astra by default' },
     { id: 'review.workflow', label: '/review', description: 'Posts /review on GitHub and watches for the result' },
@@ -25,7 +25,7 @@ export const githubPullRequest = defineResourcePlugin({
   mapSizes: { defaultSize: 'medium', sizes: {
     small: { width: 200, height: 48, summaryLines: 0, description: "Title and attention indicators." },
     medium: { width: 200, height: 84, summaryLines: 1, description: "Title and current PR status." },
-    large: { width: 280, height: 132, summaryLines: 2, fields: ['repo', 'number'], fieldLines: 1, description: "Longer status, repository and PR number." },
+    large: { width: 280, height: 132, summaryLines: 2, fields: ['repo'], fieldLines: 1, description: "Longer status and repository." },
   } },
   appearance: { tone: 'violet', shape: 'branch', size: 'medium' },
   overview: { pipeline: { singular: 'PR', plural: 'PRs' } },

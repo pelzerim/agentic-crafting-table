@@ -18,6 +18,7 @@ import { isOffMap } from '../../src/graph/archive.ts';
 import { clip } from '../../src/pull-requests/review-findings.ts';
 import { acceptReport, annotateValidations, ATTACH_VALIDATION, NEW_VALIDATION_AGENT, observedEvents, REUSE_MS, reportShape, VALIDATION_AGENT, VALIDATION_AGENT_LABEL, validationAttention, verdictLabels } from '../../src/resource-plugins/items/github-rollout/validation.ts';
 import type { AppApproval, CheckStatus, SnapshotJob, Validation, ValidationReport, ValidationScope, Verdict } from '../../src/resource-plugins/items/github-rollout/validation.ts';
+import { currentPhase } from '../../src/resource-plugins/items/github-rollout/phases.ts';
 import { componentOf, dueStage, environmentStates, reachedStage, stageRule } from '../../src/resource-plugins/items/github-rollout/stages.ts';
 import type { Component, DueStage, EnvironmentStatus, StagePlan, StageRule } from '../../src/resource-plugins/items/github-rollout/stages.ts';
 import { VALIDATION_LINK } from './validation-link-migration.ts';
@@ -27,6 +28,8 @@ export const rolloutValidationInput = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('options') }).strict(),
   z.object({ operation: z.literal('list') }).strict(),
   z.object({ operation: z.literal('trigger'), sourceResourceId: z.string().min(1), value: z.string().min(1), sessionId: z.string().min(1).optional(), requestId: z.string().uuid(), rerun: label.optional(),
+    /** Scope the validation to the phase that ran since the last validation of the attempt (one click, Approve and validate). */
+    phased: z.literal(true).optional(),
     phase: z.object({ focus: z.string().min(1).max(200), jobs: z.array(z.number().int().nonnegative()).max(200) }).strict().optional() }).strict(),
   z.object({ operation: z.literal('ask'), validationId: label, requestId: z.string().uuid() }).strict(),
   z.object({ operation: z.literal('show'), validationId: label }).strict(),
@@ -90,6 +93,8 @@ export function connectedAgents(state: WorkspaceState, rolloutNodeId: string, th
 export const automaticRequestId = (rolloutResourceId: string, scope: Pick<ValidationScope, 'runId' | 'attempt' | 'headSha'>) => stableUuid(`rollout-validation:automatic:${rolloutResourceId}:${scope.runId}:${scope.attempt}:${scope.headSha}`);
 /** Request id of the automatic validation of one stage of a staged run attempt: asking twice, or again after a restart, finds it. */
 export const stageRequestId = (rolloutResourceId: string, scope: Pick<ValidationScope, 'runId' | 'attempt' | 'headSha'>, stage: string) => stableUuid(`rollout-validation:stage:${rolloutResourceId}:${scope.runId}:${scope.attempt}:${scope.headSha}:${stage}`);
+/** Request id of the automatic validation of one phase of a gated run attempt, named by the jobs it covers. */
+export const phaseRequestId = (rolloutResourceId: string, scope: Pick<ValidationScope, 'runId' | 'attempt' | 'headSha'>, jobs: readonly number[]) => stableUuid(`rollout-validation:phase:${rolloutResourceId}:${scope.runId}:${scope.attempt}:${scope.headSha}:${jobs.join(',')}`);
 /** Request id of a validation an agent reported without a request. */
 export const unrequestedRequestId = (rolloutResourceId: string, ordinal: number) => stableUuid(`rollout-validation:unrequested:${rolloutResourceId}:${ordinal}`);
 /** Request id of a validation an agent started by reporting without an id. */
@@ -215,6 +220,7 @@ type Resources = Pick<ResourceCoordinator, 'context' | 'cached' | 'content' | 'r
 type Stage = { due: DueStage; plans: readonly StagePlan[] };
 type Trigger = Extract<z.infer<typeof rolloutValidationInput>, { operation: 'trigger' }>;
 /** The scope an approval phase asks for: its focus and the jobs it covers; without one, a stage's focus or the whole run. */
+const stageScope = (stage?: Stage) => stage ? { focus: stage.due.focus, environments: [stage.due.environment], stage: stage.due.key, label: stage.due.label } : {};
 const phaseScope = (args: Trigger, fallback = 'whole run') => ({ focus: args.phase?.focus ?? fallback, ...(args.phase?.jobs.length ? { jobs: args.phase.jobs } : {}) });
 const phasePrompt = (args: Trigger, jobs: readonly { id: number; name: string }[]) => args.phase ? { phase: { focus: args.phase.focus, jobs: args.phase.jobs.map(id => jobs.find(job => job.id === id)?.name ?? `job ${id}`) } } : {};
 
@@ -234,7 +240,8 @@ export class RolloutValidations {
   }
 
   async run(nodeId: string, input: unknown): Promise<unknown> {
-    const args = rolloutValidationInput.parse(input), { state, node, resource } = await this.rollout(nodeId);
+    let args = rolloutValidationInput.parse(input);
+    const { state, node, resource } = await this.rollout(nodeId);
     if (args.operation === 'list') { this.observe(); return this.describe(state, resource.id, await this.observation(node.id)); }
     if (args.operation === 'report') return this.report(node.id, resource.id, args);
     if (args.operation === 'show' || args.operation === 'hide') return this.visibility(state, node.id, resource.id, args.operation, args.validationId);
@@ -252,7 +259,18 @@ export class RolloutValidations {
     }
     if (args.sourceResourceId !== resource.id) throw new Error('This validation belongs to another rollout. Reopen the menu.');
     if (args.value === ATTACH_VALIDATION && !reuse) throw new Error('That validation is no longer under way or recent. Reopen the menu.');
-    if (reuse && (args.value === ATTACH_VALIDATION || !args.rerun)) {
+    // A repeated request answers as the first did: its phase was fixed when it was sent.
+    const replay = args.phased ? this.store.jobByRequest(`rollout-validation:${args.requestId}`) : undefined;
+    if (replay?.state === 'succeeded') return replay.result;
+    if (replay) args = { ...args, ...(replay.input.arguments as Trigger) };
+    else if (args.phased && !args.phase) {
+      const observation = await this.observation(node.id), run = observation?.run, attempt = run ? this.attemptValidations(resource.id, run) : [];
+      const phase = run && currentPhase(run, observation!.jobs, observation!.gates, attempt.flatMap(entry => entry.scope.jobs ?? []));
+      const latest = attempt.filter(entry => entry.scope.jobs?.length).at(-1);
+      if (!phase && latest) return { sent: false, attached: true, validationId: `V${latest.ordinal}`, pending: `V${latest.ordinal} covers everything that ran so far; the next phase is validated once it ran.` };
+      if (phase) args = { ...args, phase: { focus: phase.focus, jobs: phase.jobs } };
+    }
+    if (reuse && !args.phased && (args.value === ATTACH_VALIDATION || !args.rerun)) {
       return { sent: false, attached: true, validationId: reuse.label,
         pending: `${reuse.label}, started from chat, ${reuseState(reuse, this.now())}; its report is on the rollout. Re-run from Validate to ask again.` };
     }
@@ -282,15 +300,15 @@ export class RolloutValidations {
     catch (error) { this.unready = { at: this.now(), reason: clip((error as Error).message, 300) }; return this.unready.reason; }
   }
   /** One launch per request: a repeat while it runs joins it, a later one reads its journal. */
-  private spawn(state: WorkspaceState, node: WorkspaceState['nodes'][number], resourceId: string, args: Trigger): Promise<unknown> {
+  private spawn(state: WorkspaceState, node: WorkspaceState['nodes'][number], resourceId: string, args: Trigger, stage?: Stage): Promise<unknown> {
     const running = this.starting.get(args.requestId); if (running) return running;
-    const work = this.startAgent(state, node, resourceId, args).finally(() => this.starting.delete(args.requestId));
+    const work = this.startAgent(state, node, resourceId, args, stage).finally(() => this.starting.delete(args.requestId));
     this.starting.set(args.requestId, work); return work;
   }
   /** Starts a Claude session for this validation beside the rollout, connected to it and to the pull requests that
    * discovered it. The request is the session's opening prompt. A launch that fails ends the validation
    * inconclusive; one whose outcome is unknown leaves it requested for the No report rule. */
-  private async startAgent(state: WorkspaceState, node: WorkspaceState['nodes'][number], resourceId: string, args: Trigger) {
+  private async startAgent(state: WorkspaceState, node: WorkspaceState['nodes'][number], resourceId: string, args: Trigger, stage?: Stage) {
     const nodeId = node.id, observation = await this.observation(nodeId), run = observation?.run;
     const job = this.store.enqueueJob(`rollout-validation:${args.requestId}`, { action: 'rollout.validation', nodeId, arguments: args });
     if (job.state === 'succeeded') return job.result;
@@ -305,13 +323,13 @@ export class RolloutValidations {
       const pulls = discoveringPulls(state, nodeId), folder = (projectId?: string) => state.nodes.find(candidate => candidate.id === projectId && !candidate.resourceId)?.workingDirectory;
       const cwd = folder(node.projectId) || pulls.map(({ node: pull }) => folder(pull.projectId)).find(Boolean) || this.starter.fallbackDirectory();
       validation = this.store.createRolloutValidation({ id: randomUUID(), rolloutResourceId: resourceId, agentNodeId, agent: { title, provider: 'claude' },
-        requestId: args.requestId, scope: { runId: run.id, attempt: run.run_attempt, headSha: run.head_sha, ...phaseScope(args) }, requestedAt: this.now() });
+        requestId: args.requestId, scope: { runId: run.id, attempt: run.run_attempt, headSha: run.head_sha, ...stageScope(stage), ...phaseScope(args, stage?.due.focus) }, requestedAt: this.now() });
       const id = `V${validation.ordinal}`, context = await this.resources.context(nodeId, AbortSignal.timeout(10_000)).catch(() => undefined);
       const connect = (otherId: string, extra?: { label: string; reveal: 'hover' }) => ({ id: stableUuid(`${seed}:link:${otherId}`), otherId, kind: 'context' as const, sourceIsNew: false, ...extra });
       const request: ResourceCreate = { requestId: stableUuid(`${seed}:session`), nodeId: agentNodeId, resourceId: stableUuid(`${seed}:resource`), pluginId: 'agent.session', title,
         ...(node.projectId ? { projectId: node.projectId } : {}), placedBy: nodeId, hidden: { label: VALIDATION_AGENT_LABEL }, connections: [connect(nodeId, VALIDATION_LINK), ...pulls.map(({ node: pull }) => connect(pull.id))], data: { provider: 'claude', cwd } };
-      const payload = await this.payload(state, nodeId, resourceId, { ...observation!, run });
-      await this.starter.launch(request, { prompt: validationPrompt({ nodeId, title: node.title, id, run, context, pulls, payload, ...phasePrompt(args, observation!.jobs) }), data: { validation: { rolloutNodeId: nodeId, validationId: id, requestId: args.requestId } } });
+      const payload = await this.payload(state, nodeId, resourceId, { ...observation!, run }, stage?.due, validation.id);
+      await this.starter.launch(request, { prompt: validationPrompt({ nodeId, title: node.title, id, run, context, pulls, payload, ...(stage ? { stage } : {}), ...phasePrompt(args, observation!.jobs) }), data: { validation: { rolloutNodeId: nodeId, validationId: id, requestId: args.requestId } } });
       const result = { sent: true, linked: true, validationId: id, agentNodeId };
       this.store.transitionJob(job.id, 'running', 'succeeded', { result });
       return result;
@@ -345,7 +363,7 @@ export class RolloutValidations {
       }
       const provider = state.resources.find(record => record.id === state.nodes.find(candidate => candidate.id === agent.nodeId)?.resourceId)?.data.provider;
       const validation = this.store.createRolloutValidation({ id: randomUUID(), rolloutResourceId: resourceId, agentNodeId: agent.nodeId, agent: { title: agent.title, ...(typeof provider === 'string' ? { provider } : {}) },
-        requestId: args.requestId, scope: { runId: run.id, attempt: run.run_attempt, headSha: run.head_sha, ...(stage ? { focus: stage.due.focus, environments: [stage.due.environment], stage: stage.due.key, label: stage.due.label } : {}), ...phaseScope(args, stage?.due.focus) }, requestedAt: this.now() });
+        requestId: args.requestId, scope: { runId: run.id, attempt: run.run_attempt, headSha: run.head_sha, ...stageScope(stage), ...phaseScope(args, stage?.due.focus) }, requestedAt: this.now() });
       const id = `V${validation.ordinal}`, context = await this.resources.context(nodeId, AbortSignal.timeout(10_000)).catch(() => undefined);
       const payload = await this.payload(state, nodeId, resourceId, { ...observation!, run }, stage?.due, validation.id);
       await promptAgent(this.sessions!, agent.sessionId, `${FROM_TABLE} Check the rollout as the pasted request describes:`,
@@ -366,27 +384,57 @@ export class RolloutValidations {
       && view.scope.stage === stage && (view.state === 'requested' || view.state === 'running' || view.state === 'final' && now - (view.finishedAt ?? view.updatedAt) < REUSE_MS)).at(-1);
   }
 
-  /** Auto validate, requested as Trigger validation would from a ready connected agent. A staged run gets one validation per stage
-   * that is due, while no validation of the attempt is still open, from the agent of the attempt's last validation when it is ready;
-   * a stage is covered by its own request or by one a person made after it fell due. Any other run gets the one validation of its
-   * attempt nobody asked for, while it runs or when first seen. Otherwise the agent is preferably one connected through a pull
-   * request that discovered the rollout. */
+  /** Auto validate, asked of the rollout's validation agent as one click would: its idle hidden agent again, else a new hidden one.
+   * A staged run gets one validation per stage that is due, while no validation of the attempt is still open; a stage is covered by
+   * its own request or by one a person made after it fell due. Any other run gets the one validation of its attempt nobody asked
+   * for, while it runs or when first seen. Only while Claude cannot start a session here does a ready connected agent take the
+   * request instead: the agent of the attempt's last validation, then one connected through a pull request that discovered the
+   * rollout, then any. */
   private async validateAutomatically(state: WorkspaceState, node: WorkspaceState['nodes'][number], resourceId: string, observation: RolloutObservation & { run: RolloutRun }, firstSeen: boolean) {
     const run = observation.run, pulls = autoValidatingPulls(state, node.id), scope = { runId: run.id, attempt: run.run_attempt, headSha: run.head_sha };
     if (!pulls.length || !this.sessions) return false;
     const rule = stageRule(observation, this.stageRules()), due = rule && dueStage(rule, observation.jobs, this.now());
+    const attempt = this.attemptValidations(resourceId, run);
+    if (!rule && this.gated(resourceId, observation)) return this.validatePhase(state, node, resourceId, observation, attempt, pulls);
     if (rule ? !due : run.status === 'completed' && !firstSeen) return false;
-    const attempt = this.store.rolloutValidations({ rolloutResourceId: resourceId }).filter(entry => entry.scope.runId === scope.runId && entry.scope.attempt === scope.attempt && entry.scope.headSha === scope.headSha);
     const requestId = due ? stageRequestId(resourceId, scope, due.key) : automaticRequestId(resourceId, scope);
     if (due ? attempt.some(entry => entry.requestId === requestId || !entry.scope.stage && entry.requestedAt >= due.dueAt || entry.scope.stage === due.key && entry.requestId === chatRequestId(resourceId, entry.ordinal))
       || annotateValidations(attempt, run).some(view => !view.resolvedBy && (view.state === 'requested' || view.state === 'running')) : attempt.length) return false;
+    return this.automatic(state, node, resourceId, { operation: 'trigger', sourceResourceId: resourceId, value: VALIDATION_AGENT, requestId }, pulls, due ? attempt : [], due && rule ? { due, plans: rule.stages } : undefined);
+  }
+  /** Sends an automatic request to the rollout's validation agent, or while Claude cannot start one to a ready connected agent: the
+   * agent of the attempt's last validation in `earlier`, then one connected through a pull request in `pulls`, then any. */
+  private async automatic(state: WorkspaceState, node: WorkspaceState['nodes'][number], resourceId: string, args: Trigger, pulls: readonly string[], earlier: readonly Validation[], stage?: Stage) {
+    const ready = (await this.agents(state, node.id)).filter(candidate => candidate.ready);
+    const own = ready.find(candidate => candidate.direct && this.validationAgentOf(state, candidate.nodeId) === node.id);
+    if (own) return this.request(state, node, resourceId, own, { ...args, value: own.nodeId }, stage, true).then(() => true, () => false);
+    if (!(await this.cannotStart(node.id))) return this.spawn(state, node, resourceId, args, stage).then(() => true, () => false);
     // Through the pull request: reached from it without passing the rollout, so an earlier direct link does not hide it.
     const aliases = new Set(state.nodes.filter(candidate => candidate.resourceId === resourceId).map(candidate => candidate.id));
     const preferred = new Set(pulls.flatMap(pull => connectedAgents(state, pull, id => !aliases.has(id)).map(candidate => candidate.nodeId)));
-    const previous = due ? attempt.at(-1)?.agentNodeId : undefined, ready = (await this.agents(state, node.id)).filter(candidate => candidate.ready);
+    const previous = earlier.at(-1)?.agentNodeId;
     const agent = ready.find(candidate => candidate.nodeId === previous) ?? ready.find(candidate => preferred.has(candidate.nodeId)) ?? ready[0];
     if (!agent) return false;
-    return this.request(state, node, resourceId, agent, { operation: 'trigger', sourceResourceId: resourceId, value: agent.nodeId, requestId }, due && rule ? { due, plans: rule.stages } : undefined).then(() => true, () => false);
+    return this.request(state, node, resourceId, agent, { ...args, value: agent.nodeId }, stage).then(() => true, () => false);
+  }
+
+  private attemptValidations(resourceId: string, run: RolloutRun) {
+    return this.store.rolloutValidations({ rolloutResourceId: resourceId }).filter(entry => entry.scope.runId === run.id && entry.scope.attempt === run.run_attempt && entry.scope.headSha === run.head_sha);
+  }
+  /** A run attempt that waits, or waited, at a deployment gate is validated per phase instead of once. */
+  private gated(resourceId: string, observation: RolloutObservation & { run: RolloutRun }) {
+    return observation.gates.length > 0 || this.store.rolloutEvents(resourceId).some(event => event.kind === 'gate-waiting' && event.runId === observation.run.id && event.attempt === observation.run.run_attempt);
+  }
+  /** Auto validate of a gated run: each phase once its gate waits, and what ran after the last gate once the run ended, each
+   * from the jobs no validation of the attempt covers; nothing while a validation of the attempt is open or a phase still runs. */
+  private async validatePhase(state: WorkspaceState, node: WorkspaceState['nodes'][number], resourceId: string, observation: RolloutObservation & { run: RolloutRun }, attempt: Validation[], pulls: readonly string[]) {
+    const run = observation.run, scope = { runId: run.id, attempt: run.run_attempt, headSha: run.head_sha };
+    const phase = currentPhase(run, observation.jobs, observation.gates, attempt.flatMap(entry => entry.scope.jobs ?? []));
+    if (!phase || phase.boundary === 'running') return false;
+    if (annotateValidations(attempt, run).some(view => !view.resolvedBy && (view.state === 'requested' || view.state === 'running'))) return false;
+    const requestId = phaseRequestId(resourceId, scope, phase.jobs);
+    if (attempt.some(entry => entry.requestId === requestId)) return false;
+    return this.automatic(state, node, resourceId, { operation: 'trigger', sourceResourceId: resourceId, value: VALIDATION_AGENT, requestId, phase: { focus: phase.focus, jobs: phase.jobs } }, pulls, attempt);
   }
 
   /** The context a request carries, from what the table holds: the cached run, the pull requests that discovered the rollout and their
@@ -616,7 +664,8 @@ export class RolloutValidations {
     const views = annotateValidations(this.store.rolloutValidations({ rolloutResourceId: resourceId }), observation?.run);
     const agents = new Map(state.nodes.map(node => [node.id, node]));
     const visibility = (agentNodeId: string) => { const agent = agents.get(agentNodeId); return agent?.hiddenAt ? { agentHidden: true as const } : agent?.hideLabel && !isOffMap(agent, state.nodes) ? { agentHideable: true as const } : {}; };
-    const automatic = (view: Validation) => view.requestId === automaticRequestId(resourceId, view.scope) || Boolean(view.scope.stage) && view.requestId === stageRequestId(resourceId, view.scope, view.scope.stage!);
+    const automatic = (view: Validation) => view.requestId === automaticRequestId(resourceId, view.scope) || Boolean(view.scope.stage) && view.requestId === stageRequestId(resourceId, view.scope, view.scope.stage!)
+      || Boolean(view.scope.jobs?.length) && view.requestId === phaseRequestId(resourceId, view.scope, view.scope.jobs!);
     return { validations: views.map(view => { const copy: Partial<typeof view & { idleSince: number; rolloutResourceId: string }> = { ...view, ...(automatic(view) ? { automatic: true } : {}),
       ...(view.requestId === unrequestedRequestId(resourceId, view.ordinal) ? { unrequested: true } : {}), ...(view.requestId === chatRequestId(resourceId, view.ordinal) ? { chat: true } : {}), ...visibility(view.agentNodeId) }; delete copy.idleSince; delete copy.rolloutResourceId; return copy; }),
       events: this.store.rolloutEvents(resourceId) };

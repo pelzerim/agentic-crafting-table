@@ -1,12 +1,15 @@
 import { defineResourcePlugin } from '../../define.ts';
 
+/** Count, or add to the map, the GitHub pull requests linked to a ticket. */
+export const LINEAR_PULLS_OPERATION = 'linear.ticket.pulls';
 export const linearTicket = defineResourcePlugin({
   settingsHelp: 'Keep a Linear issue on the table. Add its URL to sync its title, description and status; change its status or turn it into a local to-do.',
   id: 'linear.ticket', apiVersion: 1, schemaVersion: 1,
   name: 'Linear ticket', icon: 'circle-dashed', brand: 'linear', preferredView: 'inspector',
   connectionProvider: 'linear', todoSupport: true,
   webLink: { label: 'Open on Linear', template: 'https://linear.app/{workspaceKey}/issue/{issueId}' },
-  contextMenu: [{ id: 'status', label: 'Change status', children: [], choices: { load: 'linear.status.options', apply: 'linear.status.set' } }],
+  contextMenu: [{ id: 'status', label: 'Change status', children: [], choices: { load: 'linear.status.options', apply: 'linear.status.set' } },
+    { id: 'pulls', label: 'Linked pull requests', children: [{ id: 'pulls.add', label: 'Add to the map', description: 'Every GitHub pull request linked to this ticket, beside it' }] }],
   providerIdentity: (data, resource) => resource.connectionId && /^(?:[A-Z][A-Z0-9]*-[1-9]\d*|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i.test(String(data.issueId)) ? String(data.issueId).toLowerCase() : undefined,
   mapSizes: { defaultSize: 'small', sizes: {
     small: { width: 240, height: 64, minHeight: 48, summaryLines: 0, description: "Ticket identifier, title and workflow status." },

@@ -214,3 +214,15 @@ test('the transport allows the assigned read only with allowlisted statuses and 
   await assert.rejects(transport.read('issue', { id: 'BIL-128', states: ['started'] } as any, signal()), /Unsupported/);
   assert.equal(bodies.length, 3);
 });
+
+test('an issue lists the GitHub pull requests attached to it, once each, and ignores every other attachment', async () => {
+  const fixture = linearFixture();
+  Object.assign(fixture.data.issue, { attachments: { nodes: [
+    { url: 'https://github.com/acme/app/pull/42' }, { url: 'https://github.com/Acme/App/pull/42/files' }, { url: 'https://github.com/acme/api/pull/7#discussion' },
+    { url: 'https://github.com/acme/app/issues/3' }, { url: 'https://evil.example/acme/app/pull/1' }, { url: 'https://slack.com/archives/C1/p1' }, { url: 42 },
+  ] } });
+  assert.deepEqual((await fixture.client.issue('BIL-128', undefined, signal())).pulls, [{ owner: 'acme', repo: 'app', number: 42 }, { owner: 'acme', repo: 'api', number: 7 }]);
+  const none = linearFixture();
+  assert.deepEqual((await none.client.issue('BIL-128', undefined, signal())).pulls, [], 'a read without attachments has none');
+  assert.match(LINEAR_QUERIES.issue, /attachments\(first: 50\) \{ nodes \{ url \} \}/);
+});

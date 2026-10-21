@@ -176,8 +176,9 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
     catch (failure) { await refreshAll(true); throw new Error(`Approved, but the validation request was not sent. ${(failure as Error).message}`); }
     return result;
   } }, approval, () => refreshAll(true), report, approvalLabels);
-  /** The one-click request: an idle hidden validation agent of this rollout, else a new hidden one. */
-  const oneClick = (): JsonObject => ({ sourceResourceId: resource.id, value: VALIDATION_AGENT, requestId: crypto.randomUUID() });
+  /** The one-click request: an idle hidden validation agent of this rollout, else a new hidden one, scoped to the phase that ran
+   * since the attempt's last validation. */
+  const oneClick = (): JsonObject => ({ sourceResourceId: resource.id, value: VALIDATION_AGENT, requestId: crypto.randomUUID(), phased: true });
   let starting = false;
   /** Validate asks the rollout's validation agent in one click; while a chat validation covers the stage it shows that one instead.
    * Validate with… and Re-run (`again`) offer the agents. Approve and validate confirms the approval, then validates in one click. */
@@ -322,7 +323,8 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
     const state = view.state === 'final' && view.verdict ? `${verdictLabels[view.verdict].toLowerCase()} ${clock(view.finishedAt ?? view.updatedAt)}` : `still running · ${liveness(view, now).reportedAt === undefined ? 'no report yet' : `last report ${clock(liveness(view, now).reportedAt!)}`}`;
     const rerun = button('Re-run', 'rv-button'); rerun.setAttribute('aria-haspopup', 'menu'); rerun.setAttribute('aria-expanded', 'false'); rerun.onclick = () => menu(rerun, 'validate', true);
     const dismiss = button(pixelGlyphElement(document, 'close'), 'rv-chip-clear', 'Dismiss'); dismiss.onclick = () => { attached = undefined; render(true); };
-    reuseNote.replaceChildren(el('span', '', `Showing ${view.label}, started from chat, instead of a second validation: ${state}.`), rerun, dismiss);
+    const origin = view.chat ? ', started from chat,' : ' of the last phase';
+    reuseNote.replaceChildren(el('span', '', `Showing ${view.label}${origin} instead of a second validation: ${state}.`), rerun, dismiss);
   }
 
   function renderLadder(queue: RolloutQueue, value: Observation, now: number) {

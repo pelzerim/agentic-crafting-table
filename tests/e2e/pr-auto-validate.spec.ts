@@ -16,7 +16,7 @@ test('Auto validate: the pull request view has a checkbox, on by default and sav
     { type: 'item.add', id: 'pr', resourceId: 'pr-r', pluginId: 'github.pull-request', connectionId: 'github-fixture', title: 'PR', projectId: 'project', position: { x: 260, y: 200 }, data: { owner: 'fixture', repo: 'billing', number: 42 } },
     agent('claude', 'Claude · billing', 60),
     { type: 'link.save', link: { id: 'pr-claude', sourceId: 'pr', targetId: 'claude', kind: 'context', label: '' } },
-  ]);
+  ], { summary: 'BILLING_BRIEF' });
   try {
     const { page, service } = h, frame = page.locator('[data-expanded-item-id=pr]'), box = frame.getByRole('checkbox', { name: 'Auto validate', exact: true });
     const saved = async () => (await service.control.read()).resources.find(resource => resource.id === 'pr-r')!.data;
@@ -46,18 +46,25 @@ test('Auto validate: the pull request view has a checkbox, on by default and sav
     await h.tick();
     expect(await h.output('claude')).not.toContain('validationId');
 
-    // Checked again while the run is still going: the service asks the agent connected through the PR, once.
+    // Checked again while the run is still going: the service starts the rollout's hidden validation agent, once; the agent connected through the PR is left alone.
     await box.check();
     await expect.poll(saved).toEqual({ owner: 'fixture', repo: 'billing', number: 42 });
-    await expect.poll(() => h.output('claude'), { timeout: 30_000 }).toContain(`workspace_report_validation (rolloutNodeId "${(await rollout())!.id}", validationId "V1")`);
-    const state = await service.control.read();
-    expect(state.links.some(link => link.sourceId === (state.nodes.find(node => node.title === 'Web / Release')!.id) && link.targetId === 'claude' && link.kind === 'context')).toBe(true);
+    const started = async () => { const state = await service.control.read(); return state.nodes.filter(node => node.id !== 'claude' && state.resources.find(resource => resource.id === node.resourceId)?.pluginId === 'agent.session'); };
+    await expect.poll(async () => (await started()).length, { timeout: 30_000 }).toBe(1);
+    const state = await service.control.read(), [agent] = await started(), deploy = (await rollout())!, session = state.resources.find(resource => resource.id === agent.resourceId)!;
+    expect(agent.title).toBe('Validate · Web / Release'); expect(agent.hiddenAt).toBeTruthy(); expect(agent.hideLabel).toBe('validation agent');
+    expect(state.links.filter(link => link.targetId === agent.id).map(link => link.sourceId).sort()).toEqual(['pr', deploy.id].sort());
+    expect(state.links.some(link => link.sourceId === deploy.id && link.targetId === 'claude')).toBe(false);
+    const printed = () => h.session(String(session.data.sessionId)).output().then(output => output.replace(/\r/g, ''));
+    await expect.poll(printed, { timeout: 30_000 }).toContain(`workspace_report_validation (rolloutNodeId "${deploy.id}", validationId "V1")`);
+    expect(await printed()).toContain('You lead this validation');
+    expect(await h.output('claude')).not.toContain('validationId');
     await page.getByRole('button', { name: 'Back to project', exact: true }).click();
-    await page.locator(`[data-item-id="${(await rollout())!.id}"]`).click();
+    await page.locator(`[data-item-id="${deploy.id}"]`).click();
     await expect(page.locator('.rollout-detail .rv-card[aria-label^="V1 · "] .rv-card-meta')).toContainText('V1 · automatic · requested');
     await h.tick(); await h.tick();
-    expect(await h.output('claude')).not.toContain('validationId "V2"');
-    const validations = (await page.evaluate(nodeId => window.craftingTable.runtimeRun({ action: 'rollout.validation' as 'agent.resume', nodeId, arguments: { operation: 'list' } }), (await rollout())!.id) as any).validations;
-    expect(validations.map((view: any) => [view.label, view.agentNodeId, view.automatic])).toEqual([['V1', 'claude', true]]);
+    expect(await started()).toHaveLength(1);
+    const validations = (await page.evaluate(nodeId => window.craftingTable.runtimeRun({ action: 'rollout.validation' as 'agent.resume', nodeId, arguments: { operation: 'list' } }), deploy.id) as any).validations;
+    expect(validations.map((view: any) => [view.label, view.agentNodeId, view.automatic, view.agentHidden])).toEqual([['V1', agent.id, true, true]]);
   } finally { await h.close(); }
 });

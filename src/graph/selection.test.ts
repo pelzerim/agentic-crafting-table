@@ -8,7 +8,7 @@ test('selection movement translates project members once and retains unrelated s
   assert.deepEqual(selectionMoves(nodes, ['p', 'a', 'b'], 'a', { x: 310, y: 80 }), [{ id: 'p', position: { x: 10, y: -20 } }, { id: 'b', position: { x: 710, y: 180 } }]);
   assert.deepEqual(selectionMoves(nodes, ['p', 'a'], 'b', { x: 800, y: 200 }), [{ id: 'b', position: { x: 800, y: 200 } }]);
 });
-test('batch menus expose only shared atomic actions, never single-item settings or launches', () => {
+test('batch menus expose only shared atomic actions, never single-item settings', () => {
   assert.deepEqual(sharedContextMenuActions([contextMenuActions('item'), contextMenuActions('project')]).map(a => a.id), ['complete', 'below']);
   assert.deepEqual(sharedContextMenuActions([contextMenuActions('item', true), contextMenuActions('item')]).map(a => a.id), ['below']);
   const ticket = contextMenuActions('item', false, undefined, [], { enabled: false });

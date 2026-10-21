@@ -5,10 +5,15 @@ import { providerCredential } from '../../../../packages/provider-runtime/keycha
 import { requestBudget } from '../../../../packages/provider-runtime/request-budget.ts';
 import type { ServiceModule } from '../../../../packages/plugin-sdk/host.ts';
 import { linearTicket } from './definition.ts';
+import { LINEAR_PULLS_OPERATION, LinearPulls } from './pulls.ts';
 
 const service: ServiceModule = {
   activate(host) {
     host.connectionProvider({ ...linearConnection(), order: 40 });
+    host.onWorkspace(workspace => {
+      const pulls = new LinearPulls(workspace.control, workspace.resources);
+      host.runtimeOperation(LINEAR_PULLS_OPERATION, context => context.execute(() => pulls.run(context.nodeId, context.arguments)));
+    });
     const connections = host.connections;
     if (!connections) return;
     const credential = providerCredential('linear'), workflows = new LinearWorkflowCache();

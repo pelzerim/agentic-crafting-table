@@ -301,3 +301,14 @@ test('a link can be kept off the map until one of its ends is in view, and only 
   assert.equal('reveal' in state.links[0], false);
   await assert.rejects(control.dispatch(envelope('other', state.revision, [save('select')])));
 });
+
+test('an agent\'s last line is saved on its node and cleared with null', async () => {
+  const control = new WorkspaceControl(new MemoryStore());
+  await control.apply({ type: 'item.add', id: 'agent', resourceId: 'agent-r', pluginId: 'agent.session', title: 'Claude', position: { x: 0, y: 0 }, data: { sessionId: 's', provider: 'claude' } }, 0);
+  await control.apply({ type: 'node.update', id: 'agent', lastLine: 'I pushed the fix to main.' }, 1);
+  assert.equal((await control.read()).nodes[0].lastLine, 'I pushed the fix to main.');
+  await control.apply({ type: 'node.update', id: 'agent', summary: 'Claude is working' }, 2);
+  assert.equal((await control.read()).nodes[0].lastLine, 'I pushed the fix to main.', 'other updates leave it');
+  await control.apply({ type: 'node.update', id: 'agent', lastLine: null }, 3);
+  assert.equal((await control.read()).nodes[0].lastLine, undefined);
+});

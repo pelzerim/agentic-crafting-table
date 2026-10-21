@@ -49,6 +49,8 @@ export interface DesktopBridge {
   githubInboxSeen(key: string, seen: boolean): Promise<{ seen: boolean }>;
   /** Starts the standup report for a range (STANDUP-01), superseding one still running; poll standupStatus until it is done. */
   standupOpen(request: import('../../packages/core/standup.ts').StandupRequest): Promise<import('../../packages/core/standup.ts').StandupStatus>;
+  updatesStatus(): Promise<import('../../packages/core/updates.ts').UpdateStatus>;
+  updatesCheck(): Promise<import('../../packages/core/updates.ts').UpdateStatus>;
   standupStatus(): Promise<import('../../packages/core/standup.ts').StandupStatus>;
   attentionHistory(offset?: number, limit?: number): Promise<{ entries: import('../../packages/workspace-service/sqlite-store.ts').AttentionHistoryEntry[]; more: boolean }>;
   /** Saves the whole reminder list in order; each call returns the reminders as the next snapshot carries them. */

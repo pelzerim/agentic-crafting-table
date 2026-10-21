@@ -107,3 +107,32 @@ test('project transfer and collision placement commit atomically without changin
   assert.deepEqual((await control.read()).nodes[2], state.nodes[2], 'moving the old project no longer moves its former member');
   assert.equal((await control.dispatch({ ...request, commandId: 'stale' })).state.revision, 3, 'the user\'s stale transfer lands on the current revision');
 });
+
+test('with snapping on, a dropped or created centre lands on the grid, a selection keeps its offsets and the store without a layout snaps nothing', async () => {
+  class SnappingStore extends MemoryStore { readMapLayout() { return { sizes: {}, snap: 48 }; } }
+  const initial = stateSchema.parse({ version: 1, revision: 0, view: {}, todos: [], nodes: [
+    { id: 'project', title: 'Project', position: { x: -800, y: -400 } },
+    { id: 'agent', title: 'Agent', resourceId: 'agent-r', projectId: 'project', position: { x: 0, y: 0 } },
+    { id: 'pr', title: 'PR', resourceId: 'pr-r', projectId: 'project', position: { x: 500, y: 0 } },
+  ], resources: [
+    { id: 'agent-r', pluginId: 'agent.session', schemaVersion: 1, title: 'Agent', data: { sessionId: 'native-session', provider: 'claude' } },
+    { id: 'pr-r', pluginId: 'github.pull-request', schemaVersion: 1, title: 'PR', data: { owner: 'fixture', repo: 'test', number: 1 } },
+  ], links: [] });
+  const control = new WorkspaceControl(new SnappingStore(initial)), at = async (id: string) => (await control.read()).nodes.find(node => node.id === id)!.position;
+  await control.apply({ type: 'node.move', id: 'agent', position: { x: 1003, y: -70 } }, 0);
+  assert.deepEqual(await at('agent'), { x: 1008, y: -48 });
+  await control.apply({ type: 'node.move', id: 'project', position: { x: -790, y: -410 } }, 1);
+  assert.deepEqual(await at('project'), { x: -768, y: -432 });
+  assert.deepEqual(await at('agent'), { x: 1040, y: -80 }, 'members follow the project by its snapped delta');
+  await control.apply({ type: 'node.move', id: 'pr', position: { x: 1040, y: -80 } }, 2);
+  assert.deepEqual(await at('pr'), { x: 1056, y: -96 });
+  const pushed = await at('agent');
+  assert.ok(pushed.x % 48 === 0 && pushed.y % 48 === 0, `pushed aside onto the grid: ${pushed.x},${pushed.y}`);
+  await control.apply({ type: 'item.add', id: 'note', resourceId: 'note-r', pluginId: 'workspace.note', title: 'Note', position: { x: 13, y: 500 }, data: { text: 'hi' } }, 3);
+  assert.deepEqual(await at('note'), { x: 0, y: 480 });
+  await control.apply({ type: 'nodes.move', positions: [{ id: 'pr', position: { x: 2001, y: 1 } }, { id: 'agent', position: { x: 2401, y: 1 } }] }, 4);
+  assert.deepEqual(await at('pr'), { x: 2001, y: 1 }, 'a selection is moved as the user laid it out');
+  const plain = new WorkspaceControl(new MemoryStore(initial));
+  await plain.apply({ type: 'node.move', id: 'agent', position: { x: 1003, y: -70 } }, 0);
+  assert.deepEqual((await plain.read()).nodes[1].position, { x: 1003, y: -70 });
+});

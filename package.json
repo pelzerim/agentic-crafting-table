@@ -1,6 +1,6 @@
 {
   "name": "agent-crafting-table",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A spatial workspace for coding agents and their projects",
   "author": "Agentic Crafting Table contributors",
@@ -35,6 +35,7 @@
     "test:startup": "npm run build && playwright test tests/e2e/map-performance.spec.ts --grep \"500 items\" --repeat-each=5 --output=test-results/startup",
     "package": "npm run build && electron-builder --dir --mac --arm64",
     "install:local": "node scripts/install-local.mjs",
+    "update": "node scripts/update-local.mjs",
     "test:package": "node scripts/smoke-packaged.mjs",
     "check": "npm run typecheck && npm test && npm run build",
     "postinstall": "install-electron && electron-builder install-app-deps",

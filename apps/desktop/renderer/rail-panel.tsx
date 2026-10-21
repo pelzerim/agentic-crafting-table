@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, FormEventHandler, KeyboardEventHandler, FocusEventHandler, PointerEventHandler, ReactNode, Ref, PointerEvent as ReactPointerEvent } from 'react';
 import { RAIL, railSlot } from './tool-rail.tsx';
 import type { RailSlot } from './tool-rail.tsx';
-import { RailDwell } from './rail-state.ts';
+import { RailDwell, useRailTool } from './rail-state.ts';
 import { PixelGlyph } from './ui/pixel-glyph.tsx';
 import { Button } from './ui/button.tsx';
 
@@ -26,7 +26,7 @@ export function RailPanel({ slot, label, resizeLabel = `Resize ${label.toLowerCa
   onPointerEnter?: PointerEventHandler; onPointerLeave?: PointerEventHandler; onSubmit?: FormEventHandler; onKeyDownCapture?: KeyboardEventHandler;
   onPointerDownCapture?: PointerEventHandler; onBlurCapture?: FocusEventHandler; data?: Record<`data-${string}`, string | boolean | undefined>;
 }) {
-  const position = railSlot(slot), sheet = useRef<HTMLDivElement>(null), [resizing, setResizing] = useState(false);
+  const position = railSlot(slot), sheet = useRef<HTMLDivElement>(null), [resizing, setResizing] = useState(false), { rail, held } = useRailTool(slot);
   const drag = useRef<{ id: number; x: number; y: number; width: number; height: number; before: PanelSize }>(undefined);
   const dwellAction = useRef(toggle.onDwell); dwellAction.current = toggle.onDwell;
   const [dwell] = useState(() => new RailDwell(() => dwellAction.current?.()));
@@ -49,16 +49,18 @@ export function RailPanel({ slot, label, resizeLabel = `Resize ${label.toLowerCa
   const Root = element;
   const style = { left: position.x, top: position.y, '--sheet-x': `${SHEET_ORIGIN.x - position.x}px`, '--sheet-y': `${SHEET_ORIGIN.y - position.y}px`,
     '--panel-width': `${size.width ?? defaultWidth}px`, '--panel-aside': `${aside ? asideWidth : 0}px`, ...(size.height ? { '--panel-height': `${size.height}px` } : {}) } as CSSProperties;
-  return <Root ref={rootRef as Ref<never>} className={`rail-panel ${className}`} aria-label={element === 'form' ? label : undefined} data-open={open} data-sized={Boolean(size.height)} data-resizing={resizing} {...data} style={style}
+  return <Root ref={rootRef as Ref<never>} className={`rail-panel ${className}`} aria-label={element === 'form' ? label : undefined} data-open={open} data-held={held || undefined} data-sized={Boolean(size.height)} data-resizing={resizing} {...data} style={style}
     onPointerEnter={onPointerEnter} onPointerLeave={onPointerLeave} onSubmit={onSubmit} onPointerDownCapture={onPointerDownCapture} onBlurCapture={onBlurCapture}
     onKeyDownCapture={event => {
       if (event.key === 'Escape' && drag.current) { event.preventDefault(); event.stopPropagation(); onSize(drag.current.before); drag.current = undefined; resizingChange(false); return; }
       onKeyDownCapture?.(event);
     }}>
-    <button type="button" className={`rail-panel-toggle ${toggle.className ?? ''}`} aria-label={toggle.label} title={toggle.title} aria-pressed={toggle.pressed} aria-expanded={toggle.expanded ?? open} aria-keyshortcuts={toggle.shortcut}
+    <button type="button" className={`rail-panel-toggle ${toggle.className ?? ''}`} aria-label={toggle.label} title={held ? `${toggle.title} · Held open · Right-click to release` : `${toggle.title} · Right-click to hold open`}
+      aria-pressed={toggle.pressed} aria-expanded={toggle.expanded ?? open} aria-keyshortcuts={toggle.shortcut} aria-description={held ? 'Held open' : undefined}
       onClick={() => { dwell.click(); toggle.onClick(); }} onPointerEnter={event => { if (mouse(event)) dwell.enter(event.clientX, event.clientY); }}
-      onPointerMove={event => { if (mouse(event)) dwell.move(event.clientX, event.clientY); }} onPointerLeave={() => dwell.leave()}>
-      {toggle.icon}{toggle.badge}
+      onPointerMove={event => { if (mouse(event)) dwell.move(event.clientX, event.clientY); }} onPointerLeave={() => dwell.leave()}
+      onContextMenu={event => { event.preventDefault(); event.stopPropagation(); dwell.click(); rail.hold(slot); }}>
+      {toggle.icon}{toggle.badge}{held && <span className="rail-held" aria-hidden="true"><PixelGlyph name="lock" /></span>}
     </button>
     {(open || keepMounted) && <div ref={setSheet} className={sheetClassName ? `rail-panel-sheet ${sheetClassName}` : 'rail-panel-sheet'} {...sheetData} role={role} aria-label={role ? label : undefined} inert={!open}
       onContextMenu={event => {

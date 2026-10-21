@@ -8,7 +8,7 @@ export type MenuActionId = 'open' | 'connect' | 'new-item' | 'new-project' | 'ar
 export interface MenuRowChoice { value: string; label: string; swatch?: string; checked: boolean }
 /** `remote` marks actions that write to a provider (drawn with a remote glyph). An action with a `row` is a labelled
  * row of choices side by side (one radio group); a pick reaches `act` with its `value`. */
-export interface MenuAction { id: MenuActionId; label: string; description?: string; divider?: boolean; destructive?: boolean; remote?: boolean; children?: MenuAction[]; choices?: ChoiceSource; mutation?: { actionId: string; input: JsonObject; label?: string; runtime?: string }; checked?: boolean; disabled?: boolean; highlight?: ChoiceHighlight; confirm?: ChoiceConfirm; row?: MenuRowChoice[]; value?: string }
+export interface MenuAction { id: MenuActionId; label: string; description?: string; divider?: boolean; destructive?: boolean; remote?: boolean; children?: MenuAction[]; choices?: ChoiceSource; selection?: { label: string; children: readonly string[] }; mutation?: { actionId: string; input: JsonObject; label?: string; runtime?: string }; checked?: boolean; disabled?: boolean; highlight?: ChoiceHighlight; confirm?: ChoiceConfirm; row?: MenuRowChoice[]; value?: string }
 
 /** Entries that replace each other by state share one slot, so a saved order places both variants alike. The Settings
  * submenu holds the `edit` slot, the place of the entry it contains. */
@@ -160,7 +160,8 @@ export function contextMenuActions(scope: MenuScope, completed = false, editLabe
   const sections: MenuAction[][] = [
     project ? [] : [{ id: 'open', label: 'Open' }, { id: 'connect', label: 'Connect to…' }, ...(visibility.show ? [{ id: 'show-hidden' as const, label: `Show ${visibility.show}` }] : [])],
     project ? [] : groups.map(group => ({ id: `plugin:${group.id}` as const, label: group.choices?.irreversible ? `${group.label}…` : group.label, remote: true,
-      ...(group.choices ? { choices: group.choices } : {}), children: group.children.map(action => ({ ...action, id: `plugin:${action.id}` as const })) })),
+      ...(group.choices ? { choices: group.choices } : {}), ...(group.selection ? { selection: { label: group.selection.label, children: group.selection.children.map(id => `plugin:${id}`) } } : {}),
+      children: group.children.map(action => ({ ...action, id: `plugin:${action.id}` as const })) })),
     [...open, ...(project ? [{ id: 'edit' as const, label: 'Project settings…' }] : [...convert, { id: 'settings' as const, label: 'Settings', children: [{ id: 'edit' as const, label: editLabel },
       { id: 'size-default' as const, label: 'Use size as default', ...(size?.disabled ? { disabled: true, description: size.disabled } : {}) }] }])],
     [
@@ -240,10 +241,12 @@ export function linkMenuActions(kind: 'reference' | 'context' | 'blocks', source
   ];
 }
 
-/** Only actions with an atomic shared-command meaning can apply to a group. */
+/** Only actions with an atomic shared-command meaning can apply to a group, plus a plugin group every item offers
+ * for a selection: it runs its named children once per item. */
 export function sharedContextMenuActions(menus: readonly MenuAction[][]): MenuAction[] {
   const batchable: MenuActionId[] = ['copy-url', 'send-project', 'complete', 'reopen', 'archive', 'below', 'surface', 'add-todo', 'remove-todo'];
-  return (menus[0] ?? []).filter(action => batchable.includes(action.id) && menus.every(menu => menu.some(other => other.id === action.id)))
-    .map(action => action.id === 'copy-url' ? { id: action.id, label: 'Copy URLs' } : action.id === 'archive' ? { ...action, label: 'Archive selection' } : action.id === 'below' ? { ...action, label: 'Send selection to Undermap' }
+  return (menus[0] ?? []).filter(action => (batchable.includes(action.id) || action.selection) && menus.every(menu => menu.some(other => other.id === action.id)))
+    .map(action => action.selection ? { id: action.id, label: action.selection.label, remote: true, children: (action.children ?? []).filter(child => action.selection!.children.includes(child.id)) }
+      : action.id === 'copy-url' ? { id: action.id, label: 'Copy URLs' } : action.id === 'archive' ? { ...action, label: 'Archive selection' } : action.id === 'below' ? { ...action, label: 'Send selection to Undermap' }
       : action.id === 'surface' ? { id: action.id, label: 'Bring selection back', ...(menus.some(menu => menu.find(other => other.id === 'surface')?.disabled) ? { disabled: true, description: 'Some of these cannot return yet' } : {}) } : action);
 }

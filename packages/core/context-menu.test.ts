@@ -438,3 +438,15 @@ test('a to-do row offers Add context when it has none, and Show or Hide with Cle
   assert.deepEqual(labels(true, false), [['context-show', 'Show context'], ['context-clear', 'Clear context']]);
   assert.deepEqual(labels(true, true), [['context-hide', 'Hide context'], ['context-clear', 'Clear context']]);
 });
+
+test('a plugin group that names selection children is offered to a selection of items that all have it, with those children only', () => {
+  const review = { id: 'review', label: 'Trigger review', selection: { label: 'Review selection', children: ['review.claude', 'review.codex'] }, children: [
+    { id: 'review.claude', label: 'Claude' }, { id: 'review.codex', label: 'Codex' }, { id: 'review.workflow', label: '/review' }] };
+  const merge = { id: 'merge', label: 'Merge…', children: [{ id: 'merge.squash', label: 'Squash' }] };
+  const pull = contextMenuActions('item', false, undefined, [review, merge]), ticket = contextMenuActions('item', false, undefined, [merge]);
+  const shared = sharedContextMenuActions([pull, pull]);
+  assert.deepEqual(shared.map(action => [action.id, action.label]), [['plugin:review', 'Review selection'], ['complete', 'Mark done'], ['below', 'Send selection to Undermap']]);
+  assert.deepEqual(shared[0].children?.map(child => [child.id, child.label]), [['plugin:review.claude', 'Claude'], ['plugin:review.codex', 'Codex']]);
+  assert.equal(shared[0].remote, true);
+  assert.deepEqual(sharedContextMenuActions([pull, ticket]).map(action => action.id), ['complete', 'below'], 'an item without the group keeps the selection menu to shared actions');
+});

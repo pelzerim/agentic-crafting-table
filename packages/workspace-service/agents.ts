@@ -1,5 +1,7 @@
 import { creationConnections, requestConnections } from '../core/resource-creation.ts';
 import { randomUUID } from 'node:crypto';
+import { agentLastLine } from '../core/last-line.ts';
+import { redactSecrets } from '../session-runtime/activity-summary.ts';
 import { completionAttention } from '../core/completion-attention.ts';
 import * as z from 'zod/v4';
 import type { ResourceCreate } from '../core/resource-creation.ts';
@@ -29,7 +31,7 @@ import { parseClaudeArtifactUrl } from '../../src/resource-plugins/items/claude-
 const NOTED = ['SubagentStart', 'PreCompact', 'PostCompact', 'PostToolUseFailure', 'PermissionDenied', 'TaskCreated', 'TaskCompleted', 'PostModelSwitch'] as const;
 const hookSchema = z.object({ nodeId: z.string().min(1), processSessionId: z.string().uuid(), nativeSessionId: z.string().uuid(),
   observedAt: z.number().int().positive(), event: z.enum(['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PermissionRequest', 'Notification', 'Stop', 'StopFailure', 'SessionEnd', 'SubagentStop', 'SubagentToolUse', 'SubagentToolStart', 'TeammateIdle', ...NOTED]),
-  taskId: z.string().min(1).max(200).optional(), model: z.string().min(1).max(200).optional(), previousModel: z.string().min(1).max(200).optional(), interrupt: z.boolean().optional(), worktree: z.boolean().optional(),
+  lastMessage: z.string().max(2000).optional(), taskId: z.string().min(1).max(200).optional(), model: z.string().min(1).max(200).optional(), previousModel: z.string().min(1).max(200).optional(), interrupt: z.boolean().optional(), worktree: z.boolean().optional(),
   notificationType: z.string().optional(), toolName: z.string().optional(), recipient: z.string().min(1).max(64).optional(), agentId: z.string().min(1).max(200).optional(), teammate: z.string().min(1).max(200).optional(),
   backgroundTasks: z.array(z.object({ id: z.string().min(1).max(200), type: z.string().max(100), status: z.string().max(100).optional(), name: z.string().min(1).max(64).optional() })).max(100).optional(),
   launched: z.object({ id: z.string().min(1).max(200), kind: z.literal('subagent') }).optional(),
@@ -358,14 +360,17 @@ export class AgentCoordinator {
       if (event.event === 'SessionStart') commands.push({ type: 'item.update', id: node.id, data: { ...resource.data, nativeStartedAt: new Date().toISOString() } });
       const attentionNote = event.event === 'PermissionRequest' || event.notificationType === 'permission_prompt' ? 'Agent needs permission' : event.event === 'PreToolUse' && inputNeeded ? 'Agent asked a question'
         : event.notificationType === 'idle_prompt' ? 'Agent waiting' : event.event === 'StopFailure' ? 'Agent hit an error' : undefined;
+      // The line the agent ended its turn on stays on the node until the next prompt starts a turn.
+      const lastLine = event.event === 'Stop' && !waitingSummary ? agentLastLine(redactSecrets(event.lastMessage ?? '')) ?? null : event.event === 'UserPromptSubmit' ? null : undefined;
       const next = waitingSummary ? { activity: 'working', attention: 'none', summary: waitingSummary } as const : {
         activity: working ? 'working' : 'idle', attention: inputNeeded ? 'input' : event.event === 'StopFailure' ? 'error' : event.event === 'SessionEnd' ? node.attention : 'none', ...(attentionNote ? { attentionNote } : {}),
         summary: inputNeeded ? 'Waiting for your input' : working ? 'Claude is working' : event.event === 'StopFailure' ? 'Claude reported an error' : event.event === 'SessionEnd' ? 'Conversation closed' : 'Ready for your next prompt',
+        ...(lastLine !== undefined && (lastLine ?? undefined) !== node.lastLine ? { lastLine } : {}),
       } as const;
       // Our own MCP tools must be able to read a revision and then write with it.
       // Repeated tool hooks are observations, not graph edits. They must also not
       // overwrite a short summary the agent just wrote through MCP.
-      if ((event.event !== 'Notification' || inputNeeded) && (node.activity !== next.activity || node.attention !== next.attention || (attentionNote && !waitingSummary && node.attentionNote !== attentionNote) || event.event === 'SessionEnd' || (waitingSummary && node.summary !== waitingSummary)))
+      if ((event.event !== 'Notification' || inputNeeded) && (node.activity !== next.activity || node.attention !== next.attention || (attentionNote && !waitingSummary && node.attentionNote !== attentionNote) || event.event === 'SessionEnd' || (waitingSummary && node.summary !== waitingSummary) || 'lastLine' in next))
         commands.push({ type: 'node.update', id: node.id, ...next, ...sceneChanges(node, agentScene({ activity: next.activity, attention: next.attention, attentionNote: 'attentionNote' in next ? next.attentionNote : undefined }, this.observations.agentBackground(event.processSessionId), event.observedAt, { ended: event.event === 'SessionEnd' }), event.observedAt) });
       if (event.event === 'Stop' && !waitingSummary) commands.push(...completionAttention(node, `claude:${event.processSessionId}:${event.observedAt}`, 'Agent finished'));
       try {

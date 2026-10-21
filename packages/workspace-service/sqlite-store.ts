@@ -3,6 +3,7 @@ import { DEFAULT_MAP_DASHBOARDS, FORMER_DASHBOARD_ZOOM } from '../../src/graph/p
 import { validateMapSettings } from '../core/item-map-sizes.ts';
 import { createResourcePluginRegistry } from '../../src/resource-plugins/builtins.ts';
 import { layoutFootprints, repairLayout } from '../../src/graph/movement.ts';
+import { SNAP_PITCH, type MapLayout } from '../../src/graph/snap.ts';
 import type { AppSettings, SettingsSnapshot } from '../core/settings.ts';
 import { MAX_RECENT_DIRECTORIES } from '../core/working-directories.ts';
 import { DatabaseSync } from 'node:sqlite';
@@ -630,7 +631,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     const row = this.db.prepare('SELECT revision, body FROM app_settings WHERE id = 1').get();
     return row ? { revision: Number(row.revision), value: settingsSchema.parse(decode(row.body)) } : { revision: 0, value: settingsSchema.parse({}) };
   }
-  readMapSizes() { return this.readSettings().value.itemMapSizes; }
+  readMapLayout(): MapLayout { const { itemMapSizes, snapToGrid } = this.readSettings().value; return { sizes: itemMapSizes, ...(snapToGrid ? { snap: SNAP_PITCH } : {}) }; }
   /** Settings are saved whole, so an old default is stored like a choice. Runs once
    * per workspace: a saved former dashboard default takes the current default. */
   migrateSettingsDefaults() {
@@ -716,7 +717,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
         const before = new Map(layoutFootprints(state.nodes, state.resources, registry, current.value.itemMapSizes).map(box => [box.id, box]));
         const after = layoutFootprints(state.nodes, state.resources, registry, next.value.itemMapSizes);
         if (after.some(box => box.width > before.get(box.id)!.width || box.height > before.get(box.id)!.height)) {
-          state.nodes = repairLayout(state.nodes, state.resources, registry, next.value.itemMapSizes);
+          state.nodes = repairLayout(state.nodes, state.resources, registry, next.value.itemMapSizes, next.value.snapToGrid ? SNAP_PITCH : undefined);
         }
         state.revision++;
         this.writeState(state);
@@ -991,6 +992,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       error: row.error === null ? undefined : String(row.error), updatedAt: String(row.updated_at) };
   }
   getJob(id: string): JobRecord | undefined { const row = this.db.prepare('SELECT * FROM jobs WHERE id = ?').get(id); return row ? this.job(row) : undefined; }
+  jobByRequest(requestKey: string): JobRecord | undefined { const row = this.db.prepare('SELECT * FROM jobs WHERE request_key = ?').get(requestKey); return row ? this.job(row) : undefined; }
   listJobs(): JobRecord[] { return this.db.prepare('SELECT * FROM jobs ORDER BY rowid').all().map(row => this.job(row)); }
   enqueueJob(requestKey: string, input: JobInput): JobRecord {
     if (!requestKey.trim() || requestKey.length > 200 || !input.action.trim() || !input.nodeId.trim()) throw new Error('Invalid job request');

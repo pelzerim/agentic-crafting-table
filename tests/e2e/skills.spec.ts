@@ -11,6 +11,7 @@ import { connectWorkspace } from '../../packages/workspace-service/client.ts';
 import { connectSupervisor } from '../../packages/session-runtime/client.ts';
 import { exitWithoutShutdown } from './exit-without-shutdown.ts';
 import { openProjectPicker, projectEmptyPoint } from './project-picker.ts';
+import { stopSession } from './agent-session.ts';
 
 test('project skills launch native runs through UI and MCP, preserve retries and resume without reinvocation', async () => {
   test.setTimeout(90_000);
@@ -75,7 +76,7 @@ test('project skills launch native runs through UI and MCP, preserve retries and
       expect(replayed.session.pid).toBe(first.session.pid); expect((await read()).nodes.filter(node => node.resourceId)).toHaveLength(provider === 'claude' ? 1 : 2);
       const metadata = await call('workspace_skills', { projectId, provider });
       expect(metadata.skills.some((skill: {name:string}) => skill.name === 'fixture-skill')).toBe(true);
-      await page.getByRole('button', { name: 'Stop session', exact: true }).click();
+      await stopSession(page);
       await expect(item.locator('.native-terminal')).toHaveAttribute('data-session-state', 'exited');
       await page.getByRole('button', { name: 'Agent session menu' }).click();
       await page.getByRole('menuitem', { name: 'Resume / reconnect', exact: true }).click();
@@ -83,7 +84,7 @@ test('project skills launch native runs through UI and MCP, preserve retries and
       const resumed = (await read()).resources.find(item => item.id === resource.id)!;
       const resumedPlan = JSON.parse(await readFile(join(directory, 'agent-launches', String(resumed.data.sessionId), 'plan.json'), 'utf8'));
       expect(resumedPlan.launch.native?.initialPrompt).toBeUndefined(); expect(resumedPlan.launch.args.includes('--')).toBe(false);
-      await page.getByRole('button', { name: 'Stop session', exact: true }).click();
+      await stopSession(page);
       await page.getByRole('button', { name: 'Back to project', exact: true }).click();
     }
   } finally {

@@ -10,6 +10,7 @@ import { once } from 'node:events';
 import { connectWorkspace } from '../../packages/workspace-service/client.ts';
 import { connectSupervisor } from '../../packages/session-runtime/client.ts';
 import { exitWithoutShutdown } from './exit-without-shutdown.ts';
+import { expectStopSession, stopSession } from './agent-session.ts';
 
 test('item and Sessions controls cancel a preparing agent before its terminal launches', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'craft-pending-stop-')), bin = join(directory, 'bin'), repo = join(directory, 'repo');
@@ -33,9 +34,9 @@ test('item and Sessions controls cancel a preparing agent before its terminal la
       if (control === 'item') {
         await page.getByRole('article', { name: 'Preparing item', exact: true }).click();
         await expect(page.locator('.native-terminal')).toHaveAttribute('data-session-state', 'starting');
-        await page.getByRole('button', { name: 'Stop session', exact: true }).click();
+        await stopSession(page);
         await expect(page.locator('.native-terminal')).toHaveAttribute('data-session-state', 'exited');
-        await expect(page.getByRole('button', { name: 'Stop session', exact: true })).toBeDisabled();
+        await expectStopSession(page, false);
         await expect(page.locator('.terminal-error')).toHaveCount(0);
         await page.getByRole('button', { name: 'Back to project' }).click();
       } else {

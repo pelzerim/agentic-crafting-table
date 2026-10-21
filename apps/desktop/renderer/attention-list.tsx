@@ -29,6 +29,18 @@ const freshSummary = (summary: string, reasons: string[]) => {
   return summary.split(' · ').filter(part => !words(part).every(word => said.has(word))).join(' · ');
 };
 const FOCUSABLE = 'button:not(:disabled),[href],[tabindex]:not([tabindex="-1"])';
+/** Groups the person folded in Needs me, remembered on this Mac only. */
+const FOLDED_KEY = 'craft.needsMe.folded';
+const readFolded = (): string[] => { try { const value = JSON.parse(localStorage.getItem(FOLDED_KEY) ?? '[]'); return Array.isArray(value) ? value.filter(entry => typeof entry === 'string') : []; } catch { return []; } };
+function useFolded() {
+  const [folded, setFolded] = useState(() => new Set(readFolded()));
+  const toggle = (group: string) => setFolded(old => {
+    const next = new Set(old); if (!next.delete(group)) next.add(group);
+    try { localStorage.setItem(FOLDED_KEY, JSON.stringify([...next])); } catch { /* the fold lasts for this window */ }
+    return next;
+  });
+  return { folded, toggle };
+}
 /** Keys typed into text or a terminal belong there, Escape included. */
 const TYPING = 'input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],.terminal-surface,.xterm';
 const covers = (panel: DOMRect, card: DOMRect) => {
@@ -79,7 +91,7 @@ export function NeedsMeTool({ size, onSize, ...rows }: AttentionRowsProps & { si
     if (!open || !takeFocus.current) return;
     takeFocus.current = false;
     const items = [...sheet()?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []];
-    (items.find(item => !item.closest('.rail-panel-header,.rail-panel-resize')) ?? items[0])?.focus({ preventScroll: true });
+    (items.find(item => item.matches('.attention-entry')) ?? items.find(item => !item.closest('.rail-panel-header,.rail-panel-resize')) ?? items[0])?.focus({ preventScroll: true });
   }, [open, pinned]);
   const closeRef = useRef(close); closeRef.current = close;
   useEffect(() => {
@@ -108,7 +120,7 @@ export function NeedsMeTool({ size, onSize, ...rows }: AttentionRowsProps & { si
 
 /** `muted` are the rows of muted projects (MAP-25): never counted, kept behind one collapsed line. */
 function AttentionRows({ items, muted = [], counting, state, reveal, locate, highlight, dismiss, openWeb, unavailable, close, occluded: setOccluded }: AttentionRowsProps & { close(): void; occluded(value: boolean): void }) {
-  const [hovered, setHovered] = useState<string>(), [focused, setFocused] = useState<string>(), [mutedOpen, setMutedOpen] = useState(false);
+  const [hovered, setHovered] = useState<string>(), [focused, setFocused] = useState<string>(), [mutedOpen, setMutedOpen] = useState(false), { folded, toggle } = useFolded();
   const nodes = useMemo(() => new Map(state.nodes.map(node => [node.id, node])), [state.nodes]);
   const history = useAttentionHistory([...items, ...muted].map(item => item.identity).join('\n')), end = useRef<HTMLDivElement>(null), next = useRef(history.next); next.current = history.next;
   useEffect(() => {
@@ -122,8 +134,9 @@ function AttentionRows({ items, muted = [], counting, state, reveal, locate, hig
   };
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(timer); }, []);
-  const summaries = new Map([...items, ...muted].map(item => [item.identity, freshSummary(nodes.get(item.node.id)?.summary.trim() ?? '', item.details)]));
-  const inspected = [...items, ...(mutedOpen ? muted : [])].find(item => item.identity === (hovered ?? focused))?.node.id;
+  // What the agent last said wins over its status summary; either drops the parts that only repeat the reason.
+  const summaries = new Map([...items, ...muted].map(item => { const node = nodes.get(item.node.id); return [item.identity, node?.lastLine ?? freshSummary(node?.summary.trim() ?? '', item.details)]; }));
+  const inspected = [...items, ...(mutedOpen ? muted : [])].filter(item => !folded.has(item.tier)).find(item => item.identity === (hovered ?? focused))?.node.id;
   useEffect(() => { highlight(inspected); return () => highlight(undefined); }, [inspected, highlight]);
   useEffect(() => {
     const card = inspected && document.querySelector(`[data-item-id="${CSS.escape(inspected)}"]`);
@@ -144,7 +157,7 @@ function AttentionRows({ items, muted = [], counting, state, reveal, locate, hig
       onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(undefined); }}>
     <button className="attention-entry" aria-label={`Open ${item.node.title}`} aria-description={attentionLabel(item.tier, item.details.join(' · '))} onClick={() => { reveal(item.node.id); close(); }}>
       <strong>{item.node.title}</strong><span className="attention-reason" data-tier={item.tier}><TierMark tier={item.tier} />{item.details.join(' · ')}{attentionAge(item.since, now) && <span className="attention-age"> · {attentionAge(item.since, now)}</span>}</span>
-      {summaries.get(item.identity) && <span className="attention-summary">{summaries.get(item.identity)}</span>}
+      {summaries.get(item.identity) && <span className="attention-summary" data-said={nodes.get(item.node.id)?.lastLine ? true : undefined} title={summaries.get(item.identity)}>{summaries.get(item.identity)}</span>}
       <small>{[...new Set(item.aliases.map(alias => nodes.get(alias.projectId ?? '')?.title ?? 'Floating item'))].join(' · ')}{item.node.completedAt ? ' · Marked done' : ''}</small>
     </button><div className="attention-actions">
       <Button size="sm" className="attention-dismiss" aria-label={`Dismiss ${item.node.title} from Needs me`} title="Mark as seen" onClick={() => dismiss(item.node.id)}><PixelGlyph name="check" />Seen</Button>
@@ -152,17 +165,19 @@ function AttentionRows({ items, muted = [], counting, state, reveal, locate, hig
     </div></div>;
   return <>
     {!items.length && <p>Nothing needs me.</p>}
-    {attentionTiers.map(tier => { const group = items.filter(item => item.tier === tier), info = attentionTierInfo[tier];
-      return group.length > 0 && <div key={tier} className="attention-tier" role="group" aria-label={info.name} data-tier={tier}>
-        <h3><TierMark tier={tier} />{info.name} · {group.length}{tier === 'finished' && !counting?.countFinished && <small>not counted</small>}</h3>{group.map(row)}</div>; })}
+    {attentionTiers.map(tier => { const group = items.filter(item => item.tier === tier), info = attentionTierInfo[tier], open = !folded.has(tier);
+      return group.length > 0 && <div key={tier} className="attention-tier" role="group" aria-label={info.name} data-tier={tier} data-folded={open ? undefined : true}>
+        <h3><button type="button" className="attention-fold" aria-expanded={open} title={open ? `Collapse ${info.name}` : `Expand ${info.name}`} onClick={() => toggle(tier)}>
+          <TierMark tier={tier} /><span>{info.name} · {group.length}</span>{tier === 'finished' && !counting?.countFinished && <small>not counted</small>}<PixelGlyph name="chevron" /></button></h3>{open && group.map(row)}</div>; })}
     {muted.length > 0 && <div className="attention-muted" role="group" aria-label="Muted projects">
       <button type="button" className="attention-muted-toggle" aria-expanded={mutedOpen} title="In muted projects; not counted anywhere and not announced" onClick={() => setMutedOpen(open => !open)}>
         <PixelGlyph name="moon" /><span>Muted · {muted.length}</span><PixelGlyph name="chevron" /></button>
       {mutedOpen && muted.map(row)}
     </div>}
-    {(history.entries.length > 0 || history.failed) && <div className="attention-earlier" role="group" aria-label="Earlier">
-      <h3>Earlier</h3>
-      {history.entries.map(entry => { const { node, status } = earlier(entry), open = () => { if (!node) return; if (isArchived(node, state.nodes)) { unavailable('This item is archived or unavailable. Restore it from Archive to show it on the map.'); return; } reveal(node.id); close(); };
+    {(history.entries.length > 0 || history.failed) && <div className="attention-earlier" role="group" aria-label="Earlier" data-folded={folded.has('earlier') || undefined}>
+      <h3><button type="button" className="attention-fold" aria-expanded={!folded.has('earlier')} title={folded.has('earlier') ? 'Expand Earlier' : 'Collapse Earlier'} onClick={() => toggle('earlier')}>
+        <span>Earlier</span><PixelGlyph name="chevron" /></button></h3>
+      {!folded.has('earlier') && history.entries.map(entry => { const { node, status } = earlier(entry), open = () => { if (!node) return; if (isArchived(node, state.nodes)) { unavailable('This item is archived or unavailable. Restore it from Archive to show it on the map.'); return; } reveal(node.id); close(); };
         const seen = `${entry.outcome === 'seen' ? 'Seen' : 'Cleared'} ${short(entry.seenAt)}`;
         return <div key={entry.key} className="attention-row" data-gone={!node || undefined}>
           <button className="attention-entry" aria-label={`Open earlier ${entry.title}`} disabled={!node} onClick={open}
@@ -172,7 +187,7 @@ function AttentionRows({ items, muted = [], counting, state, reveal, locate, hig
           </button>
           {node && !isArchived(node, state.nodes) && <div className="attention-actions"><Button size="sm" className="attention-locate" aria-label={`Go to earlier ${entry.title} on map`} title="Show on map" onClick={() => locate(node.id)}><PixelGlyph name="crosshair" /></Button></div>}
         </div>; })}
-      {history.failed ? <p className="attention-more-error" role="alert">Couldn't load earlier<Button size="sm" onClick={history.retry}>Retry</Button></p>
+      {folded.has('earlier') ? null : history.failed ? <p className="attention-more-error" role="alert">Couldn't load earlier<Button size="sm" onClick={history.retry}>Retry</Button></p>
         : history.more && <div ref={end} className="attention-more" role="status"><i aria-hidden="true" />Loading earlier…</div>}
     </div>}
   </>;

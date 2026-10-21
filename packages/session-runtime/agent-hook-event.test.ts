@@ -132,3 +132,11 @@ test('the session start names its model, and a main-thread hook says whether it 
   assert.deepEqual(hookFields({ session_id: native, hook_event_name: 'Stop' }, native), { event: 'Stop' }, 'no directory, no claim');
   assert.equal(hookFields({ session_id: native, hook_event_name: 'PreToolUse', tool_name: 'Read', cwd: '/repo/.claude/worktrees/x', agent_id: 'a1' }, native)?.worktree, undefined, 'a subagent in a worktree does not pen the item');
 });
+
+test('Stop forwards the last assistant message, bounded; other events never carry text', () => {
+  assert.deepEqual(hookFields({ session_id: native, hook_event_name: 'Stop', last_assistant_message: 'Done.\n\nPushed to main.' }, native), { event: 'Stop', lastMessage: 'Done.\n\nPushed to main.' });
+  assert.equal(hookFields({ session_id: native, hook_event_name: 'Stop', last_assistant_message: 'x'.repeat(5000) }, native)!.lastMessage!.length, 2000);
+  assert.deepEqual(hookFields({ session_id: native, hook_event_name: 'Stop', last_assistant_message: 42 }, native), { event: 'Stop' });
+  assert.deepEqual(hookFields({ session_id: native, hook_event_name: 'PostToolUse', tool_name: 'Bash', last_assistant_message: 'text' }, native), { event: 'PostToolUse', toolName: 'Bash' });
+  assert.deepEqual(hookFields({ session_id: native, hook_event_name: 'SubagentStop', agent_id: 'sub', last_assistant_message: 'text' }, native), { event: 'SubagentStop', agentId: 'sub' });
+});

@@ -289,6 +289,8 @@ async function main() {
         case 'reminders.snooze': result = await workspace.call(method, reminderSnoozeSchema.parse(args)); break;
         case 'standup.open': result = await workspace.call(method, standupRequestSchema.parse(args)); break;
         case 'standup.status': result = await workspace.call(method); break;
+        case 'updates.status': result = await workspace.call(method); break;
+        case 'updates.check': result = await workspace.call(method); break;
         case 'attention.history': result = await workspace.call(method, z.object({ offset: z.number().int().min(0).max(99).default(0), limit: z.number().int().min(1).max(100).default(10) }).strict().parse(args ?? {})); break;
         case 'plugins.discover': result = await workspace.call(method, pluginDiscoverySchema.parse(args)); break;
         case 'connections.refresh': result = await workspace.call(method, providerRefreshSchema.parse(args)); break;
@@ -440,7 +442,7 @@ async function main() {
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 if (app.requestSingleInstanceLock()) {
-  app.on('second-instance', (_event, argv) => {
+  app.on('second-instance', (_event, argv = []) => {
     const link = installLinkArgument(argv);
     if (link) receiveInstallLink(link); else void showWindow();
   });

@@ -86,6 +86,7 @@
 
 .terminal-status button,
 .map-card .item-seen,
+.map-card .item-keep,
 .map-card .item-close {
   height: 28px;
   min-height: 28px;
@@ -106,7 +107,9 @@
   border-radius: 0;
 }
 
-.live-workspace .terminal-status .session-stop:not(:disabled) {
+/* Stop is the one irreversible control here; in the toolbar and in the Session menu it wears the same amber. */
+.live-workspace .terminal-status .session-stop:not(:disabled),
+.native-session-menu .session-stop:not(:disabled) {
   color: #eccba0;
   background: #3a3024;
   border-color: #80664a;
@@ -163,6 +166,13 @@
   line-height: 1.5;
   color: var(--act-ink-dim);
 }
+
+.native-session-menu hr {
+  margin: 6px 4px;
+  border: 0;
+  border-top: 1px solid var(--act-line);
+}
+
 
 .terminal-prompt-status {
   flex: none;

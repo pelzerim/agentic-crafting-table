@@ -40,7 +40,7 @@ test('map preset settings and collision placement commit together, survive resta
     store.close(); store = new SqliteStore(file); control = new WorkspaceControl(store);
     assert.deepEqual(store.readSettings(), saved); assert.deepEqual(await control.read(), state);
     await control.apply({ type: 'item.add', id: 'new', resourceId: 'new-r', pluginId: 'workspace.note', title: 'New', data: { text: 'New' }, position: { ...state.nodes[0].position } }, state.revision);
-    const after = await control.read(), finalBoxes = layoutFootprints(after.nodes, after.resources, control.registry, store.readMapSizes());
+    const after = await control.read(), finalBoxes = layoutFootprints(after.nodes, after.resources, control.registry, store.readMapLayout().sizes);
     for (let i = 0; i < finalBoxes.length; i++) for (let j = i + 1; j < finalBoxes.length; j++) assert.equal(overlaps(finalBoxes[i], finalBoxes[j], ITEM_GAP), false);
   } finally { store.close(); }
 }));

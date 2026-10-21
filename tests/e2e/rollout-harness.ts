@@ -21,10 +21,10 @@ const text = (result: any) => (result.content as { text: string }[])[0].text;
 
 /** Stands the scripted native agent in for Claude in a service that runs in this process: the probe answers with it,
  * so starting an agent never reaches an installed CLI. Returns what puts the real provider back. */
-export async function scriptedClaude(directory: string) {
+export async function scriptedClaude(directory: string, installed = true) {
   const executable = join(directory, 'claude'), providers = agentProviders as Record<string, AgentProvider>, real = providers.claude;
   await writeFile(executable, `#!${process.execPath}\nimport ${JSON.stringify(pathToFileURL(resolve('tests/fixtures/native-agent.mjs')).href)};\n`, { mode: 0o700 });
-  providers.claude = { ...real, probe: async () => ({ executable, version: '2.1.281 (scripted test fixture)', remoteControl: true, autoMode: true }) };
+  providers.claude = { ...real, probe: async () => { if (!installed) throw new Error('Claude Code is not installed. Install and sign in to the Claude CLI, then retry.'); return { executable, version: '2.1.281 (scripted test fixture)', remoteControl: true, autoMode: true }; } };
   return () => { providers.claude = real; };
 }
 
@@ -34,8 +34,8 @@ export async function scriptedClaude(directory: string) {
 export const STAGED_DEPLOY_RULES = [{ id: 'web-release', workflow: '^web\\s*/\\s*release$', stages: [
   { key: 'preview', environment: 'preview' }, { key: 'live', environment: 'live' }, { key: 'settle', environment: 'live', delayMinutes: 10 }] }];
 
-export async function rolloutHarness(providers: Providers, agents: readonly string[], setup: (agent: (id: string, title: string, x: number) => WorkspaceCommand) => WorkspaceCommand[], project: { summary?: string; /** Saved as the rollout package's stage rules setting. */ stageRules?: readonly object[] } = {}) {
-  const directory = await mkdtemp(join(tmpdir(), 'craft-rollout-harness-')), agentScript = join(directory, 'agent-fixture'), restoreClaude = await scriptedClaude(directory);
+export async function rolloutHarness(providers: Providers, agents: readonly string[], setup: (agent: (id: string, title: string, x: number) => WorkspaceCommand) => WorkspaceCommand[], project: { summary?: string; /** Saved as the rollout package's stage rules setting. */ stageRules?: readonly object[]; /** Claude cannot start a session: the service falls back to connected agents. */ claudeMissing?: boolean } = {}) {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-rollout-harness-')), agentScript = join(directory, 'agent-fixture'), restoreClaude = await scriptedClaude(directory, !project.claudeMissing);
   await writeFile(agentScript, `#!${process.execPath}\nimport ${JSON.stringify(pathToFileURL(resolve('tests/fixtures/scripted-agent.mjs')).href)};\n`, { mode: 0o700 });
   const runtime = { directory: join(directory, 'runtime'), executable: electronPath as unknown as string, entrypoint: resolve('dist/session-supervisor.cjs'), electronRuntime: true };
   const service = await startWorkspaceService(directory, undefined, runtime, providers);

@@ -255,6 +255,18 @@ test('a ready agent connected to the pull request gets the fix request as a prom
   assert.deepEqual([f.record()!.fixes[0].agentNodeId, f.record()!.writes[0].state], ['helper', 'sent']);
 });
 
+test('a ready agent connected to the pull request is not asked to validate: the rollout\'s hidden validation agent is', async () => {
+  const f = await fixture({ tagging: false, sessions: true });
+  await f.apply([{ type: 'item.add', id: 'helper', resourceId: 'helper-r', pluginId: 'agent.session', title: 'Helper', projectId: 'web', position: { x: 300, y: 500 }, data: { provider: 'claude', sessionId: 'session-helper' } },
+    { type: 'link.save', link: { id: 'pr-helper', sourceId: 'pr', targetId: 'helper', kind: 'context', label: '' } }, { type: 'node.update', id: 'helper', activity: 'idle' }]);
+  await f.arm(); await f.pass();
+  await f.discover([f.gate(7, 'live')], [f.job(1, 'preview / ship'), f.job(2, 'live / ship', 'waiting', null)]);
+  await f.pass();
+  assert.deepEqual(f.triggers.map(entry => [entry.nodeId, entry.input.value]), [['rollout', VALIDATION_AGENT]]);
+  assert.equal(f.record()!.checks[0].agent, VALIDATION_AGENT);
+  assert.equal(f.prompts.length, 0, 'the connected agent is not prompted');
+});
+
 test('no agent to fix CI or to validate halts instead of waiting forever', async () => {
   const ci = await fixture({ tagging: false, starter: false });
   ci.github.readiness.checks = 'failing';

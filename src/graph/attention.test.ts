@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ATTENTION_NOTE_LENGTH, attentionAge, attentionCounts, attentionCountText, attentionDetails, attentionItems, attentionLabel, attentionNote, attentionReasons, attentionTier, attentionTierInfo, attentionTierOf, attentionTiers, needsMeButton, nodeAttention } from './attention.ts';
+import { ATTENTION_NOTE_LENGTH, attentionAge, attentionCounts, attentionCountText, attentionDetails, attentionItems, attentionLabel, attentionNote, attentionReasons, attentionTier, attentionTierInfo, attentionTierOf, attentionTiers, needsMeButton, nodeAttention, attentionRestorable } from './attention.ts';
 import { projectActivity } from './project-neighborhoods.ts';
 
 test('global attention deduplicates aliases and reasons, retains done items and excludes archived projects', () => {
@@ -108,4 +108,12 @@ test('a card reads its own tier, reason and age; seen attention has none', () =>
 
 test('a validation with concerns asks to hold the release', () => {
   assert.equal(attentionReasons.validation, 'Validation concerns · hold the release');
+});
+
+test('a receipt is restorable while its cycles are unchanged and still carry a reason', () => {
+  const node = { id: 'a', resourceId: 'r', title: 'a', attention: 'input', attentionVersion: 2, attentionSeenVersion: 2 } as Parameters<typeof attentionRestorable>[0][number];
+  assert.deepEqual(attentionRestorable([node], { id: 'a', versions: { a: 2 } }), { tier: 'asking' });
+  assert.equal(attentionRestorable([node], { id: 'a', versions: { a: 1 } }), undefined, 'a newer cycle');
+  assert.equal(attentionRestorable([{ ...node, attention: 'none' }], { id: 'a', versions: { a: 2 } }), undefined, 'the reason is gone');
+  assert.equal(attentionRestorable([node], { id: 'a', versions: {} }), undefined, 'nothing was acknowledged');
 });

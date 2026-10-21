@@ -12,7 +12,7 @@ export const ITEM_GAP = 20;
 
 /** The map preview and UI/MCP commit share limits and collision placement. */
 export function resizeItem<T extends GraphNode>(nodes: readonly T[], resources: readonly ResourceRecord[], registry: ResourcePluginRegistry,
-  intent: { id: string; dimensions: { width: number; height: number }; position?: GraphNode['position'] }, sizes: ItemMapSizes = {}): T[] {
+  intent: { id: string; dimensions: { width: number; height: number }; position?: GraphNode['position'] }, sizes: ItemMapSizes = {}, pitch?: number): T[] {
   const node = nodes.find(node => node.id === intent.id), resource = resources.find(resource => resource.id === node?.resourceId);
   if (!node || !resource) throw new Error('Only resource items have map sizes');
   const limits = itemResizeLimits(registry.get(resource.pluginId)), { width, height } = intent.dimensions;
@@ -22,7 +22,7 @@ export function resizeItem<T extends GraphNode>(nodes: readonly T[], resources: 
   if (!isDrawn(node, nodes)) return changed;
   const before = itemFootprint(node, resources, registry, sizes);
   if (width > before.width || height > before.height || intent.position)
-    return moveItems(changed, resources, registry, [{ id: node.id, position: intent.position ?? node.position }], sizes);
+    return moveItems(changed, resources, registry, [{ id: node.id, position: intent.position ?? node.position }], sizes, pitch);
   return changed;
 }
 
@@ -35,16 +35,17 @@ export function layoutFootprints(nodes: readonly GraphNode[], resources: readonl
 
 /** An explicit repair preserves every already-clear item, then separates only
  * the overlapping group. Never call this on startup, camera changes or refresh. */
-export function repairLayout<T extends GraphNode>(nodes: readonly T[], resources: readonly ResourceRecord[], registry: ResourcePluginRegistry, sizes: ItemMapSizes = {}): T[] {
+export function repairLayout<T extends GraphNode>(nodes: readonly T[], resources: readonly ResourceRecord[], registry: ResourcePluginRegistry, sizes: ItemMapSizes = {}, pitch?: number): T[] {
   const boxes = layoutFootprints(nodes, resources, registry, sizes);
   const clear = boxes.filter(box => !boxes.some(other => other.id !== box.id && overlaps(box, other, ITEM_GAP)));
-  return moveItems(nodes, resources, registry, clear.map(box => ({ id: box.id, position: { x: box.x, y: box.y } })), sizes);
+  return moveItems(nodes, resources, registry, clear.map(box => ({ id: box.id, position: { x: box.x, y: box.y } })), sizes, pitch);
 }
 
 /** Shared UI preview / command placement. Requested items stay fixed; other
  * footprints settle at clear edges. Project moves preserve all member offsets,
- * including archived members, and commit as one operation. No camera inputs. */
-export function moveItems<T extends GraphNode>(nodes: readonly T[], resources: readonly ResourceRecord[], registry: ResourcePluginRegistry, intents: readonly MoveIntent[], sizes: ItemMapSizes = {}): T[] {
+ * including archived members, and commit as one operation. No camera inputs.
+ * With a grid pitch, the footprints that settle aside land on grid points. */
+export function moveItems<T extends GraphNode>(nodes: readonly T[], resources: readonly ResourceRecord[], registry: ResourcePluginRegistry, intents: readonly MoveIntent[], sizes: ItemMapSizes = {}, pitch?: number): T[] {
   const byId = new Map(nodes.map(node => [node.id, node]));
   const positions = new Map<string, GraphNode['position']>();
   const explicit = new Set<string>();
@@ -87,7 +88,7 @@ export function moveItems<T extends GraphNode>(nodes: readonly T[], resources: r
     Number(pinned.some(held => overlaps(a, held, ITEM_GAP))) - Number(pinned.some(held => overlaps(b, held, ITEM_GAP))) || a.id.localeCompare(b.id));
   const placed = [...pinned];
   for (const box of stationary) {
-    const position = freePosition(box, placed, ITEM_GAP);
+    const position = freePosition(box, placed, ITEM_GAP, pitch);
     if (position.x !== box.x || position.y !== box.y) positions.set(box.id, position);
     placed.push({ ...box, ...position });
   }

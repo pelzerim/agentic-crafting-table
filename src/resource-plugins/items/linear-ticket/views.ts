@@ -1,3 +1,4 @@
+import { LINEAR_PULLS_OPERATION } from './definition.ts';
 import { mountProviderRead } from '../../read-view.ts';
 import type { ResourcePluginViews } from '../../types.ts';
 import { renderMarkdown } from '../../markdown-view.ts';
@@ -8,6 +9,12 @@ import type { ChipTone } from '../../view-header.ts';
 const KEY = /^[A-Z][A-Z0-9]*-[1-9]\d*$/i, URL_PATTERN = /^https:\/\/linear\.app\/[A-Za-z0-9_-]+\/issue\//;
 export const linearTicketViews: ResourcePluginViews = {
   identity: resource => JSON.stringify([resource.connectionId, resource.data]),
+  /** Linked pull requests → Add to the map: the service attaches them; the map flies to the first one. */
+  async runContextAction(actionId, _resource, services) {
+    if (actionId !== 'pulls.add') throw new Error('This action is not available for Linear tickets.');
+    const result = await services.runAction(LINEAR_PULLS_OPERATION, { operation: 'add', requestId: crypto.randomUUID() }) as { nodeId?: unknown };
+    return typeof result?.nodeId === 'string' ? { nodeId: result.nodeId } : {};
+  },
   mountDetail(container, resource, services) {
     const document = container.ownerDocument;
     const saved = typeof resource.data.workspaceKey === 'string' && KEY.test(String(resource.data.issueId)) ? `https://linear.app/${resource.data.workspaceKey}/issue/${resource.data.issueId}` : undefined;

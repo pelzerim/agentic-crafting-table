@@ -25,7 +25,7 @@ test('a pending move shows where its save will file the row', () => {
   for (const [id, group, index] of cases) {
     const before = workspace(), list = todoList(before), entry = [...list.inbox, ...list.next, ...list.later, ...list.done].find(row => row.id === id)!;
     const shown = placeRows(list, [placementFor(list, entry, group, index)]);
-    const saved = todoList(reduceCommands(before, [moveTodo(entry, group, index)], before.revision, registry, {}, { kind: 'user', id: 'test' }));
+    const saved = todoList(reduceCommands(before, [moveTodo(entry, group, index)], before.revision, registry, undefined, { kind: 'user', id: 'test' }));
     assert.deepEqual(ids(shown), ids(saved), `${id} → ${group}${index === undefined ? '' : ` @${index}`}`);
     assert.equal(shown.done.some(row => row.id === id), group === 'done', 'a row in Done shows ticked, and one moved out of it unticked');
   }

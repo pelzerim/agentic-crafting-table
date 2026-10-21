@@ -53,6 +53,7 @@ npm --version                   # 11.x
 ```sh
 git clone https://github.com/pelzerim/agentic-crafting-table.git agent-crafting-table
 cd agent-crafting-table
+git checkout "$(git tag --list 'v*' --sort=-v:refname | head -1)"   # the newest release tag
 npm ci                          # also downloads Electron and rebuilds native modules for it
 npm run dev                     # builds and starts the app
 ```
@@ -68,6 +69,20 @@ npm run install:local           # verifies it and installs release/mac-arm64/Age
 
 Check: `npm run install:local` prints `Installed …` (or `Already up to date`). Launch
 and pin `release/mac-arm64/Agentic Crafting Table.app`, not the staged copy.
+
+### Updating
+
+Releases are tags of the repository. The app looks up the newest tag once a day
+(Settings → General → Check for updates daily) and shows a notice when there is a newer
+one; Settings → General → About shows the running and newest versions. To update:
+
+```sh
+# quit the app first
+npm run update                  # fetches tags, checks out the newest release, npm ci, package, install:local
+```
+
+It refuses while the app runs or the checkout has local changes. Installed plugin packs
+are checked the same way; their notice opens Settings → Plugins with the new tag to review.
 
 ### 3. Claude Code (and Codex)
 

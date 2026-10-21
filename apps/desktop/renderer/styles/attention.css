@@ -93,6 +93,63 @@
   white-space: pre-wrap;
 }
 
+/* What the agent said is quoted text: two lines at most, the full line on hover. */
+.attention-entry .attention-summary[data-said] {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+/* A group heading is its own fold toggle; the chevron turns down while the group is open. */
+.live-workspace .attention-fold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.live-workspace .attention-fold:hover {
+  background: transparent;
+  filter: brightness(1.2);
+}
+
+.attention-fold > span {
+  flex: none;
+}
+
+.attention-fold > small {
+  margin-left: auto;
+}
+
+.attention-fold > .act-glyph {
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  flex: none;
+  transform: rotate(90deg);
+}
+
+.attention-fold > small + .act-glyph {
+  margin-left: 6px;
+}
+
+.attention-fold[aria-expanded=false] > .act-glyph {
+  transform: none;
+}
+
 .attention-row:hover .attention-entry,
 .attention-row:focus-within .attention-entry {
   border-color: var(--act-attention);
@@ -483,9 +540,23 @@
   white-space: pre;
 }
 
-.live-workspace .item-seen {
+.live-workspace .item-seen,
+.live-workspace .item-keep {
   color: var(--act-attention);
   background: var(--act-needs-me-fill);
   border-color: var(--act-needs-me-edge);
   border-image: none;
+}
+
+/* The X closes; the tier mark in its corner says the item stays unread. */
+.item-keep {
+  position: relative;
+}
+
+.item-keep .item-keep-mark {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
 }

@@ -10,6 +10,19 @@
   pointer-events: none;
 }
 
+/* An item view that reaches the rail sends it off the left edge, Dock-style; it is back the moment the view closes or shrinks. An open sheet stays. */
+.tool-rail,
+.rail-panel,
+.below-portal {
+  transition: transform 160ms ease-out;
+}
+
+.live-workspace[data-chrome-docked] .tool-rail,
+.live-workspace[data-chrome-docked] .rail-panel:not([data-open=true]),
+.live-workspace[data-chrome-docked] .below-portal {
+  transform: translateX(-80px);
+}
+
 .tool-rail-slot {
   position: absolute;
   left: 2px;
@@ -326,6 +339,29 @@
   height: 22px;
 }
 
+/* A tool a right-click keeps open: an accent inset frame on its slot and a lock in the top-left corner. */
+.live-workspace .rail-panel[data-held] > .rail-panel-toggle {
+  box-shadow: inset 0 0 0 2px var(--act-accent);
+}
+
+.rail-held {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  background: var(--act-accent);
+  color: var(--act-ink-on-accent);
+  pointer-events: none;
+}
+
+.rail-held .act-glyph {
+  width: 8px;
+  height: 8px;
+}
+
 .rail-panel-sheet {
   position: absolute;
   left: var(--sheet-x);
@@ -362,6 +398,12 @@
 @media (prefers-reduced-motion:reduce) {
   .rail-panel-sheet {
     animation: none;
+  }
+  .tool-rail,
+  .rail-panel,
+  .below-portal,
+  .map-trail {
+    transition: none;
   }
 }
 

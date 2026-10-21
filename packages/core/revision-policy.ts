@@ -23,6 +23,7 @@ export const COMMAND_REVISION_RULES: { readonly [T in WorkspaceCommand['type']]:
   'item.add': { free: true, why: 'adds a new item under a new id; its links are ensured, and an invalid one refuses the item' },
   'project.create': { free: true, why: 'adds a new project under a new id' },
   'attention.acknowledge': { free: true, why: 'names the attention versions it acknowledges, so a newer alert stays unread' },
+  'attention.restore': { free: true, why: 'names the attention versions it puts back into Needs me, so a newer alert is left as it is' },
   'node.todo.label': { free: true, why: 'names the title it was written for and is refused once that title changed' },
   'node.title.generated': { free: true, why: 'names the title it was written for and is refused once that title changed' },
   'link.save': { free: (command, { state }) => !state.links.some(link => link.id === command.link.id),

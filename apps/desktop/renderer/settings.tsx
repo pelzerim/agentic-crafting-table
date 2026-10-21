@@ -9,6 +9,9 @@ import { LARGE_ITEM_WIDTH } from '../../../src/graph/footprints.ts';
 import type { SettingsSnapshot } from '../../../packages/core/settings.ts';
 import type { AppSettings } from '../../../packages/core/settings.ts';
 import { STANDUP_ENABLED } from '../../../packages/core/standup.ts';
+import { UPDATE_COMMAND } from '../../../packages/core/updates.ts';
+import type { UpdateStatus } from '../../../packages/core/updates.ts';
+import { Button } from './ui/button.tsx';
 import { claudePermissionSettings } from '../../../packages/core/claude-settings.ts';
 import { PanelHeader } from './ui/floating-panel.tsx';
 import { ErrorNotice } from './ui/notice.tsx';
@@ -47,7 +50,7 @@ function LaunchArguments({ value, change }: { value: string; change(value: strin
 const DASHBOARD_SECTION_CHOICES: [keyof DashboardSections, string][] = [['needsYou', 'Needs me'], ['working', 'Working'], ['todos', 'To-dos'], ['plots', 'Plots'], ['pipelines', 'Pull requests'], ['tallies', 'Tickets']];
 const percent = (value: number) => `${Math.round(value * 100)}%`, pixels = (value: number) => `${value} px`;
 
-export function Settings({ close, providers, plugins, openArchive, clearOverlaps, nodeTitles, initialSessionView, sessionRequestId, installRequest }: { nodeTitles: Map<string, string>; initialSessionView?: 'active' | 'archived'; sessionRequestId?: number; installRequest?: PluginInstallRequest; close(): void; providers: ProviderDescription[]; plugins: PluginDescription[]; openArchive(): void; clearOverlaps(): Promise<void> }) {
+export function Settings({ close, providers, plugins, openArchive, clearOverlaps, nodeTitles, initialSessionView, sessionRequestId, installRequest, initialSection, updates: updatesProp }: { nodeTitles: Map<string, string>; initialSessionView?: 'active' | 'archived'; sessionRequestId?: number; installRequest?: PluginInstallRequest; initialSection?: string; updates?: { status?: UpdateStatus; check(): Promise<unknown> }; close(): void; providers: ProviderDescription[]; plugins: PluginDescription[]; openArchive(): void; clearOverlaps(): Promise<void> }) {
   const [saved, setSaved] = useState<SettingsSnapshot>(), [remote, setRemote] = useState(true), [awake, setAwake] = useState(false);
   const [notifications, setNotifications] = useState(notificationSettingsSchema.parse({}));
   const [autoMode, setAutoMode] = useState(true);
@@ -59,9 +62,11 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
     return () => { mounted = false; off(); };
   }, []);
   const [appInfo, setAppInfo] = useState<AppInfo>(), [infoError, setInfoError] = useState('');
+  const [checkingUpdates, setCheckingUpdates] = useState(false), [updateCheck, setUpdateCheck] = useState(true), updates = updatesProp?.status;
+  const checkUpdates = () => { setCheckingUpdates(true); updatesProp?.check().catch(() => {}).finally(() => setCheckingUpdates(false)); };
   useEffect(() => { let mounted = true; window.craftingTable.appInfo().then(info => { if (mounted) setAppInfo(info); }).catch(error => { if (mounted) setInfoError(String(error)); }); return () => { mounted = false; }; }, []);
   const sections = ['Connections', 'Items', 'Map', 'Notifications', 'AI features', 'General', 'Plugins', 'Data & diagnostics'] as const;
-  const [section, setSection] = useState<string>(installRequest ? 'Plugins' : initialSessionView ? 'Data & diagnostics' : 'Connections');
+  const [section, setSection] = useState<string>(installRequest ? 'Plugins' : initialSessionView ? 'Data & diagnostics' : initialSection ?? 'Connections');
   useEffect(() => { if (initialSessionView) setSection('Data & diagnostics'); }, [initialSessionView, sessionRequestId]);
   useEffect(() => { if (installRequest) setSection('Plugins'); }, [installRequest?.id]);
   const [expanded, setExpanded] = useState(new Set<string>());
@@ -94,7 +99,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
   }, [section, advanced]);
   const [itemMapSizes, setItemMapSizes] = useState<AppSettings['itemMapSizes']>({});
   const [conversation, setConversation] = useState<AppSettings['pullRequestConversation']>({ comments: true, threads: true, reviewBodies: true, bots: false, activity: false });
-  const [warnBeforeClosing, setWarnBeforeClosing] = useState(true), [doubleClickOpensWeb, setDoubleClickOpensWeb] = useState(false), [mapPlots, setMapPlots] = useState(true), [hideImpliedLinks, setHideImpliedLinks] = useState(true);
+  const [warnBeforeClosing, setWarnBeforeClosing] = useState(true), [doubleClickOpensWeb, setDoubleClickOpensWeb] = useState(false), [snapToGrid, setSnapToGrid] = useState(false), [mapPlots, setMapPlots] = useState(true), [hideImpliedLinks, setHideImpliedLinks] = useState(true);
   const [itemViews, setItemViews] = useState<AppSettings['itemViews']>({});
   const [pluginSettings, setPluginSettings] = useState<AppSettings['plugins']>({}), pluginPages = useMemo(() => pluginSettingsPages(plugins), [plugins]);
   const [quickIds, setQuickIds] = useState<string[]>([]), [menus, setMenus] = useState<AppSettings['menus']>({ order: {}, layout: {}, hidden: {} });
@@ -111,16 +116,16 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
     window.craftingTable.settingsRead().then(snapshot => {
       if (!mounted) return;
       setWarnBeforeClosing(snapshot.value.warnBeforeClosing); setConversation(snapshot.value.pullRequestConversation); setDiagnostics(snapshot.value.diagnostics); setItemViews(snapshot.value.itemViews); setItemMapSizes(snapshot.value.itemMapSizes); setPluginSettings(snapshot.value.plugins);
-      setNeighborhood(snapshot.value.neighborhoodAppearance); setBelowAnimation(snapshot.value.belowAnimation); setUndermapLayout(snapshot.value.undermapLayout); setWorkingMark(snapshot.value.workingMark); setMapDashboards(snapshot.value.mapDashboards); setMapPlots(snapshot.value.mapPlots); setHideImpliedLinks(snapshot.value.hideImpliedLinks); setDoubleClickOpensWeb(snapshot.value.doubleClickOpensWeb); setTerminal(snapshot.value.terminal);
+      setNeighborhood(snapshot.value.neighborhoodAppearance); setBelowAnimation(snapshot.value.belowAnimation); setUndermapLayout(snapshot.value.undermapLayout); setWorkingMark(snapshot.value.workingMark); setMapDashboards(snapshot.value.mapDashboards); setMapPlots(snapshot.value.mapPlots); setHideImpliedLinks(snapshot.value.hideImpliedLinks); setDoubleClickOpensWeb(snapshot.value.doubleClickOpensWeb); setSnapToGrid(snapshot.value.snapToGrid); setTerminal(snapshot.value.terminal);
       setAutoMode(snapshot.value.claude.autoMode); setNotifications(snapshot.value.notifications);
-      setQuickIds(snapshot.value.quickItemTypes); setMenus(snapshot.value.menus); setDefaultDirectory(snapshot.value.defaultWorkingDirectory); setSummaries(snapshot.value.summaries); setPadding(String(snapshot.value.neighborhoodPadding)); setSaved(snapshot); setRemote(snapshot.value.claude.remoteControl); setAwake(snapshot.value.keepAwake); setArgumentsText(snapshot.value.claude.arguments.join('\n'));
+      setQuickIds(snapshot.value.quickItemTypes); setMenus(snapshot.value.menus); setDefaultDirectory(snapshot.value.defaultWorkingDirectory); setSummaries(snapshot.value.summaries); setPadding(String(snapshot.value.neighborhoodPadding)); setSaved(snapshot); setRemote(snapshot.value.claude.remoteControl); setAwake(snapshot.value.keepAwake); setUpdateCheck(snapshot.value.updates.check); setArgumentsText(snapshot.value.claude.arguments.join('\n'));
     }).catch(error => { if (mounted) setError(error.message); });
     return () => { mounted = false; };
   }, []);
   const limited = Boolean(summaries && (summaries.enabled || summaries.agentTitles || summaries.attachTitles || summaries.plotNames || (STANDUP_ENABLED && summaries.standupDigests)));
   const claude = { remoteControl: remote, autoMode, arguments: argumentsText.split(/\r?\n/).map(value => value.trim()).filter(Boolean) };
   const permission = claudePermissionSettings(claude);
-  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, pullRequestConversation: conversation, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, terminal, keepAwake: awake, claude };
+  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, pullRequestConversation: conversation, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, terminal, keepAwake: awake, claude, updates: { check: updateCheck } };
   const changes = useMemo(() => saved ? draftChanges(saved.value, draft!, pluginPages) : [], [saved, JSON.stringify(draft)]);
   const dirty = changes.length > 0, [discarding, setDiscarding] = useState(false);
   const requestClose = () => { if (dirty) setDiscarding(true); else close(); };
@@ -224,6 +229,9 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
         </SettingsSection>
         <SettingsSection label="Opening items">
           <SettingRow label="Double-click opens the item on the web" description="Double-clicking a pull request, ticket or other item with a web page opens that page in your browser. Other items open as usual." meta="Off by default"><Switch checked={doubleClickOpensWeb} change={setDoubleClickOpensWeb} /></SettingRow>
+        </SettingsSection>
+        <SettingsSection label="Placing items">
+          <SettingRow label="Snap to grid" description="An item you drop, nudge with the arrow keys, or that the table places lands with its centre on an invisible 48 px grid, so connections run straight or at even angles. Items already on the map stay where they are until moved." meta="Off by default"><Switch checked={snapToGrid} change={setSnapToGrid} /></SettingRow>
         </SettingsSection>
         <SettingsSection label="Undermap layout">
           <SettingRow label="Undermap layout" description="Mirror keeps every project in its place below the map and sorts what you sent there by month. Classic shows items where they were put when they were sent; nothing is lost by switching." meta="Default Mirror">
@@ -337,6 +345,11 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
           <SettingRow label="Warn before closing with active sessions" description="Closing the window keeps sessions running in the background; reopen it from the Dock. Quit stops them: when this is off, Quit saves and stops running sessions right away. Startup recovery still applies." meta="Off by default"><Switch checked={warnBeforeClosing} change={setWarnBeforeClosing} /></SettingRow>
         </SettingsSection>
         <SettingsSection label="About">
+          <SettingRow label="Version" description={updates?.app.available && updates.app.latest ? `${updates.app.latest} is available. In your checkout, quit the app and run ${UPDATE_COMMAND}: it checks out the newest release, builds it and installs it in place.` : `Releases are tags of the public repository. To update, quit the app and run ${UPDATE_COMMAND} in your checkout.`}
+            meta={<span className="settings-update-status" role="status">{updateStatusText(appInfo, updates)}</span>}>
+            <Button size="sm" onClick={checkUpdates} disabled={checkingUpdates || Boolean(updates?.checking)} aria-busy={checkingUpdates || Boolean(updates?.checking)}>Check now</Button>
+          </SettingRow>
+          <SettingRow label="Check for updates daily" description="Looks up the newest release tag of the app and of each installed plugin pack once a day and shows a notice when there is a newer one. Nothing is downloaded or installed by it."><Switch checked={updateCheck} change={setUpdateCheck} /></SettingRow>
           <SettingRow label="Map canvas" description="Built with React Flow by xyflow, used under the MIT licence." />
         </SettingsSection>
       </SettingsPage>
@@ -370,4 +383,14 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
 function RowDirectoryField(props: Omit<Parameters<typeof DirectoryField>[0], 'inputId' | 'describedBy'>) {
   const row = useRowControl();
   return <DirectoryField {...props} inputId={row.id} describedBy={row['aria-describedby']} />;
+}
+
+function updateStatusText(appInfo: AppInfo | undefined, updates: UpdateStatus | undefined) {
+  const running = appInfo ? `ACT v${appInfo.version}` : 'ACT';
+  if (!updates) return running;
+  if (updates.checking) return `${running} · checking…`;
+  if (updates.app.error) return `${running} · could not check: ${updates.app.error}`;
+  if (updates.app.checkedAt === undefined) return `${running} · not checked yet`;
+  if (updates.app.available && updates.app.latest) return `${running} · ${updates.app.latest} available`;
+  return `${running} · up to date${updates.app.latest ? ` (newest release ${updates.app.latest})` : ''}`;
 }

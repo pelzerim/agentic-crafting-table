@@ -74,7 +74,11 @@ npm run install:local  # After quitting: verify and install into release/mac-arm
 ```
 
 GitHub Actions (`.github/workflows/ci.yml`, macOS) runs `check`, `test:runtime`, `package` and
-`test:package` on every push. The desktop, visual and performance suites are local gates: their
+`test:package` on every push.
+
+A release is a tag `vX.Y.Z` on the public repository: bump `version` in `package.json`,
+commit, tag and push the tag. Installed apps look the tags up once a day and show a notice;
+`npm run update` moves a checkout to the newest tag and installs it. The desktop, visual and performance suites are local gates: their
 screenshot baselines and frame budgets were recorded on a development Mac and do not match a
 hosted runner, and the full suite outlasts a job. Run them before packaging.
 
