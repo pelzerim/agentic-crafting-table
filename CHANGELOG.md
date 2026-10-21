@@ -2,7 +2,7 @@
 
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one.
 
-## 0.2.0 — unreleased
+## 0.2.0 — 2026-10-21
 
 ### Updates
 - A daily check reads the release tags of the app and of installed plugin packs. A newer release shows as a notice until it is opened or dismissed for that version.

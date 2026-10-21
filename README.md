@@ -74,9 +74,7 @@ npm run package          # stage a build in release/staged
 npm run install:local    # install it (quit the running app first)
 ```
 
-Then launch `release/mac-arm64/Agentic Crafting Table.app`. Releases are tags; the app
-tells you when a newer one exists, and `npm run update` (with the app quit) checks it
-out, builds it and installs it in place.
+Then launch `release/mac-arm64/Agentic Crafting Table.app`.
 
 First steps:
 1. **Create your first project** and give it a working directory.
@@ -86,6 +84,28 @@ First steps:
    has read stays readable offline.
 
 Middle-click any item to open it on the web.
+
+### Updating
+
+Releases are tags (`vX.Y.Z`); [CHANGELOG.md](CHANGELOG.md) lists what each one
+changed. The app tells you when a newer one exists. Quit it, then:
+
+```sh
+npm run update           # check out the newest release, build it and install it
+```
+
+It refuses while the app runs or the checkout has local changes. Your projects and
+settings stay where they are.
+
+0.1.0 has no `npm run update` yet, so move off it once by hand, with the app quit:
+
+```sh
+git fetch --tags origin
+git checkout --detach "$(git tag --list 'v*' --sort=-v:refname | head -1)"
+npm ci
+npm run package
+npm run install:local
+```
 
 ## Docs
 
