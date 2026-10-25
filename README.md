@@ -1,7 +1,6 @@
 # Agentic Crafting Table
 
-**Your agents, pull requests, tickets and terminals on one map. Zoom in to work;
-zoom out to see what needs you.**
+**Focus on one thing. The map keeps track of everything else.**
 
 ![One story in 40 seconds: an agent working in its own view; back on the map two pull requests join its project; reviews are triggered from the right-click menu; two findings from one review are sent to the agent; the other pull request is merged from the menu; its rollout appears and a validation passes, with the report; the merged pull request, its rollout and its review are sent to the Undermap together; zooming out to the neighbouring projects and their pipelines](docs/media/demo.gif)
 

@@ -339,7 +339,7 @@ const magick = (args: string[]) => execFileSync('magick', args, { stdio: 'inheri
 const logo = join(framesDirectory, 'logo.png'), icon = resolve('apps/desktop/assets/app-icon.png');
 magick(['-size', `${WIDTH}x${HEIGHT}`, 'xc:#141a17', '(', icon, '-resize', '300x300', ')', '-gravity', 'center', '-geometry', '+0-90', '-composite',
   '-font', 'Helvetica-Bold', '-pointsize', '54', '-fill', '#e1eae2', '-annotate', '+0+135', 'Agentic Crafting Table',
-  '-font', 'Helvetica', '-pointsize', '26', '-fill', '#98d6ac', '-annotate', '+0+195', 'Your agents, pull requests and tickets on one map.', logo]);
+  '-font', 'Helvetica', '-pointsize', '26', '-fill', '#98d6ac', '-annotate', '+0+195', 'Focus on one thing. The map keeps track of everything else.', logo]);
 const fades: string[] = [];
 for (let step = 1; step <= 5; step++) {
   const file = join(framesDirectory, `fade-${step}.png`); magick([files[files.length - 1], logo, '-compose', 'blend', '-define', `compose:args=${step * 20}`, '-composite', file]); fades.push(file);
