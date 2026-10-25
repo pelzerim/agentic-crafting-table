@@ -2,13 +2,16 @@
 
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one.
 
-## Unreleased
+## 0.3.0 — 2026-10-25
 
 ### Map
 - **Note badges**: a note of one or two words (up to 12 characters) connected to items shows as a paper tab on each of them, and beside their names in Needs me and dashboards. A badge has its note's colour; right-click it (or the note) for **Colour** and **Show as ▸ Note / Badge** (a badge takes up to 24 characters). Agents see badges in `workspace_read` and are told how to use them.
 - A plot's sign menu has **Move plot to ▸** another project or **No project**, and **Send plot to Undermap**. A moved plot keeps its layout, name and color.
 - An agent's macOS notification and its card, when large, quote the last line it ended its turn on.
 - **Delete in item menus** (Settings → Map → Removing items, off by default): an item's menu ends in **Delete…**, which removes it for good after **Delete permanently**. Provider data and sessions are kept.
+
+### Standup report
+- The **standup report** is back under Actions (key 6). A full week now works: every day's conversations and pull requests reach the report, read four at a time (a first 7-day report takes about three minutes), and one long story no longer costs the whole report.
 
 ### Reviews
 - **Automatic reviews** (Settings → Items → GitHub pull request, off by default): every pull request that lands on the map afterwards gets a review from each chosen agent (Claude, Codex or both), drafts included.
@@ -20,6 +23,7 @@ Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newes
 
 ### Rollouts
 - A rollout started by a pull request with **Auto deploy** on is no longer validated twice per stage: Auto validate leaves it to Auto deploy.
+- Taking a pull request out of the merge queue stops its **Auto deploy** quietly instead of halting it with a Needs me.
 
 ## 0.2.0 — 2026-10-21
 
