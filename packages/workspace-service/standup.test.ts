@@ -153,6 +153,41 @@ test('PRs I authored or reviewed are read from GitHub with GETs only and digeste
   assert.equal(status.report!.read, 'Read 1 conversation, 1 pull request and 0 facts');
 }));
 
+test('a full week reaches the report: a long digest is trimmed, not lost, and no day is left out for size', () => fixture(async ({ store, requests, reports, days, reply }) => {
+  const week = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11'];
+  for (const day of week) days.set(day, slice(`Work on ${day}`));
+  for (let index = 0; index < 80; index++) store.saveStandupDigest({ kind: 'pr', subject: `acme/app/pull/${index}`, day: week[index % 7]!, text: `What: ${'a change worth telling. '.repeat(36)}`, model: 'haiku', fingerprint: `f${index}`,
+    evidence: [{ id: `pr:acme/app/pull/${index}`, kind: 'pr', label: `#${index} merged` }] }, NOW);
+  let report: any;
+  reply.report = input => { report = input; return { stories: [{ title: 'Week', state: 'done', bullets: ['Shipped.'], evidence: [input.digests[0].evidence[0]] }], outlook: [] }; };
+  const long = Array.from({ length: 9 }, (_, index) => `State: line ${index} ${'detail '.repeat(30)}`).join('\n');
+  const service = reports({ client: { async complete(request) { requests.push(request); const input = JSON.parse(request.messages[0].content); return input.standup === 'agent-day' ? long : JSON.stringify(reply.report!(input)); } } });
+  service.open({ range: 'week' });
+  const status = await settle(service);
+  assert.equal(status.state, 'done', status.error ?? '');
+  const digests = requests.filter(request => JSON.parse(request.messages[0].content).standup === 'agent-day');
+  assert.equal(digests.length, 7); assert.ok(digests.every(request => request.max_tokens >= 1000), 'a digest has room to answer');
+  for (const day of week) { const text = store.standupDigest('agent', 'agent-r', day)?.text ?? ''; assert.ok(text.startsWith('State: line 0'), day); assert.ok(text.split('\n').length <= 6); }
+  assert.equal(report.digests.length, 87, 'every digest of the week is in the report');
+  const compose = requests.at(-1)!;
+  assert.ok(compose.max_tokens >= 16_000, 'a week\'s report has room to finish'); assert.match(compose.system!, /at most 12 stories/);
+  assert.ok(!status.report!.notes.some(note => /left out/.test(note)), status.report!.notes.join(' '));
+}));
+
+test('a report digests several conversation days at once', () => fixture(async ({ reports, days }) => {
+  for (const day of ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10']) days.set(day, slice(`Work on ${day}`));
+  let running = 0, most = 0;
+  const service = reports({ client: { async complete(request) {
+    const input = JSON.parse(request.messages[0].content);
+    if (input.standup !== 'agent-day') return JSON.stringify({ stories: [{ title: 'Week', state: 'done', bullets: ['Shipped.'], evidence: [input.digests[0].evidence[0]] }], outlook: [] });
+    running++; most = Math.max(most, running); await new Promise(resolve => setTimeout(resolve, 20)); running--;
+    return 'State: done.';
+  } } });
+  service.open({ range: 'week' });
+  assert.equal((await settle(service)).state, 'done');
+  assert.ok(most >= 3, `at most ${most} at once`);
+}));
+
 test('disabled, the reports refuse to open and the background tick digests nothing', () => fixture(async ({ requests, reports, days }) => {
   days.set('2026-10-09', slice('Friday work'));
   const service = reports({ enabled: false });

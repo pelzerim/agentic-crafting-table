@@ -136,7 +136,19 @@ export const githubPullRequestViews: ResourcePluginViews = {
       catch (failure) { if (!controller.signal.aborted && !disposed) reviewStatus.textContent = (failure as Error).message; }
       finally { if (explaining === controller) { explaining = undefined; if (!disposed) explain.disabled = false; } }
     };
-    root.append(reviewStatus, reviewLoop.status, deployStatus, error, body); container.append(root);
+    // What an agent is changing on the pull request, above the description, with a manual way out for a note left behind.
+    const rework = element('div', '', 'pr-rework'); rework.setAttribute('role', 'status'); rework.hidden = true;
+    const reworkText = element('span', '', 'pr-rework-text'), reworkDone = element('button', 'Mark as completed manually', 'pr-rework-done'); reworkDone.type = 'button';
+    reworkDone.title = 'Clear the note; the pull request leaves the working state. The agent is not stopped.';
+    rework.append(reworkText, reworkDone);
+    const offRework = services.observeRework?.(value => {
+      rework.hidden = !value; reworkText.textContent = value ? `Reworking · ${value.note}${value.by ? ` · ${value.by}` : ''}` : '';
+    });
+    reworkDone.onclick = async () => {
+      reworkDone.disabled = true;
+      try { await services.clearRework?.(); } catch (failure) { report((failure as Error).message); } finally { reworkDone.disabled = false; }
+    };
+    root.append(reviewStatus, reviewLoop.status, deployStatus, rework, error, body); container.append(root);
     const header = mountViewHeader(document, services, root, { menu: 'Actions', onRefresh: () => { actionNotice = ''; void load(true); } });
     const autoValidate = element('label', '', 'pr-auto-validate'), autoValidateBox = element('input'); autoValidateBox.type = 'checkbox'; autoValidateBox.checked = autoValidates(resource);
     autoValidate.append(autoValidateBox, document.createTextNode('Auto validate'));
@@ -454,6 +466,6 @@ export const githubPullRequestViews: ResourcePluginViews = {
     }
     // The map's saved state of this item changed (a pending change confirmed or taken back, a poll): read the service's copy again.
     let saved = '', again = false;
-    return { update(snapshot) { const key = JSON.stringify([snapshot.label, snapshot.indicators]); if (key === saved) return; const first = !saved; saved = key; if (!first && active && !disposed) void load(); }, setActive(value) { if (value === active) return; const entered = value && !active; active = value; offRelated?.(); offRelated = undefined; offPreferences?.(); offPreferences = undefined; if (value) offPreferences = services.observePreferences?.(preferences => { applyTitleTags(preferences); const saved = preferences.pullRequestConversation; if (saved && typeof saved === 'object' && !Array.isArray(saved)) { visibility = { ...DEFAULT_CONVERSATION, ...saved } as typeof visibility; renderComments(latestComments, latestTotal); } }); if (value) offRelated = services.observeRelated?.(items => { related = items; renderRelated(); }); workflowAction.setActive(value); reviewLoop.setActive(value); reviewEpoch++; clearTimeout(reviewTimer); clearTimeout(statusTimer); if (entered) { void load(); void loadReviewOptions(); void pollReviews(); } }, dispose() { explaining?.abort(); closeMerge?.(); closeAutoDeploy?.(); reviewLoop.dispose(); closeShowShip?.(); closeState?.(); header.dispose(); offPreferences?.(); offRelated?.(); workflowAction.dispose(); disposed = true; clearTimeout(reviewTimer); clearTimeout(statusTimer); generation++; root.remove(); } };
+    return { update(snapshot) { const key = JSON.stringify([snapshot.label, snapshot.indicators]); if (key === saved) return; const first = !saved; saved = key; if (!first && active && !disposed) void load(); }, setActive(value) { if (value === active) return; const entered = value && !active; active = value; offRelated?.(); offRelated = undefined; offPreferences?.(); offPreferences = undefined; if (value) offPreferences = services.observePreferences?.(preferences => { applyTitleTags(preferences); const saved = preferences.pullRequestConversation; if (saved && typeof saved === 'object' && !Array.isArray(saved)) { visibility = { ...DEFAULT_CONVERSATION, ...saved } as typeof visibility; renderComments(latestComments, latestTotal); } }); if (value) offRelated = services.observeRelated?.(items => { related = items; renderRelated(); }); workflowAction.setActive(value); reviewLoop.setActive(value); reviewEpoch++; clearTimeout(reviewTimer); clearTimeout(statusTimer); if (entered) { void load(); void loadReviewOptions(); void pollReviews(); } }, dispose() { explaining?.abort(); offRework?.(); closeMerge?.(); closeAutoDeploy?.(); reviewLoop.dispose(); closeShowShip?.(); closeState?.(); header.dispose(); offPreferences?.(); offRelated?.(); workflowAction.dispose(); disposed = true; clearTimeout(reviewTimer); clearTimeout(statusTimer); generation++; root.remove(); } };
   },
 };

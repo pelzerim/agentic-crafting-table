@@ -59,7 +59,7 @@ export class ReviewFindingsCoordinator {
       if (args.reviewSessionId !== review.sessionId) throw new Error('This review changed. Reopen it before changing findings.');
       this.known(review, args.findingIds);
       this.store.addReviewFindingEvents(args.findingIds.map(findingId => ({ reviewSessionId: review.sessionId, findingId, status: args.status, actor: 'user', at: Date.now() })));
-      await this.settle(); return this.describe(review);
+      await this.completeWhenResolved(review); await this.settle(); return this.describe(review);
     }
     if (args.operation === 'report') return this.report(review, args);
     if (args.operation === 'spawn') return this.spawn(review, args);
@@ -187,7 +187,7 @@ export class ReviewFindingsCoordinator {
     }
     this.store.addReviewFindingEvents(args.findingIds.map(findingId => ({ reviewSessionId: review.sessionId, findingId, status: 'fixed', agentNodeId: args.agentNodeId, actor: 'agent',
       ...(args.commit ? { commit: args.commit.toLowerCase() } : {}), ...(args.note?.trim() ? { note: args.note.replace(/[\x00-\x1f\x7f-\x9f]/g, ' ').trim() } : {}), at: Date.now() })));
-    await this.settle();
+    await this.completeWhenResolved(review); await this.settle();
     return { reviewNodeId: review.nodeId, statuses: this.statuses(review.sessionId, review.parsed) };
   }
 
@@ -218,6 +218,14 @@ export class ReviewFindingsCoordinator {
   }
 
   private async settle() { await this.reconcile(); await this.changed(); }
+  /** Marks the review done once every finding delivered to an agent is fixed, by the agent or a person; findings never sent do not count. */
+  private async completeWhenResolved(review: Awaited<ReturnType<ReviewFindingsCoordinator['load']>>) {
+    const sent = new Set(this.store.reviewSends({ reviewSessionId: review.sessionId }).filter(send => send.state === 'sent').flatMap(send => send.findingIds)), statuses = this.statuses(review.sessionId);
+    if (!sent.size || [...sent].some(id => statuses[id] !== 'fixed')) return;
+    const state = await this.control.read(), node = state.nodes.find(candidate => candidate.id === review.nodeId);
+    if (!node || node.completedAt) return;
+    await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'system', id: 'review-findings' }, commands: [{ type: 'node.complete', id: node.id }] }).catch(() => {});
+  }
   private receipt(send: ReviewSend) { return { sendId: send.id, state: send.state, linked: send.linked, ...(send.error ? { error: send.error } : {}) }; }
   private known(review: Awaited<ReturnType<ReviewFindingsCoordinator['load']>>, findingIds: string[]) {
     if (review.parsed?.kind !== 'findings') { if (findingIds.length) throw new Error(`This review has no individual findings (${findingIds.join(', ')}).`); return; }

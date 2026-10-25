@@ -11,9 +11,10 @@ export const githubPullRequest = defineResourcePlugin({
   icon: 'git-pull-request',
   brand: 'github',
   context: { fields: ['owner', 'repo', 'number'] },
-  contextMenu: [{ id: 'review', label: 'Trigger review', selection: { label: 'Review selection', children: ['review.claude', 'review.codex'] }, children: [
+  contextMenu: [{ id: 'review', label: 'Trigger review', selection: { label: 'Review selection', children: ['review.claude', 'review.codex', 'review.both'] }, children: [
     { id: 'review.claude', label: 'Claude', description: 'One-off Claude review · Opus by default' },
     { id: 'review.codex', label: 'Codex', description: 'One-off Codex review · Astra by default' },
+    { id: 'review.both', label: 'Claude + Codex', description: 'A Claude and a Codex review at the same time', runs: ['review.claude', 'review.codex'] },
     { id: 'review.workflow', label: '/review', description: 'Posts /review on GitHub and watches for the result' },
   ] }, { id: 'reviewLoop', label: 'Review loop', children: [], choices: { load: 'options', apply: 'set', runtime: REVIEW_LOOP_OPERATION, loadingLabel: 'Checking the review loop…' } },
   { id: 'architecture', label: 'Explain architecture', children: [

@@ -68,10 +68,18 @@ test('every doubt before the merge halts with its reason', () => {
   halts(decide(armed(), facts({ pull: pull({ mergeStateStatus: 'DIRTY' }) })), 'conflicts', /merge conflicts with main/);
   halts(decide(armed(), facts({ pull: pull({ mergeStateStatus: 'BEHIND' }) })), 'behind', /out of date with main/);
   halts(decide(armed({ blockedSince: T0 - BLOCKED_GRACE_MS }), facts({ pull: pull({ mergeStateStatus: 'BLOCKED' }) })), 'blocked', /blocked/);
-  halts(decide(armed({ writes: [{ key: 'merge', kind: 'merge', requestId: 'm', at: T0, state: 'sent' }] }), facts({ pull: pull({ queueEnabled: true }) })), 'left-queue', /left the merge queue/);
   halts(decide(armed({ writes: [{ key: 'merge', kind: 'merge', requestId: 'm', at: T0, state: 'sending' }] }), facts()), 'outcome-unknown', /merge.*could not be confirmed/i);
   halts(decide(merged({ writes: [{ key: 'approve:x', kind: 'approve', requestId: 'a', at: T0, state: 'sending' }] }), facts()), 'outcome-unknown', /approval.*could not be confirmed/i);
   halts(decide(armed({ writes: [{ key: 'fix:1', kind: 'fix', requestId: 'f', at: T0, state: 'sending' }] }), facts()), 'outcome-unknown', /fix request/i);
+});
+
+test('taking the pull request out of the merge queue stops auto deploy instead of halting it', () => {
+  const queued = armed({ writes: [{ key: 'merge', kind: 'merge', requestId: 'm', at: T0, state: 'sent' }] });
+  const decision = decide(queued, facts({ pull: pull({ queueEnabled: true }) }));
+  assert.deepEqual(decision, { kind: 'stop', reason: 'The pull request was taken out of the merge queue.' });
+  const stopped = settle(queued, decision, T0 + MIN);
+  assert.deepEqual([stopped.state, stopped.step, stopped.halt, stopped.detail], ['stopped', 'stopped', undefined, 'The pull request was taken out of the merge queue.']);
+  waits(decide(stopped, facts({ pull: pull({ queued: true, queueEnabled: true }) })), 'stopped');
 });
 
 test('observe notes the merge and how long GitHub has reported the pull request blocked', () => {

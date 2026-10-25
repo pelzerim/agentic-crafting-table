@@ -6,6 +6,8 @@ import { moveTargets } from './todos.ts';
 import { itemFootprint } from '../../src/graph/footprints.ts';
 import { overlaps } from '../../src/graph/spatial.ts';
 import { ITEM_GAP } from '../../src/graph/movement.ts';
+import { NEIGHBORHOOD_PADDING } from '../../src/graph/project-neighborhoods.ts';
+import { boundsOf, field } from '../../src/graph/undermap.ts';
 
 const note = (id: string, position: { x: number; y: number }, projectId?: string): WorkspaceCommand => ({ type: 'item.add', id, resourceId: `${id}-r`, pluginId: 'workspace.note', title: id, data: { text: id }, projectId, position });
 const todo = (id: string, position: { x: number; y: number }, projectId?: string): WorkspaceCommand => ({ type: 'item.add', id, resourceId: `${id}-r`, pluginId: 'workspace.todo', title: id, data: {}, projectId, position });
@@ -59,6 +61,27 @@ test('a selection moves as one block that keeps its layout, led by the first id,
   assert.deepEqual([offset(state, 'spec', 'pr'), offset(state, 'spec', 'loose')], layout);
   assert.deepEqual(at(state, 'guide'), at(before, 'guide')); assert.equal(clear(state, control), true);
   assert.equal(state.revision, before.revision + 1, 'one atomic command');
+});
+
+test('sending to no project takes the items out as one block that keeps its layout and lands outside the project\'s ground', async () => {
+  const { control, apply } = await fixture();
+  const before = await apply([note('third', { x: 0, y: 300 }, 'billing')]), layout = offset(before, 'pr', 'spec');
+  const state = await apply([{ type: 'nodes.send', ids: ['pr', 'spec'], projectId: null }]);
+  assert.deepEqual(['pr', 'spec', 'third'].map(id => at(state, id).projectId), [undefined, undefined, 'billing']);
+  assert.deepEqual(offset(state, 'pr', 'spec'), layout);
+  const ground = field('billing', boundsOf([itemFootprint(at(state, 'third'), state.resources, control.registry)]), NEIGHBORHOOD_PADDING);
+  for (const id of ['pr', 'spec']) assert.equal(overlaps(itemFootprint(at(state, id), state.resources, control.registry), ground, 0), false, `${id} is off the ground`);
+  assert.ok(Math.hypot(at(state, 'pr').position.x, at(state, 'pr').position.y - 300) < 1500, 'stays near its old project');
+  assert.deepEqual(at(state, 'guide'), at(before, 'guide')); assert.deepEqual(state.links, before.links); assert.equal(clear(state, control), true);
+  assert.deepEqual((await apply([{ type: 'nodes.send', ids: ['pr'], projectId: null }])).nodes, state.nodes, 'an item without a project stays put');
+});
+
+test('a project left empty by sending to no project keeps its anchor clear', async () => {
+  const { control, apply } = await fixture();
+  const state = await apply([{ type: 'nodes.send', ids: ['pr', 'spec'], projectId: null }]);
+  assert.deepEqual(['pr', 'spec'].map(id => at(state, id).projectId), [undefined, undefined]);
+  const anchor = itemFootprint(at(state, 'billing'), state.resources, control.registry);
+  for (const id of ['pr', 'spec']) assert.equal(overlaps(itemFootprint(at(state, id), state.resources, control.registry), anchor, ITEM_GAP), false);
 });
 
 test('items already in the target stay where they are: alone it changes nothing, in a selection only the others move', async () => {

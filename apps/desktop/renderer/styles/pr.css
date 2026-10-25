@@ -960,7 +960,8 @@
 
 /* Auto deploy's and the review loop's lines sit under the frame bar while they run, and keep their last word (done, clean or halted). */
 .pr-desk>.pr-auto-deploy-status,
-.pr-desk>.pr-review-loop-status {
+.pr-desk>.pr-review-loop-status,
+.pr-desk>.pr-rework {
   display: flex;
   align-items: center;
   gap: var(--act-sp-3);
@@ -973,7 +974,8 @@
 }
 
 .pr-desk>.pr-auto-deploy-status[hidden],
-.pr-desk>.pr-review-loop-status[hidden] {
+.pr-desk>.pr-review-loop-status[hidden],
+.pr-desk>.pr-rework[hidden] {
   display: none;
 }
 
@@ -990,7 +992,8 @@
 }
 
 .pr-auto-deploy-text,
-.pr-review-loop-text {
+.pr-review-loop-text,
+.pr-rework-text {
   flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -998,7 +1001,8 @@
 
 .pr-auto-deploy-stop,
 .pr-review-loop-open,
-.pr-review-loop-stop {
+.pr-review-loop-stop,
+.pr-rework-done {
   flex: none;
   font: inherit;
   color: var(--act-ink);
@@ -1031,4 +1035,8 @@
   margin: 0;
   accent-color: var(--act-accent);
   cursor: pointer;
+}
+
+.pr-desk>.pr-rework {
+  color: var(--act-working-ink);
 }

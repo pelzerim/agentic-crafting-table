@@ -45,7 +45,8 @@ import { useUrlCandidates } from './use-url-candidates.ts';
 import { mountNativeTerminal } from './native-terminal.tsx';
 import { RecoveryStatus } from './recovery-status.tsx';
 import { CanvasMenu } from './canvas-menu.tsx';
-import { contextMenuActions, convertLinkActions, enabledMenuGroups, itemEditLabel, itemMenuCustom, linkMenuActions, muteProjectAction, moveToProjectAction, sharedContextMenuActions } from '../../../packages/core/context-menu.ts';
+import { contextMenuActions, convertLinkActions, deleteItemAction, enabledMenuGroups, fieldMenuActions, itemEditLabel, itemMenuCustom, linkMenuActions, muteProjectAction, moveToProjectAction, sharedContextMenuActions } from '../../../packages/core/context-menu.ts';
+import { mapBadges } from '../../../src/graph/badges.ts';
 import { moveTargets } from '../../../packages/core/todos.ts';
 import type { MenuActionId } from '../../../packages/core/context-menu.ts';
 import { NeedsMeTool } from './attention-list.tsx';
@@ -122,6 +123,22 @@ function PluginDetail({ resource, registry, active, nodeId, onOpen, onShow, onEd
         const off = window.craftingTable.onWorkspace(receive);
         void window.craftingTable.workspaceRead().then(receive).catch(() => {});
         return () => { disposed = true; off(); };
+      },
+      observeRework: listener => {
+        let disposed = false, cursor = -1, last = '';
+        const receive = (snapshot: WorkspaceSnapshot) => {
+          if (disposed || snapshot.cursor < cursor) return; cursor = snapshot.cursor;
+          const rework = snapshot.state.nodes.find(node => node.id === nodeId)?.rework, by = rework?.by && snapshot.state.nodes.find(node => node.id === rework.by)?.title;
+          const value = rework && { note: rework.note, since: rework.since, ...(by ? { by } : {}) }, key = JSON.stringify(value ?? null);
+          if (key !== last) { last = key; listener(value); }
+        };
+        const off = window.craftingTable.onWorkspace(receive);
+        void window.craftingTable.workspaceRead().then(receive).catch(() => {});
+        return () => { disposed = true; off(); };
+      },
+      clearRework: async () => {
+        const { state } = await window.craftingTable.workspaceRead();
+        await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: state.revision, actor: { kind: 'user', id: 'desktop' }, commands: [{ type: 'node.rework', id: nodeId, note: null }] });
       },
       frameToolbar: () => container.current?.closest('[data-expanded-item-id],[data-item-id]')?.querySelector<HTMLElement>('.item-frame-slot') ?? undefined,
       openUrl: url => { void window.craftingTable.openUrl(url); },
@@ -310,6 +327,8 @@ export function WorkspaceMap() {
     const plugin = registry.get(paperDraft.pluginId);
     return [...saved, { id: paperDraft.resourceId, pluginId: paperDraft.pluginId, schemaVersion: plugin?.schemaVersion ?? 1, title: 'Note', data: { ...paperDraft.data, [plugin?.appearance?.paper?.textField ?? 'text']: '' } }];
   }, [snapshot?.state.resources, paperDraft, registry]);
+  // Short notes connected to items become badges on them (MAP-BADGES); the map gets neither the notes nor their links.
+  const badged = useMemo(() => mapBadges(layerGraph.nodes, layerResources, layerGraph.links), [layerGraph.nodes, layerGraph.links, layerResources]);
   // Below the map, zooming out past the minimum rises back up.
   useEffect(() => {
     const element = workspace.current;
@@ -542,13 +561,15 @@ export function WorkspaceMap() {
     move,
     muteTarget && snapshot ? muteProjectAction(Boolean(muteTarget.mutedAt), attentionCounts(attentionItems(snapshot.state.nodes, muteTarget.id), counting).needsMe) : undefined,
     convertLinkActions(conversions.candidates.flatMap(candidate => { const type = plugins?.find(plugin => plugin.id === candidate.pluginId); return type && !type.creation?.urlFallback && type.id !== selectedResource?.pluginId ? [{ pluginId: type.id, name: type.name }] : []; })),
-    selectedResource ? itemMenuCustom(settings?.value.menus, selectedResource.pluginId) : undefined, sizeDefault, visibility);
+    selectedResource ? itemMenuCustom(settings?.value.menus, selectedResource.pluginId) : undefined, sizeDefault, visibility,
+    // A note that became a badge on its own shows Badge as its Show as.
+    layer === 'map' && selected && selectedResource ? fieldMenuActions(selectedPlugin?.fields, selectedResource.data, { display: badged.attached.has(selected.id) || selectedResource.data.display === 'badge' ? 'badge' : 'note' }) : []);
   const menuActions = selectedItems.length > 1 ? sharedContextMenuActions(selectedItems.map(node => {
     const resource = resources?.find(r => r.id === node.resourceId), plugin = plugins?.find(p => p.id === resource?.pluginId);
     return contextMenuActions(node.resourceId ? 'item' : 'project', Boolean(node.completedAt), undefined, enabledMenuGroups(plugin?.contextMenu, pluginSettings), plugin?.todoSupport ? { enabled: Boolean(node.inTodoList) } : undefined, belowMenu(node), webPage(resource), false, undefined, move);
-  })) : singleActions;
+  })) : !selectedLink && selected?.resourceId && settings?.value.itemDelete ? [...singleActions, deleteItemAction()] : singleActions;
   /** One command moves the block; then the map flies to the lead as Show on map does, keeping the moved items selected and closed. */
-  const moveToProject = (ids: string[], projectId: string) => {
+  const moveToProject = (ids: string[], projectId: string | null) => {
     setEditor(undefined);
     void apply([{ type: 'nodes.send', ids, projectId }]).then(() => setReveal({ nodeId: ids[0], nonce: Date.now(), mode: 'map', select: ids })).catch(error => setError(error.message));
   };
@@ -576,16 +597,21 @@ export function WorkspaceMap() {
     setEditor(undefined);
     void window.craftingTable.copyUrl(urls.length === 1 ? urls[0]! : urls).then(() => setCopiedUrls({ count: urls.length })).catch(error => setError(error.message));
   };
+  /** The plugin entries a pick starts: the entry itself, or each entry it `runs`, with its own label for its toast. */
+  const pluginPicks = (id: MenuActionId) => {
+    const entries = menuActions.flatMap(group => group.children ?? []), action = entries.find(action => action.id === id);
+    return (action?.runs ?? (action ? [action.id] : [])).flatMap(run => entries.filter(entry => entry.id === run));
+  };
   const menuAction = (id: MenuActionId) => {
     if (!editor) return;
     if (id.startsWith('send:')) { if (moveIds && id.length > 'send:'.length) moveToProject(moveIds, id.slice('send:'.length)); return; }
     if (selectedItems.length > 1) {
       if (id.startsWith('plugin:')) {
         // A selection's plugin entry runs once per item: each start keeps its own toast and Open action.
-        const action = menuActions.flatMap(group => group.children ?? []).find(action => action.id === id);
-        if (!action) return;
+        const picks = pluginPicks(id);
+        if (!picks.length) return;
         setEditor(undefined);
-        for (const node of selectedItems) { const resource = resources?.find(resource => resource.id === node.resourceId); if (resource) resourceMenu.start(node.id, resource, id.slice('plugin:'.length), action.label); }
+        for (const node of selectedItems) { const resource = resources?.find(resource => resource.id === node.resourceId); if (resource) for (const pick of picks) resourceMenu.start(node.id, resource, pick.id.slice('plugin:'.length), pick.label); }
         return;
       }
       if (!menuActions.some(action => action.id === id)) return;
@@ -594,8 +620,8 @@ export function WorkspaceMap() {
       run([{ type: 'nodes.action', ids: selectedItems.map(node => node.id), action: id as 'archive' | 'complete' | 'reopen' | 'add-todo' | 'remove-todo' }]); return;
     }
     if (id.startsWith('plugin:') && selected && selectedResource) {
-      const action = menuActions.flatMap(group => group.children ?? []).find(action => action.id === id);
-      if (action) { setEditor(undefined); resourceMenu.start(selected.id, selectedResource, id.slice('plugin:'.length), action.label); }
+      const picks = pluginPicks(id);
+      if (picks.length) { setEditor(undefined); for (const pick of picks) resourceMenu.start(selected.id, selectedResource, pick.id.slice('plugin:'.length), pick.label); }
       return;
     }
     if ((id === 'plots-toggle' || id === 'plots-unhide') && selected) {
@@ -630,6 +656,8 @@ export function WorkspaceMap() {
     if (id === 'remove-link' && selectedLink) {
       setEditor(undefined); void applyToLink(selectedLink, [{ type: 'link.remove', id: selectedLink.id }]).then(() => setRemovedLink(selectedLink)).catch(error => setError(error.message)); return;
     }
+    if (id === 'delete-cancel') { setEditor(undefined); return; }
+    if (id === 'delete-confirm' && selected?.resourceId) { run([{ type: 'node.archive', id: selected.id }, { type: 'node.delete', id: selected.id }]); return; }
     if (selected && (id === 'below' || id === 'surface')) { moveLayer([selected.id], id); return; }
     if (selected && ['complete', 'reopen', 'archive'].includes(id)) run([{ type: `node.${id}` as 'node.complete' | 'node.reopen' | 'node.archive', id: selected.id }]);
   };
@@ -650,11 +678,11 @@ export function WorkspaceMap() {
     'shortcuts.help': () => { setControlsOpen(old => !old); },
   });
   return <RailContext.Provider value={rail}><section ref={workspace} className="live-workspace" aria-label={below ? 'Undermap' : 'Project map'} data-layer={layer} data-travelling={travelling || undefined} data-chrome-docked={chromeDocked || undefined}>
-    {snapshot && plugins && view && settings && <ProjectMap key={layer} layer={layer} neighborhoodColor={below ? undermapColor : undefined} registry={registry} nodes={layerGraph.nodes} resources={layerResources} links={layerGraph.links}
+    {snapshot && plugins && view && settings && <ProjectMap key={layer} layer={layer} neighborhoodColor={below ? undermapColor : undefined} registry={registry} nodes={badged.nodes} resources={layerResources} links={badged.links} badges={badged.onItems} onBadge={(noteId, anchor, menu) => { setConnectionDraft(undefined); setEditor({ ...anchor, nodeId: noteId, mode: menu ? 'menu' : 'edit' }); }}
       onMarkSeen={acknowledge} keep={keep} onKeep={restore} onChromeCover={setChromeDocked} onOpened={opened} onView={viewing} onMute={below ? undefined : setMuted}
       overview={overviewOpen} onOverview={open => { setOverviewOpen(open); if (open) { rail.unpin('attention'); rail.close('attention'); } }} undermapCount={layerGraph.belowCount} onTravel={to => { rail.clear(); void travel(to); }}
       highlightedNodes={menuHighlight?.nodes ?? (below && foundBelow ? foundNodes : highlightedNodes)} highlightedLinks={menuHighlight?.links} menuFor={editor?.mode === 'menu' ? menuTargets : undefined} undermap={below ? undermapView : undefined}
-      attentionCounting={counting} itemMapSizes={settings.value.itemMapSizes} itemViews={settings.value.itemViews} viewBounds={view.itemViewBounds} onViewBounds={saveViewBounds} neighborhoodPadding={settings.value.neighborhoodPadding} neighborhoodAppearance={neighborhoodAppearance} dashboards={settings.value.mapDashboards} workingMark={settings.value.workingMark} plots={plots} onPlot={(projectId, request) => window.craftingTable.runtimeRun({ action: 'plot', nodeId: projectId, arguments: request }).then(() => {}, error => { if (request.operation !== 'seen') setError(error.message); })} plotNaming={settings.value.summaries.plotNames} hideImpliedLinks={settings.value.hideImpliedLinks} snap={settings.value.snapToGrid ? SNAP_PITCH : undefined} initialViewport={view.camera} onViewport={camera => { zoomRef.current = camera.zoom; saveView({ camera }); }} reveal={reveal} onRevealed={revealed => setReveal(current => current === revealed ? undefined : current)}
+      attentionCounting={counting} itemMapSizes={settings.value.itemMapSizes} itemViews={settings.value.itemViews} viewBounds={view.itemViewBounds} onViewBounds={saveViewBounds} neighborhoodPadding={settings.value.neighborhoodPadding} neighborhoodAppearance={neighborhoodAppearance} dashboards={settings.value.mapDashboards} workingMark={settings.value.workingMark} plots={plots} onPlot={(projectId, request) => window.craftingTable.runtimeRun({ action: 'plot', nodeId: projectId, arguments: request }).then(() => {}, error => { if (request.operation !== 'seen') setError(error.message); })} plotNaming={settings.value.summaries.plotNames} plotTargets={ids => snapshot ? moveTargets(snapshot.state, ids) : []} onMoveItems={moveToProject} onSendBelow={ids => moveLayer(ids, 'below')} hideImpliedLinks={settings.value.hideImpliedLinks} snap={settings.value.snapToGrid ? SNAP_PITCH : undefined} initialViewport={view.camera} onViewport={camera => { zoomRef.current = camera.zoom; saveView({ camera }); }} reveal={reveal} onRevealed={revealed => setReveal(current => current === revealed ? undefined : current)}
       onItemDrag={below ? undefined : (id, point) => todoOverlay.current?.drag(id, point)} onItemDrop={below ? undefined : (id, point) => todoOverlay.current?.drop(id, point) ?? false}
       onLink={below ? undefined : anchor => {
         setEditor(undefined); setConnectionDraft(undefined);
@@ -768,6 +796,7 @@ export function WorkspaceMap() {
       }}
       act={action => {
         if (action.mutation && selected && selectedResource) { setEditor(undefined); resourceMenu.mutate(selected.id, selectedResource, action.mutation.actionId, action.mutation.input, action.mutation.label ?? action.label, action.mutation.runtime); }
+        else if (action.id.startsWith('field:')) { const [, key, option = action.value] = action.id.split(':'); if (key && option && selected && selectedResource) run([{ type: 'item.update', id: selected.id, data: { ...selectedResource.data, [key]: option } }]); }
         else menuAction(action.id);
       }} onHighlight={setMenuHighlight} close={() => setEditor(undefined)} />}
     {editor && editor.mode !== 'menu' && snapshot && plugins && settings && <InlineEditor key={`${editor.mode}:${editor.nodeId ?? ''}:${editor.position.x}:${editor.position.y}`} editor={editor} state={snapshot.state} plugins={plugins} quickIds={settings.value.quickItemTypes} capabilities={capabilities} save={apply} close={() => setEditor(undefined)}

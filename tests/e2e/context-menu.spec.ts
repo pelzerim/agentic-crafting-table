@@ -67,7 +67,7 @@ test('PR review submenu supports hover, keyboard back/dismissal and viewport edg
   const children = page.getByRole('menu', { name: 'Trigger review', exact: true });
   await page.getByRole('article', { name: 'Plan switcher', exact: true }).click({ button: 'right' });
   await trigger.hover();
-  expect(await children.getByRole('menuitem').allTextContents()).toEqual(['Claude', 'Codex', '/review']);
+  expect(await children.getByRole('menuitem').allTextContents()).toEqual(['Claude', 'Codex', 'Claude + Codex', '/review']);
   await expect(trigger).toHaveAttribute('data-remote', 'true');
   await expect(page.getByRole('menuitem', { name: 'Open on GitHub', exact: true })).not.toHaveAttribute('data-remote');
   await expect(children.getByRole('menuitem', { name: '/review', exact: true })).toHaveAttribute('title', /Posts \/review on GitHub/);

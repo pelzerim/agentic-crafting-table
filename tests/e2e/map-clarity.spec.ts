@@ -26,7 +26,7 @@ function sparseProject(kind: 'reference' | 'blocks' | 'context' = 'reference') {
     ],
     resources: [
       { id: 'pr-r', pluginId: 'github.pull-request', schemaVersion: 1, title: 'Plan switcher', data: { owner: 'example', repo: 'billing', number: 48 } },
-      { id: 'note-r', pluginId: 'workspace.note', schemaVersion: 1, title: 'Billing experience', data: { text: 'Notes' } },
+      { id: 'note-r', pluginId: 'workspace.note', schemaVersion: 1, title: 'Billing experience', data: { text: 'Notes', display: 'note' } },
     ],
     links: [{ id: 'pr-note', sourceId: 'pr', targetId: 'note', kind }] });
 }

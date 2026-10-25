@@ -49,7 +49,8 @@ export function nativeSummaryClient(cwd: string): ActivitySummaryClient {
       } });
       for await (const message of run) if (message.type === 'result') {
         if (message.subtype === 'success' && !message.is_error && message.result.length <= (request.resultLimit ?? 256)) return message.result;
-        throw new Error('Claude activity summary was unavailable');
+        const why = message.subtype !== 'success' ? message.subtype : message.is_error ? message.result.slice(0, 200) : `${message.result.length} characters, more than ${request.resultLimit ?? 256}`;
+        throw new Error(`Claude activity summary was unavailable: ${why}`);
       }
       throw new Error('Claude activity summary returned no result');
     } finally { signal.removeEventListener('abort', abort); run?.close(); }

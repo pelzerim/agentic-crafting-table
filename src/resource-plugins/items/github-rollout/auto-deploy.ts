@@ -20,7 +20,7 @@ export const BLOCKED_GRACE_MS = 10 * 60_000;
 
 export type AutoDeployState = 'armed' | 'done' | 'halted' | 'stopped';
 export type AutoDeployStep = 'tagging' | 'waiting-checks' | 'fixing-ci' | 'merging' | 'merge-queue' | 'waiting-rollout' | 'deploying' | 'delayed' | 'validating' | 'approving' | 'waiting-gate' | 'done' | 'halted' | 'stopped';
-export type HaltCode = 'closed' | 'draft' | 'changes-requested' | 'review-required' | 'conflicts' | 'behind' | 'blocked' | 'ci-failing' | 'fix-stalled' | 'left-queue' | 'declined' | 'outcome-unknown'
+export type HaltCode = 'closed' | 'draft' | 'changes-requested' | 'review-required' | 'conflicts' | 'behind' | 'blocked' | 'ci-failing' | 'fix-stalled' | 'declined' | 'outcome-unknown'
   | 'no-rollout' | 'deploy-failed' | 'validation-failed' | 'validation-concerns' | 'validation-inconclusive' | 'no-verdict' | 'agent-unavailable' | 'error';
 
 /** A write is recorded `sending` before it goes out and `sent` once GitHub confirmed it; a `sending` one found later is never sent again. */
@@ -54,6 +54,7 @@ export type AutoDeployDecision =
   | { kind: 'validate'; key: string; rolloutNodeId: string; label: string; jobs: number[] }
   | { kind: 'approve'; key: string; rolloutNodeId: string; runId: number; attempt: number; environmentIds: number[]; names: string }
   | { kind: 'halt'; code: HaltCode; reason: string }
+  | { kind: 'stop'; reason: string }
   | { kind: 'done' };
 
 export function armRecord(input: { id: string; pullResourceId: string; pullNodeId: string; now: number }): AutoDeployRecord {
@@ -100,7 +101,7 @@ function beforeMerge(record: AutoDeployRecord, facts: AutoDeployFacts): AutoDepl
   if (pull.lifecycle === 'draft') return halt('draft', 'The pull request is a draft.');
   if (facts.tagging && pull.tag !== 'ship' && !sent(record, 'tag')) return { kind: 'tag', title: pull.title };
   if (pull.queued) return wait('merge-queue');
-  if (sent(record, 'merge')) return pull.queueEnabled ? halt('left-queue', 'The pull request left the merge queue without merging.') : wait('merging');
+  if (sent(record, 'merge')) return pull.queueEnabled ? { kind: 'stop', reason: 'The pull request was taken out of the merge queue.' } : wait('merging');
   if (pull.reviewDecision === 'CHANGES_REQUESTED') return halt('changes-requested', 'A reviewer requested changes; only a person can resolve that.');
   if (pull.mergeStateStatus === 'DIRTY') return halt('conflicts', `The branch has merge conflicts with ${pull.base}.`);
   if (pull.checks === 'failing') {
@@ -198,12 +199,14 @@ function phase(record: AutoDeployRecord, rollout: RolloutFacts, now: number): Au
   return { kind: 'done' };
 }
 
-const STEP_OF: Record<Exclude<AutoDeployDecision['kind'], 'wait' | 'halt' | 'done'>, AutoDeployStep> = { tag: 'tagging', merge: 'merging', fix: 'fixing-ci', validate: 'validating', approve: 'approving' };
-/** The record after a decision: the step and its detail for the status line; a halt or done ends it. */
+const STEP_OF: Record<Exclude<AutoDeployDecision['kind'], 'wait' | 'halt' | 'stop' | 'done'>, AutoDeployStep> = { tag: 'tagging', merge: 'merging', fix: 'fixing-ci', validate: 'validating', approve: 'approving' };
+/** The record after a decision: the step and its detail for the status line; a halt, stop or done ends it. A stop is a person's
+ * doing on GitHub, so it asks nothing of them. */
 export function settle(record: AutoDeployRecord, decision: AutoDeployDecision, now: number): AutoDeployRecord {
   const next: AutoDeployRecord = { ...record, updatedAt: now };
   delete next.detail;
   if (decision.kind === 'halt') return { ...next, state: 'halted', step: 'halted', halt: { code: decision.code, reason: decision.reason, at: now } };
+  if (decision.kind === 'stop') return { ...next, state: 'stopped', step: 'stopped', detail: decision.reason };
   if (decision.kind === 'done') return { ...next, state: 'done', step: 'done' };
   if (decision.kind === 'wait') return { ...next, step: decision.step, ...(decision.detail ? { detail: decision.detail } : {}) };
   const detail = decision.kind === 'fix' ? `${decision.attempt}/${FIX_ATTEMPTS}` : decision.kind === 'validate' ? decision.label : decision.kind === 'approve' ? decision.names : undefined;

@@ -1963,3 +1963,77 @@
 .react-flow__node:focus-visible .map-card[data-dimmed=true] {
   opacity: .85;
 }
+
+/* Note badges (MAP-BADGES): paper tabs straddling the card's top edge, one per short note connected to it. */
+.card-badges {
+  position: absolute;
+  top: 0;
+  right: 32px;
+  z-index: 4;
+  display: flex;
+  gap: 4px;
+  transform: translateY(-55%);
+  pointer-events: none;
+}
+
+.card-badge,
+.card-badge-more {
+  pointer-events: auto;
+  font: var(--act-fw-strong) 1em/1 var(--act-font-mono);
+  padding: .3em .6em;
+  border: 0;
+  white-space: nowrap;
+  color: var(--act-paper-ink);
+  background: var(--badge-paper, var(--act-paper-mint));
+  box-shadow: 0 0 0 2px var(--act-bg);
+}
+
+.card-badge {
+  cursor: pointer;
+}
+
+.card-badge:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: 2px;
+}
+
+.card-badge[data-paper=sky] { --badge-paper: var(--act-paper-sky); }
+.card-badge[data-paper=lilac] { --badge-paper: var(--act-paper-lilac); }
+.card-badge[data-paper=peach] { --badge-paper: var(--act-paper-peach); }
+.card-badge[data-paper=slate] { --badge-paper: var(--act-paper-slate); color: var(--act-paper-slate-ink); }
+
+.card-badge-more {
+  color: var(--act-ink);
+  background: var(--act-raised);
+}
+
+.card-badges[data-far] .card-badge {
+  width: .7em;
+  height: .7em;
+  padding: 0;
+}
+
+.card-badges[data-far] .card-badge-more {
+  display: none;
+}
+
+/* An item's note badges beside its name in Needs me and dashboard rows. */
+.badge-chips {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+
+.badge-chip {
+  font: var(--act-fw-strong) var(--act-fs-caps)/1 var(--act-font-mono);
+  padding: 2px 4px;
+  white-space: nowrap;
+  color: var(--act-paper-ink);
+  background: var(--badge-paper, var(--act-paper-mint));
+}
+
+.badge-chip[data-paper=sky] { --badge-paper: var(--act-paper-sky); }
+.badge-chip[data-paper=lilac] { --badge-paper: var(--act-paper-lilac); }
+.badge-chip[data-paper=peach] { --badge-paper: var(--act-paper-peach); }
+.badge-chip[data-paper=slate] { --badge-paper: var(--act-paper-slate); color: var(--act-paper-slate-ink); }

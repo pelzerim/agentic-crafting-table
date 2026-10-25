@@ -72,6 +72,8 @@ const node = z.object({
   summary: z.string().max(4000).default(''),
   /** The last line an agent said when its turn ended, shown in its Needs me row (STATE-02). */
   lastLine: z.string().min(1).max(200).optional(),
+  /** What an agent is changing on this item right now; while set the item is working (node.rework). */
+  rework: z.object({ note: z.string().min(1).max(200), since: z.string(), by: z.string().min(1).max(200).optional() }).optional(),
   workingDirectory: z.string().max(4096).optional(),
   color: projectColorSchema.optional(),
   activity: activity.default('unknown'),
@@ -170,6 +172,7 @@ const otherCommands = [
   z.object({ type: z.literal('node.complete'), id }),
   z.object({ type: z.literal('node.reopen'), id }),
   z.object({ type: z.literal('node.delete'), id }),
+  z.object({ type: z.literal('node.rework'), id, note: z.string().trim().min(1).max(200).nullable(), by: id.optional() }),
   z.object({ type: z.literal('link.save'), link }),
   z.object({ type: z.literal('link.remove'), id }),
   z.object({ type: z.literal('node.todo.label'), id, title: z.string().min(1).max(48), sourceTitle: title }),
@@ -178,7 +181,7 @@ const otherCommands = [
   z.object({ type: z.literal('todos.reorder'), ids: z.array(id).min(1).max(1000), scope: z.enum(['items', 'projects']) }),
   z.object({ type: z.literal('todo.place'), id, nodeId: id, resourceId: id, position, projectId: id.optional() }),
   z.object({ type: z.literal('todo.send'), id, projectId: id, nodeId: id.optional(), resourceId: id.optional() }),
-  z.object({ type: z.literal('nodes.send'), ids: z.array(id).min(1).max(1000), projectId: id }),
+  z.object({ type: z.literal('nodes.send'), ids: z.array(id).min(1).max(1000), projectId: id.nullable() }),
   z.object({ type: z.literal('todo.save'), todo: todoInput }),
   z.object({ type: z.literal('todo.context'), id: id.describe('A to-do id from todos, or map:<nodeId> for a to-do on the map.'), context: todoContextInput,
     mode: z.enum(['replace', 'append']).describe('replace overwrites the context (empty clears it); append adds the text after a blank line and is refused past the limit.') }),
@@ -447,6 +450,19 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
         for (const member of moving) member.projectId = target.id;
         state.nodes = moveItems(state.nodes, state.resources, registry, [...positions].map(([id, position]) => ({ id, position })), sizes);
       };
+      /** Items sent to no project leave as one block that keeps its layout, beside the lead's project but off its ground. */
+      const leaveProject = (leads: readonly WorkspaceState['nodes'][number][]) => {
+        for (const lead of leads) {
+          if (!lead.resourceId) throw new Error('Only items can be moved to a project');
+          if (isArchived(lead, state.nodes)) throw new Error('Restore this item from the archive before moving it');
+          if (isOffMap(lead, state.nodes)) throw new Error('This item is in Undermap. Bring it back to move it.');
+        }
+        const moving = leads.filter(lead => lead.projectId);
+        if (!moving.length) return;
+        const positions = arrivalPlacement(state.nodes, moving[0].id, moving.map(member => member.id), moving[0].projectId!, member => itemFootprint(member, state.resources, registry, sizes), { kept: new Set(moving.map(member => member.id)), outside: true });
+        for (const member of moving) delete member.projectId;
+        state.nodes = moveItems(state.nodes, state.resources, registry, [...positions].map(([id, position]) => ({ id, position })), sizes);
+      };
       const todoEntry = (key: string) => {
         const entry = todoEntries(state).find(entry => entry.id === key);
         const placed = key.startsWith('map:') ? state.nodes.find(node => `map:${node.id}` === key) : undefined;
@@ -630,6 +646,21 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           if (command.pen !== undefined) { if (command.pen) target.pen = true; else delete target.pen; }
           if (command.moment !== undefined) target.moment = command.moment;
           if (command.title && target.resourceId) state.resources.find(r => r.id === target.resourceId)!.title = command.title;
+          if (target.rework) target.activity = 'working';
+          break;
+        }
+        case 'node.rework': {
+          const target = find(command.id);
+          if (!target.resourceId) throw new Error('A rework note belongs to an item, not a project');
+          const since = new Date().toISOString(), finished = target.rework;
+          for (const node of state.nodes.filter(node => node.resourceId === target.resourceId)) {
+            if (command.note === null) { if (node.rework) { delete node.rework; node.activity = 'idle'; node.activityAt = since; } continue; }
+            if (node.activity !== 'working') node.activityAt = since;
+            node.rework = { note: command.note, since: node.rework?.since ?? since, ...(command.by ? { by: command.by } : {}) }; node.activity = 'working';
+          }
+          // An agent that finishes its rework hands the item back to the person: it is their turn. A clear by hand raises nothing.
+          if (command.note === null && finished && command.by) applyToDraft(state, { type: 'attention.set', id: target.id, source: 'rework', reason: 'review', note: `Reworked: ${finished.note}`, eventId: `rework:${finished.since}` }, registry, layout);
+          if (command.note !== null && target.attentionSources?.rework) applyToDraft(state, { type: 'attention.set', id: target.id, source: 'rework', reason: null }, registry, layout);
           break;
         }
         case 'attention.set': {
@@ -841,6 +872,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
         }
         case 'nodes.send': {
           if (new Set(command.ids).size !== command.ids.length) throw new Error('Duplicate selection identities');
+          if (command.projectId === null) { leaveProject(command.ids.map(find)); break; }
           const target = project(command.projectId);
           if (isArchived(target, state.nodes)) throw new Error('Restore this project from the archive before moving items to it');
           if (isOffMap(target, state.nodes)) throw new Error('Bring this project back to the map before moving items to it');

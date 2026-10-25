@@ -136,7 +136,7 @@ test('double-click renames inline; the menu selects, renames and hides', async (
     await expect(input).toBeFocused(); await input.fill('Q4 pricing'); await input.press('Enter');
     await expect(sign(page, 'Q4 pricing')).toHaveAttribute('data-source', 'user');
     await sign(page, 'Upload · 3 items').getByRole('button').click({ button: 'right' });
-    await expect(page.getByRole('menuitem')).toHaveText(['Select items', 'Rename plot…', 'Name automatically', 'Hide this plot']);
+    await expect(page.getByRole('menuitem')).toHaveText(['Select items', 'Rename plot…', 'Name automatically', 'Move plot to', 'Send plot to Undermap', 'Hide this plot']);
     await page.getByRole('menuitem', { name: 'Select items' }).click();
     await expect(page.locator('[data-selected-id]')).toHaveCount(3);
     await sign(page, 'Upload · 3 items').getByRole('button').focus(); await page.keyboard.press('Shift+F10');
@@ -146,6 +146,31 @@ test('double-click renames inline; the menu selects, renames and hides', async (
     await sign(page, 'Upload · 3 items').getByRole('button').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Hide this plot' }).click();
     await expect(page.locator('[data-plot-sign]')).toHaveCount(2); await expect(page.locator('[data-plot-patch]')).toHaveCount(2);
+  });
+});
+
+test(`the sign's menu moves a whole plot to another project or to none, and sends one to Undermap`, async () => {
+  await launch(async ({ page }) => {
+    await page.evaluate(async () => {
+      const { state } = await window.craftingTable.workspaceRead();
+      await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), actor: { kind: 'user', id: 'test' }, expectedRevision: state.revision, commands: [{ type: 'project.create', id: 'video', title: 'Video', summary: '', position: { x: 640, y: 2600 } },
+        ...[0, 1, 2, 3, 4].map(i => ({ type: 'item.add' as const, id: `spare-${i}`, resourceId: `spare-${i}-r`, pluginId: 'workspace.note', title: `Spare ${i}`, data: { text: `Spare ${i}` }, projectId: 'photos', position: { x: -400 + i * 400, y: 1300 } }))] });
+    });
+    const projects = (ids: string[]) => page.evaluate(async ids => { const { state } = await window.craftingTable.workspaceRead(); return ids.map(id => { const node = state.nodes.find(node => node.id === id)!; return node.belowAt ? 'below' : node.projectId ?? 'none'; }); }, ids);
+    const choose = async (plot: string, ...path: string[]) => {
+      await sign(page, plot).getByRole('button').focus(); await page.keyboard.press('Shift+F10');
+      for (const name of path) await page.getByRole('menuitem', { name, exact: true }).click();
+    };
+    await sign(page, 'Upload · 3 items').getByRole('button').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Move plot to', exact: true }).click();
+    await expect(page.getByRole('menuitemradio', { name: 'Photos', exact: true })).toBeDisabled();
+    await page.getByRole('menuitemradio', { name: 'Video', exact: true }).click();
+    await expect.poll(() => projects(['upload-terminal', 'upload-ticket', 'upload-note'])).toEqual(['video', 'video', 'video']);
+    await choose('Billing · 4 items', 'Move plot to', 'No project');
+    await expect.poll(() => projects(['billing-pr', 'billing-agent', 'billing-rollout', 'billing-terminal'])).toEqual(['none', 'none', 'none', 'none']);
+    await choose('Thumbnail · 4 items', 'Send plot to Undermap');
+    await expect.poll(() => projects(['thumb-agent', 'thumb-pr', 'thumb-ticket', 'thumb-note'])).toEqual(['below', 'below', 'below', 'below']);
+    await expect(projects(['changelog', 'ideas'])).resolves.toEqual(['photos', 'photos']);
   });
 });
 

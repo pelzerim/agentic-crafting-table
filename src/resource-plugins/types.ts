@@ -97,6 +97,11 @@ export interface ResourceField {
   min?: number;
   max?: number;
   pattern?: string;
+  /** Offered in the item's right-click menu as `label`: a submenu of `options` (default: the field's), or a row of
+   * swatches drawn in `swatches[option]`. `fallback` is the option the item shows while its data holds none. */
+  menu?: { label: string; options?: readonly string[]; optionLabels?: Readonly<Record<string, string>>; swatches?: Readonly<Record<string, string>>; fallback?: string };
+  /** False leaves the field out of the item's form; it is set from the menu or by agents. */
+  form?: false;
 }
 export type ResourceFields = Readonly<Record<string, ResourceField>>;
 
@@ -324,6 +329,10 @@ export interface ResourceViewServices {
   /** Saves keys of the view state; null removes one. Values are short strings, numbers or booleans. */
   saveViewState?(patch: Record<string, string | number | boolean | null>): void;
   runAction(actionId: string, input?: JsonObject): Promise<JsonValue | void>;
+  /** What an agent says it is changing on this item right now (node.rework), with the agent's title; undefined when nothing is. */
+  observeRework?(listener: (rework: { note: string; since: string; by?: string } | undefined) => void): () => void;
+  /** Clears the rework note by hand; the item leaves the working state. */
+  clearRework?(): Promise<void>;
   /** The expanded frame's title-bar region the view may render its own controls into,
    * between the title and the close button. Hidden while the view is not expanded. */
   frameToolbar?(): HTMLElement | undefined;
@@ -358,7 +367,8 @@ export interface ResourcePluginViews {
 
 export interface ResourceMenuGroup {
   id: string; label: string;
-  children: readonly { id: string; label: string; description?: string }[];
+  /** `runs` makes an entry start the named children of this group together, each as if it had been picked. */
+  children: readonly { id: string; label: string; description?: string; runs?: readonly string[] }[];
   /** Offered to a selection of items that all have this group, as `label` with the named children only; a pick
    * runs that child once per selected item. */
   selection?: { label: string; children: readonly string[] };

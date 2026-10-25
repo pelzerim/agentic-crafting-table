@@ -26,6 +26,8 @@ import { VALIDATION_AGENT } from '../../src/resource-plugins/items/github-rollou
 
 /** The plugin storage collection holding one record per pull request resource. */
 export const AUTO_DEPLOY_COLLECTION = 'auto-deploy';
+/** Whether Auto deploy is armed on a pull request, from its stored record. */
+export const autoDeployArmed = (storage: Pick<PluginStorage, 'get'>, pullResourceId: string) => (storage.get(AUTO_DEPLOY_COLLECTION, pullResourceId)?.value as { state?: unknown } | undefined)?.state === 'armed';
 export const autoDeployInput = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('status') }).strict(),
   z.object({ operation: z.literal('options') }).strict(),
@@ -136,7 +138,7 @@ export class AutoDeploys {
       const facts = await this.facts(state, node, record);
       record = observe(record, facts);
       const decision = decide(record, facts);
-      if (decision.kind === 'wait' || decision.kind === 'halt' || decision.kind === 'done') { await this.finish(record, decision); return; }
+      if (decision.kind === 'wait' || decision.kind === 'halt' || decision.kind === 'stop' || decision.kind === 'done') { await this.finish(record, decision); return; }
       if (!await this.act(state, node, record, decision)) return;
     }
   }
@@ -209,7 +211,7 @@ export class AutoDeploys {
   }
 
   /** Performs one decided step and says whether the pass may take another. */
-  private async act(state: WorkspaceState, node: Node, record: AutoDeployRecord, decision: Exclude<AutoDeployDecision, { kind: 'wait' | 'halt' | 'done' }>): Promise<boolean> {
+  private async act(state: WorkspaceState, node: Node, record: AutoDeployRecord, decision: Exclude<AutoDeployDecision, { kind: 'wait' | 'halt' | 'stop' | 'done' }>): Promise<boolean> {
     if (decision.kind === 'tag') return this.write(record, decision, 'tag', node.id, 'pr.showShip', { value: 'ship', expectedTitle: decision.title, sourceResourceId: record.pullResourceId });
     if (decision.kind === 'merge') return this.write(record, decision, 'merge', node.id, 'pr.merge', { value: decision.method, pullRequestId: decision.pullRequestId, expectedHeadOid: decision.head, sourceResourceId: record.pullResourceId });
     if (decision.kind === 'approve') {

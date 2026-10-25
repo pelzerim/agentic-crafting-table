@@ -17,7 +17,7 @@ import type { SessionCoordinator } from './sessions.ts';
 import { rolloutDiscoveryKey } from '../provider-runtime/github-status.ts';
 import type { RolloutObservation } from '../provider-runtime/github-rollout.ts';
 import type { PullMergeReadiness } from '../provider-runtime/github.ts';
-import { AutoDeploys, AUTO_DEPLOY_COLLECTION } from './auto-deploy.ts';
+import { AutoDeploys, AUTO_DEPLOY_COLLECTION, autoDeployArmed } from './auto-deploy.ts';
 import { AUTO_DEPLOY_OPERATION } from '../../src/resource-plugins/items/github-rollout/auto-deploy.ts';
 import type { AutoDeployRecord } from '../../src/resource-plugins/items/github-rollout/auto-deploy.ts';
 import { agentRuntimeRefusal } from '../core/runtime.ts';
@@ -296,4 +296,10 @@ test('a failed validation halts before any approval', async () => {
   await f.pass();
   assert.deepEqual([f.record()!.state, f.record()!.halt?.code], ['halted', 'validation-failed']);
   assert.deepEqual(f.github.writes.map(write => write.actionId), ['pr.merge']);
+});
+
+test('autoDeployArmed reads the stored record: only an armed one counts', () => {
+  const records = new Map<string, unknown>([['armed-pr', { state: 'armed' }], ['stopped-pr', { state: 'stopped' }]]);
+  const storage = { get: (collection: string, key: string) => collection === AUTO_DEPLOY_COLLECTION && records.has(key) ? { value: records.get(key) } : undefined };
+  assert.deepEqual(['armed-pr', 'stopped-pr', 'other-pr'].map(id => autoDeployArmed(storage as never, id)), [true, false, false]);
 });

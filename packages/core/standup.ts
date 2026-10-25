@@ -3,7 +3,7 @@ import { localDate } from './reminders.ts';
 
 /** Standup report (STANDUP-01): what I did over a range, told as stories with their evidence. */
 /** Off hides the rail's Actions slot and the Standup report settings and stops background digests; the code and tests stay. */
-export const STANDUP_ENABLED = false;
+export const STANDUP_ENABLED = true;
 export const STANDUP_RANGES = ['day', 'week', 'last-week'] as const;
 export type StandupRange = typeof STANDUP_RANGES[number];
 export const STANDUP_RANGE_LABELS: Record<StandupRange, string> = { day: '1 day', week: '7 days', 'last-week': 'Last week' };
@@ -31,15 +31,18 @@ export function standupWindow(range: StandupRange, now: number): StandupWindow {
 }
 
 export const STANDUP_STATES = ['done', 'ongoing', 'blocked'] as const;
+/** Text and lists past what the report shows are cut to it, so one long story never costs the whole report. */
+const clipped = (limit: number) => z.string().trim().min(1).transform(text => text.slice(0, limit));
+const first = <T extends z.ZodType>(item: T, limit: number) => z.array(item).transform(list => list.slice(0, limit));
 const storySchema = z.object({
-  title: z.string().trim().min(1).max(160),
+  title: clipped(160),
   state: z.enum(STANDUP_STATES),
-  bullets: z.array(z.string().trim().min(1).max(400)).min(1).max(4),
-  evidence: z.array(z.string().min(1).max(300)).max(12),
-  project: z.string().trim().min(1).max(120).optional(),
+  bullets: first(clipped(400), 4).pipe(z.array(z.string()).min(1)),
+  evidence: z.array(z.string().min(1).max(300)).transform(ids => [...new Set(ids)].slice(0, 12)),
+  project: clipped(120).optional(),
 });
 /** What the composing model must return. */
-export const composedReportSchema = z.object({ stories: z.array(storySchema).max(40), outlook: z.array(storySchema).max(30).default([]) });
+export const composedReportSchema = z.object({ stories: first(storySchema, 40), outlook: first(storySchema, 30).default([]) });
 export type ComposedStory = z.infer<typeof storySchema>;
 
 export const EVIDENCE_KINDS = ['agent', 'pr', 'rollout', 'review', 'ticket', 'todo', 'reminder', 'attention'] as const;

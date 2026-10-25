@@ -101,3 +101,16 @@ test('snapping to the grid is off by default and only accepts a boolean', () => 
   assert.equal(settingsSchema.parse({ snapToGrid: true }).snapToGrid, true);
   for (const value of ['yes', 1, null]) assert.equal(settingsSchema.safeParse({ snapToGrid: value }).success, false, String(value));
 });
+
+test('Delete in item menus is off by default and only accepts a boolean', () => {
+  assert.equal(settingsSchema.parse({}).itemDelete, false);
+  assert.equal(settingsSchema.parse({ itemDelete: true }).itemDelete, true);
+  for (const value of ['yes', 1, null]) assert.equal(settingsSchema.safeParse({ itemDelete: value }).success, false, String(value));
+});
+
+test('automatic reviews of new pull requests are off by default, with Claude chosen, and accept only known review agents', () => {
+  assert.deepEqual(settingsSchema.parse({}).autoReview, { enabled: false, agents: ['claude'] });
+  assert.deepEqual(settingsSchema.parse({ autoReview: { enabled: true, agents: ['claude', 'codex'] } }).autoReview, { enabled: true, agents: ['claude', 'codex'] });
+  assert.deepEqual(settingsSchema.parse({ autoReview: { enabled: true, agents: [] } }).autoReview.agents, []);
+  for (const agents of [['gemini'], ['claude', 'claude'], 'claude']) assert.equal(settingsSchema.safeParse({ autoReview: { enabled: true, agents } }).success, false, JSON.stringify(agents));
+});

@@ -58,6 +58,7 @@ export const COMMAND_REVISION_RULES: { readonly [T in WorkspaceCommand['type']]:
   'node.show': { free: false, why: 'returns a hidden item to the map and places it' },
   'node.restore': { free: false, why: 'returns an archived item to the map and places it' },
   'node.delete': { free: false, why: 'permanently removes an item with its links' },
+  'node.rework': { free: true, why: 'sets or clears one note saying what is being changed on an item; it never moves, completes or removes anything' },
   'nodes.action': { free: false, why: 'changes every item of a selection made from an earlier read' },
   'node.complete': { free: false, why: 'sets the done state, which the user may have just changed, and unblocks what it blocks' },
   'node.reopen': { free: false, why: 'clears the done state, which the user may have just changed, and places the item again' },

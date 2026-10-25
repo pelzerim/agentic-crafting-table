@@ -1,6 +1,6 @@
 import { createPluginPackageRegistry } from '../resource-plugins/builtins.ts';
 import type { AgentGuideSnippet } from '../../packages/plugin-sdk/host.ts';
-export const AGENT_TOOL_CONTEXT_VERSION = '2026-10-07.3';
+export const AGENT_TOOL_CONTEXT_VERSION = '2026-10-22.2';
 
 export interface AgentToolBinding {
   projectId?: string;
@@ -24,6 +24,9 @@ export const AGENT_TOOL_GUIDE = [
   '- Write: workspace_apply({command}); expectedRevision only to change, move or remove (chain the returned one). Conflict: reread, reconcile. item.update replaces data: keep the latest read\'s fields.',
   '- Dedupe by provider identity or canonical URL; reuse existing items and links. Obey relationships.cardinality; never silently replace an occupied connection.',
   '- When you create or find a real PR, immediately register its URL: item.add with links:[{agent:true,kind:"reference"}] (your session). Reviews and other real outputs: items linked to it. An artifact you publish is put on the map beside you automatically: never add it.',
+  '- Before you change an existing item (e.g. fix a PR): node.rework {id, note} saying what, ≤60 chars (shows working). Keep the note current; note:null when done or abandoned.',
+  '- PRs that depend on each other: link.save kind blocks, the one that must merge first as source.',
+  '- Label items: a note of 1–2 words (≤12 chars) linked to them shows as a badge on each (workspace_read badges); data.display "badge" allows 24, "note" keeps paper. Use one note for several items.',
   '- link.save kinds: reference informs; context informs the target agent; blocks: source finishes before target. Membership: node.attach, not a link. New items: omit position: they land beside what they link to, or beside you; give one only when the user asked for a specific place. Move: node.move.',
   '- Keep your summary very short. node.update activity working while running, then complete or idle. Attention input (decision), error (failure) or review (findings) needs an attentionNote: plain, sentence case, no trailing period, ≤48 chars; clear when resolved. Never set the user\'s done state.',
   '- Deletion is archive-only (node.archive, todo.archive), never unasked. Put reasoning, links and next steps for a person or later agent in a to-do\'s context (todo.context): it stays when you are gone.',

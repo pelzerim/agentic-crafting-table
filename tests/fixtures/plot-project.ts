@@ -12,7 +12,7 @@ export function plotProject(color?: string) {
   add('thumb-agent', 'agent.session', 'Fix thumbnail refresh loop', 220, 230, { sessionId: 'static-thumb', provider: 'claude' }, { mapSize: 'small', activity: 'working', summary: 'Patching retry delay', activityAt: minutesAgo(4) });
   add('thumb-pr', 'github.pull-request', 'Thumbnail refresh loop', 470, 230, { owner: 'example', repo: 'photos', number: 64 }, { indicators: cue('Checks running', 'amber', 'clock') });
   add('thumb-ticket', 'linear.ticket', 'APP-12 · Thumbnail expiry', 220, 330, { issueId: 'APP-12' }, { indicators: cue('In progress', 'amber', 'clock') });
-  add('thumb-note', 'workspace.note', 'Retry delay', 470, 340, { text: 'Retry delay' });
+  add('thumb-note', 'workspace.note', 'Retry delay', 470, 340, { text: 'Retry delay', display: 'note' });
   add('billing-pr', 'github.pull-request', 'Plan switcher', 900, 200, { owner: 'example', repo: 'web', number: 48 }, { indicators: cue('Review requested', 'amber', 'alert-triangle'), attention: 'review' });
   add('billing-agent', 'agent.session', 'Billing proration', 1150, 200, { sessionId: 'static-billing', provider: 'claude' }, { mapSize: 'small', activity: 'working', summary: 'Writing invoice tests', activityAt: minutesAgo(1) });
   add('billing-rollout', 'github.rollout', 'billing-api release', 900, 310, { owner: 'example', repo: 'billing-api', runId: 91 }, { indicators: cue('Waiting', 'neutral', 'clock') });

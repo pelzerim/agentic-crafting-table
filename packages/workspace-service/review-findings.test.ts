@@ -124,6 +124,27 @@ test('a queued send fails visibly when its agent is archived or sent to the Unde
   } finally { f.close(); }
 });
 
+test('a review is marked done once every finding sent to an agent is fixed; unsent open findings do not hold it back', async () => {
+  const f = await fixture();
+  try {
+    const done = async () => Boolean((await f.control.read()).nodes.find(node => node.id === 'review')!.completedAt);
+    await f.run({ operation: 'send', requestId: randomUUID(), reviewSessionId: 'run-1', findingIds: ['F1', 'F3'], agentNodeId: 'impl' });
+    await f.run({ operation: 'report', agentNodeId: 'impl', findingIds: ['F1'] });
+    assert.equal(await done(), false, 'F3 is still with the agent');
+    await f.run({ operation: 'mark', reviewSessionId: 'run-1', findingIds: ['F3'], status: 'fixed' });
+    assert.equal(await done(), true, 'F2 was never sent and stays open');
+    assert.equal((await f.run({ operation: 'list' })).statuses.F2, 'open');
+  } finally { f.close(); }
+});
+
+test('a review with nothing sent is never marked done by its findings', async () => {
+  const f = await fixture();
+  try {
+    await f.run({ operation: 'mark', reviewSessionId: 'run-1', findingIds: ['F1', 'F2', 'F3'], status: 'fixed' });
+    assert.equal((await f.control.read()).nodes.find(node => node.id === 'review')!.completedAt, undefined);
+  } finally { f.close(); }
+});
+
 test('only the agent a finding was sent to can report it fixed; the user can override either way', async () => {
   const f = await fixture();
   try {

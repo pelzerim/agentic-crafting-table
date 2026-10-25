@@ -1,4 +1,5 @@
 import { defineResourcePlugin } from '../../define.ts';
+import { NOTE_DISPLAYS } from '../../../graph/badges.ts';
 
 export const NOTE_PAPERS = ['mint', 'sky', 'lilac', 'peach', 'slate'] as const;
 const grow = { field: 'text', min: 3, max: 14, footerField: 'writer' };
@@ -20,7 +21,10 @@ export const noteItem = defineResourcePlugin({
   creation: { label: 'Add note', hotkey: 'n' },
   fields: {
     text: { label: 'Text', kind: 'text', multiline: true, rows: 8, required: true },
-    paper: { label: 'Paper', kind: 'select', options: NOTE_PAPERS, optionLabels: { mint: 'Mint', sky: 'Sky', lilac: 'Lilac', peach: 'Peach', slate: 'Slate' } },
+    paper: { label: 'Paper', kind: 'select', options: NOTE_PAPERS, optionLabels: { mint: 'Mint', sky: 'Sky', lilac: 'Lilac', peach: 'Peach', slate: 'Slate' },
+      menu: { label: 'Colour', swatches: Object.fromEntries(NOTE_PAPERS.map(paper => [paper, `var(--act-paper-${paper})`])), fallback: 'mint' } },
+    display: { label: 'Show as', kind: 'select', options: NOTE_DISPLAYS, optionLabels: { auto: 'Automatic: one or two words become a badge', badge: 'Badge, up to 24 characters', note: 'Note' },
+      form: false, menu: { label: 'Show as', options: ['note', 'badge'], optionLabels: { note: 'Note', badge: 'Badge' } } },
   },
   migrations: [{ fromVersion: 1, toVersion: 2, migrate: data => data }],
   validateData: data => data.writer === undefined || (typeof data.writer === 'object' && data.writer !== null && !Array.isArray(data.writer)

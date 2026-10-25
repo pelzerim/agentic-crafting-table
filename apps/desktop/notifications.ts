@@ -48,6 +48,7 @@ export class DesktopNotifications {
       previousVersions.set(identity, Math.max(previousVersions.get(identity) ?? 0, node.attentionVersion ?? 0));
     }
     // A muted project announces nothing (MAP-25); its open banners close with it.
+    const saidLast = new Map(next.state.nodes.flatMap(node => node.lastLine ? [[node.id, node.lastLine]] : []));
     const items = splitAttention(next.state.nodes).shown, current = new Set(items.map(item => item.identity));
     for (const [identity, key] of this.active) if (!current.has(identity)) { this.delivery.close(key); this.active.delete(identity); }
     for (const item of items) {
@@ -62,7 +63,8 @@ export class DesktopNotifications {
       if (!this.allowed() || !wanted) continue;
       const old = this.active.get(item.identity); if (old) this.delivery.close(old);
       this.active.set(item.identity, key);
-      this.delivery.show({ key, title: `${attentionTierInfo[item.tier].name} · ${item.node.title}`.slice(0, 250), body: item.details.join(' · '), nodeId: item.node.id });
+      // An agent's banner quotes the line it ended its turn on, as its Needs me row does.
+      this.delivery.show({ key, title: `${attentionTierInfo[item.tier].name} · ${item.node.title}`.slice(0, 250), body: item.aliases.map(alias => saidLast.get(alias.id)).find(Boolean) ?? item.details.join(' · '), nodeId: item.node.id });
     }
   }
   dispose() { for (const key of this.active.values()) this.delivery.close(key); this.active.clear(); }

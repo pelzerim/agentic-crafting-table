@@ -36,7 +36,7 @@ import { rolloutPresentation } from '../src/resource-plugins/items/github-rollou
 import type { ResourcePluginRegistry } from '../src/resource-plugins/registry.ts';
 
 /** Every beat in the timeline below is written at pace 1 and held PACE times as long, so the map stays readable. */
-const PACE = 2, FPS = 10, TOUR_BEAT = 21_000, TOUR_SECONDS = TOUR_BEAT * PACE / 1000, LOGO_SECONDS = 4, OUTPUT = resolve('docs/media/demo.gif');
+const PACE = 2, FPS = 10, TOUR_BEAT = 21_000, MENU_HOLD = 900, LOGO_SECONDS = 4, OUTPUT = resolve('docs/media/demo.gif');
 const keepFrames = process.argv.includes('--keep-frames');
 const WIDTH = 1280, HEIGHT = 800, FOCUS = { x: 180, y: 20 }, ZOOM = .8, POINTER = { x: WIDTH / 2, y: HEIGHT / 2 - 90 };
 const AGENT_SLOT = { x: 0, y: -160 }, AGENT_TITLE = 'Claude · implementation', PR_SLOTS = { 42: { x: 330, y: -160 }, 43: { x: 330, y: 60 } };
@@ -153,6 +153,8 @@ const app = await electron.launch({ args: ['.', '--force-device-scale-factor=1',
 const frames: { at: number; png: Buffer }[] = [];
 const zoomOf = (page: Page) => page.locator('.map-area').getAttribute('data-zoom').then(Number);
 let mcp: Client | undefined;
+/** The tour's length in ms: its beats plus the time spent resting on menu entries. */
+let tourMs = TOUR_BEAT * PACE;
 try {
   const page = await app.firstWindow();
   await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setContentSize(size.width, size.height), { width: WIDTH, height: HEIGHT });
@@ -194,15 +196,22 @@ try {
   const centre = async (target: Locator) => { const box = await target.boundingBox(); if (!box) throw new Error(`No box for ${target}`); return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; };
   const clickOn = async (target: Locator, options: { button?: 'left' | 'right' } = {}) => { const { x, y } = await centre(target); await moveTo(x, y); await page.waitForTimeout(120); await page.mouse.click(x, y, options); };
   const hoverOn = async (target: Locator) => { const { x, y } = await centre(target); await moveTo(x, y); };
-  // Into a submenu: across along the parent's row first, then down, so no other row is hovered on the way.
-  const clickIn = async (target: Locator) => { const { x, y } = await centre(target); await moveTo(x, pointer.y); await moveTo(x, y); await page.waitForTimeout(120); await page.mouse.click(x, y); };
+  // Into a submenu `pick` goes across along the parent's row first, then down, so no other row is hovered on the way.
   const drag = async (from: { x: number; y: number }, to: { x: number; y: number }) => { await moveTo(from.x, from.y); await page.mouse.down(); await page.mouse.move(to.x, to.y, { steps: 14 }); pointer.x = to.x; pointer.y = to.y; await page.mouse.up(); };
   await moveTo(POINTER.x, POINTER.y);
   await page.waitForTimeout(300);
 
   let recording = true; const started = Date.now();
   const capture = (async () => { while (recording) { try { frames.push({ at: Date.now() - started, png: await page.screenshot({ type: 'png', caret: 'hide' }) }); } catch { if (recording) throw new Error('Capture stopped'); } } })().catch(() => {});
-  const until = async (beat: number) => { const ms = beat * PACE, left = started + ms - Date.now(); console.log(`${String(Date.now() - started).padStart(6)} ms  until ${ms}${left < 0 ? `  LATE by ${-left} ms` : ''}`); if (left > 0) await page.waitForTimeout(left); };
+  // Time spent resting on a menu entry before it is clicked; every later beat moves back by it.
+  let held = 0;
+  const until = async (beat: number) => { const ms = beat * PACE + held, left = started + ms - Date.now(); console.log(`${String(Date.now() - started).padStart(6)} ms  until ${ms}${left < 0 ? `  LATE by ${-left} ms` : ''}`); if (left > 0) await page.waitForTimeout(left); };
+  // A menu entry is shown under the pointer for a moment before it is clicked, so the video says what was picked.
+  const pick = async (target: Locator, path: 'submenu' | 'direct' = 'submenu') => {
+    const { x, y } = await centre(target);
+    if (path === 'submenu') await moveTo(x, pointer.y);
+    await moveTo(x, y); await page.waitForTimeout(MENU_HOLD); held += MENU_HOLD; await page.mouse.click(x, y);
+  };
   const zoomOutTo = async (zoom: number) => { while (await zoomOf(page) > zoom) { await page.mouse.wheel(0, 20); await page.waitForTimeout(20); } };
   const card = (title: string) => page.getByRole('article', { name: title, exact: true });
   const rightClick = (title: string) => clickOn(card(title), { button: 'right' });
@@ -232,7 +241,7 @@ try {
     await rightClick(title);
     await hoverOn(page.getByRole('menuitem', { name: 'Trigger review', exact: true }));
     await until(at + 500);
-    await clickIn(page.getByRole('menuitem', { name: 'Claude', exact: true }));
+    await pick(page.getByRole('menuitem', { name: 'Claude', exact: true }));
     await moveTo(POINTER.x, POINTER.y);
     await until(at + 1100);
     await finishReviews(count, result);
@@ -267,7 +276,7 @@ try {
   await rightClick('Plan switcher');
   await hoverOn(page.getByRole('menuitem', { name: 'Merge…', exact: true }));
   await until(11500);
-  await clickIn(page.getByRole('menu', { name: 'Merge…' }).getByRole('menuitem', { name: 'Squash and merge' }));
+  await pick(page.getByRole('menu', { name: 'Merge…' }).getByRole('menuitem', { name: 'Squash and merge' }));
   await moveTo(POINTER.x, POINTER.y);
   await until(12000);
   await tick();
@@ -298,7 +307,7 @@ try {
   await until(17200);
   await rightClick('Plan switcher');
   await until(17600);
-  await clickOn(page.getByRole('menuitem', { name: 'Send selection to Undermap', exact: true }));
+  await pick(page.getByRole('menuitem', { name: 'Send selection to Undermap', exact: true }), 'direct');
   await moveTo(POINTER.x, POINTER.y);
   // 8. Out to the neighbours and the pipelines.
   await until(18800);
@@ -307,6 +316,7 @@ try {
   await zoomOutTo(.28);
   await moveTo(200, 700);
   await until(TOUR_BEAT);
+  tourMs += held;
   recording = false; await capture;
   console.log(`Captured ${frames.length} frames; final zoom ${await zoomOf(page)}`);
 } catch (error) {
@@ -321,7 +331,7 @@ try {
 
 const framesDirectory = join(directory, 'frames'); await mkdir(framesDirectory);
 const files: string[] = [];
-for (let tick = 0; tick < FPS * TOUR_SECONDS; tick++) {
+for (let tick = 0; tick < FPS * tourMs / 1000; tick++) {
   const at = tick * 1000 / FPS, frame = [...frames].reverse().find(frame => frame.at <= at) ?? frames[0];
   const file = join(framesDirectory, `frame-${String(tick).padStart(3, '0')}.png`); await writeFile(file, frame.png); files.push(file);
 }

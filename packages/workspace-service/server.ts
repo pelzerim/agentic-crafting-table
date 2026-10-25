@@ -65,6 +65,7 @@ import { workflowReviewContract } from '../../src/pull-requests/workflow-contrac
 import type { WorkflowSource } from '../provider-runtime/workflow-sources.ts';
 import { ReviewCoordinator } from './reviews.ts';
 import { ReviewFindingsCoordinator } from './review-findings.ts';
+import { AutoReviews } from './auto-review.ts';
 import { ReviewLoops } from './review-loop.ts';
 import type { ReviewRuntime } from './reviews.ts';
 import { nativeReviewSources } from '../provider-runtime/review-sources.ts';
@@ -152,6 +153,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
     attachTitles?.observe(current.state);
     findings?.observe();
     loops.observe();
+    autoReviews.observe();
     servicePlugins.observe();
     const shown = presented(current);
     for (const socket of subscribers) send(socket, { event: 'snapshot', snapshot: shown });
@@ -199,6 +201,8 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   const loops = new ReviewLoops({ storage: store.pluginStorage('code.review'), store, control, resources, sessions: terminals, changed: broadcast, allowed: () => !closing && lifecycle.allowsBackgroundWork,
     ...(reviews && findings ? { reviews: { start: (prNodeId, provider, input) => reviews.start(prNodeId, provider, input, work => lifecycle.execute(work)), status: (prNodeId, requestId) => reviews.status(prNodeId, requestId), options: () => reviews.options() },
       findings: { run: (nodeId, input) => findings.run(nodeId, input) } } : {}) });
+  const autoReviews = new AutoReviews({ storage: store.pluginStorage('code.review'), store, control, resources, changed: broadcast, allowed: () => !closing && lifecycle.allowsBackgroundWork,
+    ...(reviews ? { reviews: { start: (prNodeId, provider, input) => reviews.start(prNodeId, provider, input, work => lifecycle.execute(work)) } } : {}) });
   const workflows = new WorkflowReviewCoordinator(store, control, providers ? providers.workflows ?? {} : nativeWorkflowSources(connections, repository => workflowReviewContract(control.registry.pluginSettings(store.readSettings().value.plugins)['github.review-run'], repository)), broadcast, () => !closing && lifecycle.allowsBackgroundWork);
   const lifecycle = new WorkspaceLifecycle(store, control, {
     list: () => terminals ? terminals.runtime.call<SessionRecord[]>('sessions.list') : Promise.resolve([]),
@@ -398,8 +402,8 @@ export async function startWorkspaceService(directory: string, registry?: Resour
           case 'attention.history': { const input = z.object({ offset: z.number().int().min(0).max(99).default(0), limit: z.number().int().min(1).max(100).default(10) }).strict().parse(args ?? {}); result = store.attentionHistory(input.offset, input.limit); break; }
           case 'lifecycle.active': result = await lifecycle.active(); break;
           case 'lifecycle.preview': result = { sessions: await lifecycle.active(), pending: lifecycle.pendingCount }; break;
-          case 'lifecycle.close': inbox.stop(); await agents?.pause(); await workflows.pause(); await servicePlugins.pause(); await findings?.close(); await loops.close(); await reviews?.close(); await architecture.close(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await resources.pause(); await summaries?.pause(); await titles?.pause(); await agentTitles?.pause(); await attachTitles?.pause(); await standup.pause(); await updates.pause(); await plots.pause(); await reminders.pause(); result = await lifecycle.close(); break;
-          case 'lifecycle.recover': { const input = z.object({ retry: z.boolean().default(false), startupId: z.string().uuid().optional() }).parse(args); result = lifecycle.recover(input.retry, input.startupId); summaries?.start(); titles?.start(); agentTitles?.start(); attachTitles?.start(); standup.start(); updates.start(); plots.start(); reminders.start(); assignments.start(); triage.start(); todoSweeper.start(); resources.start(); workflows.resume(); findings?.start(); loops.start(); servicePlugins.start(); agents?.start(); break; }
+          case 'lifecycle.close': inbox.stop(); await agents?.pause(); await workflows.pause(); await servicePlugins.pause(); await findings?.close(); await loops.close(); await autoReviews.close(); await reviews?.close(); await architecture.close(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await resources.pause(); await summaries?.pause(); await titles?.pause(); await agentTitles?.pause(); await attachTitles?.pause(); await standup.pause(); await updates.pause(); await plots.pause(); await reminders.pause(); result = await lifecycle.close(); break;
+          case 'lifecycle.recover': { const input = z.object({ retry: z.boolean().default(false), startupId: z.string().uuid().optional() }).parse(args); result = lifecycle.recover(input.retry, input.startupId); summaries?.start(); titles?.start(); agentTitles?.start(); attachTitles?.start(); standup.start(); updates.start(); plots.start(); reminders.start(); assignments.start(); triage.start(); todoSweeper.start(); resources.start(); workflows.resume(); findings?.start(); loops.start(); autoReviews.start(); servicePlugins.start(); agents?.start(); break; }
           case 'agent.hook': if (!agents) throw new Error('Native agents are not configured'); result = await agents.hook(args); break;
           case 'plugins.discover': {
             const input = pluginDiscoverySchema.parse(args);
@@ -494,6 +498,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
       await plugins.close();
       await findings?.close();
       await loops.close();
+      await autoReviews.close();
       await servicePlugins.close();
       await reviews?.close();
       await architecture.close();

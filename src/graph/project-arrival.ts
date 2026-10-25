@@ -15,9 +15,10 @@ const SEARCH_STEP = ITEM_GAP * 2;
  * members that keep their layout instead, wherever they came from. The block goes
  * to the first clear spot beside the project's items (right, below, left, then
  * above, stepping outward) or onto an empty project's anchor. Nothing else moves,
- * and the block never lands inside another project's neighbourhood. */
+ * and the block never lands inside another project's neighbourhood. With `outside` the block
+ * leaves the project instead: it lands beside the project's items but off its neighbourhood. */
 export function arrivalPlacement(nodes: readonly GraphNode[], lead: string, members: readonly string[], projectId: string, footprint: (node: GraphNode) => SpatialBox,
-  options: { stacked?: ReadonlySet<string>; kept?: ReadonlySet<string>; padding?: number } = {}): Map<string, Point> {
+  options: { stacked?: ReadonlySet<string>; kept?: ReadonlySet<string>; padding?: number; outside?: boolean } = {}): Map<string, Point> {
   const padding = options.padding ?? NEIGHBORHOOD_PADDING, byId = new Map(nodes.map(node => [node.id, node]));
   const first = byId.get(lead), target = byId.get(projectId);
   if (!first || !target) throw new Error('Node does not exist');
@@ -31,8 +32,9 @@ export function arrivalPlacement(nodes: readonly GraphNode[], lead: string, memb
   const visible = nodes.filter(node => !ids.has(node.id) && isDrawn(node, nodes));
   const items = visible.filter(node => node.resourceId), owned = (id: string) => items.filter(node => node.projectId === id).map(footprint);
   const cluster = owned(projectId);
-  const anchors = visible.filter(node => !node.resourceId && node.id !== projectId && !owned(node.id).length).map(footprint);
-  const fields = visible.filter(node => !node.resourceId && node.id !== projectId && owned(node.id).length).map(node => field(node.id, boundsOf(owned(node.id)), padding));
+  const others = (node: GraphNode) => !node.resourceId && (options.outside || node.id !== projectId);
+  const anchors = visible.filter(node => others(node) && !owned(node.id).length).map(footprint);
+  const fields = visible.filter(node => others(node) && owned(node.id).length).map(node => field(node.id, boundsOf(owned(node.id)), padding));
   const obstacles = [...items.map(footprint), ...anchors];
   const clear = (dx: number, dy: number) => block.every(part => {
     const moved = { ...part, x: part.x + dx, y: part.y + dy };
@@ -50,6 +52,6 @@ export function arrivalPlacement(nodes: readonly GraphNode[], lead: string, memb
     ].find(candidate => clear(candidate.x, candidate.y));
     if (found) return found;
   } };
-  const offset = !cluster.length && clear(home.x, home.y) ? home : beside();
+  const offset = !cluster.length && !options.outside && clear(home.x, home.y) ? home : beside();
   return new Map(block.map(part => [part.id, { x: part.x + offset.x, y: part.y + offset.y }]));
 }

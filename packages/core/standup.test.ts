@@ -64,7 +64,14 @@ test('ongoing work moves to this week and the outlook stays empty when nothing i
   assert.deepEqual(accepted.stories.map(entry => entry.title), ['Shipped']);
   assert.deepEqual(accepted.outlook.map(entry => entry.title), ['Still going', 'Review waiting']);
   assert.deepEqual(accepted.stories.map(entry => entry.id), ['s0']); assert.deepEqual(accepted.outlook.map(entry => entry.id), ['o0', 'o1']);
-  assert.throws(() => acceptReport({ stories: [{ ...story('Too many', ['e1']), bullets: ['1', '2', '3', '4', '5'] }] }, known));
+});
+
+test('a story longer than the report shows is shortened, never the whole report thrown away', () => {
+  const known = new Set(Array.from({ length: 20 }, (_, index) => `e${index}`));
+  const accepted = acceptReport({ stories: [{ ...story('Too many', ['e1']), title: 'T'.repeat(200), bullets: ['1', '2', '3', '4', '5'] }],
+    outlook: [story('Wide', [...known], 'ongoing'), ...Array.from({ length: 35 }, (_, index) => story(`Open ${index}`, ['e1'], 'ongoing'))] }, known);
+  assert.deepEqual(accepted.stories[0]!.bullets, ['1', '2', '3', '4']); assert.equal(accepted.stories[0]!.title.length, 160);
+  assert.equal(accepted.outlook[0]!.evidence.length, 12); assert.equal(accepted.outlook.length, 30);
 });
 
 test('model JSON is read from a fenced reply', () => {

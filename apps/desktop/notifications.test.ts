@@ -76,6 +76,13 @@ test('a banner names the tier before the item; finished work stays quiet until i
   assert.deepEqual(f.shown.slice(2).map(notice => [notice.title, notice.body]), [['Finished · Resizer', 'Finished · ready to view']]);
 });
 
+test(`a banner's body is the line the agent ended its turn on, when it has one`, () => {
+  const f = fixture(); f.subject.snapshot(snapshot([])); f.subject.preferences!.countFinished = true;
+  const finished = { attention: 'none', attentionSources: { completion: 'finished' } };
+  f.subject.snapshot(snapshot([node(1, { ...finished, lastLine: 'Tests pass; the PR is ready for review.' }), node(1, { ...finished, id: 'quiet', resourceId: 'quiet', title: 'Resizer' })], 2));
+  assert.deepEqual(f.shown.map(notice => [notice.title, notice.body]), [['Finished · Agent', 'Tests pass; the PR is ready for review.'], ['Finished · Resizer', 'Finished · ready to view']]);
+});
+
 test('announcements deduplicate, respect settings, allow explicit test and dispose outstanding items', () => {
   const f = fixture(), notice = { key: 'recovery', title: '1 session restored', body: '' };
   assert.equal(f.subject.announcement(notice), true); assert.equal(f.subject.announcement(notice), false);

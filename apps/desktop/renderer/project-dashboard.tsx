@@ -1,3 +1,5 @@
+import { BadgeChips } from './badge-chips.tsx';
+import type { Badge } from '../../../src/graph/badges.ts';
 import { memo, useEffect, useRef, useState } from 'react';
 import { shortAge } from '../../../src/graph/project-dashboard.ts';
 import type { DashboardBlock, DashboardBlockLayout, DashboardLayout, DashboardPreview, DashboardRow, DashboardSection, DashboardTiers, DashboardTodo, ProjectDashboard } from '../../../src/graph/project-dashboard.ts';
@@ -43,7 +45,7 @@ function useNow(active: boolean) {
 
 /** A project's far-zoom dashboard (MAP-23). It re-renders when its content or the
  * room it has changes, never for camera movement alone. */
-export const DashboardBody = memo(function DashboardBody({ board, neighborhood, layout, icons, highlighted, actions }: { board: ProjectDashboard; /** The project's neighborhood color, which decides its plots' colors. */ neighborhood?: string; layout: DashboardLayout; icons: ReadonlyMap<string, DashboardIcon>; highlighted?: readonly string[]; actions: DashboardActions }) {
+export const DashboardBody = memo(function DashboardBody({ board, neighborhood, layout, icons, badges, highlighted, actions }: { /** Note badges by item id (MAP-BADGES). */ badges?: ReadonlyMap<string, readonly Badge[]>; board: ProjectDashboard; /** The project's neighborhood color, which decides its plots' colors. */ neighborhood?: string; layout: DashboardLayout; icons: ReadonlyMap<string, DashboardIcon>; highlighted?: readonly string[]; actions: DashboardActions }) {
   performanceMetrics.record('map.dashboard-render', 1);
   const now = useNow(Boolean(board.lastActivityAt || board.working.length || board.needsYou.some(row => row.since)));
   const [preview, setPreview] = useState<PreviewAt>();
@@ -69,7 +71,7 @@ export const DashboardBody = memo(function DashboardBody({ board, neighborhood, 
   // Marks lead: the tier shape or the working spark, then the title, the reason in words and the age as text.
   const rowOf = (entry: DashboardRow, kind: 'needs' | 'working') => { const age = kind === 'working' ? entry.at ? shortAge(entry.at, now) : '' : attentionAge(entry.since, now); return <li key={entry.id}><button type="button" className="dashboard-row" data-row={entry.id} data-kind={kind} data-tier={kind === 'needs' ? entry.tier : undefined} data-highlighted={highlighted?.includes(entry.id) || undefined}
     aria-label={`${entry.title}: ${[kind === 'working' ? entry.detail || 'working' : entry.tier ? attentionLabel(entry.tier, entry.detail) : entry.detail, age].filter(Boolean).join(', ')}`} title={members.has(entry.id) ? undefined : [entry.title, entry.detail].filter(Boolean).join(' — ')} onClick={event => (kind === 'needs' ? actions.go : actions.fly)(entry.id, event.detail)} onDoubleClick={() => actions.web(entry.id)} {...(members.has(entry.id) ? show(entry.id) : {})}>
-    {kind === 'working' ? <StatusGlyph icon="working" tone="mint" /> : entry.tier && <TierMark tier={entry.tier} />}<span className="dashboard-row-title">{entry.title}</span>
+    {kind === 'working' ? <StatusGlyph icon="working" tone="mint" /> : entry.tier && <TierMark tier={entry.tier} />}<span className="dashboard-row-title">{entry.title}</span><BadgeChips badges={badges?.get(entry.id)} />
     <span className="dashboard-row-detail">{entry.detail}{age && <span className="dashboard-row-age">{entry.detail ? ' · ' : ''}{age}</span>}</span>
   </button></li>; };
   const plotRow = (plot: PlotCounts) => <button type="button" className="dashboard-row" data-kind="plot" data-row={plot.id} data-plot-color={plot.color} style={plotStyle(neighborhood, plot.color)} aria-label={plotLabel(plot)} title={plot.name} onClick={() => actions.plot(plot.id)}>

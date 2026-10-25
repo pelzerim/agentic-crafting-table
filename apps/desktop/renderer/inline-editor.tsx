@@ -47,7 +47,7 @@ export function SelectField({ pluginId, name, field, values, change, searchable 
   return <><select aria-label={field.label} required={field.required} disabled={loading} value={String(values[name] ?? '')} onChange={event => change(name, event.target.value)}><option value="">{loading ? 'Loading…' : 'Choose…'}</option>{options.map(option => <option key={option} value={option}>{labels[option] ?? field.optionLabels?.[option] ?? option}</option>)}</select>{error && <small role="alert">{error}</small>}</>;
 }
 function Fields({ fields, values, change, pluginId, focusField, directories, projectDirectory, error }: { focusField?: string; fields: ResourceFields; values: JsonObject; change(key: string, value: string | number | boolean): void; pluginId?: string; directories: DirectoryChoices; projectDirectory?: string; error(message: string): void }) {
-  return Object.entries(fields).map(([key, field]) => <label key={key}>{field.label}
+  return Object.entries(fields).filter(([, field]) => field.form !== false).map(([key, field]) => <label key={key}>{field.label}
     {field.kind === 'directory' ? <DirectoryField label={field.label} required={field.required} value={String(values[key] ?? '')} change={value => change(key, value)} choices={directories} project={field.fromProject ? projectDirectory : undefined} error={error} />
       : field.kind === 'select' ? <SelectField pluginId={pluginId} name={key} field={field} values={values} change={change} />
       : field.multiline ? <textarea autoFocus={focusField === key} aria-label={field.label} required={field.required} value={String(values[key] ?? '')} onChange={event => change(key, event.target.value)} rows={Math.max(2, Math.min(16, field.rows ?? 3))} />

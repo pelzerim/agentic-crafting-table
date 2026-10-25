@@ -86,6 +86,30 @@ accessible description is “Held open”. Right-clicking the held slot again re
 closes it; right-clicking another slot moves the hold there. The hold lives for the
 window session and is not saved.
 
+**MAP-BADGES — Note badges.** A note of one or two plain words, at most 12 characters
+(one line; no list, heading, checkbox, code or emphasis), that is connected to an item is
+shown as a **badge** on that item instead of as paper. A note connected to several items
+is a badge on each; projects and other notes are never labelled. The note and its links
+are not drawn on the map (the connection is the attachment), it is no plot member, and a
+badge note connected to nothing stays paper. `data.display` overrides the rule per note
+(the note's menu, **Show as ▸ Note / Badge**, the shown one checked; not in its form):
+`"badge"` makes any one line of up to 24 characters a badge, `"note"` keeps it paper,
+`"auto"` or none applies the rule. A badge is drawn in its note's paper (mint when the
+note has none); the menu's **Colour** row of paper swatches changes it, on the badge and
+on the paper alike. Any item field can be offered this way: a field's `menu` makes it a
+submenu or a swatch row in the item's menu, and `form: false` leaves it out of the form.
+On the card a badge is a mono tab straddling the top edge, right of
+centre, counter-scaled to stay at least 11 px on screen; up to three side by side, more
+as “+N” (titled with the rest). In the overview tier it is a small paper pip, its words
+in its tooltip. Click opens the note's edit form; right-click opens the note's menu. The
+card's accessible name gains “, badges S2, v1.4”; each tab is a button named “Badge
+<words> on <item>”. Needs me rows and dashboard rows show the item's badges as chips
+after its name. A badge never raises attention or changes counts. MCP `workspace_read`
+returns `badges: [{ noteId, text, paper, itemIds }]`, and the agent guide (v2026-10-22.2)
+tells agents to label items this way and to reuse one note for several items. Not built
+yet: a free chip for an unconnected badge note, highlighting every card with the same
+words on click, and a setting to turn badges off.
+
 **MAP-30 — Snap to grid.** An optional invisible 48 px grid that item centres land on
 when a position is decided, so connections run straight or at even angles; off by
 default. The rule and its settings switch are SETTINGS-SNAP-GRID.
@@ -277,8 +301,7 @@ purple toward Undermap, green back toward the map.
 **MAP-21 — Tool rail and GitHub inbox.** The rail is the one origin of every
 workspace menu: a vertical, Minecraft-style hotbar at the left edge whose
 fixed slots are, top to bottom, **Needs me**, To-dos, Reminders (MAP-REMINDERS), the
-GitHub inbox, Undermap and, below a divider, **Actions** (STANDUP-01; away while the standup
-report is disabled, its key 6 reserved so Settings keeps 7) and **Settings**. Tab walks them in that order; each names itself with its
+GitHub inbox, Undermap and, below a divider, **Actions** (STANDUP-01) and **Settings**. Tab walks them in that order; each names itself with its
 key in a pixel tooltip on its right, shown at once on hover or focus and gone while
 that tool's sheet or dialog is open, so it is readable before hover opens the sheet. Nothing actionable sits top right any more: that
 corner holds only the connection status, which is empty while connected (STATE-02).
@@ -714,7 +737,8 @@ plot's items (Shift adds them to the selection). Dragging past 4 px moves the it
 the same delta as one `nodes.move` revision; Escape puts them back. Double-click or F2
 renames inline (Enter saves, Escape cancels, an empty name hands it back to
 automation). Right-click or Shift+F10 opens **Select items · Rename plot… · Name
-automatically**, then a **Color** section, then **Hide this plot**. The Color section is a
+automatically**, then a **Color** section, then **Move plot to ▸** and **Send plot to Undermap**,
+then **Hide this plot**. The Color section is a
 row of the project's six swatches (one radio group named “Color”; each swatch is named and titled by its
 color's neighborhood name, the shown one is ringed and checked; Left/Right walk the row, Up/Down treat it as one
 stop, Enter, Space or a click picks) and below it **Automatic · <assigned color's name>**, checked
@@ -722,6 +746,18 @@ while no color is chosen. Choosing a color or Automatic is the person-only plot 
 `color` (`color` null for Automatic). A hidden plot shows again once its membership changes
 enough to be a new plot; the project menu lists **Show hidden plots (N)** and a
 **Show plots** switch for that project.
+
+*Moving a plot.* **Move plot to ▸** lists the map's projects like Move to project
+(MAP-26), the plot's own project checked and disabled, then **No project**. A project
+sends all the plot's items as one `nodes.send` block led by its first member: they keep
+their layout and land beside the target's items. **No project** is `nodes.send` with
+`projectId: null`: the items leave their project together, keep their layout and land
+beside the project's items but off its ground, never inside another neighbourhood; an
+item already without a project stays put. The plot keeps its identity, name and chosen
+color in the new project when its items form a plot there again (a record that left
+another project is reclaimed by member overlap, as a dormant plot is); items without a
+project form no plot. **Send plot to Undermap** sends every member with the selection's
+Send to Undermap.
 
 **Names:** a plot shows a local name until it has another: a ticket or PR reference
 shared by two or more titles, otherwise the word most titles share, plus the count
@@ -838,7 +874,8 @@ position with the motion of Show on map (none under reduced motion, zoom 1), lea
 the moved items selected and opens nothing. In a muted project the item lands under
 the cover, which parts for a moment as for Show on map; the project stays muted.
 
-One shared command, `nodes.send { ids, projectId }` (first id leads), does this
+One shared command, `nodes.send { ids, projectId }` (first id leads; `projectId: null`
+takes the items out of their project, see MAP-24 Moving a plot), does this
 atomically in one revision for the app and for agents through `workspace_apply`,
 under the same policy as other transfers. It refuses archived or Undermap targets,
 non-project targets, projects and archived or Undermap items among `ids`, and
@@ -1448,7 +1485,10 @@ its tooltip): Claude's Stop hook carries the turn's last assistant message, the
 service redacts secrets, keeps its last non-empty line without Markdown markers and
 clips it to 160 characters, and the next prompt clears it. Only that line is stored;
 the message itself is neither kept nor sent to the renderer, and every other hook
-still leaves the session without text. Each group heading (Asking me, My turn,
+still leaves the session without text. The same line is the body of the agent's
+native notification (in place of the attention details), and an agent card with room
+for two or more summary lines (the large size) shows it in place of its summary, after
+the attention reason; small and medium cards keep their summary. Each group heading (Asking me, My turn,
 Finished, Earlier) is a fold toggle with a chevron; a folded group keeps its heading
 and count and hides its rows. Folds are remembered on this Mac (browser storage, not
 the workspace) and never change what is counted. Hovering or keyboard-focusing an entry
@@ -2163,6 +2203,34 @@ resize keeps the item's centre. The service applies the rule for every caller (U
 providers) from the saved setting, so a position an agent or provider gives is also
 snapped while the switch is on. The intention is tidy angles: items whose centres share
 the grid connect with straight or evenly angled lines.
+
+**SETTINGS-AUTO-REVIEW — Automatic reviews of new pull requests.** Settings → Items →
+GitHub pull request, section **Automatic reviews**, has the switch **Review new pull
+requests** (off by default) and one checkbox per review agent the table has (today
+Claude and Codex; Claude ticked by default; disabled while the switch is off), stored as
+`autoReview { enabled, agents }`. Turning it on settles every pull request already on
+the map: those are never reviewed by it. Each pull request that lands on the map while
+it is on gets one direct review (the same as Trigger review ▸ that agent, with the
+agent's default model) from every chosen agent, as soon as the pull request reads open;
+a draft counts, one first read closed or merged is settled without a review, and no
+chosen agent starts nothing. A pull request is settled by its resource, before its
+reviews start, under a request id derived from the resource and agent, so a restart, a
+second node of the same pull request or turning the switch off and on again never
+repeats a review; pull requests added while it was off are part of the new baseline.
+The service keeps its record in the code.review package's plugin storage (`auto-review`)
+and checks every 15 seconds and on workspace changes. Later pushes are not reviewed
+again (Review loop does that).
+
+**SETTINGS-ITEM-DELETE — Delete in item menus.** Settings → Map, section **Removing
+items**, has the switch **Delete in item menus** (off by default; additive boolean
+`itemDelete`, older settings read off). When on, every item's right-click menu (map and
+Undermap, single item only; not projects, links or selections) ends with a destructive
+**Delete…** below a divider. It opens a submenu that is the confirmation: **Cancel**
+closes the menu, **Delete permanently** (described “Provider data and sessions are kept.
+This can’t be undone.”) archives and deletes the item in one revision
+(`node.archive` then `node.delete`), exactly as Archive then Delete permanently in the
+archive browser: its links and to-do attachments go, its resource goes when no other
+node uses it, and no provider delete is ever called. Off, items leave through Archive.
 
 **SETTINGS-TERMINAL — Terminal screen reader support and scrollback.** Settings → General, section
 **Terminals**, has the switch **Screen reader support for terminals** (off by
@@ -2954,7 +3022,10 @@ here (not installed, not signed in, the starter unavailable) does a ready connec
 agent take the request instead, preferring one connected through this PR, and the
 direct connection is then added like a manual trigger; with none ready either, the
 service tries again on each of its reconcile ticks until the run completes, then gives
-up for that attempt. One automatic validation per attempt (per phase for a gated run, see Validations per phase), journaled like a user
+up for that attempt. While **Auto deploy** is armed on a PR, Auto validate leaves the
+rollouts that PR discovered to it: Auto deploy asks for its own validation at each step
+it waits on, so asking here too would validate every stage twice (another PR with Auto
+validate on, and no armed Auto deploy, still counts). One automatic validation per attempt (per phase for a gated run, see Validations per phase), journaled like a user
 trigger, and listed as “automatic” in the rollout's validations. Unchecking stops
 future automatic triggers and cancels nothing running.
 Agents still cannot trigger (human-only rule); the checkbox is the person's standing
@@ -3069,6 +3140,25 @@ the explicit item-level Seen/Mark seen action acknowledges all observed reasons.
 archive/delete: an item deliberately deleted during one assignment cycle remains
 deleted until reassignment begins a new cycle. Settings exposes sync status and
 manual refresh; normal polling runs once per minute while the workspace is open.
+
+**PR-REWORK — An agent reworking an item.** An agent about to change an existing item
+(pushing fixes to a pull request, rewriting a note) sets `node.rework { id, note }` with
+what it changes (≤200 characters; the guide asks for ≤60) and keeps it current; it
+clears it with `note: null` when done or abandoned. The shared agent guide asks for
+this (guide v2026-10-22.1). While a note is set every node of the item is working
+(mint, counted as working in dashboards and plots) and provider status cannot take it
+out of that state: a provider `node.update` keeps `activity: working` and the poll does
+not rewrite activity for it. Clearing it sets the item idle, and the next provider read
+restores its own state. The command is revision-free, belongs to items (a project is
+refused), and the MCP fills `by` with the calling session's node. A pull request's view
+shows **Reworking · <note> · <agent title>** as a status line above the description,
+with **Mark as completed manually**, which clears the note (the agent is not stopped).
+When an agent clears its own note (the clearing carries `by`; the MCP fills it), the
+item enters Needs me as **My turn** with “Reworked: <note>” (attention source `rework`,
+once per rework); a clear by hand raises nothing, and a new note takes it back out.
+Item views receive it through `observeRework` and `clearRework`. The same guide asks
+agents to save a `blocks` link between pull requests that depend on each other, the
+one that must merge first as source.
 
 **PR-05 — Background PR updates.** Poll visible attached PR resources once per
 minute while the workspace is open, independently of assignment discovery and
@@ -3250,13 +3340,15 @@ inconclusive, sends no report or has no verdict within an hour; checks still fai
 two fix attempts, or a fixing agent pushes no new commit within 45 minutes; a required
 review is missing or changes were requested (only a person can resolve that); the branch
 has merge conflicts, is out of date without a merge queue, or stays blocked; the pull
-request is a draft, closed, or leaves the merge queue unmerged; GitHub or the table
+request is a draft or closed; GitHub or the table
 declines a write; a write's or a fix request's outcome is unknown; no agent can be asked
 (none ready and Claude cannot start, or a validation request fails); a deploy run or job
 fails or is cancelled; no deploy run appears within 30 minutes of the merge. Waiting is not
 doubt: pending checks, the merge queue, running jobs and a gate someone else approves wait.
 Done raises “Finished · ready to view” (note “Auto deploy done”). Stop ends it without
-Needs me; arming again starts a new record and withdraws the old reason.
+Needs me; so does taking the pull request out of the merge queue after auto deploy queued it,
+which counts as a person stopping it, and requeueing it by hand does not arm it again. Arming
+again starts a new record and withdraws the old reason.
 
 The PR view shows a status line under the frame bar while a record exists (not after
 Stop): “Auto deploy · waiting for checks”, “· fixing CI (1/2)”, “· merging”, “· in the merge
@@ -3513,7 +3605,11 @@ event's actor decides the wording. It reads “Ignored” in its row and detail,
 “Ignored by you” / “No longer ignored by you” in its history and “N ignored” in
 the roll-ups, and never as fixed or sent; `list` also returns the ignored finding
 ids. Only an agent's report reads “Fixed” / “Fixed in <commit>” / “Fixed by
-<agent>”. Sending, cancelling and overrides are human-only: MCP refuses them. The
+<agent>”. Sending, cancelling and overrides are human-only: MCP refuses them. Once
+every finding that was delivered to an agent is fixed (reported by the agent, or
+ignored by a person), the review item is marked done (`node.complete`, once; a person
+may reopen it). Findings never sent do not hold it back, and a review with nothing sent
+is never completed this way. The
 map card (medium size) shows one pip per finding (solid open, hollow sent/queued,
 striped fixed or ignored), counts by severity/kind and progress (queued · sent ·
 fixed · ignored); critical or high bugs raise Needs me once
@@ -3597,9 +3693,13 @@ selection; omit single-item settings. A plugin menu group may name a selection
 form (`selection: { label, children }`): when every selected item has the group,
 the selection menu offers it under that label with those children only, and a pick
 runs the child once per item, each with its own toast and Open action. Pull requests
-offer **Review selection ▸ Claude / Codex** this way (one review per PR with the
-provider's default model, the existing per-PR de-duplication; `/review` is not
-offered for a selection because it posts to GitHub).
+offer **Review selection ▸ Claude / Codex / Claude + Codex** this way (one review per
+PR and provider with the provider's default model, the existing per-PR de-duplication;
+`/review` is not offered for a selection because it posts to GitHub). A group child may
+name other children of its group in `runs`: a pick then starts each of them as if it
+had been picked, each with its own toast and Open action, for one item or once per
+selected item. A pull request's **Trigger review** offers **Claude + Codex** this way
+(`runs: ['review.claude', 'review.codex']`), between Codex and /review.
 
 ## 7. To-dos
 
@@ -3892,10 +3992,8 @@ then No project); a Triage to-do still exactly as imported waits in the inbox; a
 touched one becomes a Next to-do; done rows go to Done, keep their completion time
 and count their wait for Archive from the upgrade. Nothing is deleted.
 
-**STANDUP-01 — Standup report.** *Disabled for now* (`STANDUP_ENABLED` in `packages/core/standup.ts`):
-the rail has no Actions slot, Settings → AI features has no Standup report section, the
-service runs no background digests and refuses `standup.open`; the code and tests stay and
-the e2e journey skips. The rest of this item describes the enabled behaviour.
+**STANDUP-01 — Standup report.** On (`STANDUP_ENABLED` in `packages/core/standup.ts`; off
+removes the Actions slot, the Settings section and background digests).
 The rail's **Actions** slot (MAP-21, above Settings, key 6) opens the item menu with one
 entry, **Standup report…**, which opens a floating panel like Settings. The report tells
 what the person did, written in the first person, as stories: a short title, 1–4
@@ -3925,7 +4023,8 @@ per line and the evidence as Slack `<url|label>` or Markdown `[label](url)` link
 
 **Digests.** A digest is stored per (agent session, local day) and per (PR, local day it
 changed) with its text, evidence, model, input fingerprint and time (schema 24). Claude
-Haiku writes 3–4 lines (asked / found / changed / state) from one day of a Claude
+Haiku writes 3–4 lines (asked / found / changed / state; a longer answer keeps its first six
+lines, each at most 300 characters, rather than being lost) from one day of a Claude
 conversation on the table: my prompts, Claude's text replies, tool names and short tool
 errors, never thinking or raw tool output; secrets are redacted before sending and again
 before storing, and the input is capped at 24,000 characters (the day's first lines and
@@ -3938,11 +4037,15 @@ digested again; a failed attempt is retried after six hours at the earliest.
 **When.** In the background every five minutes, one conversation day at a time for the
 14 days before today, then yesterday's PRs once a day; background digests leave four
 requests of the hourly and daily allowance to the other AI helpers. Opening the report
-digests what is missing or changed in the range, today included, showing what it reads
-(“Reading 2 conversations…”).
+digests what is missing or changed in the range, today included, four at a time (pull
+requests too), showing what it reads (“Reading 2 conversations…”). A first 7-day report
+of about 80 digests takes about three minutes.
 
 **Composition.** One Claude Sonnet call per open, range change or rewrite returns JSON
-(`stories`, `outlook`; validated). A story citing an evidence id that was not in the
+(`stories`, `outlook`; validated), at most 12 stories and 8 outlook entries; its input
+holds up to 200,000 characters, so a full week's digests and facts fit, and only past that
+are the oldest digests left out (the report says how many). A story longer than the panel
+shows (title, bullets, evidence) is shortened, never the whole report lost. A story citing an evidence id that was not in the
 input is dropped and the report says how many; no story is shown without evidence.
 Reports are cached by range, digests, facts, instruction and model. A rewrite
 instruction (at most 500 characters) composes again from the same inputs.

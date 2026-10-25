@@ -1,3 +1,5 @@
+import { BadgeChips } from './badge-chips.tsx';
+import { mapBadges } from '../../../src/graph/badges.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { WorkspaceState } from '../../../packages/core/control.ts';
 import type { AttentionHistoryEntry } from '../../../packages/workspace-service/sqlite-store.ts';
@@ -122,6 +124,7 @@ export function NeedsMeTool({ size, onSize, ...rows }: AttentionRowsProps & { si
 function AttentionRows({ items, muted = [], counting, state, reveal, locate, highlight, dismiss, openWeb, unavailable, close, occluded: setOccluded }: AttentionRowsProps & { close(): void; occluded(value: boolean): void }) {
   const [hovered, setHovered] = useState<string>(), [focused, setFocused] = useState<string>(), [mutedOpen, setMutedOpen] = useState(false), { folded, toggle } = useFolded();
   const nodes = useMemo(() => new Map(state.nodes.map(node => [node.id, node])), [state.nodes]);
+  const badges = useMemo(() => mapBadges(state.nodes, state.resources, state.links).onItems, [state.nodes, state.resources, state.links]);
   const history = useAttentionHistory([...items, ...muted].map(item => item.identity).join('\n')), end = useRef<HTMLDivElement>(null), next = useRef(history.next); next.current = history.next;
   useEffect(() => {
     if (!end.current || !history.more || history.failed) return;
@@ -156,7 +159,7 @@ function AttentionRows({ items, muted = [], counting, state, reveal, locate, hig
       onFocusCapture={event => { if (event.target.matches(':focus-visible')) setFocused(item.identity); }}
       onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(undefined); }}>
     <button className="attention-entry" aria-label={`Open ${item.node.title}`} aria-description={attentionLabel(item.tier, item.details.join(' · '))} onClick={() => { reveal(item.node.id); close(); }}>
-      <strong>{item.node.title}</strong><span className="attention-reason" data-tier={item.tier}><TierMark tier={item.tier} />{item.details.join(' · ')}{attentionAge(item.since, now) && <span className="attention-age"> · {attentionAge(item.since, now)}</span>}</span>
+      <strong>{item.node.title}<BadgeChips badges={badges.get(item.node.id)} /></strong><span className="attention-reason" data-tier={item.tier}><TierMark tier={item.tier} />{item.details.join(' · ')}{attentionAge(item.since, now) && <span className="attention-age"> · {attentionAge(item.since, now)}</span>}</span>
       {summaries.get(item.identity) && <span className="attention-summary" data-said={nodes.get(item.node.id)?.lastLine ? true : undefined} title={summaries.get(item.identity)}>{summaries.get(item.identity)}</span>}
       <small>{[...new Set(item.aliases.map(alias => nodes.get(alias.projectId ?? '')?.title ?? 'Floating item'))].join(' · ')}{item.node.completedAt ? ' · Marked done' : ''}</small>
     </button><div className="attention-actions">

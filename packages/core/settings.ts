@@ -1,4 +1,5 @@
 import { itemMapSizesSchema } from './item-map-sizes.ts';
+import { REVIEW_AGENT_IDS } from '../../src/pull-requests/review-agents.ts';
 import * as z from 'zod/v4';
 import { itemViewsSchema } from './item-views.ts';
 import { LARGE_ITEM_WIDTH } from '../../src/graph/footprints.ts';
@@ -127,6 +128,13 @@ export const settingsSchema = z.object({
   doubleClickOpensWeb: z.boolean().default(false),
   /** Item centres land on an invisible 48 px grid when moved or placed (MAP-30). */
   snapToGrid: z.boolean().default(false),
+  /** Item menus end in Delete…, which removes the item for good after a confirmation. */
+  itemDelete: z.boolean().default(false),
+  /** Pull requests that land on the map while this is on get one direct review from each chosen agent. */
+  autoReview: z.object({
+    enabled: z.boolean().default(false),
+    agents: z.array(z.enum(REVIEW_AGENT_IDS)).max(REVIEW_AGENT_IDS.length).refine(agents => new Set(agents).size === agents.length, 'Each review agent once').default(['claude']),
+  }).default({ enabled: false, agents: ['claude'] }),
   /** Absolute folder used for new launches when their project has none; empty means unset. */
   defaultWorkingDirectory: z.string().max(4096).default(''),
   quickItemTypes: z.array(z.string().min(1).max(200)).max(MAX_QUICK_ITEMS).refine(ids => new Set(ids).size === ids.length, 'Choose each type only once').default(DEFAULT_QUICK_ITEMS),

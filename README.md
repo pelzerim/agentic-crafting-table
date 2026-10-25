@@ -27,6 +27,7 @@ zoom out to see what needs you.**
 - One panel lists what is waiting for you: an agent with a question, a review request,
   a failed rollout. Mark it seen and it leaves; opening it can mark it seen too.
 - Native macOS banners when the app is in the background, if you want them.
+- A stand-up summary of what moved since you last looked.
 
 **GitHub without the browser**
 - Pull requests show their conversation with new comments marked, replies, Fix with

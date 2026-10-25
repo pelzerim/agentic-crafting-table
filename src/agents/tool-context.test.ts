@@ -13,14 +13,14 @@ test('the core agent guide names no item package; packages append their own guid
 
 const binding = { projectId: '00000000-0000-4000-8000-000000000014', agentNodeId: '00000000-0000-4000-8000-000000000015', workspaceId: 'billing-dev-01' };
 
-test('the guide without package snippets stays within 2,600 characters', () => {
+test('the guide without package snippets stays within 3,100 characters', () => {
   const length = buildAgentToolContext(binding, []).prompt.length;
-  assert.ok(length <= 2600, `${length} characters`);
+  assert.ok(length <= 3100, `${length} characters`);
 });
 
-test('the guide that asks for to-do context carries its own version, so resumed sessions receive it', () => {
-  assert.equal(AGENT_TOOL_CONTEXT_VERSION, '2026-10-07.3');
-  assert.ok(buildAgentToolContext(binding, []).prompt.startsWith('Agentic Crafting Table · workspace guide v2026-10-07.3\n'));
+test('the guide that explains note badges carries its own version, so resumed sessions receive it', () => {
+  assert.equal(AGENT_TOOL_CONTEXT_VERSION, '2026-10-22.2');
+  assert.ok(buildAgentToolContext(binding, []).prompt.startsWith('Agentic Crafting Table · workspace guide v2026-10-22.2\n'));
 });
 
 test('the compact guide keeps every behavioural rule', () => {
@@ -45,6 +45,9 @@ test('the compact guide keeps every behavioural rule', () => {
     'honest sync': [/sync limitation/, /never claim/i],
     'map placement': [/node\.attach/, /node\.move/, /node\.update/],
     'to-do context': [/reasoning, links and next steps/, /person or later agent/, /to-do's context \(todo\.context\)/, /stays when you are gone/],
+    'rework notes': [/node\.rework/, /before you change an existing item/i, /keep the note current/i, /note:null when done/],
+    'badges': [/badge/, /1–2 words/, /≤12 chars/, /data\.display "badge"/, /"note" keeps paper/, /one note for several items/],
+    'blocking between pull requests': [/PRs that depend on each other/, /link\.save kind blocks/, /must merge first as source/],
     'new items need no position': [/omit position/i, /beside what they link to/, /or beside you/, /only when the user asked for a specific place/],
   };
   for (const [rule, patterns] of Object.entries(rules)) for (const pattern of patterns) assert.match(prompt, pattern, rule);

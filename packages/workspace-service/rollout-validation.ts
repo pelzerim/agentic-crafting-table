@@ -233,9 +233,9 @@ export class RolloutValidations {
   private reconciling?: Promise<void>; private again = false; private timer?: ReturnType<typeof setInterval>; private closed = false;
   /** Since when each hidden agent with settled validations has been seen idle at its prompt, by this service's passes. */
   private idleHidden = new Map<string, number>();
-  private starter?: HostedAgents; private starting = new Map<string, Promise<unknown>>(); private unready?: { at: number; reason: string }; private stageRules: () => readonly StageRule[];
-  constructor(store: SqliteStore, control: WorkspaceControl, resources: Resources, sessions: SessionCoordinator | undefined, changed: () => Promise<void>, options: { now?: () => number; allowed?: () => boolean; noReportAfterMs?: number; noReportDeadlineMs?: number; starter?: HostedAgents; /** The configured stage rules, read on every pass; none by default. */ stageRules?: () => readonly StageRule[] } = {}) {
-    this.store = store; this.control = control; this.resources = resources; this.sessions = sessions; this.changed = changed; this.starter = options.starter; this.stageRules = options.stageRules ?? (() => []);
+  private starter?: HostedAgents; private starting = new Map<string, Promise<unknown>>(); private unready?: { at: number; reason: string }; private stageRules: () => readonly StageRule[]; private deploying: (pullResourceId: string) => boolean;
+  constructor(store: SqliteStore, control: WorkspaceControl, resources: Resources, sessions: SessionCoordinator | undefined, changed: () => Promise<void>, options: { now?: () => number; allowed?: () => boolean; noReportAfterMs?: number; noReportDeadlineMs?: number; starter?: HostedAgents; /** The configured stage rules, read on every pass; none by default. */ stageRules?: () => readonly StageRule[]; /** Whether Auto deploy is armed on a pull request; it then asks for that rollout's validations itself. */ deploying?: (pullResourceId: string) => boolean } = {}) {
+    this.store = store; this.control = control; this.resources = resources; this.sessions = sessions; this.changed = changed; this.starter = options.starter; this.stageRules = options.stageRules ?? (() => []); this.deploying = options.deploying ?? (() => false);
     this.now = options.now ?? Date.now; this.allowed = options.allowed ?? (() => true); this.noReportAfter = options.noReportAfterMs ?? NO_REPORT_AFTER_MS; this.noReportDeadline = options.noReportDeadlineMs ?? NO_REPORT_DEADLINE_MS;
   }
 
@@ -391,7 +391,9 @@ export class RolloutValidations {
    * request instead: the agent of the attempt's last validation, then one connected through a pull request that discovered the
    * rollout, then any. */
   private async validateAutomatically(state: WorkspaceState, node: WorkspaceState['nodes'][number], resourceId: string, observation: RolloutObservation & { run: RolloutRun }, firstSeen: boolean) {
-    const run = observation.run, pulls = autoValidatingPulls(state, node.id), scope = { runId: run.id, attempt: run.run_attempt, headSha: run.head_sha };
+    // A pull request whose Auto deploy is armed asks for this rollout's validations itself; asking here too would validate each stage twice.
+    const deployed = (id: string) => { const resourceId = state.nodes.find(candidate => candidate.id === id)?.resourceId; return Boolean(resourceId && this.deploying(resourceId)); };
+    const run = observation.run, pulls = autoValidatingPulls(state, node.id).filter(id => !deployed(id)), scope = { runId: run.id, attempt: run.run_attempt, headSha: run.head_sha };
     if (!pulls.length || !this.sessions) return false;
     const rule = stageRule(observation, this.stageRules()), due = rule && dueStage(rule, observation.jobs, this.now());
     const attempt = this.attemptValidations(resourceId, run);

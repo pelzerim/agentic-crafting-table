@@ -132,6 +132,29 @@ test(`a person picks a plot color; it survives recomputes and a restart, may rep
   assert.equal(agentRuntimeRefusal({ action: 'plot', arguments: { operation: 'color' } }), humanOnlyMessage);
 }));
 
+test('a plot moved to another project keeps its identity, name and chosen color there', () => fixture(async ({ store, control, apply }) => {
+  const plots = new Plots(store, control), [billing] = plots.observe(await control.read()).list;
+  await plots.run('photos', { operation: 'rename', plotId: billing.id, name: 'Pricing' });
+  await plots.run('photos', { operation: 'color', plotId: billing.id, color: 'orchid' });
+  const resident = (id: string, x: number): WorkspaceCommand => ({ ...note(id, x, 6000), projectId: 'video' } as WorkspaceCommand);
+  await apply({ type: 'project.create', id: 'video', title: 'Video', summary: '', position: { x: 0, y: 6000 } }, resident('v1', 0), resident('v2', 1500), resident('v3', 3000), resident('v4', 4500), resident('v5', 6000));
+  await apply({ type: 'nodes.send', ids: ['a1', 'a2', 'a3'], projectId: 'video' });
+  const moved = plots.observe(await control.read()).list.find(plot => plot.projectId === 'video')!;
+  assert.deepEqual([moved.id, moved.name, moved.source, moved.chosenColor], [billing.id, 'Pricing', 'user', 'orchid']);
+  assert.ok(['a1', 'a2', 'a3'].every(id => moved.memberIds.includes(id)));
+  assert.equal(plots.observe(await control.read()).list.filter(plot => plot.id === billing.id).length, 1);
+  await plots.run('video', { operation: 'rename', plotId: billing.id, name: 'Pricing v2' });
+}));
+
+test('a short note shown as a badge on an item is no plot member', async () => fixture(async ({ store, control, apply }) => {
+  const plots = new Plots(store, control);
+  await apply({ type: 'item.add', id: 'pr', resourceId: 'pr-r', pluginId: 'github.pull-request', title: 'Proration', data: { owner: 'acme', repo: 'app', number: 7 }, projectId: 'photos', position: { x: 0, y: 0 } },
+    note('s2', 50, 0), { type: 'item.update', id: 's2', data: { text: 'S2' } }, { type: 'link.save', link: { id: 's2-pr', sourceId: 's2', targetId: 'pr', kind: 'reference', label: '' } });
+  assert.ok(plots.observe(await control.read()).list.every(plot => !plot.memberIds.includes('s2')));
+  await apply({ type: 'item.update', id: 's2', data: { text: 'S2', display: 'note' } });
+  assert.ok(plots.observe(await control.read()).list.some(plot => plot.memberIds.includes('s2')), 'kept as paper it joins its neighbours');
+}));
+
 function naming(store: SqliteStore, control: WorkspaceControl, answers: string[], now: { value: number }) {
   const requests: any[] = [];
   const client: ActivitySummaryClient = { async complete(request) { requests.push(request); return answers.shift() ?? 'KEEP'; } };

@@ -57,10 +57,11 @@ async function fixture() {
       return { content: actionId === 'rollout.shipped' ? shipped : { files: files.map(filename => ({ filename })) } }; },
     async refreshPresentation() { presented++; await held; } } as unknown as ResourceCoordinator;
   let now = Date.parse('2026-09-30T13:10:00Z'), broadcasts = 0, rules: readonly StageRule[] = STAGED;
-  const create = () => new RolloutValidations(store, control, resources, sessions, async () => { broadcasts++; }, { now: () => now, stageRules: () => rules });
+  const deploying = new Set<string>();
+  const create = () => new RolloutValidations(store, control, resources, sessions, async () => { broadcasts++; }, { now: () => now, stageRules: () => rules, deploying: id => deploying.has(id) });
   let validations = create();
   const run = (input: object) => validations.run('rollout', input);
-  return { control, store, inputs, run, get validations() { return validations; }, terminals, apply, reads, now: () => now, observation, presented: () => presented, broadcasts: () => broadcasts, tick(ms: number) { now += ms; }, stageRules(next: readonly StageRule[]) { rules = next; }, hold(until: Promise<void>) { held = until; },
+  return { control, store, inputs, run, get validations() { return validations; }, terminals, apply, reads, now: () => now, observation, presented: () => presented, broadcasts: () => broadcasts, tick(ms: number) { now += ms; }, stageRules(next: readonly StageRule[]) { rules = next; }, deploy(pullResourceId: string) { deploying.add(pullResourceId); }, hold(until: Promise<void>) { held = until; },
     async restart() { await validations.close(); validations = create(); }, close() { store.close(); rmSync(directory, { recursive: true, force: true }); } };
 }
 
@@ -501,6 +502,17 @@ test('a staged deploy run is validated once per stage: preview done, live done, 
     const views = (await f.run({ operation: 'list' }) as any).validations as any[];
     assert.deepEqual(views.map(view => view.scope.environments), [['preview'], ['live'], ['live']]);
     assert.deepEqual(views.map(view => view.scope.label), ['preview done', 'live done', 'live +10 min'], 'the card names each stage from its rule');
+  } finally { f.close(); }
+});
+
+test('Auto validate leaves a rollout to an armed Auto deploy of the pull request that discovered it, which asks for its own validations', async () => {
+  const f = await fixture();
+  try {
+    staged(f); await merged(f); f.deploy('pr-r');
+    staged(f, f.now() - 60_000, f.now());
+    await f.validations.reconcile(); await f.validations.reconcile();
+    assert.deepEqual(await stages(f), []);
+    assert.equal(prompts(f).length, 0);
   } finally { f.close(); }
 });
 

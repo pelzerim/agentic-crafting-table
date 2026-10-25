@@ -31,8 +31,9 @@ test('the rail is the one origin of every menu: Needs me, To-dos, Reminders, Git
     expect([button.x, button.width, button.height]).toEqual([16, 44, 44]);
     expect(button.y).toBeGreaterThan(rail.y); expect(button.y + button.height).toBeLessThan(rail.y + rail.height);
   }
-  // Settings sits apart from the tools, below the divider.
-  expect(buttons.at(-1)!.y - buttons.at(-2)!.y).toBeGreaterThan(buttons.at(-2)!.y - buttons.at(-3)!.y);
+  // Actions and Settings sit apart from the tools, below the divider.
+  const first = buttons.length - 1 - ACTIONS.length;
+  expect(buttons[first]!.y - buttons[first - 1]!.y).toBeGreaterThan(buttons[first - 1]!.y - buttons[first - 2]!.y);
   // Top right holds no control any more: only the silent connection status.
   await expect(page.locator('.map-actions')).toHaveCount(0);
   await expect(page.locator('.map-status').getByRole('button')).toHaveCount(0);

@@ -6,7 +6,7 @@ import type { PresentationHooks, ServiceModule } from '../../../../packages/plug
 import { rolloutIndicators } from './presentation.ts';
 import { githubRollout } from './definition.ts';
 import { stageRulesSetting } from './stages.ts';
-import { AutoDeploys } from '../../../../packages/workspace-service/auto-deploy.ts';
+import { AutoDeploys, autoDeployArmed } from '../../../../packages/workspace-service/auto-deploy.ts';
 import { AUTO_DEPLOY_OPERATION } from './auto-deploy.ts';
 
 /** Validation verdicts and recorded events drawn on the rollout's map card. */
@@ -18,7 +18,7 @@ const service: ServiceModule = {
   activate(host) {
     host.presentation(githubRollout.id, rolloutPresentation);
     host.onWorkspace(workspace => {
-      const validations = new RolloutValidations(workspace.store, workspace.control, workspace.resources, workspace.terminals, workspace.broadcast, { allowed: workspace.allowed, starter: workspace.agents, stageRules: () => stageRulesSetting(host.settings().stageRules) });
+      const validations = new RolloutValidations(workspace.store, workspace.control, workspace.resources, workspace.terminals, workspace.broadcast, { allowed: workspace.allowed, starter: workspace.agents, stageRules: () => stageRulesSetting(host.settings().stageRules), deploying: id => autoDeployArmed(workspace.storage, id) });
       host.runtimeOperation('rollout.validation', context => context.execute(() => validations.run(context.nodeId, context.arguments)));
       const deploys = new AutoDeploys({ storage: workspace.storage, store: workspace.store, control: workspace.control, resources: workspace.resources, validations, changed: workspace.broadcast,
         allowed: workspace.allowed, stageRules: () => stageRulesSetting(host.settings().stageRules), ...(workspace.terminals ? { sessions: workspace.terminals } : {}), ...(workspace.agents ? { starter: workspace.agents } : {}) });

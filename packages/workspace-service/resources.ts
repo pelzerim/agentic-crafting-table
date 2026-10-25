@@ -401,7 +401,7 @@ export class ResourceCoordinator {
       for (const node of state.nodes.filter(node => matches.some(record => record.id === node.resourceId))) {
         const indicators = resourceMapIndicators(this.host, matches.find(record => record.id === node.resourceId)!, snapshot, this.store);
         const title = node.generatedTitle === undefined ? snapshot.title : undefined;
-        if (title && node.title !== title || node.summary !== snapshot.label || node.activity !== snapshot.activity || indicators && canonical(node.indicators) !== canonical(indicators))
+        if (title && node.title !== title || node.summary !== snapshot.label || node.activity !== (node.rework ? 'working' : snapshot.activity) || indicators && canonical(node.indicators) !== canonical(indicators))
           commands.push({ type: 'node.update', id: node.id, ...(title ? { title } : {}), summary: snapshot.label, activity: snapshot.activity, indicators });
       }
       // Provider completion mirrors onto Mark done only when it changes, so a local

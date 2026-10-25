@@ -262,6 +262,101 @@ test('Review selection starts one Claude review per selected pull request, each 
   }
 });
 
+test('Trigger review ▸ Claude + Codex starts a Claude and a Codex review of the pull request at the same time', async () => {
+  test.setTimeout(60_000);
+  const directory = await mkdtemp(join(tmpdir(), 'craft-review-both-')), fixture = githubFixture(), executable = join(directory, 'review-fixture');
+  await writeFile(executable, `#!${process.execPath}\nimport ${JSON.stringify(pathToFileURL(resolve('tests/fixtures/native-review.mjs')).href)};\n`, { mode: 0o700 });
+  const source: ReviewSource = {
+    async freeze(resource) { return { connectionId: resource.connectionId, comparison: { repository: 'fixture/billing', number: 42, baseTipSha: fixture.pull.base.sha, headSha: fixture.pull.head.sha }, title: fixture.pull.title, description: 'Review fixture', url: 'https://github.com/fixture/billing/pull/42' }; },
+    async capture(_directory, requestId, source) {
+      const cwd = join(directory, 'comparisons', requestId, 'repository'); await mkdir(cwd, { recursive: true });
+      return { ...source.comparison, baseSha: 'c'.repeat(40), changedFiles: ['file.ts'], diff: '+ review change', cwd, digest: requestId };
+    },
+  };
+  const runtime = { directory: join(directory, 'runtime'), executable: electronPath as unknown as string, entrypoint: resolve('dist/session-supervisor.cjs'), electronRuntime: true };
+  const service = await startWorkspaceService(directory, undefined, runtime, { ...fixture, reviews: { 'github.pull-request': source }, reviewRuntime: {
+    models: async () => ({ options: ['opus'], default: 'opus' }), probe: async () => ({ executable, version: 'scripted review fixture' }),
+  } });
+  await service.control.dispatch({ commandId: 'setup', expectedRevision: 0, actor: { kind: 'user', id: 'fixture' }, commands: [
+    { type: 'project.create', id: 'project', title: 'Project', position: { x: 0, y: 0 } },
+    { type: 'item.add', id: 'pr', resourceId: 'resource-pr', pluginId: 'github.pull-request', title: fixture.pull.title, data: { owner: 'fixture', repo: 'billing', number: 42 }, projectId: 'project', position: { x: 300, y: 200 } },
+  ] });
+  const app = await electron.launch({ args: ['.'], env: { ...process.env, ACT_TEST_DATA_DIR: directory } });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.getByRole('article', { name: fixture.pull.title, exact: true }).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Trigger review', exact: true }).hover();
+    await expect(page.getByRole('menu', { name: 'Trigger review' }).getByRole('menuitem')).toHaveText(['Claude', 'Codex', 'Claude + Codex', '/review']);
+    await page.getByRole('menuitem', { name: 'Claude + Codex', exact: true }).click();
+    for (const provider of ['Claude', 'Codex']) {
+      await expect(page.getByRole('status', { name: `${provider} · ${fixture.pull.title}`, exact: true })).toContainText('Added to the map');
+      await expect(page.getByRole('article', { name: `${provider} review · #42`, exact: true })).toBeVisible();
+    }
+    const reviews = (await service.control.read()).resources.filter(resource => resource.pluginId === 'code.review');
+    expect(reviews.map(review => review.data.provider).sort()).toEqual(['claude', 'codex']);
+    for (const review of reviews) await writeFile(join(String(review.data.cwd), 'finish'), 'done');
+  } finally {
+    await exitWithoutShutdown(app); await service.close();
+    const supervisor = await connectSupervisor(runtime.directory).catch(() => undefined); await supervisor?.call('admin.shutdown'); supervisor?.close();
+    await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test('Automatic reviews: turned on in Settings, a pull request added afterwards gets a Claude and a Codex review; one already on the map gets none', async () => {
+  test.setTimeout(60_000);
+  const directory = await mkdtemp(join(tmpdir(), 'craft-review-auto-')), executable = join(directory, 'review-fixture');
+  const other = { ...structuredClone(pullFixture), id: 125, number: 43, title: 'Separate search changes', head: { ...pullFixture.head, sha: 'd'.repeat(40) } };
+  const fixture = githubFixture([other]), pulls = [fixture.pull, other];
+  await writeFile(executable, `#!${process.execPath}\nimport ${JSON.stringify(pathToFileURL(resolve('tests/fixtures/native-review.mjs')).href)};\n`, { mode: 0o700 });
+  const source: ReviewSource = {
+    async freeze(resource) {
+      const pull = pulls.find(pull => pull.number === resource.data.number)!;
+      return { connectionId: resource.connectionId, comparison: { repository: 'fixture/billing', number: pull.number, baseTipSha: pull.base.sha, headSha: pull.head.sha }, title: pull.title, description: 'Review fixture', url: `https://github.com/fixture/billing/pull/${pull.number}` };
+    },
+    async capture(_directory, requestId, source) {
+      const cwd = join(directory, 'comparisons', requestId, 'repository'); await mkdir(cwd, { recursive: true });
+      return { ...source.comparison, baseSha: 'c'.repeat(40), changedFiles: ['file.ts'], diff: '+ review change', cwd, digest: requestId };
+    },
+  };
+  const runtime = { directory: join(directory, 'runtime'), executable: electronPath as unknown as string, entrypoint: resolve('dist/session-supervisor.cjs'), electronRuntime: true };
+  const service = await startWorkspaceService(directory, undefined, runtime, { ...fixture, reviews: { 'github.pull-request': source }, reviewRuntime: {
+    models: async () => ({ options: ['opus'], default: 'opus' }), probe: async () => ({ executable, version: 'scripted review fixture' }),
+  } });
+  const add = (pull: typeof other, y: number) => ({ type: 'item.add' as const, id: `pr-${pull.number}`, resourceId: `resource-${pull.number}`, pluginId: 'github.pull-request', title: pull.title, data: { owner: 'fixture', repo: 'billing', number: pull.number }, projectId: 'project', position: { x: 300, y } });
+  await service.control.dispatch({ commandId: 'setup', expectedRevision: 0, actor: { kind: 'user', id: 'fixture' }, commands: [
+    { type: 'project.create', id: 'project', title: 'Project', position: { x: 0, y: 0 } }, add(other, 500),
+  ] });
+  const app = await electron.launch({ args: ['.'], env: { ...process.env, ACT_TEST_DATA_DIR: directory } });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Settings' });
+    await dialog.getByRole('treeitem', { name: 'Items', exact: true }).click();
+    await dialog.getByRole('treeitem', { name: 'GitHub pull request', exact: true }).click();
+    const toggle = dialog.getByRole('switch', { name: 'Review new pull requests', exact: true });
+    await expect(toggle).not.toBeChecked();
+    await expect(dialog.getByRole('checkbox', { name: 'Claude', exact: true })).toBeDisabled();
+    await toggle.check();
+    await expect(dialog.getByRole('checkbox', { name: 'Claude', exact: true })).toBeChecked();
+    await dialog.getByRole('checkbox', { name: 'Codex', exact: true }).check();
+    await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();
+    expect(service.store.readSettings().value.autoReview).toEqual({ enabled: true, agents: ['claude', 'codex'] });
+    await expect.poll(() => service.store.pluginStorage('code.review').get('auto-review', 'state')?.value, { timeout: 20_000 }).toEqual({ on: true, settled: ['resource-43'] });
+    const { revision } = await service.control.read();
+    await service.control.dispatch({ commandId: 'add', expectedRevision: revision, actor: { kind: 'user', id: 'fixture' }, commands: [add(fixture.pull, 200)] });
+    for (const provider of ['Claude', 'Codex']) await expect(page.getByRole('article', { name: `${provider} review · #42`, exact: true })).toBeVisible({ timeout: 30_000 });
+    const reviews = (await service.control.read()).resources.filter(resource => resource.pluginId === 'code.review');
+    expect(reviews.map(review => [review.data.sourcePrId, review.data.provider]).sort()).toEqual([['pr-42', 'claude'], ['pr-42', 'codex']]);
+    for (const review of reviews) await writeFile(join(String(review.data.cwd), 'finish'), 'done');
+  } finally {
+    await exitWithoutShutdown(app); await service.close();
+    const supervisor = await connectSupervisor(runtime.directory).catch(() => undefined); await supervisor?.call('admin.shutdown'); supervisor?.close();
+    await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
 test('a review whose preparation fails shows the error on its item and Retry starts it there', async () => {
   test.setTimeout(60_000);
   const directory = await mkdtemp(join(tmpdir(), 'craft-review-retry-')), fixture = githubFixture(), executable = join(directory, 'review-fixture');

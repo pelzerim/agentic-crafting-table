@@ -1644,9 +1644,9 @@ app in the hidden run; real macOS banners still need manual acceptance.
 
 ### Standup report coverage (STANDUP-01)
 
-Disabled for now (`STANDUP_ENABLED`): the desktop journey skips, the service test for
-`standup.open` skips, and a unit test proves a disabled service refuses to open and digests
-nothing; rail, shortcut and settings tests follow the flag.
+Rail, shortcut and settings tests follow `STANDUP_ENABLED`; a unit test proves a disabled
+service refuses to open and digests nothing. A full week reaching the report (every digest,
+trimmed long digests, room to finish) and parallel digests have unit tests.
 
 Unit: `packages/core/standup.test.ts` (1 day, 7 days and Last week including a Monday,
 a Sunday and both DST changes in America/New_York, 8 March and 1 November 2026; dropped stories with unknown evidence;

@@ -13,17 +13,17 @@ if (args.includes('--version')) { console.log('2.1.282 (summary fixture)'); proc
 if (args.includes('--help')) { console.log('--append-system-prompt --session-id --resume --mcp-config --plugin-dir --system-prompt-snapshot --remote-control\n  --permission-mode <mode> (choices: "auto", "default", "plan")'); process.exit(0); }
 assert.equal(value('--input-format'), 'stream-json');
 assert.equal(value('--tools'), '');
-assert.equal(value('--max-turns'), '1'); assert.ok(['0.02', '0.05', '0.25'].includes(value('--max-budget-usd')));
+assert.equal(value('--max-turns'), '1'); assert.ok(['0.02', '0.05', '0.75'].includes(value('--max-budget-usd')));
 assert.ok(args.includes('--strict-mcp-config')); assert.ok(args.includes('--no-session-persistence'));
 assert.equal(value('--setting-sources'), '');
-assert.ok(['32', '64', '300', '4000'].includes(process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS)); assert.equal(process.env.CLAUDE_CODE_MAX_RETRIES, '0');
+assert.ok(['32', '64', '1000', '16000'].includes(process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS)); assert.equal(process.env.CLAUDE_CODE_MAX_RETRIES, '0');
 const settings = JSON.parse(value('--settings'));
 assert.equal(settings.disableAllHooks, true); assert.equal(settings.disableRemoteControl, true);
 const result = text => console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: text, duration_ms: 1, duration_api_ms: 1, num_turns: 1, total_cost_usd: 0, usage: {}, modelUsage: {}, permission_denials: [], uuid: randomUUID(), session_id: randomUUID() }));
 /** Standup digests (Haiku) and reports (Sonnet): one deterministic story per digest and fact. */
 async function standup(evidence) {
   const report = evidence.standup === 'report';
-  assert.equal(value('--model'), report ? 'sonnet' : 'haiku'); assert.equal(value('--max-budget-usd'), report ? '0.25' : '0.05');
+  assert.equal(value('--model'), report ? 'sonnet' : 'haiku'); assert.equal(value('--max-budget-usd'), report ? '0.75' : '0.05');
   assert.ok(!JSON.stringify(evidence).includes('FAKE_PRIVATE_CREDENTIAL'));
   await appendFile(process.env.ACT_SUMMARY_FIXTURE_LOG, JSON.stringify({ model: value('--model'), standup: evidence.standup, ...(report ? { range: evidence.range, instruction: evidence.instruction, digests: evidence.digests.length, facts: evidence.facts.length } : { day: evidence.day }) }) + '\n');
   if (evidence.standup === 'agent-day') return result(`Asked: why cart totals were off by a cent in ${evidence.item}.\nFound: the cart rounded each line before adding them up.\nChanged: round once, after the sum.\nState: fixed and tested.`);

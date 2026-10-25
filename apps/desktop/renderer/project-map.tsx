@@ -27,6 +27,7 @@ import { moveItems, resizeItem } from '../../../src/graph/movement.ts';
 import { snapPosition, snapStep } from '../../../src/graph/snap.ts';
 import { ItemIcon, StatusGlyph } from './icons.tsx';
 import { ZoomBar } from './zoom-bar.tsx';
+import type { Badge } from '../../../src/graph/badges.ts';
 import { WorkingAnimalContext, WorkingMark, workingMarkStyle } from './working-mark.tsx';
 import type { WorkingMarkSettings } from '../../../packages/core/settings.ts';
 import { leadPose, markLabel } from './grazing.ts';
@@ -86,7 +87,7 @@ import type { MirrorArea } from '../../../src/graph/undermap.ts';
 import { UndermapMonths, UndermapPlates } from './undermap-months.tsx';
 
 const registry = createResourcePluginRegistry();
-type MapItem = GraphNode & { activity?: string; attention?: string; summary?: string };
+type MapItem = GraphNode & { activity?: string; attention?: string; summary?: string; lastLine?: string };
 export interface ProjectMapProps {
   registry?: ResourcePluginRegistry;
   nodes: MapItem[];
@@ -178,8 +179,18 @@ export interface ProjectMapProps {
   plots?: readonly PlotView[];
   /** A person's plot change: rename, hide or name automatically; also reports which plots were on screen. */
   onPlot?(projectId: string, request: JsonObject): Promise<void>;
+  /** Note badges on items (MAP-BADGES), by item id; the host leaves the badge notes themselves out of `nodes`. */
+  badges?: ReadonlyMap<string, readonly Badge[]>;
+  /** A badge was clicked (open its note) or right-clicked (its note's menu). */
+  onBadge?(noteId: string, anchor: { screen: { x: number; y: number }; position: { x: number; y: number } }, menu: boolean): void;
   /** Settings → AI features → Name plots. */
   plotNaming?: boolean;
+  /** Projects a plot's members can move to; without it the sign's menu offers no move. */
+  plotTargets?(ids: string[]): { id: string; title: string; current: boolean }[];
+  /** Moves items as one block to a project, or out of their project with null. */
+  onMoveItems?(ids: string[], projectId: string | null): void;
+  /** Sends items to Undermap together. */
+  onSendBelow?(ids: string[]): void;
   /** Settings → Map → Hide implied connections (LINK-06); absent hides them. */
   hideImpliedLinks?: boolean;
   /** Grid pitch item centres land on when dropped, nudged or settled aside; none keeps free placement. */
@@ -205,7 +216,7 @@ type MapPip = { tone: string; style: string };
 /** Paper tiles keep their size at mid zoom and become a paper square only when far. */
 const PAPER_FAR_ZOOM = .35;
 type HeaderData = { needsMe: number; working: number; muted?: true } & Pick<AttentionCounts, AttentionTier>;
-type CardData = { far: boolean; /** The card stands at its full map size, so its title may take the lines the card leaves it. */ titleFill?: boolean; /** A far-zoom icon under 16px on screen: the tier shape replaces the icon and frames are dropped. */ takeover: boolean; needsMe?: boolean; /** Close and keep in Needs me is offered at this tier. */ keep?: AttentionTier; header?: HeaderData; projectColor?: string; pips?: MapPip[]; frameTitle?: string; /** The short reference the type declares, shown as the card's tag when the title has none. */ reference?: string; viewSurface?: boolean; viewOpen?: boolean; mapSize?: ReturnType<typeof resolveMapSize>; mapFields: string; tiny: boolean; iconOpens: boolean; completionToggle: boolean; resizable: boolean; resizing: boolean; morph?: BubbleBounds; editableTitle: boolean; showFullTitle: boolean; paper?: string; paperText?: string; paperMode?: PaperMode; paperWriter?: string; paperWrittenAt?: string; item: MapItem; icon: string; brand?: string; tint?: boolean; typeName: string; tone: string; width: number; height: number; compact: boolean; expanded: boolean; visited: boolean; scale: number; projectLabel: boolean; labelOverOutline: boolean; attentionSize: number; projectNeedsMe: number; status?: string; dragging: boolean; blocked?: Blocked; linkEnd?: boolean; selected?: boolean };
+type CardData = { /** Badges from short notes connected to this item, and their font size in map pixels. */ badges?: readonly Badge[]; badgeSize?: number; far: boolean; /** The card stands at its full map size, so its title may take the lines the card leaves it. */ titleFill?: boolean; /** A far-zoom icon under 16px on screen: the tier shape replaces the icon and frames are dropped. */ takeover: boolean; needsMe?: boolean; /** Close and keep in Needs me is offered at this tier. */ keep?: AttentionTier; header?: HeaderData; projectColor?: string; pips?: MapPip[]; frameTitle?: string; /** The short reference the type declares, shown as the card's tag when the title has none. */ reference?: string; viewSurface?: boolean; viewOpen?: boolean; mapSize?: ReturnType<typeof resolveMapSize>; mapFields: string; tiny: boolean; iconOpens: boolean; completionToggle: boolean; resizable: boolean; resizing: boolean; morph?: BubbleBounds; editableTitle: boolean; showFullTitle: boolean; paper?: string; paperText?: string; paperMode?: PaperMode; paperWriter?: string; paperWrittenAt?: string; item: MapItem; icon: string; brand?: string; tint?: boolean; typeName: string; tone: string; width: number; height: number; compact: boolean; expanded: boolean; visited: boolean; scale: number; projectLabel: boolean; labelOverOutline: boolean; attentionSize: number; projectNeedsMe: number; status?: string; dragging: boolean; blocked?: Blocked; linkEnd?: boolean; selected?: boolean };
 type Blocked = { text: string; blockers: { id: string; name: string }[] };
 type CardNode = Node<CardData, 'card'>;
 const nodeOrigin: [number, number] = [.5, .5];
@@ -235,11 +246,11 @@ function useStableHandlers<T extends Record<string, (...args: any[]) => any>>(ha
 }
 /** The fixed chrome an item view can reach: the rail column and the trail row, in workspace pixels. */
 const CHROME = { rail: { x: RAIL.left, y: RAIL.top, width: 52, height: RAIL_HEIGHT }, trail: { x: 22, y: 24, width: 420, height: 24 } };
-const DetailContext = createContext<Pick<ProjectMapProps, 'renderDetail' | 'onRename'> & { paperOpenUrl(url: string): void; paperWrite(id: string, patch: Record<string, string>, base?: string): Promise<void>; paperDiscard(id: string): void; select(id: string): void; toggleDone(id: string, done: boolean): void; open(id: string): void; back(): void; markSeen?(id: string): void; keep?(id: string): void; middleClick(id: string): void; settled(id: string): void; menu(event: React.MouseEvent, id: string): void; startLink(event: React.PointerEvent, id: string): void; connect(event: React.MouseEvent, id: string): void; resize(event: React.PointerEvent, id: string): void; resizeKey(event: React.KeyboardEvent, id: string): void; reveal(id: string): void; unmute(id: string): void }>({ paperOpenUrl() {}, paperWrite: async () => {}, paperDiscard() {}, select() {}, toggleDone() {}, open() {}, back() {}, middleClick() {}, settled() {}, menu() {}, startLink() {}, connect() {}, resize() {}, resizeKey() {}, reveal() {}, unmute() {} });
+const DetailContext = createContext<Pick<ProjectMapProps, 'renderDetail' | 'onRename'> & { paperOpenUrl(url: string): void; paperWrite(id: string, patch: Record<string, string>, base?: string): Promise<void>; paperDiscard(id: string): void; select(id: string): void; toggleDone(id: string, done: boolean): void; open(id: string): void; back(): void; markSeen?(id: string): void; keep?(id: string): void; middleClick(id: string): void; settled(id: string): void; menu(event: React.MouseEvent, id: string): void; startLink(event: React.PointerEvent, id: string): void; connect(event: React.MouseEvent, id: string): void; resize(event: React.PointerEvent, id: string): void; resizeKey(event: React.KeyboardEvent, id: string): void; reveal(id: string): void; unmute(id: string): void; badgeNote(event: React.MouseEvent, noteId: string, menu: boolean): void }>({ badgeNote() {}, paperOpenUrl() {}, paperWrite: async () => {}, paperDiscard() {}, select() {}, toggleDone() {}, open() {}, back() {}, middleClick() {}, settled() {}, menu() {}, startLink() {}, connect() {}, resize() {}, resizeKey() {}, reveal() {}, unmute() {} });
 
 const Card = memo(function Card({ data }: { data: CardData }) {
   performanceMetrics.record('map.card-render', 1);
-  const { renderDetail, onRename, markSeen, keep, middleClick, open, back, settled, menu, startLink, connect, resize, resizeKey, reveal, paperWrite, paperDiscard, select, paperOpenUrl, toggleDone, unmute } = useContext(DetailContext);
+  const { renderDetail, onRename, markSeen, keep, middleClick, open, back, settled, menu, startLink, connect, resize, resizeKey, reveal, paperWrite, paperDiscard, select, paperOpenUrl, toggleDone, unmute, badgeNote } = useContext(DetailContext);
   const { item, expanded, compact } = data;
   // A done card drops the grass and the sheep but its summary still says Working.
   const done = Boolean(item.completedAt) && !expanded, running = item.activity === 'working' && !expanded, working = running && !done;
@@ -259,10 +270,12 @@ const Card = memo(function Card({ data }: { data: CardData }) {
   const reason = need && !compact && !expanded ? <span className="card-reason" data-tier={need.tier}>{need.details[0]}{age && <span className="card-age"> · {age}</span>}</span> : undefined;
   // The tier shape in the corner slot; its name says the tier and the reason, so neither rests on colour or shape alone.
   const mark = need && !expanded && <span className="attention-indicator" data-tier={need.tier} role="img" aria-label={attentionLabel(need.tier, need.detail)} title={attentionLabel(need.tier, need.detail)} style={{ width: data.attentionSize, height: data.attentionSize }}><TierMark tier={need.tier} /></span>;
+  // A card with two or more summary lines quotes the line its agent ended the turn on in place of the summary.
+  const said = data.mapSize && data.mapSize.summaryLines >= 2 ? item.lastLine : undefined, line = data.status || said || item.summary;
   const cue = item.indicators?.[0], badge = data.far && compact && !expanded && (cue ?? (working ? { id: 'working', label: 'Working', icon: 'working', tone: 'mint' } : undefined));
   const muted = data.header?.muted;
   const titleRoom = data.titleFill && !compact && !expanded && !data.projectLabel && data.paper === undefined && !data.editableTitle
-    ? [data.width, data.height, data.mapSize?.size, item.title, item.summary, data.status, running, need?.details[0], age, data.mapFields, data.pips?.length, item.indicators?.map(cue => `${cue.id}:${cue.label}:${cue.showLabel}`).join()].join('\n') : '';
+    ? [data.width, data.height, data.mapSize?.size, item.title, item.summary, item.lastLine, data.status, running, need?.details[0], age, data.mapFields, data.pips?.length, item.indicators?.map(cue => `${cue.id}:${cue.label}:${cue.showLabel}`).join()].join('\n') : '';
   useLayoutEffect(() => { const card = surface.current; if (card) (titleRoom ? fitTitle : releaseTitle)(card); }, [titleRoom]);
   useLayoutEffect(() => { const card = surface.current; return () => { if (card) releaseTitle(card); }; }, []);
   if (data.projectLabel) return <article className="project-neighborhood-title" aria-label={muted ? `${item.title}, muted` : item.title} data-item-id={item.id} data-project-label={item.id} data-muted={muted} data-over-outline={data.labelOverOutline} data-dragging={data.dragging}
@@ -276,7 +289,7 @@ const Card = memo(function Card({ data }: { data: CardData }) {
   </article>;
   const paper = data.paper !== undefined && !expanded;
   return <><article ref={surface} className={`map-card tone-${data.tone} ${paper ? 'paper-card' : ''} ${working ? 'working-card' : ''} ${data.tiny && !expanded ? 'tiny-card' : ''} ${data.showFullTitle ? 'full-title-card' : ''} ${data.mapSize && data.mapSize.height > 48 ? 'map-profile-card' : ''} ${expanded ? 'expanded' : ''} ${item.completedAt && !expanded ? 'done-card' : ''} ${compact ? 'compact' : data.height < 65 ? 'small-card' : ''}`}
-    role={data.viewSurface ? "region" : undefined} aria-label={paper ? `${data.typeName}: ${item.title}` : item.title} title={marked && markTitle !== 'Working' ? markTitle : undefined} data-paper={paper ? data.paper : undefined} data-writer={paper && data.paperWriter ? 'agent' : undefined} data-item-id={data.viewSurface ? undefined : item.id} data-expanded-item-id={data.viewSurface ? item.id : undefined} data-view-open={data.viewOpen || undefined} data-world-x={item.position.x} data-world-y={item.position.y}
+    role={data.viewSurface ? "region" : undefined} aria-label={paper ? `${data.typeName}: ${item.title}` : data.badges?.length ? `${item.title}, badges ${data.badges.map(entry => entry.text).join(', ')}` : item.title} title={marked && markTitle !== 'Working' ? markTitle : undefined} data-paper={paper ? data.paper : undefined} data-writer={paper && data.paperWriter ? 'agent' : undefined} data-item-id={data.viewSurface ? undefined : item.id} data-expanded-item-id={data.viewSurface ? item.id : undefined} data-view-open={data.viewOpen || undefined} data-world-x={item.position.x} data-world-y={item.position.y}
     data-tight-title={data.height < 60 || undefined} data-preview="false" data-resizing={data.resizing} data-dragging={data.dragging} data-completed={Boolean(item.completedAt)} data-map-size={data.mapSize?.size} data-blocked={data.blocked ? true : undefined} data-link-end={data.linkEnd || undefined} data-selected={data.selected || undefined} data-tier={need && !expanded ? need.tier : undefined} data-takeover={need && compact && !expanded && data.takeover || undefined}
     data-dimmed={data.far && !expanded && !attention && (Boolean(item.completedAt) || cue?.stage === 'done') || undefined}
     onMouseDown={event => { if (event.button === 1 && (!data.viewSurface || data.needsMe)) event.preventDefault(); }}
@@ -319,14 +332,18 @@ const Card = memo(function Card({ data }: { data: CardData }) {
       </button>}
     </div>
     {!compact && !expanded && data.pips && data.mapSize && data.mapSize.summaryLines > 0 && <div className="card-pips" aria-hidden="true">{data.pips.map((pip, index) => <i key={index} data-tone={pip.tone} data-style={pip.style} />)}</div>}
-    {!compact && !expanded && !item.indicators?.length && (!data.mapSize || data.mapSize.summaryLines > 0) && (running || data.status || item.summary || reason) && <p className={`card-summary${data.pips ? ' pip-summary' : ''}`} style={data.mapSize ? { WebkitLineClamp: data.mapSize.summaryLines } : undefined}>{reason}{reason && (data.status || item.summary) && <span className="card-reason-gap"> · </span>}{!reason && running && <span className="working-label">Working{(data.status || item.summary) && ' · '}</span>}{data.status || item.summary}</p>}
+    {!compact && !expanded && !item.indicators?.length && (!data.mapSize || data.mapSize.summaryLines > 0) && (running || line || reason) && <p className={`card-summary${data.pips ? ' pip-summary' : ''}`} data-said={!data.status && said ? true : undefined} style={data.mapSize ? { WebkitLineClamp: data.mapSize.summaryLines } : undefined}>{reason}{reason && line && <span className="card-reason-gap"> · </span>}{!reason && running && <span className="working-label">Working{line && ' · '}</span>}{line}</p>}
     {!compact && !expanded && data.mapSize?.fieldLines && data.mapFields ? <p className="map-size-fields" style={{ WebkitLineClamp: data.mapSize.fieldLines }}>{data.mapFields}</p> : null}
     {data.visited && <div className="card-detail nodrag nopan nowheel" hidden={!expanded}>{renderDetail?.(item, expanded) ?? <p>{item.summary || 'Project context and connected work.'}</p>}</div>}</>}
     {!expanded && !data.viewSurface && <><button className="connect-handle nodrag nopan" aria-label={`Connect ${item.title}`} title="Drag to connect or create; press Enter to choose an item" onPointerDown={event => startLink(event, item.id)} onClick={event => { event.stopPropagation(); if (event.detail === 0) connect(event, item.id); }}>+</button><Handle type="target" position={Position.Left} /><Handle type="source" position={Position.Right} /></>}
     {data.resizable && <button className="item-resize-handle nodrag nopan" aria-label={`Resize ${item.title}`} title="Drag to resize; arrow keys adjust size" onPointerDown={event => resize(event, item.id)} onKeyDown={event => resizeKey(event, item.id)} onClick={event => { event.preventDefault(); event.stopPropagation(); }}>
       <svg viewBox="0 0 12 12" aria-hidden="true" shapeRendering="crispEdges"><path fill="currentColor" d="M8 2h2v8H2V8h2V6h2V4h2Z" /></svg>
     </button>}
-  </article>{working && compact && !data.viewSurface && <WorkingMark width={data.width} height={data.height} icon solid={data.takeover} state={markState} />}</>;
+  </article>{data.badges?.length && !expanded && !data.viewSurface ? <span className="card-badges" data-far={data.far || compact || undefined} style={{ fontSize: data.badgeSize }}>
+    {data.badges.slice(0, 3).map(entry => <button key={entry.noteId} type="button" className="card-badge nodrag nopan" data-paper={entry.paper} aria-label={`Badge ${entry.text} on ${item.title}`} title={entry.text}
+      onPointerDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()} onClick={event => badgeNote(event, entry.noteId, false)} onContextMenu={event => badgeNote(event, entry.noteId, true)}>{data.far || compact ? null : entry.text}</button>)}
+    {data.badges.length > 3 && <span className="card-badge-more" title={data.badges.slice(3).map(entry => entry.text).join(', ')}>+{data.badges.length - 3}</span>}
+  </span> : null}{working && compact && !data.viewSurface && <WorkingMark width={data.width} height={data.height} icon solid={data.takeover} state={markState} />}</>;
 }, (previous, next) => previous.data === next.data);
 /** The type icon as a checkbox. It never starts a drag, selection or opening: pointer and
  * click stop at the button, and Space toggles without the native key-up click. */
@@ -722,7 +739,7 @@ function MapCanvas(props: ProjectMapProps) {
       // A card never pans the map, even while it cannot be dragged (Undermap, a save, a resize).
       className: quiet ? peek?.id === box.item.projectId ? PEEKED : COVERED : 'nopan',
       zIndex: quiet ? -2 : itemResize.preview?.id === box.item.id ? 5 : projectLabel ? 0 : 1,
-      data: { far: !projectLabel && level === 'overview', titleFill: !projectLabel && (fullSize || detail >= 1), takeover: !projectLabel && !fullSize && attentionTakesOver(width, viewport.zoom), header: header?.header, projectColor: projectLabel ? (props.neighborhoodColor ?? (color => color))(projectColor(box.item)) : undefined, pips: box.pips, frameTitle: box.frameTitle, reference: box.reference, mapSize: box.mapSize, mapFields: box.mapFields, tiny: box.tiny, iconOpens: box.iconOpens, completionToggle: box.completionToggle && Boolean(props.onComplete), resizable: Boolean(props.onResize && !mirror && !focus && !projectLabel && !quiet && detail >= .35), resizing: itemResize.preview?.id === box.item.id, viewOpen: box.item.id === focus, showFullTitle: box.showFullTitle, editableTitle: box.editableTitle && Boolean(props.onRename), paper: box.paper, paperText: box.paperText, paperMode, paperWriter: box.paperWriter, paperWrittenAt: box.paperWrittenAt, item: box.item, icon: box.icon, brand: box.brand, tint: box.tint, typeName: box.typeName, tone: box.tone, width, height, compact: box.mapSize?.iconOnly || !project && (paperMode ? paperMode === 'far' : detail < .35), expanded: false, visited: false, scale, projectLabel, labelOverOutline: projectLabel, projectNeedsMe: rollups.get(box.item.id)?.needsMe ?? 0, attentionSize: projectLabel ? 14 : Math.max(14, 8 / viewport.zoom), dragging: drag?.id === box.item.id, blocked: projectLabel ? undefined : blocking.blocked.get(box.item.id), linkEnd: inspectedBlock && (inspectedBlock.sourceId === box.item.id || inspectedBlock.targetId === box.item.id), selected: !projectLabel && selection.has(box.item.id) } });
+      data: { badges: projectLabel ? undefined : props.badges?.get(box.item.id), badgeSize: Math.min(20, Math.max(11, 11 / viewport.zoom)), far: !projectLabel && level === 'overview', titleFill: !projectLabel && (fullSize || detail >= 1), takeover: !projectLabel && !fullSize && attentionTakesOver(width, viewport.zoom), header: header?.header, projectColor: projectLabel ? (props.neighborhoodColor ?? (color => color))(projectColor(box.item)) : undefined, pips: box.pips, frameTitle: box.frameTitle, reference: box.reference, mapSize: box.mapSize, mapFields: box.mapFields, tiny: box.tiny, iconOpens: box.iconOpens, completionToggle: box.completionToggle && Boolean(props.onComplete), resizable: Boolean(props.onResize && !mirror && !focus && !projectLabel && !quiet && detail >= .35), resizing: itemResize.preview?.id === box.item.id, viewOpen: box.item.id === focus, showFullTitle: box.showFullTitle, editableTitle: box.editableTitle && Boolean(props.onRename), paper: box.paper, paperText: box.paperText, paperMode, paperWriter: box.paperWriter, paperWrittenAt: box.paperWrittenAt, item: box.item, icon: box.icon, brand: box.brand, tint: box.tint, typeName: box.typeName, tone: box.tone, width, height, compact: box.mapSize?.iconOnly || !project && (paperMode ? paperMode === 'far' : detail < .35), expanded: false, visited: false, scale, projectLabel, labelOverOutline: projectLabel, projectNeedsMe: rollups.get(box.item.id)?.needsMe ?? 0, attentionSize: projectLabel ? 14 : Math.max(14, 8 / viewport.zoom), dragging: drag?.id === box.item.id, blocked: projectLabel ? undefined : blocking.blocked.get(box.item.id), linkEnd: inspectedBlock && (inspectedBlock.sourceId === box.item.id || inspectedBlock.targetId === box.item.id), selected: !projectLabel && selection.has(box.item.id) } });
   });
   const nodes = projected.length === previousNodes.current.length && projected.every((node, index) => node === previousNodes.current[index]) ? previousNodes.current : projected;
   // Detail surfaces are screen-space siblings, never graph nodes or edge endpoints.
@@ -1075,6 +1092,9 @@ function MapCanvas(props: ProjectMapProps) {
     else if (action.id === 'plot-auto') void props.onPlot?.(plot.projectId, { operation: 'auto', plotId: plot.id });
     else if (action.id === 'plot-color' && action.value) void props.onPlot?.(plot.projectId, { operation: 'color', plotId: plot.id, color: action.value });
     else if (action.id === 'plot-color-auto') void props.onPlot?.(plot.projectId, { operation: 'color', plotId: plot.id, color: null });
+    else if (action.id === 'plot-leave') props.onMoveItems?.(plot.memberIds, null);
+    else if (action.id.startsWith('send:') && action.id.length > 'send:'.length) props.onMoveItems?.(plot.memberIds, action.id.slice('send:'.length));
+    else if (action.id === 'plot-below') props.onSendBelow?.(plot.memberIds);
   };
   // Plots are named lazily: the service hears which ones were on screen once the camera settles.
   const [settledView, setSettledView] = useState(0), reportedPlots = useRef(new Map<string, number>());
@@ -1150,7 +1170,12 @@ function MapCanvas(props: ProjectMapProps) {
     paperWrite: (id: string, patch: Record<string, string>, base?: string) => props.onPaperWrite ? props.onPaperWrite(id, patch, base) : Promise.reject(new Error('Notes cannot be edited here.')),
     paperDiscard: (id: string) => props.onPaperArchive?.(id, true), paperOpenUrl: (url: string) => props.onOpenUrl?.(url), select: (id: string) => setSelection(new Set([id])),
     toggleDone: (id: string, done: boolean) => { void props.onComplete?.(id, done).catch(() => {}); },
-    middleClick: (id: string) => { props.onOpenWeb?.(id); if (needsMe.has(id)) props.onMarkSeen?.(id); } });
+    middleClick: (id: string) => { props.onOpenWeb?.(id); if (needsMe.has(id)) props.onMarkSeen?.(id); },
+    badgeNote: (event: React.MouseEvent, noteId: string, menu: boolean) => {
+      event.preventDefault(); event.stopPropagation();
+      const rect = container.current!.getBoundingClientRect();
+      props.onBadge?.(noteId, { screen: { x: event.clientX - rect.left, y: event.clientY - rect.top }, position: screenToFlowPosition({ x: event.clientX, y: event.clientY }) }, menu);
+    } });
   const detailContext = useMemo(() => ({ ...actions, renderDetail: props.renderDetail, markSeen: props.onMarkSeen, keep: props.onKeep }), [actions, props.renderDetail, props.onMarkSeen, props.onKeep]);
   const coverHandlers = useStableHandlers({
     enter: (id: string, event: React.PointerEvent) => { if (!focus && !drag && !linkDrag && !marqueeRef.current) mute.enter(id, event.buttons); },
@@ -1365,7 +1390,7 @@ function MapCanvas(props: ProjectMapProps) {
         {mirror && dashboards && <UndermapPlates areas={mirror.areas} zoom={viewport.zoom} color={undermapActions.color} open={undermapActions.open} menu={undermapActions.menu} />}
         {dashboardViews.length > 0 && <div className="project-dashboards">{dashboardViews.map(view => <div key={view.board.id} className="project-dashboard-anchor nopan" data-mode={view.layout.mode} data-dragging={drag?.id === view.board.id || undefined} onContextMenu={event => context(event, view.board.id)} onPointerDown={event => dashboardDrag.grab(event, view.board.id)}
           style={{ left: view.x, top: view.y, width: view.layout.width, transform: `scale(${1 / viewport.zoom})`, '--project-color': view.color } as React.CSSProperties}>
-          <DashboardBody board={view.board} neighborhood={plotNeighborhoods.get(view.board.id)} layout={view.content} icons={dashboardIcons} highlighted={props.highlightedNodes} actions={dashboardActions} />
+          <DashboardBody board={view.board} neighborhood={plotNeighborhoods.get(view.board.id)} layout={view.content} icons={dashboardIcons} badges={props.badges} highlighted={props.highlightedNodes} actions={dashboardActions} />
         </div>)}</div>}
       </ViewportPortal>
     </ReactFlow>
@@ -1394,7 +1419,7 @@ function MapCanvas(props: ProjectMapProps) {
     {focus && <nav className="map-trail" aria-label="Map location"><span>{props.nodes.find(node => node.id === props.nodes.find(item => item.id === focus)?.projectId)?.title ?? 'Floating item'}</span><span>/</span><span>{props.nodes.find(node => node.id === focus)?.title}</span>
       {connected.length > 0 && <div className="connected-items" role="group" aria-label="Connected items">{connected.map(box => <button key={box.item.id} aria-label={`Open connected item: ${box.item.title}`} title={box.item.title} onClick={() => open(box.item.id)}><ItemIcon icon={box.icon} brand={box.brand} tint={box.tint} /></button>)}</div>}
     </nav>}
-    {plotMenu && <CanvasMenu screen={plotMenu.screen} actions={plotMenuActions(props.plotNaming ?? true, plotOf(plotMenu.id), plotNeighborhoods.get(plotOf(plotMenu.id)?.projectId ?? ''))} act={plotMenuAct} close={() => setPlotMenu(undefined)} />}
+    {plotMenu && <CanvasMenu screen={plotMenu.screen} actions={plotMenuActions(props.plotNaming ?? true, plotOf(plotMenu.id), plotNeighborhoods.get(plotOf(plotMenu.id)?.projectId ?? ''), props.plotTargets && props.onMoveItems && plotOf(plotMenu.id) ? props.plotTargets(plotOf(plotMenu.id)!.memberIds) : undefined)} act={plotMenuAct} close={() => setPlotMenu(undefined)} />}
     <ZoomBar zoom={viewport.zoom} dashboards={dashboardSetting} zoomTo={zoom => void zoomTo(zoom)} />
   </div></WorkingAnimalContext.Provider></DetailContext.Provider>;
 }

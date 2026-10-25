@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { contextMenuActions, convertLinkActions, enabledMenuGroups, itemEditLabel, addMenuSeparator, canHideMenuEntry, drawnMenuLayout, isCustomMenu, itemMenuCustom, itemMenuEntries, linkMenuActions, MENU_SEPARATOR, menuLayout, menuSlot, mergeMenuOrder, moveMenuRow, muteProjectAction, removeMenuSeparator, resetItemMenu, saveItemMenu, setMenuEntryHidden, plotMenuActions, moveToProjectAction, sendToProjectAction, sharedContextMenuActions, todoContextActions } from './context-menu.ts';
+import { contextMenuActions, convertLinkActions, enabledMenuGroups, itemEditLabel, addMenuSeparator, canHideMenuEntry, drawnMenuLayout, isCustomMenu, itemMenuCustom, itemMenuEntries, linkMenuActions, MENU_SEPARATOR, menuLayout, menuSlot, mergeMenuOrder, moveMenuRow, muteProjectAction, removeMenuSeparator, resetItemMenu, saveItemMenu, setMenuEntryHidden, plotMenuActions, deleteItemAction, moveToProjectAction, sendToProjectAction, sharedContextMenuActions, todoContextActions, fieldMenuActions } from './context-menu.ts';
+import { noteItem } from '../../src/resource-plugins/items/note/definition.ts';
 import { pluginSettingsValues } from '../../src/resource-plugins/describe.client.ts';
 import { githubPullRequest } from '../../src/resource-plugins/items/github-pull-request/definition.ts';
 
@@ -25,7 +26,7 @@ test('plugin review submenus appear only on items and keep lifecycle actions int
   assert.deepEqual(actions[6].choices, { load: 'options', apply: 'set', runtime: 'github.rollout.autoDeploy', loadingLabel: 'Checking auto deploy…' });
   assert.deepEqual(actions[7].choices, { load: 'pr.state.options', apply: 'pr.state', loadingLabel: 'Checking the pull request…' });
   assert.deepEqual(actions[8].choices, { load: 'pr.showShip.options', apply: 'pr.showShip', loadingLabel: 'Checking the title…' });
-  assert.deepEqual(actions[2].children?.map(action => [action.id, action.label]), [['plugin:review.claude', 'Claude'], ['plugin:review.codex', 'Codex'], ['plugin:review.workflow', '/review']]);
+  assert.deepEqual(actions[2].children?.map(action => [action.id, action.label]), [['plugin:review.claude', 'Claude'], ['plugin:review.codex', 'Codex'], ['plugin:review.both', 'Claude + Codex'], ['plugin:review.workflow', '/review']]);
   for (const scope of ['board', 'neighborhood', 'project', 'link'] as const) assert.ok(contextMenuActions(scope, false, undefined, githubPullRequest.contextMenu).every(action => !action.children));
 });
 
@@ -95,6 +96,16 @@ test(`a sign's menu holds a row of color swatches and Automatic, between Name au
   const chosen = plotMenuActions(true, { color: 'sky', chosenColor: 'clay' });
   assert.deepEqual(chosen[3].row!.filter(choice => choice.checked).map(choice => choice.value), ['clay']);
   assert.deepEqual([chosen[4].label, chosen[4].checked], ['Automatic · Daisy', false]);
+});
+
+test(`a sign's menu moves the whole plot to another project or to none, and sends it to Undermap`, () => {
+  const actions = plotMenuActions(true, undefined, undefined, [{ id: 'billing', title: 'Billing', current: true }, { id: 'docs', title: 'Docs', current: false }]);
+  assert.deepEqual(actions.map(action => action.label), ['Select items', 'Rename plot…', 'Name automatically', 'Move plot to', 'Send plot to Undermap', 'Hide this plot']);
+  const move = actions.find(action => action.label === 'Move plot to')!;
+  assert.equal(move.divider, true);
+  assert.deepEqual(move.children!.map(child => [child.id, child.label, child.checked, child.disabled, child.divider]), [
+    ['send:billing', 'Billing', true, true, undefined], ['send:docs', 'Docs', false, undefined, undefined], ['plot-leave', 'No project', undefined, undefined, true]]);
+  assert.equal(actions.find(action => action.label === 'Send plot to Undermap')!.id, 'plot-below');
 });
 
 test(`a sign's menu names the colors of its project's neighborhood`, () => {
@@ -449,4 +460,33 @@ test('a plugin group that names selection children is offered to a selection of 
   assert.deepEqual(shared[0].children?.map(child => [child.id, child.label]), [['plugin:review.claude', 'Claude'], ['plugin:review.codex', 'Codex']]);
   assert.equal(shared[0].remote, true);
   assert.deepEqual(sharedContextMenuActions([pull, ticket]).map(action => action.id), ['complete', 'below'], 'an item without the group keeps the selection menu to shared actions');
+});
+
+test('a plugin entry that runs other entries carries their menu ids; the PR offers Claude + Codex alone and for a selection', () => {
+  const review = contextMenuActions('item', false, undefined, [{ id: 'review', label: 'Trigger review', children: [{ id: 'review.claude', label: 'Claude' }, { id: 'review.both', label: 'Claude + Codex', runs: ['review.claude', 'review.codex'] }] }]).find(action => action.id === 'plugin:review')!;
+  assert.deepEqual(review.children?.map(child => [child.id, child.runs]), [['plugin:review.claude', undefined], ['plugin:review.both', ['plugin:review.claude', 'plugin:review.codex']]]);
+  const pull = githubPullRequest.contextMenu!.find(group => group.id === 'review')!;
+  assert.deepEqual(pull.children.map(child => child.label), ['Claude', 'Codex', 'Claude + Codex', '/review']);
+  assert.deepEqual(pull.children.find(child => child.id === 'review.both')!.runs, ['review.claude', 'review.codex']);
+  assert.deepEqual(pull.selection!.children, ['review.claude', 'review.codex', 'review.both']);
+});
+
+test('Delete… asks inside its submenu: Cancel first, then the destructive Delete permanently with what stays', () => {
+  const action = deleteItemAction();
+  assert.deepEqual([action.id, action.label, action.destructive, action.divider], ['delete', 'Delete…', true, true]);
+  assert.deepEqual(action.children!.map(child => [child.id, child.label, child.destructive]), [['delete-cancel', 'Cancel', undefined], ['delete-confirm', 'Delete permanently', true]]);
+  assert.equal(action.children![1].description, 'Provider data and sessions are kept. This can’t be undone.');
+});
+
+test('a note offers Show as and its colour in its menu, the shown value checked, ahead of Settings', () => {
+  const fields = fieldMenuActions(noteItem.fields, { text: 'S2' }, { display: 'badge' });
+  assert.deepEqual(fields.map(action => [action.id, action.label]), [['field:paper', 'Colour'], ['field:display', 'Show as']]);
+  assert.deepEqual(fields[0]!.row!.map(choice => [choice.value, choice.swatch, choice.checked]), [['mint', 'var(--act-paper-mint)', true], ['sky', 'var(--act-paper-sky)', false],
+    ['lilac', 'var(--act-paper-lilac)', false], ['peach', 'var(--act-paper-peach)', false], ['slate', 'var(--act-paper-slate)', false]]);
+  assert.deepEqual(fields[1]!.children!.map(child => [child.id, child.label, child.checked]), [['field:display:note', 'Note', false], ['field:display:badge', 'Badge', true]]);
+  assert.equal(fieldMenuActions(noteItem.fields, { text: 'S2', paper: 'peach' })[0]!.row!.find(choice => choice.checked)!.value, 'peach');
+  assert.deepEqual(fieldMenuActions(githubPullRequest.fields, {}), []);
+  const menu = contextMenuActions('item', false, undefined, [], undefined, undefined, undefined, false, undefined, undefined, undefined, [], {}, undefined, {}, fields);
+  assert.deepEqual(menu.map(action => action.id), ['open', 'connect', 'field:paper', 'field:display', 'settings', 'complete', 'below']);
+  assert.ok(itemMenuEntries(noteItem).some(row => row.id === 'field:display' && row.label === 'Show as'), 'Settings can reorder and hide them');
 });

@@ -1,3 +1,4 @@
+import { mapBadges } from '../../src/graph/badges.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -130,19 +131,22 @@ export class Plots {
     const settings = this.store.readSettings(), key = `${state.revision}:${settings.revision}:${this.version}`;
     if (this.last?.key === key) return this.last.value;
     const byId = new Map(state.nodes.map(node => [node.id, node]));
-    const boxes: PlotBox[] = [];
+    const boxes: PlotBox[] = [], badges = mapBadges(state.nodes, state.resources, state.links).attached;
     for (const node of state.nodes) {
       const project = node.projectId ? byId.get(node.projectId) : undefined;
-      if (!node.resourceId || !project || project.resourceId || node.archivedAt || node.belowAt || project.archivedAt || project.belowAt) continue;
+      // A note shown as a badge sits on its items, not on the ground.
+      if (!node.resourceId || badges.has(node.id) || !project || project.resourceId || node.archivedAt || node.belowAt || project.archivedAt || project.belowAt) continue;
       const box = itemFootprint(node, state.resources, this.control.registry, settings.value.itemMapSizes);
       boxes.push({ ...box, projectId: project.id });
     }
     const records = this.store.plotRecords(), dormant = records.filter(record => !record.active);
     const detected = detectPlots(boxes, records.filter(record => record.active), () => randomUUID(), state.links);
-    const known = new Set(records.map(record => record.id)), reclaimed = new Set<string>();
+    const known = new Set(records.map(record => record.id)), reclaimed = new Set<string>(), claimed = new Set(detected.map(plot => plot.id));
+    // A plot whose items moved to another project as a group is the same plot there.
+    const left = records.filter(record => record.active && !claimed.has(record.id));
     const plots = detected.map(plot => {
       if (known.has(plot.id)) return plot;
-      const match = dormant.filter(record => record.projectId === plot.projectId && !reclaimed.has(record.id))
+      const match = [...dormant.filter(record => record.projectId === plot.projectId), ...left.filter(record => record.projectId !== plot.projectId)].filter(record => !reclaimed.has(record.id))
         .map(record => ({ record, score: jaccard(plot.memberIds, record.memberIds) })).filter(entry => entry.score >= PLOT_SAME)
         .sort((a, b) => b.score - a.score || b.record.changedAt - a.record.changedAt)[0];
       if (!match) return plot;

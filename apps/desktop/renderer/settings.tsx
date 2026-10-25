@@ -8,6 +8,7 @@ import type { AppInfo } from '../bridge.ts';
 import { LARGE_ITEM_WIDTH } from '../../../src/graph/footprints.ts';
 import type { SettingsSnapshot } from '../../../packages/core/settings.ts';
 import type { AppSettings } from '../../../packages/core/settings.ts';
+import { REVIEW_AGENTS } from '../../../src/pull-requests/review-agents.ts';
 import { STANDUP_ENABLED } from '../../../packages/core/standup.ts';
 import { UPDATE_COMMAND } from '../../../packages/core/updates.ts';
 import type { UpdateStatus } from '../../../packages/core/updates.ts';
@@ -99,7 +100,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
   }, [section, advanced]);
   const [itemMapSizes, setItemMapSizes] = useState<AppSettings['itemMapSizes']>({});
   const [conversation, setConversation] = useState<AppSettings['pullRequestConversation']>({ comments: true, threads: true, reviewBodies: true, bots: false, activity: false });
-  const [warnBeforeClosing, setWarnBeforeClosing] = useState(true), [doubleClickOpensWeb, setDoubleClickOpensWeb] = useState(false), [snapToGrid, setSnapToGrid] = useState(false), [mapPlots, setMapPlots] = useState(true), [hideImpliedLinks, setHideImpliedLinks] = useState(true);
+  const [warnBeforeClosing, setWarnBeforeClosing] = useState(true), [doubleClickOpensWeb, setDoubleClickOpensWeb] = useState(false), [snapToGrid, setSnapToGrid] = useState(false), [itemDelete, setItemDelete] = useState(false), [autoReview, setAutoReview] = useState<AppSettings['autoReview']>({ enabled: false, agents: ['claude'] }), [mapPlots, setMapPlots] = useState(true), [hideImpliedLinks, setHideImpliedLinks] = useState(true);
   const [itemViews, setItemViews] = useState<AppSettings['itemViews']>({});
   const [pluginSettings, setPluginSettings] = useState<AppSettings['plugins']>({}), pluginPages = useMemo(() => pluginSettingsPages(plugins), [plugins]);
   const [quickIds, setQuickIds] = useState<string[]>([]), [menus, setMenus] = useState<AppSettings['menus']>({ order: {}, layout: {}, hidden: {} });
@@ -116,7 +117,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
     window.craftingTable.settingsRead().then(snapshot => {
       if (!mounted) return;
       setWarnBeforeClosing(snapshot.value.warnBeforeClosing); setConversation(snapshot.value.pullRequestConversation); setDiagnostics(snapshot.value.diagnostics); setItemViews(snapshot.value.itemViews); setItemMapSizes(snapshot.value.itemMapSizes); setPluginSettings(snapshot.value.plugins);
-      setNeighborhood(snapshot.value.neighborhoodAppearance); setBelowAnimation(snapshot.value.belowAnimation); setUndermapLayout(snapshot.value.undermapLayout); setWorkingMark(snapshot.value.workingMark); setMapDashboards(snapshot.value.mapDashboards); setMapPlots(snapshot.value.mapPlots); setHideImpliedLinks(snapshot.value.hideImpliedLinks); setDoubleClickOpensWeb(snapshot.value.doubleClickOpensWeb); setSnapToGrid(snapshot.value.snapToGrid); setTerminal(snapshot.value.terminal);
+      setNeighborhood(snapshot.value.neighborhoodAppearance); setBelowAnimation(snapshot.value.belowAnimation); setUndermapLayout(snapshot.value.undermapLayout); setWorkingMark(snapshot.value.workingMark); setMapDashboards(snapshot.value.mapDashboards); setMapPlots(snapshot.value.mapPlots); setHideImpliedLinks(snapshot.value.hideImpliedLinks); setDoubleClickOpensWeb(snapshot.value.doubleClickOpensWeb); setSnapToGrid(snapshot.value.snapToGrid); setItemDelete(snapshot.value.itemDelete); setAutoReview(snapshot.value.autoReview); setTerminal(snapshot.value.terminal);
       setAutoMode(snapshot.value.claude.autoMode); setNotifications(snapshot.value.notifications);
       setQuickIds(snapshot.value.quickItemTypes); setMenus(snapshot.value.menus); setDefaultDirectory(snapshot.value.defaultWorkingDirectory); setSummaries(snapshot.value.summaries); setPadding(String(snapshot.value.neighborhoodPadding)); setSaved(snapshot); setRemote(snapshot.value.claude.remoteControl); setAwake(snapshot.value.keepAwake); setUpdateCheck(snapshot.value.updates.check); setArgumentsText(snapshot.value.claude.arguments.join('\n'));
     }).catch(error => { if (mounted) setError(error.message); });
@@ -125,7 +126,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
   const limited = Boolean(summaries && (summaries.enabled || summaries.agentTitles || summaries.attachTitles || summaries.plotNames || (STANDUP_ENABLED && summaries.standupDigests)));
   const claude = { remoteControl: remote, autoMode, arguments: argumentsText.split(/\r?\n/).map(value => value.trim()).filter(Boolean) };
   const permission = claudePermissionSettings(claude);
-  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, pullRequestConversation: conversation, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, terminal, keepAwake: awake, claude, updates: { check: updateCheck } };
+  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, pullRequestConversation: conversation, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, itemDelete, autoReview, terminal, keepAwake: awake, claude, updates: { check: updateCheck } };
   const changes = useMemo(() => saved ? draftChanges(saved.value, draft!, pluginPages) : [], [saved, JSON.stringify(draft)]);
   const dirty = changes.length > 0, [discarding, setDiscarding] = useState(false);
   const requestClose = () => { if (dirty) setDiscarding(true); else close(); };
@@ -176,10 +177,14 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
       <ItemViewSettings advanced={advanced} toggleAdvanced={toggleAdvanced} mapSizes={itemMapSizes} changeMap={setItemMapSizes} selected={section} plugins={plugins} sizes={itemViews} change={setItemViews}
         disconnected={providerId => providerId && !saved.value.connections.some(connection => connection.providerId === providerId && connection.enabled) ? providers.find(provider => provider.id === providerId)?.name : undefined}
         pluginSettings={pluginSettings} changePluginSettings={(owner, value) => setPluginSettings(current => ({ ...current, [owner]: value }))}
-        pullRequest={<SettingsSection label="Conversation" description="What appears in pull request conversations. Approval and check status sync regardless.">
+        pullRequest={<><SettingsSection label="Automatic reviews" description="Pull requests that land on the map after this is turned on get one review from each chosen agent, drafts included. Closed and merged pull requests, and those already on the map, are left alone.">
+          <SettingRow label="Review new pull requests" meta="Off by default"><Switch checked={autoReview.enabled} change={enabled => setAutoReview({ ...autoReview, enabled })} /></SettingRow>
+          {REVIEW_AGENTS.map(agent => <div key={agent.id} className="settings-choice"><label><input type="checkbox" disabled={!autoReview.enabled} checked={autoReview.agents.includes(agent.id)}
+            onChange={event => setAutoReview({ ...autoReview, agents: REVIEW_AGENTS.map(known => known.id).filter(id => id === agent.id ? event.target.checked : autoReview.agents.includes(id)) })} />{agent.name}</label></div>)}
+        </SettingsSection><SettingsSection label="Conversation" description="What appears in pull request conversations. Approval and check status sync regardless.">
           {([['comments', 'Human discussion comments'], ['threads', 'Code comments and thread replies'], ['reviewBodies', 'Written review comments'], ['bots', 'Include bots and GitHub Actions'], ['activity', 'Approvals and other review activity without comments']] as const).map(([key, label]) =>
             <div key={key} className="settings-choice"><label><input type="checkbox" checked={conversation[key]} onChange={event => setConversation({ ...conversation, [key]: event.target.checked })} />{label}</label></div>)}
-        </SettingsSection>}
+        </SettingsSection></>}
         claude={<SettingsSection label="Session launch" description="Applies to the next new or resumed session.">
           <SettingRow label="Auto mode" description="Claude checks actions automatically to reduce permission prompts. Off uses manual approval." meta={permission.override ? `Custom permission mode: ${permission.override}. Changing Auto mode replaces this override.` : 'On by default'}>
             <Switch checked={permission.mode === 'auto'} change={checked => { setAutoMode(checked); setArgumentsText(permission.arguments.join('\n')); }} />
@@ -232,6 +237,9 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
         </SettingsSection>
         <SettingsSection label="Placing items">
           <SettingRow label="Snap to grid" description="An item you drop, nudge with the arrow keys, or that the table places lands with its centre on an invisible 48 px grid, so connections run straight or at even angles. Items already on the map stay where they are until moved." meta="Off by default"><Switch checked={snapToGrid} change={setSnapToGrid} /></SettingRow>
+        </SettingsSection>
+        <SettingsSection label="Removing items">
+          <SettingRow label="Delete in item menus" description="An item's right-click menu ends in Delete…, which removes the item from the map and the archive for good after you confirm. Provider data and sessions are kept. Without it, items leave through Archive." meta="Off by default"><Switch checked={itemDelete} change={setItemDelete} /></SettingRow>
         </SettingsSection>
         <SettingsSection label="Undermap layout">
           <SettingRow label="Undermap layout" description="Mirror keeps every project in its place below the map and sorts what you sent there by month. Classic shows items where they were put when they were sent; nothing is lost by switching." meta="Default Mirror">
