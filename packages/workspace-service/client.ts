@@ -7,15 +7,16 @@ import { LocalRpcClient, connectSocket } from './local-rpc.ts';
 export class WorkspaceClient extends LocalRpcClient {
   private cursor = -1;
   private plots?: number;
+  private projectSummaries?: number;
   private reminders?: number;
   constructor(socket: Socket, secret: string) {
     super(socket, secret);
     this.on('notification', response => { if (response.event === 'snapshot') this.acceptSnapshot(response.snapshot); });
   }
-  /** A plot or reminder change keeps the cursor; its own revision still makes it news. */
+  /** A plot, project summary or reminder change keeps the cursor; its own revision still makes it news. */
   private acceptSnapshot(snapshot: WorkspaceSnapshot) {
-    if (snapshot.cursor < this.cursor || (snapshot.cursor === this.cursor && snapshot.plots?.revision === this.plots && snapshot.reminders?.revision === this.reminders)) return;
-    this.cursor = snapshot.cursor; this.plots = snapshot.plots?.revision; this.reminders = snapshot.reminders?.revision; this.emit('snapshot', snapshot);
+    if (snapshot.cursor < this.cursor || (snapshot.cursor === this.cursor && snapshot.plots?.revision === this.plots && snapshot.projectSummaries?.revision === this.projectSummaries && snapshot.reminders?.revision === this.reminders)) return;
+    this.cursor = snapshot.cursor; this.plots = snapshot.plots?.revision; this.projectSummaries = snapshot.projectSummaries?.revision; this.reminders = snapshot.reminders?.revision; this.emit('snapshot', snapshot);
   }
   async subscribe(after = 0) { const snapshot = await this.call<WorkspaceSnapshot>('subscribe', { after }); this.acceptSnapshot(snapshot); return snapshot; }
 }

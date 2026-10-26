@@ -845,6 +845,42 @@ test('v28 upgrade: plots gain an assigned and a chosen color and keep their iden
   } finally { store.close(); }
 }));
 
+test('project summaries upgrade: a new table keeps the latest text per project across a restart', () => fixture(async directory => {
+  const file = join(directory, 'project-summaries.sqlite'), step = migrations.findIndex(migration => migration.includes('project_summaries'));
+  assert.ok(step > 0);
+  let store = new SqliteStore(file); store.close();
+  const old = new DatabaseSync(file); old.exec(`DROP TABLE project_summaries; PRAGMA user_version = ${step};`); old.close();
+  store = new SqliteStore(file);
+  const policy = settingsSchema.parse({}).summaries;
+  try {
+    assert.ok(store.backupFile?.includes(`backup-v${step}-`));
+    assert.deepEqual(store.projectSummaries(), []);
+    assert.equal(store.reserveProjectSummary('billing', 'f1', policy, 1000, 600_000), true);
+    assert.equal(store.finishProjectSummary('billing', 'f1', 'Refund PR waits on your review.', 'haiku'), true);
+  } finally { store.close(); }
+  store = new SqliteStore(file);
+  try { assert.deepEqual(store.projectSummaries(), [{ projectId: 'billing', fingerprint: 'f1', attemptedAt: 1000, text: 'Refund PR waits on your review.', model: 'haiku' }]); } finally { store.close(); }
+}));
+
+test('project summaries share the allowance, leave headroom to other helpers and are limited per project', () => fixture(async directory => {
+  const store = new SqliteStore(join(directory, 'project-summary-limits.sqlite'));
+  try {
+    const policy = { ...settingsSchema.parse({}).summaries, requestsPerHour: 6 };
+    assert.equal(store.reserveProjectSummary('a', 'f1', policy, 1000, 600_000, 4), true);
+    assert.equal(store.reserveProjectSummary('a', 'f2', policy, 2000, 600_000, 4), false, 'once per ten minutes per project');
+    assert.equal(store.reserveProjectSummary('a', 'f1', policy, 700_000, 600_000, 4), false, 'unchanged input is not sent again');
+    assert.equal(store.reserveProjectSummary('b', 'f3', policy, 3000, 600_000, 4), true);
+    assert.equal(store.reserveProjectSummary('c', 'f4', policy, 4000, 600_000, 4), false, 'four requests an hour stay with the other helpers');
+    assert.equal(store.reserveAiRequest(policy, 5000), true, 'which another helper can still use');
+    assert.equal(store.finishProjectSummary('a', 'f2', 'Stale.', 'haiku'), false, 'an answer for older input is dropped');
+    assert.equal(store.finishProjectSummary('a', 'f1', 'Billing waits on you.', 'haiku'), true);
+    assert.equal(store.reserveProjectSummary('a', 'f5', policy, 3_700_000, 600_000, 4), true, 'a new attempt keeps the earlier text until it is answered');
+    assert.deepEqual(store.projectSummaries().map(row => [row.projectId, row.fingerprint, row.text]), [['a', 'f5', 'Billing waits on you.'], ['b', 'f3', undefined]]);
+    store.forgetProjectSummaries(['b']);
+    assert.deepEqual(store.projectSummaries().map(row => row.projectId), ['a'], 'rows of projects that are gone are dropped');
+  } finally { store.close(); }
+}));
+
 test('AI requests of every kind share the rolling hourly and daily allowance, durably',() => fixture(async directory => {
   const file = join(directory, 'allowance.sqlite'), policy = { ...settingsSchema.parse({}).summaries, requestsPerHour: 2, requestsPerDay: 3 };
   let store = new SqliteStore(file);

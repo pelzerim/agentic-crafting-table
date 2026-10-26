@@ -4,7 +4,7 @@ export const PROTOCOL_VERSION = 1;
 export const MAX_FRAME_BYTES = 8 * 1024 * 1024;
 /** `plots` is derived from the committed state and saved plot names (MAP-24); `reminders` is the
  * reminder list with today's states (MAP-REMINDERS). Older services omit either. */
-export interface WorkspaceSnapshot { state: WorkspaceState; cursor: number; plots?: import('../../src/graph/plots.ts').PlotSnapshot; reminders?: import('../core/reminders.ts').RemindersSnapshot }
+export interface WorkspaceSnapshot { state: WorkspaceState; cursor: number; plots?: import('../../src/graph/plots.ts').PlotSnapshot; projectSummaries?: import('./project-summaries.ts').ProjectSummariesSnapshot; reminders?: import('../core/reminders.ts').RemindersSnapshot }
 export interface WireError { message: string; code: string; currentRevision?: number }
 export type ResponseFrame = { id: string; result: unknown } | { id: string; error: WireError } | { event: 'snapshot'; snapshot: WorkspaceSnapshot } | { event: 'settings'; settings: import('../core/settings.ts').SettingsSnapshot } | { event: 'recording-deleted'; sessionId: string } | ({ event: 'reminder-due' } & import('../core/reminders.ts').ReminderDue);
 /** Error code of a write the service could not confirm: the provider may have applied it. A refusal keeps its own code. */

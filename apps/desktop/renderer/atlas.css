@@ -42,7 +42,6 @@
 .atlas-tooltip small{color:var(--act-ink-dim);font-size:var(--act-fs-ui)}
 .atlas-live{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .map-area[data-overview=true] .zoom-markers{display:none}
-.map-area .zoom-markers{bottom:176px}
 .atlas-overview{position:absolute;right:16px;bottom:16px;z-index:115;width:min(672px,calc(100% - 110px));box-sizing:border-box;padding:0 12px 12px;background:var(--act-sunken);border:1px solid var(--act-line-control);clip-path:var(--pixel-panel-shape);box-shadow:var(--act-shadow-sm);color:var(--act-ink);font:500 var(--act-fs-body)/1.2 var(--act-font-ui)}
 .atlas-overview[data-layer=below]{background:var(--act-undermap-panel);border-color:var(--act-undermap-line)}
 .atlas-overview header{display:flex;align-items:center;gap:10px;height:38px}

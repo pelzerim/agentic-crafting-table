@@ -96,6 +96,8 @@ export const migrations = [
   // Plot colors (MAP-24): the assigned color and a person's override, added once as `color` and `chosen_color` columns.
   `SELECT 1;`,
   `CREATE TABLE IF NOT EXISTS revision_conflicts (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, actor TEXT NOT NULL, commands TEXT NOT NULL, expected INTEGER NOT NULL, current INTEGER NOT NULL, landed TEXT NOT NULL);`,
+  // Project summaries for the project column (MAP-22): the input last sent per project and the latest text.
+  `CREATE TABLE IF NOT EXISTS project_summaries (project_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, attempted_at INTEGER NOT NULL, text TEXT, model TEXT);`,
 ] as const;
 const CONFLICTS_KEPT = 1000, CONFLICT_LANDED_SHOWN = 20;
 export interface RevisionConflictRecord { at: string; actor: string; commands: CommandSubject[]; expected: number; current: number; landed: { revision: number; actor: string; commands: CommandSubject[] }[] }
@@ -131,6 +133,7 @@ function attentionCycles(state: WorkspaceState): Map<string, AttentionCycle> {
 export const DORMANT_PLOTS_PER_PROJECT = 20;
 /** A plot's identity, name and color. `generated` is false for a user's name; no name means the local fallback.
  * `color` is assigned once, `chosenColor` is a person's override. */
+export interface ProjectSummaryRecord { projectId: string; fingerprint: string; attemptedAt: number; text?: string; model?: string }
 export interface PlotRecord { id: string; projectId: string; memberIds: string[]; active: boolean; name?: string; generated: boolean; hidden: boolean; changedAt: number; fingerprint?: string; attemptedAt?: number; color?: string; chosenColor?: string }
 /** The latest hook a Claude process sent, and when its hook process saw it. */
 export interface AgentObservation { event: string; observedAt: number }
@@ -600,6 +603,34 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       this.db.prepare('UPDATE plots SET fingerprint = ?, attempted_at = ? WHERE id = ?').run(fingerprint, now, id);
       return true;
     });
+  }
+
+  projectSummaries(): ProjectSummaryRecord[] {
+    return this.db.prepare('SELECT * FROM project_summaries ORDER BY project_id').all().map(row => ({ projectId: String(row.project_id), fingerprint: String(row.fingerprint), attemptedAt: Number(row.attempted_at),
+      ...(row.text === null ? {} : { text: String(row.text) }), ...(row.model === null ? {} : { model: String(row.model) }) }));
+  }
+  /** Shares the durable summary allowance and leaves `keep` requests to the other helpers.
+   * A project is sent at most once per `minIntervalMs`, and never twice with the same input;
+   * its earlier text stays until the new attempt is answered. */
+  reserveProjectSummary(projectId: string, fingerprint: string, policy: AppSettings['summaries'], now: number, minIntervalMs: number, keep = 0) {
+    return this.transaction(() => {
+      this.db.prepare('DELETE FROM summary_attempts WHERE started_at <= ?').run(now - 86_400_000);
+      const prior = this.db.prepare('SELECT fingerprint, attempted_at FROM project_summaries WHERE project_id = ?').get(projectId);
+      if (prior && (String(prior.fingerprint) === fingerprint || now - Number(prior.attempted_at) < minIntervalMs)) return false;
+      const usage = this.db.prepare('SELECT COUNT(*) AS day, COALESCE(SUM(started_at > ?), 0) AS hour FROM summary_attempts').get(now - 3_600_000)!;
+      if (Number(usage.day) + keep >= policy.requestsPerDay || Number(usage.hour) + keep >= policy.requestsPerHour) return false;
+      this.db.prepare('INSERT INTO summary_attempts(started_at) VALUES (?)').run(now);
+      this.db.prepare(`INSERT INTO project_summaries(project_id, fingerprint, attempted_at) VALUES (?, ?, ?)
+        ON CONFLICT(project_id) DO UPDATE SET fingerprint = excluded.fingerprint, attempted_at = excluded.attempted_at`).run(projectId, fingerprint, now);
+      return true;
+    });
+  }
+  /** Saves the text only for the input it was asked for. */
+  finishProjectSummary(projectId: string, fingerprint: string, text: string, model: string) {
+    return this.db.prepare('UPDATE project_summaries SET text = ?, model = ? WHERE project_id = ? AND fingerprint = ?').run(text, model, projectId, fingerprint).changes > 0;
+  }
+  forgetProjectSummaries(projectIds: readonly string[]) {
+    if (projectIds.length) this.db.prepare('DELETE FROM project_summaries WHERE project_id IN (SELECT value FROM json_each(?))').run(JSON.stringify(projectIds));
   }
 
   /** The ordered reminder list; the first access in a workspace seeds the defaults. */

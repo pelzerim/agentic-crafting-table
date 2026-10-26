@@ -48,6 +48,7 @@ import { ActivitySummaries } from './activity-summaries.ts';
 import { AgentTitles } from './agent-titles.ts';
 import { AttachTitles } from './attach-titles.ts';
 import { Plots } from './plots.ts';
+import { ProjectSummaries } from './project-summaries.ts';
 import { Reminders } from './reminders.ts';
 import type { ReminderClockOptions } from './reminders.ts';
 import { reminderDoneSchema, reminderSaveSchema, reminderSnoozeSchema } from '../core/reminders.ts';
@@ -133,9 +134,11 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   let agentTitles: AgentTitles | undefined;
   let attachTitles: AttachTitles | undefined;
   const plots = new Plots(store, control, { changed: () => broadcast(), allowed: () => !closing && lifecycle.allowsBackgroundWork, directory, client: providers ? providers.titleClient ?? null : undefined });
+  const projectSummaries = new ProjectSummaries(store, control, { changed: () => broadcast(), allowed: () => !closing && lifecycle.allowsBackgroundWork, directory, client: providers ? providers.titleClient ?? null : undefined,
+    plots: state => plots.observe(state).list.filter(plot => !plot.hidden) });
   const reminders = new Reminders(store, { ...providers?.reminderClock, changed: () => broadcast() });
   reminders.on('due', due => { for (const subscriber of subscribers) send(subscriber, { event: 'reminder-due', ...due }); });
-  const saved = async () => { const value = await store.snapshot(); return { ...value, plots: plots.observe(value.state), reminders: reminders.snapshot() }; };
+  const saved = async () => { const value = await store.snapshot(); return { ...value, plots: plots.observe(value.state), projectSummaries: projectSummaries.observe(), reminders: reminders.snapshot() }; };
   // People see a pending provider change at once; background observers keep the saved graph.
   const presented = <T extends { state: WorkspaceState }>(value: T): T => ({ ...value, state: resources.overlay(value.state) });
   const snapshot = async () => presented(await saved());
@@ -369,6 +372,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
             agentTitles?.settingsChanged();
             attachTitles?.settingsChanged();
             standup.settingsChanged();
+            projectSummaries.settingsChanged();
             assignments.settingsChanged();
             triage.settingsChanged();
             todoSweeper.settingsChanged();
@@ -402,8 +406,8 @@ export async function startWorkspaceService(directory: string, registry?: Resour
           case 'attention.history': { const input = z.object({ offset: z.number().int().min(0).max(99).default(0), limit: z.number().int().min(1).max(100).default(10) }).strict().parse(args ?? {}); result = store.attentionHistory(input.offset, input.limit); break; }
           case 'lifecycle.active': result = await lifecycle.active(); break;
           case 'lifecycle.preview': result = { sessions: await lifecycle.active(), pending: lifecycle.pendingCount }; break;
-          case 'lifecycle.close': inbox.stop(); await agents?.pause(); await workflows.pause(); await servicePlugins.pause(); await findings?.close(); await loops.close(); await autoReviews.close(); await reviews?.close(); await architecture.close(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await resources.pause(); await summaries?.pause(); await titles?.pause(); await agentTitles?.pause(); await attachTitles?.pause(); await standup.pause(); await updates.pause(); await plots.pause(); await reminders.pause(); result = await lifecycle.close(); break;
-          case 'lifecycle.recover': { const input = z.object({ retry: z.boolean().default(false), startupId: z.string().uuid().optional() }).parse(args); result = lifecycle.recover(input.retry, input.startupId); summaries?.start(); titles?.start(); agentTitles?.start(); attachTitles?.start(); standup.start(); updates.start(); plots.start(); reminders.start(); assignments.start(); triage.start(); todoSweeper.start(); resources.start(); workflows.resume(); findings?.start(); loops.start(); autoReviews.start(); servicePlugins.start(); agents?.start(); break; }
+          case 'lifecycle.close': inbox.stop(); await agents?.pause(); await workflows.pause(); await servicePlugins.pause(); await findings?.close(); await loops.close(); await autoReviews.close(); await reviews?.close(); await architecture.close(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await resources.pause(); await summaries?.pause(); await titles?.pause(); await agentTitles?.pause(); await attachTitles?.pause(); await standup.pause(); await updates.pause(); await plots.pause(); await projectSummaries.pause(); await reminders.pause(); result = await lifecycle.close(); break;
+          case 'lifecycle.recover': { const input = z.object({ retry: z.boolean().default(false), startupId: z.string().uuid().optional() }).parse(args); result = lifecycle.recover(input.retry, input.startupId); summaries?.start(); titles?.start(); agentTitles?.start(); attachTitles?.start(); standup.start(); updates.start(); plots.start(); projectSummaries.start(); reminders.start(); assignments.start(); triage.start(); todoSweeper.start(); resources.start(); workflows.resume(); findings?.start(); loops.start(); autoReviews.start(); servicePlugins.start(); agents?.start(); break; }
           case 'agent.hook': if (!agents) throw new Error('Native agents are not configured'); result = await agents.hook(args); break;
           case 'plugins.discover': {
             const input = pluginDiscoverySchema.parse(args);
@@ -493,6 +497,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
       await standup.close();
       await updates.close();
       await plots.close();
+      await projectSummaries.close();
       await reminders.close();
       await resources.close();
       await plugins.close();
@@ -551,6 +556,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
     standup.start();
     updates.start();
     plots.start();
+    projectSummaries.start();
     reminders.start();
     assignments.start(); triage.start(); todoSweeper.start(); resources.start(); inbox.start(); loops.start(); servicePlugins.start(); agents?.start();
   })();

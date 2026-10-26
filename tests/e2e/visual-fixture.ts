@@ -12,17 +12,25 @@ import { connectWorkspace } from '../../packages/workspace-service/client.ts';
 import { connectSupervisor } from '../../packages/session-runtime/client.ts';
 import { exitWithoutShutdown } from './exit-without-shutdown.ts';
 import type { Reminder } from '../../packages/core/reminders.ts';
+import type { MapCorner } from '../../packages/core/settings.ts';
 
 // Process-local only: host mouse/trackpad settings must not change capture width.
 export const scrollbarArgs = process.platform === 'darwin' ? ['-AppleShowScrollBars', 'WhenScrolling'] : [];
 
-export const test = base.extend<{ visual: { app: ElectronApplication; page: Page }; legacyLayout: boolean; titleFixture: boolean; launchEnv: Record<string, string>; reminders: Reminder[] }>({
+/** The bottom-right corner (MAP-22). Screenshots and Atlas checks predate the project column, so fixtures show the Atlas unless a test asks for the column. */
+export function chooseMapCorner(store: Pick<SqliteStore, 'readSettings' | 'writeSettings'>, mapCorner: MapCorner) {
+  const current = store.readSettings();
+  if (current.value.mapCorner !== mapCorner) store.writeSettings({ expectedRevision: current.revision, value: { ...current.value, mapCorner } });
+}
+
+export const test = base.extend<{ visual: { app: ElectronApplication; page: Page }; legacyLayout: boolean; titleFixture: boolean; launchEnv: Record<string, string>; reminders: Reminder[]; mapCorner: MapCorner }>({
   legacyLayout: [false, { option: true }],
+  mapCorner: ['atlas', { option: true }],
   // The service fires reminders on the real clock, so screenshots start without the first-run seeds.
   reminders: [[], { option: true }],
   titleFixture: [false, { option: true }],
   launchEnv: [{}, { option: true }],
-  visual: async ({ legacyLayout, titleFixture, launchEnv, reminders }, use, testInfo) => {
+  visual: async ({ legacyLayout, titleFixture, launchEnv, reminders, mapCorner }, use, testInfo) => {
     const directory = await mkdtemp(join(tmpdir(), 'craft-visual-'));
     const titleEnv: Record<string, string> = {};
     if (titleFixture) {
@@ -51,6 +59,7 @@ export const test = base.extend<{ visual: { app: ElectronApplication; page: Page
       await store.writeView('desktop', { camera: { x: 140, y: 100, zoom: .7 } });
       enableShowShip(store);
       store.saveReminders(reminders);
+      chooseMapCorner(store, mapCorner);
     } finally { store.close(); }
     // A process-local Cocoa preference keeps automatic mouse/trackpad changes on
     // the host from switching scrollbar layout mid-run. Never write user defaults.

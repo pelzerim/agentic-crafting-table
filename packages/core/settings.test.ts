@@ -114,3 +114,17 @@ test('automatic reviews of new pull requests are off by default, with Claude cho
   assert.deepEqual(settingsSchema.parse({ autoReview: { enabled: true, agents: [] } }).autoReview.agents, []);
   for (const agents of [['gemini'], ['claude', 'claude'], 'claude']) assert.equal(settingsSchema.safeParse({ autoReview: { enabled: true, agents } }).success, false, JSON.stringify(agents));
 });
+
+test('the map corner shows the project column by default; the Atlas stays a saved choice', () => {
+  assert.equal(settingsSchema.parse({}).mapCorner, 'projects', 'settings saved before the column existed');
+  assert.equal(settingsSchema.parse({ mapCorner: 'atlas' }).mapCorner, 'atlas');
+  for (const mapCorner of ['minimap', '', 1, null]) assert.equal(settingsSchema.safeParse({ mapCorner }).success, false, String(mapCorner));
+});
+
+test('project summaries are on by default, also for summary settings saved before they existed, with 500 requests a day', () => {
+  assert.equal(settingsSchema.parse({}).summaries.projectSummaries, true);
+  assert.equal(settingsSchema.parse({}).summaries.requestsPerDay, 500);
+  assert.equal(settingsSchema.parse({ summaries: { enabled: true } }).summaries.projectSummaries, true);
+  assert.equal(settingsSchema.parse({ summaries: { projectSummaries: false } }).summaries.projectSummaries, false);
+  assert.equal(settingsSchema.safeParse({ summaries: { projectSummaries: 'yes' } }).success, false);
+});

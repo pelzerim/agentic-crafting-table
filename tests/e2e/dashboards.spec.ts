@@ -45,7 +45,7 @@ async function launch(run: (page: Page) => Promise<void>, view = { x: 20, y: 40,
     await store.update(() => fixture()); await store.writeView('desktop', { camera: view });
     // The library's linked items form plots (MAP-24, covered in plots.spec.ts); these journeys are about the other sections,
     // including the PR and ticket lines that are off by default.
-    const settings = store.readSettings(); store.writeSettings({ expectedRevision: settings.revision, value: { ...settings.value, mapPlots: false, mapDashboards: { ...settings.value.mapDashboards, sections: ALL_SECTIONS } } });
+    const settings = store.readSettings(); store.writeSettings({ expectedRevision: settings.revision, value: { ...settings.value, mapCorner: 'atlas', mapPlots: false, mapDashboards: { ...settings.value.mapDashboards, sections: ALL_SECTIONS } } });
     prepare?.(store);
   } finally { store.close(); }
   const app = await electron.launch({ args: ['.', '--force-device-scale-factor=1', '--disable-lcd-text', '--force-color-profile=srgb', ...scrollbarArgs], env: { ...process.env, ACT_TEST_DATA_DIR: directory, SHELL: '/bin/sh', TZ: 'UTC' } });

@@ -57,6 +57,7 @@ import { FirstRunCard } from './first-run.tsx';
 import { ResourceActionNotice, useResourceMenuActions } from './resource-menu-actions.tsx';
 import { NEEDS_ME, attentionCounts, attentionItems, attentionRestorable } from '../../../src/graph/attention.ts';
 import { needsMeIds } from '../../../src/graph/atlas.ts';
+import { shareUnchanged } from '../../../src/graph/share-state.ts';
 import { splitAttention } from '../../../src/graph/mute.ts';
 import { doneArchiveDays, todoEntries as listTodos } from '../../../src/graph/todos.ts';
 import { completeTodo } from '../../../packages/core/todos.ts';
@@ -325,6 +326,8 @@ export function WorkspaceMap() {
     const value = snapshot?.plots;
     return layer !== 'map' || !value || settings?.value.mapPlots === false ? undefined : value.list.filter(plot => !plot.hidden && !value.hiddenProjects.includes(plot.projectId));
   }, [snapshot?.plots, layer, settings?.value.mapPlots]);
+  const summaryKey = JSON.stringify(snapshot?.projectSummaries?.list ?? []);
+  const projectSummaries = useMemo(() => new Map((JSON.parse(summaryKey) as { projectId: string; text: string }[]).map(entry => [entry.projectId, entry.text])), [summaryKey]);
   const layerResources = useMemo(() => {
     const saved = snapshot?.state.resources ?? [];
     if (!paperDraft || saved.some(resource => resource.id === paperDraft.resourceId)) return saved;
@@ -363,13 +366,15 @@ export function WorkspaceMap() {
       setReveal({ nodeId, nonce: Date.now(), mode: 'map', select: [nodeId] });
     }).catch(error => setError(error.message));
   }, []);
+  // Reads the resources when called, so a changed record never changes this function and with it every card's context.
   const renderDetail = useCallback<NonNullable<ProjectMapProps['renderDetail']>>((node, active) => {
-    const resource = resources?.find(resource => resource.id === node.resourceId);
+    const resource = snapshotRef.current?.state.resources.find(resource => resource.id === node.resourceId);
     return resource ? <ErrorBoundary key={resource.id} fallback={(error, reset) => <PanelError error={error} retry={reset} />}><PluginDetail resource={resource} registry={registry} active={active} nodeId={node.id} onOpen={openResource} onShow={showOnMap} viewStore={itemViewStore}
       onEdit={() => setEditor({ mode: 'edit', nodeId: node.id, projectId: node.projectId, position: node.position, screen: { x: innerWidth / 2 - 150, y: 80 } })} /></ErrorBoundary> : <p>{node.summary}</p>;
-  }, [resources, registry, openResource, showOnMap]);
-  const accept = (next: WorkspaceSnapshot) => {
-    if (snapshotRef.current && next.cursor < snapshotRef.current.cursor) return;
+  }, [registry, openResource, showOnMap]);
+  const accept = (incoming: WorkspaceSnapshot) => {
+    if (snapshotRef.current && incoming.cursor < snapshotRef.current.cursor) return;
+    const next = { ...incoming, state: shareUnchanged(snapshotRef.current?.state, incoming.state) };
     snapshotRef.current = next; setSnapshot(next);
   };
   const settingsRef = useRef(settings); settingsRef.current = settings;
@@ -682,7 +687,7 @@ export function WorkspaceMap() {
   return <RailContext.Provider value={rail}><section ref={workspace} className="live-workspace" aria-label={below ? 'Undermap' : 'Project map'} data-layer={layer} data-travelling={travelling || undefined} data-chrome-docked={chromeDocked || undefined}>
     {snapshot && plugins && view && settings && <ProjectMap key={layer} layer={layer} neighborhoodColor={below ? undermapColor : undefined} registry={registry} nodes={badged.nodes} resources={layerResources} links={badged.links} badges={badged.onItems} onBadge={(noteId, anchor, menu) => { setConnectionDraft(undefined); setEditor({ ...anchor, nodeId: noteId, mode: menu ? 'menu' : 'edit' }); }}
       onMarkSeen={acknowledge} keep={keep} onKeep={restore} onChromeCover={setChromeDocked} onOpened={opened} onView={viewing} onMute={below ? undefined : setMuted}
-      overview={overviewOpen} onOverview={open => { setOverviewOpen(open); if (open) { rail.unpin('attention'); rail.close('attention'); } }} undermapCount={layerGraph.belowCount} onTravel={to => { rail.clear(); void travel(to); }}
+      mapCorner={settings.value.mapCorner} projectSummaries={projectSummaries} overview={overviewOpen} onOverview={open => { setOverviewOpen(open); if (open) { rail.unpin('attention'); rail.close('attention'); } }} undermapCount={layerGraph.belowCount} onTravel={to => { rail.clear(); void travel(to); }}
       highlightedNodes={menuHighlight?.nodes ?? (below && foundBelow ? foundNodes : highlightedNodes)} highlightedLinks={menuHighlight?.links} menuFor={editor?.mode === 'menu' ? menuTargets : undefined} undermap={below ? undermapView : undefined}
       attentionCounting={counting} itemMapSizes={settings.value.itemMapSizes} itemViews={settings.value.itemViews} viewBounds={view.itemViewBounds} onViewBounds={saveViewBounds} neighborhoodPadding={settings.value.neighborhoodPadding} neighborhoodAppearance={neighborhoodAppearance} dashboards={settings.value.mapDashboards} workingMark={settings.value.workingMark} plots={plots} onPlot={(projectId, request) => window.craftingTable.runtimeRun({ action: 'plot', nodeId: projectId, arguments: request }).then(() => {}, error => { if (request.operation !== 'seen') setError(error.message); })} plotNaming={settings.value.summaries.plotNames} plotTargets={ids => snapshot ? moveTargets(snapshot.state, ids) : []} onMoveItems={moveToProject} onSendBelow={ids => moveLayer(ids, 'below')} hideImpliedLinks={settings.value.hideImpliedLinks} snap={settings.value.snapToGrid ? SNAP_PITCH : undefined} collisions={settings.value.mapCollisions} initialViewport={view.camera} onViewport={camera => { zoomRef.current = camera.zoom; saveView({ camera }); }} reveal={reveal} onRevealed={revealed => setReveal(current => current === revealed ? undefined : current)}
       onItemDrag={below ? undefined : (id, point) => todoOverlay.current?.drag(id, point)} onItemDrop={below ? undefined : (id, point) => todoOverlay.current?.drop(id, point) ?? false}

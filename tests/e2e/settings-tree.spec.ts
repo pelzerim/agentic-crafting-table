@@ -110,7 +110,7 @@ test('AI features keep the shared request limits visible and editable whenever a
   const titles = dialog.getByRole('switch', { name: 'Auto-title agents', exact: true }), summaries = dialog.getByRole('switch', { name: 'Summarize agent and terminal activity', exact: true });
   const hourly = dialog.getByLabel('Summary requests per hour'), daily = dialog.getByLabel('Summary requests per day');
   await expect(titles).toBeChecked(); await expect(summaries).not.toBeChecked();
-  await expect(hourly).toBeEditable(); await expect(daily).toHaveValue('100');
+  await expect(hourly).toBeEditable(); await expect(daily).toHaveValue('500');
   await expect(dialog.getByLabel('Summary model', { exact: true })).toBeDisabled();
   await expect(dialog.getByText('Output leaves your machine.')).toBeVisible();
   await capture(page, 'settings-ai-features.png');
@@ -123,7 +123,11 @@ test('AI features keep the shared request limits visible and editable whenever a
   await plotNames.uncheck(); await expect(hourly).toBeEditable();
   await slackTitles.uncheck();
   if (STANDUP_ENABLED) { await expect(hourly).toBeEditable(); await standup.uncheck(); }
-  await expect(hourly).toBeVisible(); await expect(hourly).toBeDisabled();
+  const projectSummaries = dialog.getByRole('switch', { name: 'Summarise projects', exact: true });
+  await expect(projectSummaries).toBeChecked(); await expect(hourly).toBeEditable();
+  await projectSummaries.uncheck(); await expect(hourly).toBeVisible(); await expect(hourly).toBeDisabled();
+  await projectSummaries.check(); await expect(hourly).toBeEditable();
+  await projectSummaries.uncheck(); await expect(hourly).toBeDisabled();
   await summaries.check(); await expect(hourly).toBeEditable(); await expect(dialog.getByLabel('Summary model', { exact: true })).toBeEditable();
   await hourly.fill('30'); await expect(dialog.getByRole('button', { name: 'Reset to 12' })).toBeVisible();
   await tree.getByRole('treeitem', { name: 'General', exact: true }).click();

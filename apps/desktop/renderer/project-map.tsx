@@ -56,6 +56,10 @@ import { DEFAULT_NEIGHBORHOOD_APPEARANCE } from '../../../src/graph/neighborhood
 import type { NeighborhoodAppearance } from '../../../src/graph/neighborhood-fill.ts';
 import { droppedUrl, mayContainUrl } from './dropped-url.ts';
 import { Atlas } from './atlas.tsx';
+import { ProjectColumn } from './project-column.tsx';
+import { projectColumn } from '../../../src/graph/project-column.ts';
+import type { ProjectColumnModel } from '../../../src/graph/project-column.ts';
+import type { MapCorner } from '../../../packages/core/settings.ts';
 import type { AtlasItemEntry, AtlasProjectEntry } from './atlas.tsx';
 import { needsMeIds } from '../../../src/graph/atlas.ts';
 import { useWorkspaceShortcuts } from './shortcuts.ts';
@@ -167,7 +171,11 @@ export interface ProjectMapProps {
   layer?: 'map' | 'below';
   /** Derives each neighborhood's color from its project's color, e.g. darker in Undermap. */
   neighborhoodColor?(projectColor: string): string;
-  /** The Atlas's large overview; controlled by the host so it survives layer travel. */
+  /** What the bottom-right corner shows (MAP-22); absent is the project column. */
+  mapCorner?: MapCorner;
+  /** Summaries by project id, shown on the project column while Summarise projects is on. */
+  projectSummaries?: ReadonlyMap<string, string>;
+  /** The corner's unfolded state (the project list or the Atlas overview); controlled by the host so it survives layer travel. */
   overview?: boolean;
   onOverview?(open: boolean): void;
   undermapCount?: number;
@@ -494,8 +502,10 @@ function MapCanvas(props: ProjectMapProps) {
   const lastZoom = useRef(viewport.zoom);
   const { setCenter, zoomTo, zoomIn, zoomOut, screenToFlowPosition, fitBounds, setViewport } = useReactFlow();
   const [ownOverview, setOwnOverview] = useState(false);
-  const overview = !focus && (props.overview ?? ownOverview), setOverview = props.onOverview ?? setOwnOverview;
-  useWorkspaceShortcuts({ 'map.overview': () => { if (focus) return false; setOverview(!overview); },
+  // The project column is not shown below (MAP-22), so there is nothing to unfold there.
+  const cornerShown = props.mapCorner === 'atlas' || props.layer !== 'below';
+  const overview = !focus && cornerShown && (props.overview ?? ownOverview), setOverview = props.onOverview ?? setOwnOverview;
+  useWorkspaceShortcuts({ 'map.overview': () => { if (focus || !cornerShown) return false; setOverview(!overview); },
     'map.zoomIn': () => { if (focus) return false; void zoomIn(); }, 'map.zoomOut': () => { if (focus) return false; void zoomOut(); },
     'map.zoomReset': () => { if (focus) return false; void zoomTo(1); },
     'project.mute': () => {
@@ -543,7 +553,14 @@ function MapCanvas(props: ProjectMapProps) {
     window.addEventListener('contextmenu', returnToProject, true);
     return () => window.removeEventListener('contextmenu', returnToProject, true);
   }, [focus]);
-  const presentations = useMemo(() => new Map(props.resources.map(resource => [resource.id, presentResource(props.registry ?? registry, resource)])), [props.resources, props.registry]);
+  // A resource that did not change keeps its presentation, so one changed record never re-presents the rest.
+  const presented = useRef<{ registry: unknown; views: WeakMap<ProjectMapProps['resources'][number], ReturnType<typeof presentResource>> }>(undefined);
+  const presentations = useMemo(() => {
+    const plugins = props.registry ?? registry;
+    if (presented.current?.registry !== plugins) presented.current = { registry: plugins, views: new WeakMap() };
+    const views = presented.current.views;
+    return new Map(props.resources.map(resource => { let view = views.get(resource); if (!view) { view = presentResource(plugins, resource); views.set(resource, view); } return [resource.id, view]; }));
+  }, [props.resources, props.registry]);
   const blocking = useMemo(() => {
     const state = blockingState(props.nodes, props.links), blocked = new Map<string, Blocked>();
     for (const [id, blockers] of state.blocked) {
@@ -583,16 +600,21 @@ function MapCanvas(props: ProjectMapProps) {
     const paperType = record && (props.registry ?? registry).get(record.pluginId), spec = paperType?.appearance?.paper;
     const paper = spec && record ? { color: String(record.data[spec.paperField ?? ''] ?? '') || 'mint', text: String(record.data[spec.textField] ?? '') } : undefined;
     const writer = paperType?.authorship && record?.data[paperType.authorship.field] as { name?: unknown; at?: unknown } | undefined;
-    return { item, paper: paper?.color, paperText: paper?.text, paperWriter: typeof writer?.name === 'string' ? writer.name : undefined, paperWrittenAt: typeof writer?.at === 'string' ? writer.at : undefined, mapSize, mapFields, pips: pips?.length ? pips : undefined, frameTitle: view?.frameTitle, reference: view?.reference, view: view?.view, tiny: Boolean(mapSize && mapSize.height <= 36 && !mapSize.iconOnly), iconOpens: view?.appearance.openFromIcon === true, completionToggle: view?.appearance.completionToggle === true, showFullTitle: view?.appearance.showFullTitle === true, editableTitle: view?.appearance.editableTitle === true, width, height, x: item.position.x, y: item.position.y, icon: presentationIcon(view, Boolean(item.completedAt)), brand: view?.brand, tint: view?.appearance.brandTint === true, tone: view?.appearance.tone ?? 'mint', typeName: paper ? paperType!.name : view?.typeName ?? 'Project' };
+    return { item, record, presentation: view, paper: paper?.color, paperText: paper?.text, paperWriter: typeof writer?.name === 'string' ? writer.name : undefined, paperWrittenAt: typeof writer?.at === 'string' ? writer.at : undefined, mapSize, mapFields, pips: pips?.length ? pips : undefined, frameTitle: view?.frameTitle, reference: view?.reference, view: view?.view, tiny: Boolean(mapSize && mapSize.height <= 36 && !mapSize.iconOnly), iconOpens: view?.appearance.openFromIcon === true, completionToggle: view?.appearance.completionToggle === true, showFullTitle: view?.appearance.showFullTitle === true, editableTitle: view?.appearance.editableTitle === true, width, height, x: item.position.x, y: item.position.y, icon: presentationIcon(view, Boolean(item.completedAt)), brand: view?.brand, tint: view?.appearance.brandTint === true, tone: view?.appearance.tone ?? 'mint', typeName: paper ? paperType!.name : view?.typeName ?? 'Project' };
   };
   // Items a drag preview leaves in place keep their box, so their cards do not re-render per frame.
   const measured = useRef<{ inputs: unknown[]; boxes: WeakMap<MapItem, ReturnType<typeof measureBox>> }>(undefined);
   const allBoxes = useMemo(() => {
-    const inputs = [props.resources, props.registry, props.itemMapSizes, presentations];
+    const inputs = [props.registry, props.itemMapSizes];
     const known = measured.current?.inputs.every((input, index) => input === inputs[index]) ? measured.current.boxes : new WeakMap<MapItem, ReturnType<typeof measureBox>>();
     measured.current = { inputs, boxes: known };
+    const records = new Map(props.resources.map(resource => [resource.id, resource]));
+    // A box is measured again only when its own item, record or presentation changed.
     return layout.filter(item => !isArchived(item, layout)).map(item => {
-      const box = known.get(item) ?? measureBox(item); known.set(item, box); return box;
+      const record = item.resourceId ? records.get(item.resourceId) : undefined, view = item.resourceId ? presentations.get(item.resourceId) : undefined;
+      let box = known.get(item);
+      if (!box || box.record !== record || box.presentation !== view) { box = measureBox(item); known.set(item, box); }
+      return box;
     });
   }, [layout, props.resources, props.registry, props.itemMapSizes, presentations]);
   // A mirror layout mounts only the cards in the cells around the window; the key changes when the window crosses a cell.
@@ -884,6 +906,20 @@ function MapCanvas(props: ProjectMapProps) {
     // Show on map looks under a muted project's cover for a moment; it never unmutes.
     if (item.resourceId && item.projectId && mutedProjects.has(item.projectId)) mute.locate(item.projectId);
   };
+  // The column lists Map projects only; below, Needs me and Working pause, so the corner stays empty.
+  const columnShown = cornerShown && props.mapCorner !== 'atlas';
+  const now = useNow(columnShown);
+  const settledColumn = useRef<{ key: string; model: ProjectColumnModel }>(undefined);
+  // Rebuilt from committed state only; an unchanged model keeps its identity so the column skips rendering.
+  const column = useMemo(() => {
+    if (!columnShown) return undefined;
+    const byId = new Map(props.nodes.map(node => [node.id, node])), tint = props.neighborhoodColor ?? ((color: string) => color);
+    const model = projectColumn(projectKey ? projectKey.split('\n').map(id => ({ id, title: byId.get(id)?.title ?? '', color: tint(projectColor(byId.get(id))), muted: mutedProjects.has(id),
+      board: projectDashboard(id, props.nodes, { todos: props.todos, plots: props.plots, counting: props.attentionCounting }), summary: props.projectSummaries?.get(id) })) : [], now);
+    const key = JSON.stringify(model);
+    if (settledColumn.current?.key === key) return settledColumn.current.model;
+    settledColumn.current = { key, model }; return model;
+  }, [columnShown, projectKey, props.nodes, props.todos, props.plots, props.attentionCounting, props.projectSummaries, props.neighborhoodColor, mutedProjects, now]);
   const atlasActions = useStableHandlers({
     fitProject: (id: string) => { const project = projects.find(project => project.id === id); if (project) void fitBounds({ x: project.left, y: project.top, width: project.right - project.left, height: project.bottom - project.top }, { padding: .08, duration: duration() }); },
     locate, centre: (point: { x: number; y: number }) => void setCenter(point.x, point.y, { zoom: viewport.zoom, duration: duration() }),
@@ -1265,7 +1301,7 @@ function MapCanvas(props: ProjectMapProps) {
   const animal = props.workingMark?.animal ?? 'sheep', kits = props.workingMark?.helpers !== 'same';
   const workingAnimal = useMemo(() => ({ animal, kits }), [animal, kits]);
   const nativeDropTarget = (target: EventTarget) => (target as Element).closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),.terminal-host');
-  return <DetailContext.Provider value={detailContext}><WorkingAnimalContext.Provider value={workingAnimal}><div ref={container} className="map-area" style={{ '--map-zoom': viewport.zoom, ...workingMarkStyle } as React.CSSProperties} data-layer={props.layer ?? 'map'} data-undermap-layout={props.layer === 'below' ? mirror ? 'mirror' : 'classic' : undefined} data-dashboards={dashboards || undefined} data-todo-drag={props.todoDrag ? true : undefined} onPointerLeave={() => { setHovered(undefined); setHoveredEdge(undefined); }} data-zoom={viewport.zoom} data-level={level} data-resizing={Boolean(itemResize.preview)} data-focus={focus ?? ''} data-overview={overview}
+  return <DetailContext.Provider value={detailContext}><WorkingAnimalContext.Provider value={workingAnimal}><div ref={container} className="map-area" style={{ '--map-zoom': viewport.zoom, ...workingMarkStyle } as React.CSSProperties} data-layer={props.layer ?? 'map'} data-undermap-layout={props.layer === 'below' ? mirror ? 'mirror' : 'classic' : undefined} data-dashboards={dashboards || undefined} data-todo-drag={props.todoDrag ? true : undefined} onPointerLeave={() => { setHovered(undefined); setHoveredEdge(undefined); }} data-zoom={viewport.zoom} data-level={level} data-resizing={Boolean(itemResize.preview)} data-focus={focus ?? ''} data-overview={overview} data-corner={props.mapCorner ?? 'projects'}
     onDragOver={event => {
       // A to-do row lands on the map even over an item's text; only other drops may belong to a field.
       const todo = !focus && props.onTodoDrop && event.dataTransfer.types.includes('application/x-crafting-todo-map');
@@ -1421,8 +1457,9 @@ function MapCanvas(props: ProjectMapProps) {
     {todoGhost && props.todoDrag && <div className="todo-drop-ghost" aria-hidden="true" style={{ left: (todoGhost.x - ghostSize.width / 2) * viewport.zoom + viewport.x, top: (todoGhost.y - ghostSize.height / 2) * viewport.zoom + viewport.y, width: ghostSize.width * viewport.zoom, height: ghostSize.height * viewport.zoom }}><ItemIcon icon="square-check" /><span>{props.todoDrag.title}</span></div>}
     {todoGhost && props.todoDrag && <div className="attachment-preview" role="status" style={{ left: todoGhost.x * viewport.zoom + viewport.x + 20, top: todoGhost.y * viewport.zoom + viewport.y + ghostSize.height * viewport.zoom / 2 + 8 }}>{ghostProject ? `Add to ${props.nodes.find(node => node.id === ghostProject)?.title}` : 'Place on the map'}</div>}
     {linkDrag && <svg className="connection-preview" aria-label="Connection preview"><path d={`M${linkDrag.from.x},${linkDrag.from.y} L${linkDrag.to.x},${linkDrag.to.y}`} /></svg>}
-    <Atlas projects={atlas.projects} items={atlas.items} needsMe={needsMe} viewport={viewport} screen={size} layer={props.layer ?? 'map'} highlighted={props.highlightedNodes}
+    {props.mapCorner === 'atlas' ? <Atlas projects={atlas.projects} items={atlas.items} needsMe={needsMe} viewport={viewport} screen={size} layer={props.layer ?? 'map'} highlighted={props.highlightedNodes}
       overview={overview} setOverview={setOverview} undermapCount={props.undermapCount} actions={atlasActions} />
+      : column && <ProjectColumn model={column} open={overview} setOpen={setOverview} actions={atlasActions} />}
     {focus && <nav className="map-trail" aria-label="Map location"><span>{props.nodes.find(node => node.id === props.nodes.find(item => item.id === focus)?.projectId)?.title ?? 'Floating item'}</span><span>/</span><span>{props.nodes.find(node => node.id === focus)?.title}</span>
       {connected.length > 0 && <div className="connected-items" role="group" aria-label="Connected items">{connected.map(box => <button key={box.item.id} aria-label={`Open connected item: ${box.item.title}`} title={box.item.title} onClick={() => open(box.item.id)}><ItemIcon icon={box.icon} brand={box.brand} tint={box.tint} /></button>)}</div>}
     </nav>}

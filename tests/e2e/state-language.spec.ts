@@ -30,7 +30,7 @@ async function launch(run: (page: Page, app: ElectronApplication) => Promise<voi
   try {
     await store.update(() => stateLanguageProject()); await store.writeView('desktop', { camera: options.view ?? { x: -1180, y: -330, zoom: 1 } });
     const settings = store.readSettings();
-    const value = { ...settings.value, mapDashboards: { ...settings.value.mapDashboards, enabled: options.dashboards === true, belowZoom: .45 } };
+    const value = { ...settings.value, mapCorner: 'atlas' as const, mapDashboards: { ...settings.value.mapDashboards, enabled: options.dashboards === true, belowZoom: .45 } };
     store.writeSettings({ expectedRevision: settings.revision, value: options.settings ? options.settings(value) : value });
   } finally { store.close(); }
   const app = await electron.launch({ args: ['.', '--force-device-scale-factor=1', '--disable-lcd-text', '--force-color-profile=srgb', ...scrollbarArgs], env: { ...process.env, ACT_TEST_DATA_DIR: directory, SHELL: '/bin/sh', TZ: 'UTC' } });

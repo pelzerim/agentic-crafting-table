@@ -353,8 +353,8 @@
 
 .zoom-markers {
   position: absolute;
-  right: 19px;
-  bottom: 86px;
+  left: 84px;
+  bottom: 16px;
   width: 224px;
   display: flex;
   align-items: flex-start;

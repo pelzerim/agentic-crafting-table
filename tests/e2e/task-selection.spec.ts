@@ -38,8 +38,11 @@ test('Linear keeps its identity as a local task, with reorderable rows, and tick
   await expect(list.locator('[data-todo-id="map:ticket"] input')).toBeChecked();
   await list.getByRole('button', { name: /Show BIL-128.*on map/ }).click();
   await expect(page.locator('.map-area')).toHaveAttribute('data-focus', '');
+  // A right click with the kept to-do sheet open only closes the sheet; the next one opens the item's menu.
+  await card(page, 'ticket').click({ button: 'right' }); await expect(page.getByRole('button', { name: /^Keep to-dos open/ })).toBeVisible();
   await card(page, 'ticket').click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Remove from to-dos', exact: true }).click();
+  await page.getByRole('button', { name: 'Keep to-dos open' }).click();
   await expect(row).toHaveCount(0); expect((await read(page)).nodes.some(n => n.id === 'ticket')).toBe(true);
 });
 

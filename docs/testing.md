@@ -46,6 +46,22 @@ moved, a new agent arriving at the saved size, a reload), a tier change that pin
 item that followed the old default, and hiding the entry for one type. No provider is
 involved.
 
+Project column coverage (MAP-22, MAP-OVERVIEW-01): `src/graph/project-column.test.ts` covers the
+model as a pure function (order Asking me, My turn, working, last activity; quiet projects folded;
+muted projects absent; icon tier and count; ten icons then “+N”; Needs me rows; the counts line and a
+summary in its place). `src/agents/project-summary.test.ts` covers the reduced input (titles, reasons,
+working summaries, to-dos, plots and pipeline counts only, no times, capped at 2,000 characters) and
+the reply normaliser. `packages/workspace-service/project-summaries.test.ts` drives the helper with a
+fixture client: off by default, the 60 s debounce, the 10-minute floor, unchanged input never resent,
+muted and Undermap projects never sent, 4 requests an hour left to other helpers, an unusable reply
+keeping the earlier text, and the snapshot emptied when the setting is off; `sqlite-store.test.ts`
+covers the `project_summaries` migration and reservation. `project-column.spec.ts` drives the hidden
+app: icon order and marks, the tooltip, the zoom bar above the column, no column mutation while the
+camera zooms, fly to a project, the unfolded rows and quiet line, keyboard, a Needs me row centring
+its item without opening it or marking it seen, exclusivity with the Needs me sheet, a seeded summary
+with its pen mark, `mapCorner: 'atlas'` and the Undermap. Atlas specs and the shared visual fixture
+choose `mapCorner: 'atlas'`; `map-performance.spec.ts` keeps the default column. No model is called.
+
 Rail menus coverage (MAP-21): `rail-menus.spec.ts` drives the hidden app.
 It reads the rail's buttons by position and asserts the order Needs me, To-dos, GitHub
 inbox, Undermap, Settings, one column inside the frame, Settings below the divider,

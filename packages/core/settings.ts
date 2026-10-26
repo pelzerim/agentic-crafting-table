@@ -88,6 +88,8 @@ export const mapDashboardsSchema = z.object({
   sections: z.object(Object.fromEntries(DASHBOARD_SECTION_KEYS.map(key => [key, z.boolean().default(DEFAULT_DASHBOARD_SECTIONS[key])])) as Record<typeof DASHBOARD_SECTION_KEYS[number], z.ZodDefault<z.ZodBoolean>>)
     .default(() => ({ ...DEFAULT_DASHBOARD_SECTIONS })),
 }).default(() => ({ ...DEFAULT_MAP_DASHBOARDS, sections: { ...DEFAULT_DASHBOARD_SECTIONS } }));
+export const MAP_CORNERS = ['projects', 'atlas'] as const;
+export type MapCorner = typeof MAP_CORNERS[number];
 export const TERMINAL_SCROLLBACK_CHOICES = [2000, 5000, 10000, 25000] as const;
 export const DEFAULT_TERMINAL_SCROLLBACK = 5000;
 /** Terminal views. Screen reader support also turns on while macOS reports assistive technology. */
@@ -121,6 +123,8 @@ export const settingsSchema = z.object({
   undermapLayout: undermapLayoutSchema,
   terminal: terminalSettingsSchema,
   mapDashboards: mapDashboardsSchema,
+  /** What the bottom-right corner shows (MAP-22): the project column or the Atlas minimap. */
+  mapCorner: z.enum(MAP_CORNERS).default('projects'),
   /** Plots in neighbourhoods (MAP-24). */
   mapPlots: z.boolean().default(true),
   /** Draw a link a path of other links of its kind already joins only while revealed (LINK-06). */
@@ -146,7 +150,7 @@ export const settingsSchema = z.object({
     enabled: z.boolean().default(false), model: z.string().trim().min(1).max(100).default('haiku'),
     intervalSeconds: z.number().int().min(30).max(600).default(60),
     requestsPerHour: z.number().int().min(1).max(120).default(12),
-    requestsPerDay: z.number().int().min(1).max(1000).default(100),
+    requestsPerDay: z.number().int().min(1).max(1000).default(500),
     agentTitles: z.boolean().default(true),
     /** Plot names from the title helper (MAP-24); off means local names only. */
     plotNames: z.boolean().default(true),
@@ -155,7 +159,9 @@ export const settingsSchema = z.object({
     /** Daily digests of agent conversations and PRs, and the standup report written from them (STANDUP-01). */
     standupDigests: z.boolean().default(true),
     standupRequestsPerReport: z.number().int().min(1).max(500).default(150),
-  }).default({ enabled: false, model: 'haiku', intervalSeconds: 60, requestsPerHour: 12, requestsPerDay: 100, agentTitles: true, plotNames: true, attachTitles: true, standupDigests: true, standupRequestsPerReport: 150 }),
+    /** One or two sentences per project for the project column (MAP-22); off means the counts line. */
+    projectSummaries: z.boolean().default(true),
+  }).default({ enabled: false, model: 'haiku', intervalSeconds: 60, requestsPerHour: 12, requestsPerDay: 500, agentTitles: true, plotNames: true, attachTitles: true, standupDigests: true, standupRequestsPerReport: 150, projectSummaries: true }),
   /** A daily look at the app's and installed packs' release tags (UPDATE-01). Nothing is downloaded or installed by it. */
   updates: z.object({ check: z.boolean().default(true) }).default({ check: true }),
 });

@@ -36,7 +36,7 @@ async function launch(options: Launch, run: (page: Page) => Promise<void>) {
   try {
     await store.update(() => (options.state ?? photoLibraryProject)() as ReturnType<typeof photoLibraryProject>);
     await store.writeView('desktop', { camera: options.view ?? { x: -1000, y: -380, zoom: .85 } });
-    const settings = store.readSettings(), value = { ...settings.value, mapDashboards: { ...settings.value.mapDashboards, enabled: false } };
+    const settings = store.readSettings(), value = { ...settings.value, mapCorner: 'atlas' as const, mapDashboards: { ...settings.value.mapDashboards, enabled: false } };
     store.writeSettings({ expectedRevision: settings.revision, value: options.settings ? options.settings(value) : value });
   } finally { store.close(); }
   const app = await electron.launch({ args: ['.', '--force-device-scale-factor=1', '--disable-lcd-text', '--force-color-profile=srgb', ...scrollbarArgs], env: { ...process.env, ACT_TEST_DATA_DIR: directory, SHELL: '/bin/sh', TZ: 'UTC' } });

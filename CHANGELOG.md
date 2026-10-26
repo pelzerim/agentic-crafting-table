@@ -2,6 +2,16 @@
 
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one.
 
+## 0.5.0 — 2026-10-26
+
+### Map
+- **Project column**: the bottom-right corner shows one icon per project that is not muted, in the project's colour with its most urgent state and a count (◆ asking, ▲ my turn, ✦ working). **M** unfolds it into a row per project with counts, a summary line and that project's Needs me rows; clicking a project flies to it, clicking a row centres the item. Quiet projects fold into one line. The minimap remains available through the `mapCorner` setting.
+- **Summarise projects** (Settings → AI features, on by default): each project's summary line is one or two sentences from the summary model, refreshed only when the project changes and at most every 10 minutes per project; off, the line shows plain counts. The daily request limit shared by all AI features is now 500.
+- The zoom bar sits in the bottom-left corner, right of the tool rail.
+
+### Speed
+- A change to one item no longer re-renders every card on the map: a snapshot keeps every unchanged item, and a card is re-measured only when its own item, record or presentation changed. On a 200-item board one change rendered 5,040 cards and now renders 11.
+
 ## 0.4.0 — 2026-10-26
 
 ### Map

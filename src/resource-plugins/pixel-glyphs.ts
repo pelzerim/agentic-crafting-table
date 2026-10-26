@@ -5,6 +5,8 @@ export const PIXEL_GLYPHS = {
     check: ['........', '.......X', '......XX', 'X....XX.', 'XX..XX..', '.XXXX...', '..XX....', '........'],
     close: ['XX....XX', '.XX..XX.', '..XXXX..', '...XX...', '..XXXX..', '.XX..XX.', 'XX....XX', '........'],
     moon: ['..XXXX..', '.XXX....', 'XXX.....', 'XXX.....', 'XXX.....', 'XXXX...X', '.XXXXXX.', '..XXXX..'],
+    /** Marks text a summary model wrote. */
+    pen: ['.....XX.', '....X.XX', '...XXXX.', '..XXXX..', '.XXXX...', '.XXX....', 'X.......', '........'],
     /** Needs me tiers (STATE-02): one silhouette each, the "!" cut out so the mark is a single colour. */
     asking: ['...XX...', '..X..X..', '.XX..XX.', 'XXX..XXX', 'XXXXXXXX', '.XX..XX.', '..XXXX..', '...XX...'],
     'my-turn': ['...XX...', '...XX...', '..X..X..', '..X..X..', '.XX..XX.', '.XXXXXX.', 'XXX..XXX', 'XXXXXXXX'],

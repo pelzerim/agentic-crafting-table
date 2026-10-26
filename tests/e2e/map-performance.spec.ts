@@ -71,6 +71,7 @@ for (const itemCount of [200, 500] as const) test(`map performance: ${itemCount}
     expect((await page.evaluate(() => window.craftingTable.workspaceRead())).state.nodes).toEqual(before.nodes);
     expect(await page.locator('[data-project-outline]').evaluateAll(items => items.map(item => item.getAttribute('d')))).toEqual(paths);
     // Measure the complete local command round trip plus the first observable DOM frame.
+    await page.evaluate(() => window.craftingPerformance.reset());
     phases.updateMs = await page.evaluate(async () => {
       const timings: number[] = []; let state = (await window.craftingTable.workspaceRead()).state;
       for (let i = 0; i < 12; i++) {
@@ -90,6 +91,9 @@ for (const itemCount of [200, 500] as const) test(`map performance: ${itemCount}
     expect(navigation.metrics['map.frame-interval'].p99).toBeLessThan(150);
     const sorted = (phases.updateMs as number[]).slice().sort((a, b) => a - b);
     expect(sorted[Math.ceil(sorted.length * .95) - 1]).toBeLessThan(250);
+    // A change to one item renders that card, not every card on the map.
+    phases.updates = await page.evaluate(() => window.craftingPerformance.snapshot());
+    expect((phases.updates as typeof navigation).metrics['map.card-render'].count).toBeLessThan(itemCount);
     // A dense fixture must still retain exact item/link counts after repeated writes.
     const saved = (await page.evaluate(() => window.craftingTable.workspaceRead())).state;
     expect(saved.nodes).toHaveLength(itemCount + 10); expect(saved.links).toEqual(fixture.links);

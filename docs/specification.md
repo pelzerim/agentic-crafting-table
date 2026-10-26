@@ -65,7 +65,7 @@ below.
 | MAP-04 | Each project has a dynamic, padded pixel field following the rounded convex enclosure of all visible member footprints, drawn as a **spline hull**: long straight runs between distant members bow gently outward into curves, while single items and compact groups keep their rounded hull. The curve stays convex, never self-intersects, always contains the full padding around every member, and changes continuously while a member is dragged. Use **B · Broad steps**: four broad fading shades of large square pixels, **24 world pixels** by default, with **no stroked outline**. Fade inward from the logical edge across 96 world pixels by default; keep the center solid. Pixel size, fade distance and optional edge scattering are configurable (SETTINGS-09). Derive the enclosure from full detailed member footprints, ignoring the saved project anchor except for empty projects. Recenter and grow live when members move/add/remove, retaining other positions. Default minimum logical clearance is one large item width; preserve SETTINGS-03 padding and membership/attachment hit tests independently of visual opacity. Use a stable world grid and deterministic scattered cells, with no camera-dependent rerasterization or idle motion. During dragging, the field follows the member immediately; other geometry/material changes use a short shading transition, skipped for reduced motion. Keep the field behind titles, connections and items in all zoom levels and expanded-item views; remove the separate focus-view outline frame. Attachment feedback brightens the field without adding a stroke. Bound render complexity for extreme spreads using integer multiples of the chosen pixel size. This supersedes the earlier visible pixel-stepped stroke. The logical enclosure is stepped on the same world grid as the default 24-pixel fill (whole multiples of it for very large projects), so **the visible field decides membership**: at the default pixel size a point is inside a project exactly when its cell is painted. Creation, attachment, owned-item transfer previews and drops, the Atlas and far-zoom dashboards all use this smoothed field; an item dropped outside the drawn field does not join (beyond the floating-attachment reach). |
 | MAP-05 | All map levels share world-space positions. Zooming changes camera and presentation, not saved layout. Expanded surfaces may move independently in screen space (MAP-19). Transitions preserve orientation, with no radial redistribution or jump on returning to overview. |
 | MAP-06 | Mouse wheel zooms around the pointer. Empty-space dragging pans the entire scene, including project outlines and members. Terminal/document scrolling remains native when the pointer is inside expanded content. A press on an item that slips up to 6 screen pixels before the release is still a click: it opens the item and neither drags it nor pans the map. Further than that it drags the item; in Undermap, where items cannot be dragged, a press on an item never pans. |
-| MAP-07 | A very small zoom bar above the bottom-right locator shows current position and transition markers. Using this slider zooms around the center of the visible map canvas: keep the world point currently at that center fixed on screen while changing scale, adjusting camera translation accordingly. Apply this to slider clicks, dragging and keyboard changes, in both zoom directions and after panning or resizing. The slider is a pixel control (square thumb) with a live percentage readout that resets to 100% on click; there are no step buttons, the − / + / 0 keys step and reset the zoom; the slider announces its value as a percentage. Each tier threshold carries a small glyph instead of a text label (board, icon, card) whose tooltip names it (“65% · Icons below”). The icon glyph appears only while dashboards are off: with dashboards on there is no icon band (MAP-23), so the bar shows the dashboard and close-card glyphs only. A mint tick marks the project dashboard threshold (MAP-23) while dashboards are on, with the accessible name and tooltip “Dashboards below N%”. |
+| MAP-07 | A very small zoom bar in the bottom-left corner of the map, right of the tool rail (hidden while the project column or the Atlas overview unfolds), shows current position and transition markers. Using this slider zooms around the center of the visible map canvas: keep the world point currently at that center fixed on screen while changing scale, adjusting camera translation accordingly. Apply this to slider clicks, dragging and keyboard changes, in both zoom directions and after panning or resizing. The slider is a pixel control (square thumb) with a live percentage readout that resets to 100% on click; there are no step buttons, the − / + / 0 keys step and reset the zoom; the slider announces its value as a percentage. Each tier threshold carries a small glyph instead of a text label (board, icon, card) whose tooltip names it (“65% · Icons below”). The icon glyph appears only while dashboards are off: with dashboards on there is no icon band (MAP-23), so the bar shows the dashboard and close-card glyphs only. A mint tick marks the project dashboard threshold (MAP-23) while dashboards are on, with the accessible name and tooltip “Dashboards below N%”. |
 | MAP-08 | Grab any collapsed item surface to move it, regardless of activity. Distinguish click from drag with a movement threshold. Buttons, link handles, terminal input and text selection keep their own behavior. A press anywhere on a card's visible face (middle, words, badges, the working mark, every edge and corner) moves the item once it passes the click slip, at every zoom and whether the drag is slow, fast, hesitant or follows a hover; it never pans the map. That holds while an earlier move is still saving (the new drag starts from where that move left the map) and while a closed view is still flying back to its card. Only real controls in the card keep the press: buttons and the completion box, fields and text being edited, links, inner regions that scroll, the + link tab where it is drawn and the resize grip. Dragging an expanded item's menu bar (except controls) moves only its open view (MAP-19). |
 | MAP-09 | Moving a project moves its members by the same delta, preserving their offsets, links and identities. Moving an individual member moves only that member. Panning never changes world positions or membership. |
 | MAP-10 | Double-clicking empty map space opens the circular New item picker (MAP-16) at the cursor without zooming the map. Outside a neighborhood, the board's right-click menu offers **New item**, **New project** and **Open archive**; inside a neighborhood, it offers only **New item**: New item opens the same circular picker; New project opens the project form directly at the clicked map location. Remove the persistent **+ New project** button. A single empty-space click does not open a form. An item's or project's menu opens at the pointer but never covers that card's title row: it moves just below the row, or above it when there is no room below. Dismiss an ordinary context menu on another right-click, an outside click or Escape; the circular picker uses the layer navigation in MAP-16. Inside an outline the item belongs to that project; outside it is floating. Projects can also be created at a chosen map position. Double-clicking items, controls or expanded content retains their own interaction and must not open the map picker. After type selection, inline creation forms can be dragged by their heading, preserving field values and the original map placement; keep the form within the canvas. |
@@ -428,7 +428,31 @@ nags and nothing carries over. Nothing fires for a reminder disabled at its time
 **Accessibility.** Rows and controls are focusable in visual order; the notice is
 `role="status"`; the sheet's heading is "Reminders".
 
-**MAP-22 — Atlas and map overview.** The bottom-right locator is the **Atlas**
+**MAP-22 — Project column, Atlas and map overview.** The bottom-right corner shows
+the **project column** by default; `mapCorner: 'projects' | 'atlas'` (Settings value, default
+`projects`, no Settings row yet) switches it to the Atlas described below, which behaves as before.
+The folded column (44 px wide, pixel panel, growing upward) has one 32 × 32 icon per project on the
+Map that is not muted (MAP-25), in the project's colour with one mark and its count: the tier shape of
+its highest Needs me tier (diamond Asking me, triangle My turn, dim dot Finished), else the mint working
+spark with the number working, else a quiet dot. Projects with Asking me come first, then My turn, then
+working, then by last activity; at most 10 icons, then “+N”. Hovering or focusing an icon shows a tooltip
+with the project's name and its summary line; clicking it fits the project (as an Atlas blob click).
+**M**, the fold control or “+N” unfolds it into the **Projects** panel (360 px, at most 60 % of the
+window, scrolls): one row per project with its colour, name, tier and working counts and the age of its
+last activity, its summary line, and its Needs me rows (tier mark, title, reason, age) straight from
+`projectDashboard().needsYou` (src/graph/project-column.ts builds the model). Quiet projects (no Needs me,
+nothing working, no activity for 24 h) fold into one “N quiet projects ›” line that expands. Clicking a
+project row flies there; clicking a Needs me row centres its item without opening it or marking it seen
+(“Go to item on map”). Up and Down move through rows, Enter acts, Esc or M folds. The panel and the
+Needs me sheet are never open together. The **summary line** is the project's AI summary while
+Summarise projects is on (SETTINGS-AI) and one exists, marked with a pen glyph and the title “Written
+by the summary model”; otherwise a counts line built locally (“2 asking · 1 my turn · 1 working ·
+4 to-dos · active 3 h ago”, zeros left out, “Nothing open” when empty). The summary never replaces the
+Needs me rows. The column re-renders only when its model changes, never with the camera. On the
+Undermap the column is not shown (Needs me and Working pause there) and M does nothing; with
+`mapCorner: 'atlas'` the Atlas keeps its Undermap behaviour.
+
+With `mapCorner: 'atlas'` the bottom-right locator is the **Atlas**
 (220 × 150, pixel panel). It draws each project as a coarse pixel blob in its own colour and each
 item as a glyph that reads in monochrome: idle dot, a mint working spark (6 × 6), and for
 unread Needs me the 8 × 8 shape of its tier with a dark rim (diamond Asking me, triangle
@@ -833,6 +857,7 @@ hold stay in both cases, because they are about intent.
 | --- | --- |
 | Plate counts, card tier shapes and frames, working grass and sheep, blocked badges, plots | Hidden; the cards are true again while the cover is drawn back |
 | Far-zoom dashboard (MAP-23) | Name, item count and “Muted” only; never Needs you, Working, To-dos, plots or pipelines. The cover is still drawn |
+| Project column (MAP-22) | Absent: no icon, no row, never summarised; unmuting brings it back and queues its summary |
 | Atlas and overview (MAP-22) | Dim hull with a moon, no item marks; footer and Projects list show “Muted” instead of counts; N skips its items |
 | Needs me button and Dock badge | Count only unmuted projects |
 | Needs me panel | Its rows collapse into one line **Muted · N** below the counted rows; opening it shows the rows with Seen and Map. An item also placed in an unmuted project stays counted through that alias |
@@ -1840,12 +1865,25 @@ configurable Claude model can summarize bounded, redacted recent output into
 to factual status. Generated prose is never the source of lifecycle state.
 Summary generation is opt-in in Settings, with a configurable model and durable
 per-item, hourly and daily request limits. Default to Haiku, 60 seconds per item,
-12 attempts per hour and 100 per day across the table. Failed/uncertain attempts
+12 attempts per hour and 500 per day across the table. Failed/uncertain attempts
 consume allowance; restarting must not reset it. Explain that recent output is
 sent through the configured Claude account and that redaction is best effort.
 Limit each helper to one tool-free turn and bounded evidence/output; keep the
 cache private and exclude raw terminal evidence. Explicit edits and newer native
 state must win over pending generated labels.
+
+**Project summaries** (MAP-22) are a helper of the same kind: for each project on the Map that is not
+muted (never one below), the service builds a reduced input from its dashboard (name, tier counts, Needs
+me titles and reasons, Working titles with their activity summaries, open to-do titles, plot names,
+pipeline counts; never terminal output, note bodies, diffs or comments; at most ~2,000 characters,
+lists trimmed from the end, Needs me last) and fingerprints it without ages or times. It asks Haiku
+for one or two sentences (≤ 160 characters, 96 output tokens, thinking off, one tool-free turn) once the
+fingerprint has been unchanged for 60 s, at most once per 10 minutes per project, never twice for the
+same input, from the shared allowance while leaving 4 requests to the other helpers. `project_summaries
+(project_id, fingerprint, attempted_at, text, model)` keeps the latest text, which stays until a newer
+attempt is answered; a failed or unusable answer still counts. Summaries reach the renderer as
+`snapshot.projectSummaries` with their own revision. The text only describes; tiers, counts and the
+Needs me rows come from attention state.
 
 **AGENT-07b — Background work.** A Claude item whose main turn has stopped while
 its process still runs background subagents, teammates, workflows or other background
@@ -2131,13 +2169,16 @@ material never changes graph positions, membership, padding, camera or sessions.
 **SETTINGS-AI — AI features.** Settings → AI features holds Agent titles
 (**Auto-title agents**), Slack titles (**Auto-title Slack messages**, on by default),
 Plot names (**Name plots**, MAP-24, on by default; off keeps
-local names), Activity summaries (**Summarize agent and terminal
+local names), Project summaries (**Summarise projects**, MAP-22, on by default; off shows the
+counts line), Activity summaries (**Summarize agent and terminal
 activity**, with the summary model and per-item interval as dependents) and a
 separate **Request limits** section (requests per hour and per day). The limits are
-shared by all four features, so they stay visible and editable whenever any of them
+shared by all of these features (project summaries leave 4 requests an hour and a day to the others, as
+background standup digests do), so they stay visible and editable whenever any of them
 is on (auto-titles and plot names default on) and are shown disabled, not hidden, when all are
 off. The privacy caveat appears once, as a page note, and says plot names send item
-titles and agent summaries only, and Slack titles send the attached message. Settings → General holds
+titles and agent summaries only, project summaries send project, item and agent titles, Needs me
+reasons and agent summaries, and Slack titles send the attached message. Settings → General holds
 Keep screen awake and the closing warning.
 
 **SETTINGS-DASHBOARDS — Project dashboards.** Settings → Map (not advanced) has

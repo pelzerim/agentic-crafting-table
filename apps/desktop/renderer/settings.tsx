@@ -123,7 +123,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
     }).catch(error => { if (mounted) setError(error.message); });
     return () => { mounted = false; };
   }, []);
-  const limited = Boolean(summaries && (summaries.enabled || summaries.agentTitles || summaries.attachTitles || summaries.plotNames || (STANDUP_ENABLED && summaries.standupDigests)));
+  const limited = Boolean(summaries && (summaries.enabled || summaries.agentTitles || summaries.attachTitles || summaries.plotNames || summaries.projectSummaries || (STANDUP_ENABLED && summaries.standupDigests)));
   const claude = { remoteControl: remote, autoMode, arguments: argumentsText.split(/\r?\n/).map(value => value.trim()).filter(Boolean) };
   const permission = claudePermissionSettings(claude);
   const draft = saved && { ...saved.value, notifications, warnBeforeClosing, pullRequestConversation: conversation, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, mapCollisions, itemDelete, autoReview, terminal, keepAwake: awake, claude, updates: { check: updateCheck } };
@@ -307,7 +307,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
         </SettingsSection>
       </SettingsPage>
       <NotificationSettings value={notifications} change={setNotifications} plugins={plugins} hidden={section !== 'Notifications'} />
-      <SettingsPage id="AI features" title="AI features" description="Claude writes short titles and labels from recent item output, using your configured Claude account." note={<><b>Output leaves your machine.</b> Known credentials are redacted, but terminal and agent output can still contain private information. Plot names send item titles and agent summaries only; Slack titles send the attached message.</>} hidden={section !== 'AI features'}>
+      <SettingsPage id="AI features" title="AI features" description="Claude writes short titles and labels from recent item output, using your configured Claude account." note={<><b>Output leaves your machine.</b> Known credentials are redacted, but terminal and agent output can still contain private information. Plot names send item titles and agent summaries only; project summaries send project, item and agent titles, Needs me reasons and agent summaries; Slack titles send the attached message.</>} hidden={section !== 'AI features'}>
         {summaries && <>
           <SettingsSection label="Agent titles">
             <SettingRow label="Auto-title agents" description="Names Claude and Codex items with a 2–5 word title after a finished turn, at most every 10 minutes." meta="On by default · renamed items keep your name"><Switch checked={summaries.agentTitles} change={agentTitles => setSummaries({ ...summaries, agentTitles })} /></SettingRow>
@@ -317,6 +317,9 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
           </SettingsSection>
           <SettingsSection label="Plot names">
             <SettingRow label="Name plots" description="Names each plot in 2–4 words from its items’ titles once its items settle, at most every 10 minutes. Off keeps a local name such as “Billing · 4 items”." meta="On by default · renamed plots keep your name"><Switch checked={summaries.plotNames} change={plotNames => setSummaries({ ...summaries, plotNames })} /></SettingRow>
+          </SettingsSection>
+          <SettingsSection label="Project summaries">
+            <SettingRow label="Summarise projects" description="Writes one or two sentences per project for the project column from its titles, Needs me reasons and agent summaries, a minute after the project changes and at most every 10 minutes. Off shows the project’s counts instead." meta="Off by default · leaves 4 requests an hour to the others"><Switch checked={summaries.projectSummaries} change={projectSummaries => setSummaries({ ...summaries, projectSummaries })} /></SettingRow>
           </SettingsSection>
           {STANDUP_ENABLED && <SettingsSection label="Standup report">
             <SettingRow label="Standup digests" description="Writes a short daily digest of each Claude conversation and pull request with Haiku in the background, and the standup report from them with Sonnet. Conversations are read on this Mac and redacted before they are sent." meta="On by default · off lists stored facts only"><Switch checked={summaries.standupDigests} change={standupDigests => setSummaries({ ...summaries, standupDigests })} /></SettingRow>
@@ -331,7 +334,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
               <NumberField unit="s" disabled={!summaries.enabled} min="30" max="600" required value={summaries.intervalSeconds} onChange={event => setSummaries({ ...summaries, intervalSeconds: Number(event.target.value) })} />
             </SettingRow>
           </SettingsSection>
-          <SettingsSection label="Request limits" description="Shared by titles, plot names, summaries and background standup digests across the whole table, and kept across restarts. A standup report you ask for has its own allowance above. Each request is one response with no tools: titles and summaries have a $0.02 CLI budget, a digest $0.05 and a report $0.25; provider charges can differ.">
+          <SettingsSection label="Request limits" description="Shared by titles, plot names, project summaries, activity summaries and background standup digests across the whole table, and kept across restarts. A standup report you ask for has its own allowance above. Each request is one response with no tools: titles and summaries have a $0.02 CLI budget, a digest $0.05 and a report $0.25; provider charges can differ.">
             <SettingRow disabled={!limited} label="Summary requests per hour" meta={<DefaultMeta value={summaries.requestsPerHour} fallback={SUMMARY_DEFAULTS.requestsPerHour} reset={() => setSummaries({ ...summaries, requestsPerHour: SUMMARY_DEFAULTS.requestsPerHour })} />}>
               <NumberField unit="/h" disabled={!limited} min="1" max="120" required value={summaries.requestsPerHour} onChange={event => setSummaries({ ...summaries, requestsPerHour: Number(event.target.value) })} />
             </SettingRow>

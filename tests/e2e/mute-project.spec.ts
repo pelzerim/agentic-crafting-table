@@ -1,6 +1,6 @@
 import { expect, _electron as electron } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { test, capture, scrollbarArgs } from './visual-fixture.ts';
+import { test, capture, scrollbarArgs, chooseMapCorner } from './visual-fixture.ts';
 import { exitWithoutShutdown } from './exit-without-shutdown.ts';
 import type { WorkspaceCommand } from '../../packages/core/control.ts';
 import { stateSchema } from '../../packages/core/control.ts';
@@ -258,6 +258,7 @@ test('a muted project is still muted after the desktop restarts', async () => {
       { id: 'floating-resource', pluginId: 'github.pull-request', schemaVersion: 1, title: 'Quickstart rewrite', data: { owner: 'example', repo: 'docs', number: 7 } },
     ] }));
     await store.writeView('desktop', { camera: { x: 140, y: 100, zoom: .7 } });
+    chooseMapCorner(store, 'atlas');
   } finally { store.close(); }
   const launch = async () => {
     const app = await electron.launch({ args: ['.', '--force-device-scale-factor=1', ...scrollbarArgs], env: { ...process.env, ACT_TEST_DATA_DIR: directory, SHELL: '/bin/sh', TZ: 'UTC', LANG: 'en_US.UTF-8' } });

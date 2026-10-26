@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
-import { test, resize, scrollbarArgs } from './visual-fixture.ts';
+import { test, resize, scrollbarArgs, chooseMapCorner } from './visual-fixture.ts';
 import { SqliteStore } from '../../packages/workspace-service/sqlite-store.ts';
 import { stateSchema } from '../../packages/core/control.ts';
 import type { WorkspaceCommand } from '../../packages/core/control.ts';
@@ -40,7 +40,7 @@ function workspace(projectCount: number, perProject: number, grid?: number) {
 }
 async function launch(state: ReturnType<typeof workspace>, view: { x: number; y: number; zoom: number }, run: (page: Page) => Promise<void>) {
   const directory = await mkdtemp(join(tmpdir(), 'craft-minimap-')), store = new SqliteStore(join(directory, 'workspace.sqlite'));
-  try { await store.update(() => state); await store.writeView('desktop', { camera: view }); } finally { store.close(); }
+  try { await store.update(() => state); await store.writeView('desktop', { camera: view }); chooseMapCorner(store, 'atlas'); } finally { store.close(); }
   const app = await electron.launch({ args: ['.', '--force-device-scale-factor=1', '--disable-lcd-text', '--force-color-profile=srgb', ...scrollbarArgs], env: { ...process.env, ACT_TEST_DATA_DIR: directory, SHELL: '/bin/sh', TZ: 'UTC' } });
   try {
     const page = await app.firstWindow();
