@@ -40,6 +40,12 @@ test('reply writes are bound, journaled, and replaying a completed request posts
   assert.equal(f.providers.posts.length, 1);
   await assert.rejects(f.resources.execute('pr', 'reply', { ...input, sourceResourceId: 'wrong' }, AbortSignal.timeout(1000)), /another item/);
 }));
+test('a write runs on the service deadline, not on the shorter deadline of the call that asked for it', () => fixture(async f => {
+  f.providers.delay(() => new Promise(resolve => setTimeout(resolve, 150)));
+  const input = { sourceResourceId: 'pull', requestId: randomUUID(), kind: 'discussion', commentId: '5', body: 'Thanks, fixed.' };
+  await f.resources.execute('pr', 'reply', input, AbortSignal.timeout(50));
+  assert.equal(f.providers.posts.length, 1);
+}));
 test('fix delivery requires an idle connected agent, uses frozen source and strips terminal controls', () => fixture(async f => {
   await f.apply([{ type: 'item.create', id: 'agent', resource: { id: 'agent-resource', pluginId: 'agent.session', schemaVersion: 1, title: 'Claude', data: { provider: 'claude', sessionId: 'session-fixture' } }, position: { x: 200, y: 0 } }, { type: 'node.update', id: 'agent', activity: 'idle' }, { type: 'link.save', link: { id: 'connection', sourceId: 'pr', targetId: 'agent', kind: 'context' } }]);
   f.providers.comments[0].body = 'Fix this \x1b[201~' + 'x'.repeat(70_000); await f.resources.read('pr', true);

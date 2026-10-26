@@ -100,7 +100,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
   }, [section, advanced]);
   const [itemMapSizes, setItemMapSizes] = useState<AppSettings['itemMapSizes']>({});
   const [conversation, setConversation] = useState<AppSettings['pullRequestConversation']>({ comments: true, threads: true, reviewBodies: true, bots: false, activity: false });
-  const [warnBeforeClosing, setWarnBeforeClosing] = useState(true), [doubleClickOpensWeb, setDoubleClickOpensWeb] = useState(false), [snapToGrid, setSnapToGrid] = useState(false), [itemDelete, setItemDelete] = useState(false), [autoReview, setAutoReview] = useState<AppSettings['autoReview']>({ enabled: false, agents: ['claude'] }), [mapPlots, setMapPlots] = useState(true), [hideImpliedLinks, setHideImpliedLinks] = useState(true);
+  const [warnBeforeClosing, setWarnBeforeClosing] = useState(true), [doubleClickOpensWeb, setDoubleClickOpensWeb] = useState(false), [snapToGrid, setSnapToGrid] = useState(false), [mapCollisions, setMapCollisions] = useState<AppSettings['mapCollisions']>('shove'), [itemDelete, setItemDelete] = useState(false), [autoReview, setAutoReview] = useState<AppSettings['autoReview']>({ enabled: false, agents: ['claude'] }), [mapPlots, setMapPlots] = useState(true), [hideImpliedLinks, setHideImpliedLinks] = useState(true);
   const [itemViews, setItemViews] = useState<AppSettings['itemViews']>({});
   const [pluginSettings, setPluginSettings] = useState<AppSettings['plugins']>({}), pluginPages = useMemo(() => pluginSettingsPages(plugins), [plugins]);
   const [quickIds, setQuickIds] = useState<string[]>([]), [menus, setMenus] = useState<AppSettings['menus']>({ order: {}, layout: {}, hidden: {} });
@@ -117,7 +117,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
     window.craftingTable.settingsRead().then(snapshot => {
       if (!mounted) return;
       setWarnBeforeClosing(snapshot.value.warnBeforeClosing); setConversation(snapshot.value.pullRequestConversation); setDiagnostics(snapshot.value.diagnostics); setItemViews(snapshot.value.itemViews); setItemMapSizes(snapshot.value.itemMapSizes); setPluginSettings(snapshot.value.plugins);
-      setNeighborhood(snapshot.value.neighborhoodAppearance); setBelowAnimation(snapshot.value.belowAnimation); setUndermapLayout(snapshot.value.undermapLayout); setWorkingMark(snapshot.value.workingMark); setMapDashboards(snapshot.value.mapDashboards); setMapPlots(snapshot.value.mapPlots); setHideImpliedLinks(snapshot.value.hideImpliedLinks); setDoubleClickOpensWeb(snapshot.value.doubleClickOpensWeb); setSnapToGrid(snapshot.value.snapToGrid); setItemDelete(snapshot.value.itemDelete); setAutoReview(snapshot.value.autoReview); setTerminal(snapshot.value.terminal);
+      setNeighborhood(snapshot.value.neighborhoodAppearance); setBelowAnimation(snapshot.value.belowAnimation); setUndermapLayout(snapshot.value.undermapLayout); setWorkingMark(snapshot.value.workingMark); setMapDashboards(snapshot.value.mapDashboards); setMapPlots(snapshot.value.mapPlots); setHideImpliedLinks(snapshot.value.hideImpliedLinks); setDoubleClickOpensWeb(snapshot.value.doubleClickOpensWeb); setSnapToGrid(snapshot.value.snapToGrid); setMapCollisions(snapshot.value.mapCollisions); setItemDelete(snapshot.value.itemDelete); setAutoReview(snapshot.value.autoReview); setTerminal(snapshot.value.terminal);
       setAutoMode(snapshot.value.claude.autoMode); setNotifications(snapshot.value.notifications);
       setQuickIds(snapshot.value.quickItemTypes); setMenus(snapshot.value.menus); setDefaultDirectory(snapshot.value.defaultWorkingDirectory); setSummaries(snapshot.value.summaries); setPadding(String(snapshot.value.neighborhoodPadding)); setSaved(snapshot); setRemote(snapshot.value.claude.remoteControl); setAwake(snapshot.value.keepAwake); setUpdateCheck(snapshot.value.updates.check); setArgumentsText(snapshot.value.claude.arguments.join('\n'));
     }).catch(error => { if (mounted) setError(error.message); });
@@ -126,7 +126,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
   const limited = Boolean(summaries && (summaries.enabled || summaries.agentTitles || summaries.attachTitles || summaries.plotNames || (STANDUP_ENABLED && summaries.standupDigests)));
   const claude = { remoteControl: remote, autoMode, arguments: argumentsText.split(/\r?\n/).map(value => value.trim()).filter(Boolean) };
   const permission = claudePermissionSettings(claude);
-  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, pullRequestConversation: conversation, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, itemDelete, autoReview, terminal, keepAwake: awake, claude, updates: { check: updateCheck } };
+  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, pullRequestConversation: conversation, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, mapCollisions, itemDelete, autoReview, terminal, keepAwake: awake, claude, updates: { check: updateCheck } };
   const changes = useMemo(() => saved ? draftChanges(saved.value, draft!, pluginPages) : [], [saved, JSON.stringify(draft)]);
   const dirty = changes.length > 0, [discarding, setDiscarding] = useState(false);
   const requestClose = () => { if (dirty) setDiscarding(true); else close(); };
@@ -237,6 +237,12 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
         </SettingsSection>
         <SettingsSection label="Placing items">
           <SettingRow label="Snap to grid" description="An item you drop, nudge with the arrow keys, or that the table places lands with its centre on an invisible 48 px grid, so connections run straight or at even angles. Items already on the map stay where they are until moved." meta="Off by default"><Switch checked={snapToGrid} change={setSnapToGrid} /></SettingRow>
+          <SettingRow label="Moving into items" description="What happens when you drag, nudge or an agent moves an item into others. Either way items never overlap." meta="Default Push aside">
+            <Segmented label="Moving into items" value={mapCollisions} change={collisions => setMapCollisions(collisions)} options={[
+              { value: 'shove', label: 'Push aside', help: 'Items in the way move to the nearest clear spot.' },
+              { value: 'solid', label: 'Solid', help: 'The moved item stops at items in its way and slides along them.' },
+            ]} />
+          </SettingRow>
         </SettingsSection>
         <SettingsSection label="Removing items">
           <SettingRow label="Delete in item menus" description="An item's right-click menu ends in Delete…, which removes the item from the map and the archive for good after you confirm. Provider data and sessions are kept. Without it, items leave through Archive." meta="Off by default"><Switch checked={itemDelete} change={setItemDelete} /></SettingRow>

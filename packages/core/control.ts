@@ -317,7 +317,8 @@ export interface WorkspaceStore {
 }
 export class MemoryStore implements WorkspaceStore {
   private state: WorkspaceState;
-  private receipts = new Map<string, { input: string; state: WorkspaceState }>();
+  /** A receipt is the command, not the workspace it produced: a replay reads the current workspace. */
+  private receipts = new Map<string, { input: string }>();
   private views = new Map<string, ViewState>();
   constructor(initial = emptyState()) { this.state = stateSchema.parse(initial); }
   async read() { return structuredClone(this.state); }
@@ -330,11 +331,11 @@ export class MemoryStore implements WorkspaceStore {
     const saved = this.receipts.get(envelope.commandId);
     if (saved) {
       if (saved.input !== input) throw new CommandIdConflict();
-      return { state: structuredClone(saved.state), replayed: true };
+      return { state: structuredClone(this.state), replayed: true };
     }
     const next = stateSchema.parse(change(structuredClone(this.state)));
     this.state = next;
-    this.receipts.set(envelope.commandId, { input, state: structuredClone(next) });
+    this.receipts.set(envelope.commandId, { input });
     return { state: structuredClone(next), replayed: false };
   }
   receiptRevision(commandId: string) { return receiptRevision(this.receipts.get(commandId)?.input); }
@@ -366,7 +367,8 @@ export class WorkspaceControl {
 /** Commands that only place items: they settle overlaps against the state they land on, and the user's placement is their latest intent. */
 const PLACEMENT = new Set<WorkspaceCommand['type']>(['node.move', 'nodes.move', 'node.attach', 'node.resize']);
 
-/** Reduce a whole command batch against an isolated draft; failures never mutate input. The user's own batch of placements lands on the current revision instead of failing on a stale one. */
+/** Reduce a whole command batch against an isolated draft; failures never mutate input. The user's own batch of placements lands on the current revision instead of failing on a stale one.
+ * A batch that only moves session scenes keeps the revision (SCENE_FIELDS). */
 export function reduceCommands(before: WorkspaceState, commands: readonly WorkspaceCommand[], expectedRevision: number, registry: ResourcePluginRegistry, layout: MapLayout = { sizes: {} }, actor?: CommandEnvelope['actor']): WorkspaceState {
   const placement = actor?.kind === 'user' && commands.every(command => PLACEMENT.has(command.type));
   if (before.revision !== expectedRevision && !placement) throw new RevisionConflict(expectedRevision, before.revision);
@@ -380,9 +382,14 @@ export function reduceCommands(before: WorkspaceState, commands: readonly Worksp
     if (node.pose && !(node.pose === 'gate' || node.pose === 'asking' ? node.attention === 'input' : node.pose === 'fallen' ? node.attention === 'error' : node.pose === 'ended' ? !working : working)) delete node.pose;
     if (node.pose === 'ended') { delete node.beside; delete node.tasks; delete node.bell; delete node.pen; }
   }
-  state.revision += 1;
+  if (!commands.every(isSceneOnly)) state.revision += 1;
   return stateSchema.parse(state);
 }
+
+/** What a session's map animal shows: its pose, helpers, background work, tasks, flags and one-shot moments. They
+ * change many times a minute and nothing anyone acts on depends on them, so saving them alone keeps the revision. */
+export const SCENE_FIELDS: ReadonlySet<string> = new Set(['pose', 'moment', 'helpers', 'waiting', 'beside', 'tasks', 'bell', 'pen']);
+const isSceneOnly = (command: WorkspaceCommand) => command.type === 'node.update' && Object.keys(command).every(key => key === 'type' || key === 'id' || SCENE_FIELDS.has(key));
 
 /** Only the host writes authorship: the agent that changed the text, or nothing once a person does. */
 function stampWriter(state: WorkspaceState, registry: ResourcePluginRegistry, pluginId: string, data: Data, previous: Data | undefined, actor?: CommandEnvelope['actor']): Data {
@@ -399,7 +406,7 @@ function stampWriter(state: WorkspaceState, registry: ResourcePluginRegistry, pl
 }
 
 function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry: ResourcePluginRegistry, layout: MapLayout, actor?: CommandEnvelope['actor'], standIns = new Map<string, string>()): void {
-      const { sizes, snap } = layout;
+      const { sizes, snap, collisions } = layout;
       const refusal = actor?.kind === 'agent' ? agentCommandRefusal(command) : undefined;
       if (refusal) throw new Error(refusal);
       const find = (key: string) => {
@@ -715,7 +722,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           break;
         }
         case 'node.move': {
-          state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: command.id, position: snapPosition(command.position, snap) }], sizes, snap);
+          state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: command.id, position: snapPosition(command.position, snap) }], sizes, snap, collisions);
           break;
         }
         case 'node.attach': {
@@ -726,7 +733,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           break;
         }
         case 'nodes.move': {
-          state.nodes = moveItems(state.nodes, state.resources, registry, command.positions, sizes, snap);
+          state.nodes = moveItems(state.nodes, state.resources, registry, command.positions, sizes, snap, collisions);
           break;
         }
         case 'layout.repair': {

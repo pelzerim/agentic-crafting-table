@@ -339,8 +339,9 @@ chips, per connected account. The service refreshes it once a minute (honoring r
 limits, keeping the last list on errors) through four fixed read-only searches.
 Hovering the slot opens the panel; clicking keeps it open until clicked again or
 Escape. **A right click on the map closes every rail sheet, Needs me included**, pinned
-or peeking, and the map still opens its own menu from that same click (board,
-project, item or connection). **A right click on a sheet itself closes that sheet**: anywhere on it that takes no right click of its own, so a to-do row still
+or peeking. When it closes a kept (pinned) sheet that is all it does; the next right
+click opens the map's own menu (board, project, item or connection). A sheet that only
+peeks from a hover does not hold the menu back. **A right click on a sheet itself closes that sheet**: anywhere on it that takes no right click of its own, so a to-do row still
 opens its row menu and a text field keeps its own. One inside Settings, an editor or a
 menu closes nothing. A right click that is a back gesture
 (leaving an open item, the New item picker) only goes back. A left click on the map
@@ -1927,6 +1928,15 @@ transport pass through without knowing the item's type:
   current task list; `bell`: the session runs on another model than it started with;
   `pen`: its working directory is inside `.claude/worktrees/`. `pose: ended` removes all
   four.
+- These, with `helpers`, `waiting` and `moment`, are the item's **scene**. A command batch
+  that only sets scene fields (`node.update` with nothing else) is saved and broadcast but
+  keeps the workspace revision, so a pose change never makes a pending action stale. A
+  change that also sets activity, attention, summary or anything else is a new revision.
+- A stale map action from the desktop is applied to the newest workspace when nothing it
+  names changed there apart from session status (scene, summary, activity, attention,
+  indicators); otherwise it is refused with “This changed elsewhere while you were acting
+  on it.” Every refused stale command is recorded in the workspace's
+  `revision_conflicts` table (last 1000) with the commits that landed in between.
 - `moment`: `{ kind, at }` with kind `stumble`, `bump`, `enter` or `leave`. A one-shot: the
   map plays it once when `at` is now, and nothing clears it.
 
@@ -2203,6 +2213,20 @@ resize keeps the item's centre. The service applies the rule for every caller (U
 providers) from the saved setting, so a position an agent or provider gives is also
 snapped while the switch is on. The intention is tidy angles: items whose centres share
 the grid connect with straight or evenly angled lines.
+
+**SETTINGS-MAP-COLLISIONS — Moving into items (MAP-13).** Settings → Map, section
+**Placing items**, has **Moving into items**: **Push aside** (default; additive enum
+`mapCollisions: 'shove' | 'solid'`, older settings read `shove`) or **Solid**. Push aside
+keeps the MAP-13 rule that the moved item lands where it was put and the items in its
+way settle at the nearest clear spot. With Solid, nothing else moves: a requested spot
+that is clear is taken as it is; otherwise the moved item (a selection or a project's
+members together) travels from where it was until it touches another item's 20 px
+clearance and slides along it. A drag travels from where the previous frame stopped it,
+so it slides along a card instead of jumping past it, and a drop commits the shown
+position. Arrow keys and agent/MCP `node.move`/`nodes.move` follow the same setting.
+With Snap to grid the stop moves back to the nearest clear grid point when there is one.
+Resizes, restores and other placements still push aside. Items never overlap in either
+mode.
 
 **SETTINGS-AUTO-REVIEW — Automatic reviews of new pull requests.** Settings → Items →
 GitHub pull request, section **Automatic reviews**, has the switch **Review new pull
@@ -3570,6 +3594,11 @@ revisions when there is room. Location chips open the file at the reviewed head 
 GitHub. The Run log shows Claude's event stream as a readable transcript
 (progress text, tool calls, errors, result summary) with the raw terminal one click
 away; Codex and text runs show the native terminal.
+A finding already sent or queued to an agent shows a copper send flag in place of its
+checkbox (tooltip “Sent to <agent>” / “Queued for <agent>”) and a dimmed title;
+select-all and ⌘A skip it. A sent one can still be picked again with Space or the
+detail's **Select to send again**; a queued one cannot be selected until its send is
+cancelled.
 Keyboard: ↑/↓ focus, Space select, Shift+↑/↓ extend, ⌘A all in filter, Enter
 opens the confirm step (and sends from it), 1–9 filter chips, Escape closes the
 menu or confirm step then clears the selection. The selection count, breakdown and

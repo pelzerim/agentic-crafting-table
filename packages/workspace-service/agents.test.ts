@@ -676,9 +676,9 @@ test('a shell command shows only after it has run a while, stays long enough to 
     await settle(21_000);
     assert.equal(await pose(f), undefined);
     await settle(21_500);
-    assert.deepEqual([await pose(f), (await f.control.read()).revision], ['command', quiet + 1]);
+    assert.deepEqual([await pose(f), (await f.control.read()).revision], ['command', quiet], 'a pose is scene: it keeps the revision');
     await settle(60_000);
-    assert.equal((await f.control.read()).revision, quiet + 1);
+    assert.equal((await f.control.read()).revision, quiet);
     await f.hook('PostToolUse', 61_000, { toolName: 'Bash' });
     assert.equal(await pose(f), undefined, 'a long command goes when it ends');
     // One that ended after two seconds is still shown at its end, and leaves on the settle pass.
@@ -730,7 +730,7 @@ test('compaction, tasks, another model and a worktree reach the node as plain st
     assert.deepEqual([(await node()).pen, (await node()).bell], [true, undefined]);
     const steady = (await f.control.read()).revision;
     await f.hook('PreCompact', 2_000);
-    assert.deepEqual([(await node()).pose, (await node()).activity, (await f.control.read()).revision], ['shearing', 'working', steady + 1]);
+    assert.deepEqual([(await node()).pose, (await node()).activity, (await f.control.read()).revision], ['shearing', 'working', steady]);
     await f.hook('PostCompact', 3_000);
     assert.equal((await node()).pose, undefined);
     await f.hook('PostModelSwitch', 4_000, { model: 'claude-haiku-5', previousModel: 'claude-opus-5-5' });
@@ -743,7 +743,7 @@ test('compaction, tasks, another model and a worktree reach the node as plain st
     // A burst of failing tools: one stumble, and the item keeps working.
     const before = (await f.control.read()).revision;
     for (let at = 10_000; at < 12_000; at += 200) { await f.hook('PreToolUse', at, { toolName: 'Edit', worktree: true }); await f.hook('PostToolUseFailure', at + 100, { toolName: 'Edit' }); }
-    assert.deepEqual([(await node()).moment, (await node()).activity, (await f.control.read()).revision], [{ kind: 'stumble', at: 10_100 }, 'working', before + 1]);
+    assert.deepEqual([(await node()).moment, (await node()).activity, (await f.control.read()).revision], [{ kind: 'stumble', at: 10_100 }, 'working', before]);
     await f.hook('PostToolUseFailure', 20_000, { toolName: 'Bash', interrupt: true });
     assert.deepEqual((await node()).moment, { kind: 'stumble', at: 10_100 }, 'an interrupt is not a stumble');
     await f.hook('PermissionDenied', 21_000, { toolName: 'Bash' });

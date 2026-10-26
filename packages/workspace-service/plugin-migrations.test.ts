@@ -110,9 +110,10 @@ test('production service upgrades before exposing UI/MCP state and reopens with 
 test('a SQLite failure during resource replacement rolls back graph rows and leaves a restorable backup', async () => {
   const f = await setup(); const database = new DatabaseSync(f.path);
   try {
-    database.exec("CREATE TRIGGER reject_upgrade BEFORE INSERT ON resources WHEN json_extract(NEW.body, '$.schemaVersion') = 3 BEGIN SELECT RAISE(ABORT, 'fixture storage failure'); END;");
+    for (const [name, event] of [['reject_upgrade', 'INSERT'], ['reject_upgrade_update', 'UPDATE']])
+      database.exec(`CREATE TRIGGER ${name} BEFORE ${event} ON resources WHEN json_extract(NEW.body, '$.schemaVersion') = 3 BEGIN SELECT RAISE(ABORT, 'fixture storage failure'); END;`);
     const before = await f.store.snapshot(), report = await migratePluginResources(f.store, registry());
     assert.equal(report[0].status, 'failed'); assert.ok(report[0].backup); assert.deepEqual(await f.store.snapshot(), before);
-    database.exec('DROP TRIGGER reject_upgrade'); assert.equal((await migratePluginResources(f.store, registry()))[0].status, 'upgraded');
+    database.exec('DROP TRIGGER reject_upgrade; DROP TRIGGER reject_upgrade_update'); assert.equal((await migratePluginResources(f.store, registry()))[0].status, 'upgraded');
   } finally { database.close(); await f.close(); }
 });

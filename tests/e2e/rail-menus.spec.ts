@@ -123,7 +123,9 @@ test('Needs me opens from the rail like the other sheets: rest to peek, click or
   await toggle.click(); await expect(sheet(page)).toHaveCount(0); await expect(slot(page, 'attention')).not.toHaveAttribute('data-pinned');
   await toggle.click(); await expect(sheet(page)).toBeVisible();
   await page.mouse.click(640, 720, { button: 'right' });
-  await expect(sheet(page)).toHaveCount(0); await expect(page.getByRole('menu', { name: 'Context actions' })).toBeVisible();
+  await expect(sheet(page)).toHaveCount(0); await expect(page.getByRole('menu', { name: 'Context actions' })).toHaveCount(0);
+  await page.mouse.click(640, 720, { button: 'right' });
+  await expect(page.getByRole('menu', { name: 'Context actions' })).toBeVisible();
 });
 
 test('at zero the Needs me slot stays in place, plain, and still opens the list', async ({ visual: { page } }) => {

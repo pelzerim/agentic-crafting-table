@@ -1,3 +1,4 @@
+import { canonical, SCENE_FIELDS } from './control.ts';
 import type { CommandEnvelope, WorkspaceCommand, WorkspaceState } from './control.ts';
 
 /** What a rule may look at: the workspace the command would apply to, and who sends it. */
@@ -94,4 +95,44 @@ export function revisionRefusal(commands: readonly WorkspaceCommand[], context: 
     if (reason) return `${command.type} needs expectedRevision: it ${reason}. Pass the revision from workspace_read.`;
   }
   return undefined;
+}
+
+/** Node fields that sessions and providers report on their own, many times a minute. A user's command does not act on them. */
+const SESSION_STATUS: ReadonlySet<string> = new Set([...SCENE_FIELDS, 'summary', 'lastLine', 'activity', 'activityAt', 'indicators',
+  'attention', 'attentionNote', 'attentionNotes', 'attentionSources', 'attentionVersion', 'attentionSeenVersion', 'attentionAt', 'attentionEvents']);
+
+/** The ids `commands` name (as `id`, `ids` or `…Id` at any depth); `map:<nodeId>` to-do ids name their node. */
+function namedIds(value: unknown, key = '', into = new Set<string>()): Set<string> {
+  if (typeof value === 'string' && (key === 'id' || key === 'ids' || key.endsWith('Id') || key.endsWith('Ids'))) into.add(value.replace(/^map:/, ''));
+  else if (Array.isArray(value)) for (const item of value) namedIds(item, key, into);
+  else if (value && typeof value === 'object') for (const [name, item] of Object.entries(value)) namedIds(item, name, into);
+  return into;
+}
+
+/** What `commands` name that changed between the workspace the sender saw and `head`, apart from session status.
+ * Empty means applying them to `head` acts on exactly what the sender saw. */
+export function changedSubjects(seen: WorkspaceState, head: WorkspaceState, commands: readonly WorkspaceCommand[]): string[] {
+  const subject = (state: WorkspaceState, id: string) => {
+    const node = state.nodes.find(candidate => candidate.id === id);
+    const fields = node && Object.fromEntries(Object.entries(node).filter(([name]) => !SESSION_STATUS.has(name)));
+    return canonical({ node: fields, resource: state.resources.find(candidate => candidate.id === (node?.resourceId ?? id)), link: state.links.find(candidate => candidate.id === id), todo: state.todos.find(candidate => candidate.id === id) });
+  };
+  const viewChanged = commands.some(command => command.type === 'view.set') && canonical(seen.view) !== canonical(head.view);
+  return [...(viewChanged ? ['view'] : []), ...[...namedIds(commands)].filter(id => subject(seen, id) !== subject(head, id))];
+}
+
+/** How many times a stale user action is moved to the newest workspace before its conflict is reported. */
+export const LATEST_RETRIES = 3;
+/** Applies `commands` to `seen`; when other writes landed first, applies them to the newest workspace instead, as long
+ * as nothing they name changed there apart from session status. `read` returns the newest workspace after a failure. */
+export async function applyToLatest<T>(seen: WorkspaceState, commands: readonly WorkspaceCommand[], send: (revision: number) => Promise<T>, read: () => Promise<WorkspaceState | undefined>): Promise<T> {
+  for (let attempt = 0, revision = seen.revision; ; attempt++) {
+    try { return await send(revision); }
+    catch (error) {
+      const head = await read();
+      if ((error as { code?: string }).code !== 'REVISION_CONFLICT' || !head || attempt >= LATEST_RETRIES) throw error;
+      if (changedSubjects(seen, head, commands).length) throw Object.assign(new Error('This changed elsewhere while you were acting on it. Check it and try again.'), { code: 'REVISION_CONFLICT' });
+      revision = head.revision;
+    }
+  }
 }

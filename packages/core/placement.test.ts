@@ -136,3 +136,21 @@ test('with snapping on, a dropped or created centre lands on the grid, a selecti
   await plain.apply({ type: 'node.move', id: 'agent', position: { x: 1003, y: -70 } }, 0);
   assert.deepEqual((await plain.read()).nodes[1].position, { x: 1003, y: -70 });
 });
+
+test('with solid collisions, a moved item stops at the item in its way and leaves it in place', async () => {
+  class SolidStore extends MemoryStore { readMapLayout() { return { sizes: {}, collisions: 'solid' as const }; } }
+  const initial = stateSchema.parse({ version: 1, revision: 0, view: {}, todos: [], nodes: [
+    { id: 'agent', title: 'Agent', resourceId: 'agent-r', position: { x: -800, y: 0 } },
+    { id: 'pr', title: 'PR', resourceId: 'pr-r', position: { x: 0, y: 0 } },
+  ], resources: [
+    { id: 'agent-r', pluginId: 'agent.session', schemaVersion: 1, title: 'Agent', data: { sessionId: 'native-session', provider: 'claude' } },
+    { id: 'pr-r', pluginId: 'github.pull-request', schemaVersion: 1, title: 'PR', data: { owner: 'fixture', repo: 'test', number: 1 } },
+  ], links: [] });
+  const control = new WorkspaceControl(new SolidStore(initial)), at = async (id: string) => (await control.read()).nodes.find(node => node.id === id)!.position;
+  await control.apply({ type: 'node.move', id: 'agent', position: { x: 0, y: 0 } }, 0);
+  assert.deepEqual(await at('pr'), { x: 0, y: 0 });
+  const stopped = await at('agent');
+  assert.ok(stopped.x < -100 && stopped.x > -800 && stopped.y === 0, `stopped at ${stopped.x},${stopped.y}`);
+  await control.apply({ type: 'nodes.move', positions: [{ id: 'agent', position: { x: 10, y: 10 } }] }, 1);
+  assert.deepEqual(await at('pr'), { x: 0, y: 0 });
+});

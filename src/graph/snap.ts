@@ -1,10 +1,12 @@
 import type { ItemMapSizes } from '../../packages/core/item-map-sizes.ts';
+import type { MapCollisions } from './spatial.ts';
 
 /** Distance between the points an item centre snaps to when the map grid is on (MAP-30). */
 export const SNAP_PITCH = 48;
 
-/** What the shared placement rules read from settings: item sizes and, when snapping is on, the grid pitch. */
-export interface MapLayout { sizes: ItemMapSizes; snap?: number }
+/** What the shared placement rules read from settings: item sizes, when snapping is on the grid pitch,
+ * and whether moved items push others aside (the default) or stop at them. */
+export interface MapLayout { sizes: ItemMapSizes; snap?: number; collisions?: MapCollisions }
 
 /** The nearest grid point to a centre; no pitch keeps the centre as it is. */
 export function snapPosition(position: { x: number; y: number }, pitch: number | undefined) {

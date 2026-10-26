@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { commandSchema, emptyState } from './control.ts';
 import type { WorkspaceCommand, WorkspaceState } from './control.ts';
-import { COMMAND_REVISION_RULES, REQUEST_REVISION_RULES, revisionRefusal } from './revision-policy.ts';
+import { applyToLatest, changedSubjects, LATEST_RETRIES, COMMAND_REVISION_RULES, REQUEST_REVISION_RULES, revisionRefusal } from './revision-policy.ts';
 
 const commandTypes = commandSchema.options.map(option => option.shape.type.value).sort();
 const agent = { kind: 'agent' as const, id: 'agent' };
@@ -92,4 +92,39 @@ test('a batch is revision-free only when every member is', () => {
 test('requests outside the command union that take a revision are classified too', () => {
   assert.deepEqual(Object.entries(REQUEST_REVISION_RULES).map(([request, rule]) => [request, rule.free]),
     [['workspace_apply', 'per command'], ['workspace_create_item', true], ['workspace_run_skill', true], ['workspace_run skill.run', true], ['workspace_settings', false]]);
+});
+
+test('a stale command may move to the newest revision only while what it names is unchanged apart from session status', () => {
+  const seen: WorkspaceState = { ...state, revision: 4, resources: [{ id: 'other-resource', pluginId: 'workspace.note', schemaVersion: 1, title: 'Other', data: { text: 'a' } }],
+    links: [{ id: 'link', sourceId: 'agent', targetId: 'other', kind: 'reference', label: '' }] };
+  const archive: WorkspaceCommand[] = [{ type: 'node.archive', id: 'other' }];
+  const status = { ...seen, revision: 9, nodes: seen.nodes.map(node => node.id === 'other' ? { ...node, pose: 'gate' as const, summary: 'busy', activity: 'working' as const, attention: 'input' as const, indicators: [] } : node) };
+  assert.deepEqual(changedSubjects(seen, status, archive), [], 'pose, summary, activity, attention and indicators are not what the user acted on');
+  const elsewhere = { ...seen, revision: 9, nodes: seen.nodes.map(node => node.id === 'loose' ? { ...node, title: 'Renamed' } : node) };
+  assert.deepEqual(changedSubjects(seen, elsewhere, archive), []);
+  const renamed = { ...seen, revision: 9, nodes: seen.nodes.map(node => node.id === 'other' ? { ...node, title: 'Renamed' } : node) };
+  assert.deepEqual(changedSubjects(seen, renamed, archive), ['other']);
+  const edited = { ...seen, revision: 9, resources: [{ ...seen.resources[0], data: { text: 'b' } }] };
+  assert.deepEqual(changedSubjects(seen, edited, archive), ['other'], 'the item behind the node counts');
+  const archived = { ...seen, revision: 9, nodes: seen.nodes.filter(node => node.id !== 'other') };
+  assert.deepEqual(changedSubjects(seen, archived, archive), ['other']);
+  const relinked = { ...seen, revision: 9, links: [{ ...seen.links[0], kind: 'context' as const }] };
+  assert.deepEqual(changedSubjects(seen, relinked, [{ type: 'link.remove', id: 'link' }]), ['link']);
+  assert.deepEqual(changedSubjects(seen, relinked, [{ type: 'nodes.action', ids: ['agent', 'other'], action: 'archive' } as unknown as WorkspaceCommand]), []);
+});
+
+test('a stale user action lands on the newest workspace when only session status changed, and is refused when its subject changed', async () => {
+  const conflict = () => Object.assign(new Error('Revision conflict'), { code: 'REVISION_CONFLICT' });
+  const archive: WorkspaceCommand[] = [{ type: 'node.archive', id: 'other' }];
+  let head: WorkspaceState = { ...state, revision: 6, nodes: state.nodes.map(node => node.id === 'other' ? { ...node, pose: 'gate' as const } : node) };
+  const sent: number[] = [];
+  const send = async (revision: number) => { sent.push(revision); if (revision !== head.revision) throw conflict(); return 'saved'; };
+  assert.equal(await applyToLatest(state, archive, send, async () => head), 'saved');
+  assert.deepEqual(sent, [4, 6]);
+  head = { ...state, revision: 7, nodes: state.nodes.map(node => node.id === 'other' ? { ...node, title: 'Renamed' } : node) };
+  await assert.rejects(applyToLatest(state, archive, send, async () => head), /changed elsewhere/);
+  let revision = 10; const moving = async () => { revision++; throw conflict(); };
+  await assert.rejects(applyToLatest(state, archive, moving, async () => ({ ...state, revision })), /Revision conflict/);
+  assert.equal(revision, 10 + LATEST_RETRIES + 1, 'gives up after a bounded number of attempts');
+  await assert.rejects(applyToLatest(state, archive, async () => { throw new Error('offline'); }, async () => head), /offline/);
 });

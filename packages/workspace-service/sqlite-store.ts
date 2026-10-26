@@ -10,8 +10,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { canonical, CommandIdConflict, emptyState, receiptRevision, stateSchema, viewSchema } from '../core/control.ts';
-import type { CommandEnvelope, CommandResult, WorkspaceState, WorkspaceStore } from '../core/control.ts';
+import { canonical, CommandIdConflict, emptyState, receiptRevision, RevisionConflict, stateSchema, viewSchema } from '../core/control.ts';
+import type { CommandEnvelope, CommandResult, WorkspaceCommand, WorkspaceState, WorkspaceStore } from '../core/control.ts';
 import type { RecoveryState } from './lifecycle.ts';
 import { attentionItems, nodeAttentionReasons } from '../../src/graph/attention.ts';
 import type { AttentionReason } from '../../src/graph/attention.ts';
@@ -95,7 +95,16 @@ export const migrations = [
   `CREATE TABLE IF NOT EXISTS github_inbox_seen (pull_key TEXT PRIMARY KEY, updated_at TEXT NOT NULL, reasons TEXT NOT NULL, seen_at INTEGER NOT NULL);`,
   // Plot colors (MAP-24): the assigned color and a person's override, added once as `color` and `chosen_color` columns.
   `SELECT 1;`,
+  `CREATE TABLE IF NOT EXISTS revision_conflicts (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, actor TEXT NOT NULL, commands TEXT NOT NULL, expected INTEGER NOT NULL, current INTEGER NOT NULL, landed TEXT NOT NULL);`,
 ] as const;
+const CONFLICTS_KEPT = 1000, CONFLICT_LANDED_SHOWN = 20;
+export interface RevisionConflictRecord { at: string; actor: string; commands: CommandSubject[]; expected: number; current: number; landed: { revision: number; actor: string; commands: CommandSubject[] }[] }
+type CommandSubject = { type: string; id?: string; ids?: string[] };
+/** A command's type and the ids it names, without the data it carries. */
+function commandSubject(command: WorkspaceCommand): CommandSubject {
+  const { type, id, ids } = command as { type: string; id?: unknown; ids?: unknown };
+  return { type, ...(typeof id === 'string' ? { id } : {}), ...(Array.isArray(ids) ? { ids: ids.map(String) } : {}) };
+}
 const TODO_HORIZONS_VERSION = 25, VALIDATION_LINKS_VERSION = 26, PLOT_COLORS_VERSION = 28;
 /** Per-package storage quota and largest single record, in bytes of stored JSON. */
 export const PLUGIN_STORAGE_BYTES = 16 * 1024 * 1024, PLUGIN_RECORD_BYTES = 1024 * 1024;
@@ -135,9 +144,6 @@ export interface JobRecord { id: string; requestKey: string; input: JobInput; st
 export interface WorkspaceEvent { sequence: number; kind: 'workspace.changed' | 'job.changed'; revision: number; subjectId: string; createdAt: string }
 type Row = Record<string, string | number | bigint | Uint8Array | null>;
 const decode = <T>(value: unknown): T => JSON.parse(String(value)) as T;
-/** Commands whose receipt still holds the workspace they produced. Older receipts keep only
- * their id and input: enough to recognise a retry, which then reads the current workspace. */
-export const RECEIPT_STATES_KEPT = 50;
 /** Free pages worth reclaiming when a workspace is opened. */
 const RECLAIM_BYTES = 32 * 1024 * 1024;
 const transitions: Record<JobState, readonly JobState[]> = {
@@ -198,15 +204,15 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       if (this.backupFile) this.keepOnlyBackup(this.backupFile);
       this.trimReceipts();
       const pages = (name: string) => Number(Object.values(this.db.prepare(`PRAGMA ${name}`).get()!)[0]);
-      if (pages('freelist_count') * pages('page_size') > RECLAIM_BYTES) this.db.exec('VACUUM');
+      if (pages('freelist_count') * pages('page_size') > RECLAIM_BYTES) this.db.exec('VACUUM; PRAGMA wal_checkpoint(TRUNCATE);');
     } catch (error) { this.db.close(); throw error; }
   }
 
   close() { this.db.close(); }
 
-  /** Empties the saved workspace of every receipt older than the newest RECEIPT_STATES_KEPT. */
-  private trimReceipts(newest = Number(this.db.prepare('SELECT max(rowid) AS id FROM receipts').get()!.id ?? 0), span?: number) {
-    this.db.prepare("UPDATE receipts SET result = '' WHERE rowid <= ? AND rowid > ? AND result <> ''").run(newest - RECEIPT_STATES_KEPT, span === undefined ? 0 : newest - RECEIPT_STATES_KEPT - span);
+  /** Empties workspace copies that earlier versions saved in receipts; the space is reclaimed on open. */
+  private trimReceipts() {
+    this.db.prepare("UPDATE receipts SET result = '' WHERE result <> ''").run();
   }
 
   observation<T>(scope: string): { revision: number; value?: T } {
@@ -631,7 +637,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     const row = this.db.prepare('SELECT revision, body FROM app_settings WHERE id = 1').get();
     return row ? { revision: Number(row.revision), value: settingsSchema.parse(decode(row.body)) } : { revision: 0, value: settingsSchema.parse({}) };
   }
-  readMapLayout(): MapLayout { const { itemMapSizes, snapToGrid } = this.readSettings().value; return { sizes: itemMapSizes, ...(snapToGrid ? { snap: SNAP_PITCH } : {}) }; }
+  readMapLayout(): MapLayout { const { itemMapSizes, snapToGrid, mapCollisions } = this.readSettings().value; return { sizes: itemMapSizes, ...(snapToGrid ? { snap: SNAP_PITCH } : {}), ...(mapCollisions === 'solid' ? { collisions: mapCollisions } : {}) }; }
   /** Settings are saved whole, so an old default is stored like a choice. Runs once
    * per workspace: a saved former dashboard default takes the current default. */
   migrateSettingsDefaults() {
@@ -848,7 +854,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     this.db.exec(readOnly ? 'BEGIN' : 'BEGIN IMMEDIATE');
     let result: T;
     try { result = change(); this.db.exec('COMMIT'); }
-    catch (error) { this.changedRollouts.clear(); this.db.exec('ROLLBACK'); throw error; }
+    catch (error) { this.changedRollouts.clear(); this.decoded = undefined; this.db.exec('ROLLBACK'); throw error; }
     if (this.changedRollouts.size) {
       const changed = [...this.changedRollouts]; this.changedRollouts.clear();
       for (const id of changed) for (const listener of this.rolloutListeners) try { listener(id); } catch { /* A committed change stands whatever a listener does. */ }
@@ -856,7 +862,15 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     return result;
   }
 
+  /** The decoded workspace as of a SQLite `data_version`; another connection's commit changes that version,
+   * and this connection's writes and rollbacks drop the copy. Readers get their own deep copy. */
+  private decoded?: { version: number; state: WorkspaceState };
   private readState(): WorkspaceState {
+    const version = Number(this.db.prepare('PRAGMA data_version').get()!.data_version);
+    if (this.decoded?.version !== version) this.decoded = { version, state: this.decodeState() };
+    return structuredClone(this.decoded.state);
+  }
+  private decodeState(): WorkspaceState {
     const metadata = this.db.prepare('SELECT revision, view FROM workspace WHERE id = 1').get()!;
     const records = (table: string, order: string) => this.db.prepare(`SELECT body FROM ${table} ORDER BY ${order}`).all().map(row => decode(row.body));
     return stateSchema.parse({ version: 1, revision: metadata.revision, view: decode(metadata.view),
@@ -864,6 +878,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
   }
 
   private writeState(input: WorkspaceState): WorkspaceState {
+    this.decoded = undefined;
     const state = stateSchema.parse(input);
     const nodeIds = new Set(state.nodes.map(node => node.id));
     for (const node of state.nodes) {
@@ -874,18 +889,32 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     }
     for (const todo of state.todos) if (todo.nodeIds.some(id => !nodeIds.has(id))) throw new Error('To-do references a missing node');
     // Preserve identity bindings for unavailable plugins until their connector returns.
-    const previousKeys = new Map(this.db.prepare('SELECT id, provider_key FROM resources').all().map(row => [String(row.id), row.provider_key]));
-    this.db.exec('DELETE FROM links; DELETE FROM nodes; DELETE FROM resources; DELETE FROM todos;');
-    const resource = this.db.prepare('INSERT INTO resources(id, plugin_id, connection_id, provider_key, body) VALUES (?, ?, ?, ?, ?)');
-    state.resources.forEach(record => resource.run(record.id, record.pluginId, record.connectionId ?? '', this.identity(record) ?? previousKeys.get(record.id) ?? null, JSON.stringify(record)));
-    const node = this.db.prepare('INSERT INTO nodes(id, resource_id, project_id, ordinal, body) VALUES (?, ?, ?, ?, ?)');
-    state.nodes.forEach((record, i) => node.run(record.id, record.resourceId ?? null, record.projectId ?? null, i, JSON.stringify(record)));
-    const link = this.db.prepare('INSERT INTO links(id, source_id, target_id, ordinal, body) VALUES (?, ?, ?, ?, ?)');
-    state.links.forEach((record, i) => link.run(record.id, record.sourceId, record.targetId, i, JSON.stringify(record)));
-    const todo = this.db.prepare('INSERT INTO todos(id, ordinal, body) VALUES (?, ?, ?)');
-    state.todos.forEach((record, i) => todo.run(record.id, i, JSON.stringify(record)));
+    const previousKeys = new Map(this.db.prepare('SELECT id, provider_key FROM resources').all().map(row => [String(row.id), row.provider_key === null ? null : String(row.provider_key)]));
+    this.writeRows('resources', ['plugin_id', 'connection_id', 'provider_key', 'body'], state.resources.map(record => [record.id, record.pluginId, record.connectionId ?? '', this.identity(record) ?? previousKeys.get(record.id) ?? null, JSON.stringify(record)]));
+    this.writeRows('nodes', ['resource_id', 'project_id', 'ordinal', 'body'], state.nodes.map((record, i) => [record.id, record.resourceId ?? null, record.projectId ?? null, i, JSON.stringify(record)]));
+    this.writeRows('links', ['source_id', 'target_id', 'ordinal', 'body'], state.links.map((record, i) => [record.id, record.sourceId, record.targetId, i, JSON.stringify(record)]));
+    this.writeRows('todos', ['ordinal', 'body'], state.todos.map((record, i) => [record.id, i, JSON.stringify(record)]));
     this.db.prepare('UPDATE workspace SET revision = ?, view = ? WHERE id = 1').run(state.revision, JSON.stringify(state.view));
     return state;
+  }
+
+  /** Rewrites only the rows whose columns changed, in place so a row keeps its position. Changed rows first give up
+   * their unique ordinal or provider identity, so one moving to another row never collides; references are checked
+   * at commit. Resources are read back in row order, so a save that reorders them rewrites that table. */
+  private writeRows(table: string, columns: readonly string[], rows: readonly (string | number | null)[][]) {
+    const saved = new Map(this.db.prepare(`SELECT id, ${columns.join(', ')} FROM ${table} ORDER BY rowid`).all().map(row => [String(row.id), JSON.stringify(columns.map(column => row[column] ?? null))]));
+    const wanted = new Set(rows.map(([id]) => String(id))), kept = [...saved.keys()].filter(id => wanted.has(id));
+    const reordered = !columns.includes('ordinal') && rows.some(([id], index) => index < kept.length ? String(id) !== kept[index] : saved.has(String(id)));
+    if (reordered) { this.db.exec(`DELETE FROM ${table}`); saved.clear(); }
+    const remove = this.db.prepare(`DELETE FROM ${table} WHERE id = ?`);
+    for (const id of saved.keys()) if (!wanted.has(id)) remove.run(id);
+    const changed = rows.filter(([id, ...values]) => saved.has(String(id)) && saved.get(String(id)) !== JSON.stringify(values));
+    const release = this.db.prepare(columns.includes('ordinal') ? `UPDATE ${table} SET ordinal = -1 - rowid WHERE id = ?` : `UPDATE ${table} SET provider_key = NULL WHERE id = ?`);
+    for (const [id] of changed) release.run(id);
+    const update = this.db.prepare(`UPDATE ${table} SET ${columns.map(column => `${column} = ?`).join(', ')} WHERE id = ?`);
+    for (const [id, ...values] of changed) update.run(...values, id);
+    const insert = this.db.prepare(`INSERT INTO ${table}(id, ${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')}, ?)`);
+    for (const row of rows) if (!saved.has(String(row[0]))) insert.run(...row);
   }
 
   backupResources() {
@@ -917,7 +946,26 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     });
   }
   async commit(envelope: CommandEnvelope, change: (state: WorkspaceState) => WorkspaceState): Promise<CommandResult> {
-    return this.transaction(() => this.commitDraft(envelope, change));
+    try { return this.transaction(() => this.commitDraft(envelope, change)); }
+    catch (error) { if (error instanceof RevisionConflict) this.recordConflict(envelope, error.currentRevision); throw error; }
+  }
+  /** Refused stale commands, newest first, with the commits that landed after the revision each one named. */
+  revisionConflicts(limit = 100): RevisionConflictRecord[] {
+    return this.db.prepare('SELECT * FROM revision_conflicts ORDER BY id DESC LIMIT ?').all(limit).map(row => ({
+      at: String(row.at), actor: String(row.actor), commands: decode(row.commands), expected: Number(row.expected), current: Number(row.current), landed: decode(row.landed),
+    }));
+  }
+  private recordConflict(envelope: CommandEnvelope, current: number) {
+    try {
+      const landed = this.db.prepare(`SELECT e.revision, r.input FROM events e LEFT JOIN receipts r ON r.command_id = e.subject_id
+        WHERE e.kind = 'workspace.changed' AND e.revision > ? AND e.revision <= ? ORDER BY e.revision LIMIT ?`).all(envelope.expectedRevision, current, CONFLICT_LANDED_SHOWN).map(row => {
+        const input = row.input === null || row.input === undefined ? undefined : decode<CommandEnvelope>(row.input);
+        return { revision: Number(row.revision), actor: input ? `${input.actor.kind}:${input.actor.id}` : 'unrecorded', commands: input ? input.commands.map(commandSubject) : [] };
+      });
+      this.db.prepare('INSERT INTO revision_conflicts(at, actor, commands, expected, current, landed) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(new Date(this.now()).toISOString(), `${envelope.actor.kind}:${envelope.actor.id}`, JSON.stringify(envelope.commands.map(commandSubject)), envelope.expectedRevision, current, JSON.stringify(landed));
+      this.db.prepare('DELETE FROM revision_conflicts WHERE id <= (SELECT MAX(id) FROM revision_conflicts) - ?').run(CONFLICTS_KEPT);
+    } catch { /* The conflict itself still reaches the caller. */ }
   }
   receiptRevision(commandId: string) {
     return receiptRevision(this.db.prepare('SELECT input FROM receipts WHERE command_id = ?').get(commandId)?.input as string | undefined);
@@ -932,8 +980,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       const before = this.readState(), active = attentionCycles(before);
       const next = this.writeState(change(before));
       this.recordAttention(active, next);
-      const saved = this.db.prepare('INSERT INTO receipts(command_id, input, result) VALUES (?, ?, ?)').run(envelope.commandId, input, JSON.stringify(next));
-      this.trimReceipts(Number(saved.lastInsertRowid), 8);
+      this.db.prepare(`INSERT INTO receipts(command_id, input, result) VALUES (?, ?, '')`).run(envelope.commandId, input);
       this.appendEvent('workspace.changed', next.revision, envelope.commandId);
       return { state: next, replayed: false };
   }
@@ -994,6 +1041,10 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
   getJob(id: string): JobRecord | undefined { const row = this.db.prepare('SELECT * FROM jobs WHERE id = ?').get(id); return row ? this.job(row) : undefined; }
   jobByRequest(requestKey: string): JobRecord | undefined { const row = this.db.prepare('SELECT * FROM jobs WHERE request_key = ?').get(requestKey); return row ? this.job(row) : undefined; }
   listJobs(): JobRecord[] { return this.db.prepare('SELECT * FROM jobs ORDER BY rowid').all().map(row => this.job(row)); }
+  /** Succeeded rollout approvals, picked out in SQL: decoding every job on each rollout pass blocked the service. */
+  rolloutApprovalJobs(): JobRecord[] {
+    return this.db.prepare(`SELECT * FROM jobs WHERE state = 'succeeded' AND json_extract(input, '$.action') = 'resource.action' AND json_extract(input, '$.arguments.actionId') = 'rollout.approve' ORDER BY rowid`).all().map(row => this.job(row));
+  }
   enqueueJob(requestKey: string, input: JobInput): JobRecord {
     if (!requestKey.trim() || requestKey.length > 200 || !input.action.trim() || !input.nodeId.trim()) throw new Error('Invalid job request');
     const encoded = canonical(input);

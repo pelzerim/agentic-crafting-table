@@ -25,6 +25,7 @@ import { pendingOffers, useUpdates } from './use-updates.ts';
 import { UpdateNotice } from './update-notice.tsx';
 import type { ProviderDescription } from '../../../packages/core/connections.ts';
 import { seenOnOpen } from '../../../packages/core/settings.ts';
+import { applyToLatest } from '../../../packages/core/revision-policy.ts';
 import type { OpenContext, SettingsSnapshot } from '../../../packages/core/settings.ts';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { WorkspaceCommand, WorkspaceState, ViewState } from '../../../packages/core/control.ts';
@@ -188,10 +189,13 @@ export function WorkspaceMap() {
   const attentionOpen = useSyncExternalStore(rail.subscribe, rail.snapshot).open === 'attention';
   useEffect(() => { if (attentionOpen) setOverviewOpen(false); }, [attentionOpen]);
   // A right click that reaches the map closes every rail sheet, Needs me included, pinned or not.
-  // It only observes: the map still opens its own menu from the same click.
+  // When it closes a kept sheet that is all it does; the next right click opens the map's menu.
+  // A sheet that only peeks from a hover does not hold the menu back.
   useEffect(() => {
     const closePanels = (event: MouseEvent) => {
       if (!(event.target instanceof Element) || !event.target.closest('.map-area')) return;
+      const { open, pinned, held } = rail.snapshot();
+      if (open && open === pinned && open !== held) { event.preventDefault(); event.stopPropagation(); }
       rail.clear();
     };
     document.addEventListener('contextmenu', closePanels, true);
@@ -429,18 +433,16 @@ export function WorkspaceMap() {
     document.addEventListener('keydown', escape);
     return () => { document.removeEventListener('pointerdown', dismiss, true); document.removeEventListener('contextmenu', rightClick, true); document.removeEventListener('keydown', escape); };
   }, [editor?.mode]);
+  /** Applies to the workspace on screen, or to the newest one when only background writes landed in between. */
   const apply = async (commands: WorkspaceCommand[]) => {
-    const current = snapshotRef.current;
-    if (!current) throw new Error('Workspace is not connected');
-    try {
-      const result = await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: current.state.revision, actor: { kind: 'user', id: 'desktop' }, commands });
-      // The service broadcasts the state it committed before it replies; read it back only when that has not arrived.
-      if ((snapshotRef.current?.state.revision ?? -1) < (result?.state?.revision ?? Infinity)) accept(await window.craftingTable.workspaceRead());
-      setError('');
-    } catch (error) {
-      void window.craftingTable.workspaceRead().then(accept).catch(() => {});
-      throw error;
-    }
+    const seen = snapshotRef.current?.state;
+    if (!seen) throw new Error('Workspace is not connected');
+    const result = await applyToLatest(seen, commands,
+      revision => window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: revision, actor: { kind: 'user', id: 'desktop' }, commands }),
+      async () => { const fresh = await window.craftingTable.workspaceRead().catch(() => undefined); if (fresh) accept(fresh); return fresh?.state; });
+    // The service broadcasts the state it committed before it replies; read it back only when that has not arrived.
+    if ((snapshotRef.current?.state.revision ?? -1) < (result?.state?.revision ?? Infinity)) accept(await window.craftingTable.workspaceRead());
+    setError('');
   };
   /** Saves and resolves with the revision now held, which has the saved commands. */
   const applyAt = async (commands: WorkspaceCommand[]) => { await apply(commands); return snapshotRef.current?.state.revision; };
@@ -682,7 +684,7 @@ export function WorkspaceMap() {
       onMarkSeen={acknowledge} keep={keep} onKeep={restore} onChromeCover={setChromeDocked} onOpened={opened} onView={viewing} onMute={below ? undefined : setMuted}
       overview={overviewOpen} onOverview={open => { setOverviewOpen(open); if (open) { rail.unpin('attention'); rail.close('attention'); } }} undermapCount={layerGraph.belowCount} onTravel={to => { rail.clear(); void travel(to); }}
       highlightedNodes={menuHighlight?.nodes ?? (below && foundBelow ? foundNodes : highlightedNodes)} highlightedLinks={menuHighlight?.links} menuFor={editor?.mode === 'menu' ? menuTargets : undefined} undermap={below ? undermapView : undefined}
-      attentionCounting={counting} itemMapSizes={settings.value.itemMapSizes} itemViews={settings.value.itemViews} viewBounds={view.itemViewBounds} onViewBounds={saveViewBounds} neighborhoodPadding={settings.value.neighborhoodPadding} neighborhoodAppearance={neighborhoodAppearance} dashboards={settings.value.mapDashboards} workingMark={settings.value.workingMark} plots={plots} onPlot={(projectId, request) => window.craftingTable.runtimeRun({ action: 'plot', nodeId: projectId, arguments: request }).then(() => {}, error => { if (request.operation !== 'seen') setError(error.message); })} plotNaming={settings.value.summaries.plotNames} plotTargets={ids => snapshot ? moveTargets(snapshot.state, ids) : []} onMoveItems={moveToProject} onSendBelow={ids => moveLayer(ids, 'below')} hideImpliedLinks={settings.value.hideImpliedLinks} snap={settings.value.snapToGrid ? SNAP_PITCH : undefined} initialViewport={view.camera} onViewport={camera => { zoomRef.current = camera.zoom; saveView({ camera }); }} reveal={reveal} onRevealed={revealed => setReveal(current => current === revealed ? undefined : current)}
+      attentionCounting={counting} itemMapSizes={settings.value.itemMapSizes} itemViews={settings.value.itemViews} viewBounds={view.itemViewBounds} onViewBounds={saveViewBounds} neighborhoodPadding={settings.value.neighborhoodPadding} neighborhoodAppearance={neighborhoodAppearance} dashboards={settings.value.mapDashboards} workingMark={settings.value.workingMark} plots={plots} onPlot={(projectId, request) => window.craftingTable.runtimeRun({ action: 'plot', nodeId: projectId, arguments: request }).then(() => {}, error => { if (request.operation !== 'seen') setError(error.message); })} plotNaming={settings.value.summaries.plotNames} plotTargets={ids => snapshot ? moveTargets(snapshot.state, ids) : []} onMoveItems={moveToProject} onSendBelow={ids => moveLayer(ids, 'below')} hideImpliedLinks={settings.value.hideImpliedLinks} snap={settings.value.snapToGrid ? SNAP_PITCH : undefined} collisions={settings.value.mapCollisions} initialViewport={view.camera} onViewport={camera => { zoomRef.current = camera.zoom; saveView({ camera }); }} reveal={reveal} onRevealed={revealed => setReveal(current => current === revealed ? undefined : current)}
       onItemDrag={below ? undefined : (id, point) => todoOverlay.current?.drag(id, point)} onItemDrop={below ? undefined : (id, point) => todoOverlay.current?.drop(id, point) ?? false}
       onLink={below ? undefined : anchor => {
         setEditor(undefined); setConnectionDraft(undefined);

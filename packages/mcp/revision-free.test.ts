@@ -43,8 +43,8 @@ test('an agent registers a PR with its link without reading a revision, and a re
     assert.deepEqual(first.itemLinks, [{ nodeId: 'pr', resourceId: 'pr-r', reusedResource: false, links: [{ id: 'link:pr:agent:reference:source', existing: false }] }]);
     await bench.service.control.dispatch({ commandId: 'elsewhere', expectedRevision: first.revision, actor: { kind: 'provider', id: 'poll' }, commands: [note('polled')] });
     const again = parse(await bench.apply(input));
-    assert.equal(again.replayed, true); assert.equal(again.revision, first.revision);
     const state = await bench.service.control.read();
+    assert.equal(again.replayed, true); assert.equal(again.revision, state.revision, 'a retry chains from the current revision');
     assert.equal(state.revision, before + 2); assert.equal(state.nodes.filter(node => node.id === 'pr').length, 1); assert.equal(state.links.length, 1);
     const reused = await bench.apply({ commandId: 'register-pr', command: note('different') });
     assert.equal(reused.isError, true); assert.equal(parse(reused).error.code, 'COMMAND_ID_CONFLICT');

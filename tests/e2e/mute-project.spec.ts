@@ -139,13 +139,14 @@ test('a click unmutes only once the cover has parted: never before, on a pan or 
   await page.mouse.down(); await page.mouse.move(point.x - 80, point.y - 30, { steps: 8 }); await page.mouse.up();
   await expect.poll(camera).not.toBe(start);
   await page.waitForTimeout(200); expect(await mutedAt(page)).toEqual(expect.any(String));
-  // Right click opens the project's menu instead, and closes Needs me.
+  // A right click first only closes the open Needs me panel; the next opens the project's menu instead.
   await page.locator('.needs-me-quiet').click(); await expect(page.getByRole('dialog', { name: 'Needs me', exact: true })).toBeVisible();
   point = await coverPoint(page);
   await page.mouse.click(point.x, point.y, { button: 'right' });
+  await expect(page.getByRole('dialog', { name: 'Needs me', exact: true })).toHaveCount(0); await expect(page.getByRole('menuitem')).toHaveCount(0);
+  await page.mouse.click(point.x, point.y, { button: 'right' });
   await expect(page.getByRole('menuitem', { name: 'Unmute project', exact: true })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: /^Mute project/ })).toHaveCount(0);
-  await expect(page.getByRole('dialog', { name: 'Needs me', exact: true })).toHaveCount(0);
   expect(await mutedAt(page)).toEqual(expect.any(String));
   await page.keyboard.press('Escape'); await expect(page.getByRole('menuitem')).toHaveCount(0);
   // A plain click on the parted cover unmutes, says how many wait and offers Undo.

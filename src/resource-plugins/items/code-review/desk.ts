@@ -202,7 +202,8 @@ export function mountReviewDesk(container: HTMLElement, resource: ResourceRecord
     return el('a', { class: `rd-loc-chip${compact ? ' w220' : ''}`, href: url, title: `${locationText(place)} · opens at reviewed head ${short(data!.headSha)} on GitHub` }, text, el('span', { class: 'rd-out', text: '↗' }));
   }
 
-  function toggle(id: string, value = !selected.has(id)) { if (value) selected.add(id); else selected.delete(id); done = undefined; }
+  function toggle(id: string, value = !selected.has(id)) { if (value && data?.statuses[id] === 'queued') return; if (value) selected.add(id); else selected.delete(id); done = undefined; }
+  const delegated = (id: string) => data?.statuses[id] === 'sent' || data?.statuses[id] === 'queued';
   const listbox = el('div', { class: 'rd-rows', role: 'listbox', 'aria-multiselectable': 'true', 'aria-label': 'Findings', tabindex: 0 });
   listbox.addEventListener('focus', () => { if (!focus && visible()[0]) { focus = visible()[0].id; render(); } });
 
@@ -216,22 +217,24 @@ export function mountReviewDesk(container: HTMLElement, resource: ResourceRecord
       chip.onclick = () => { filter = key; if (!visible().some(finding => finding.id === focus)) focus = visible()[0]?.id ?? ''; render(); };
       return chip;
     }));
-    const inView = shown.filter(finding => selected.has(finding.id)).length, all_ = el('input', { type: 'checkbox', class: `rd-cb${inView && inView < shown.length ? ' mixed' : ''}`, 'aria-label': 'Select all findings in view' }) as HTMLInputElement;
-    all_.checked = shown.length > 0 && inView === shown.length; all_.indeterminate = inView > 0 && inView < shown.length;
-    all_.onchange = () => { const value = inView < shown.length; for (const finding of shown) toggle(finding.id, value); render(); };
+    const pickable = shown.filter(finding => !delegated(finding.id) || selected.has(finding.id)), inView = pickable.filter(finding => selected.has(finding.id)).length, all_ = el('input', { type: 'checkbox', class: `rd-cb${inView && inView < pickable.length ? ' mixed' : ''}`, 'aria-label': 'Select all findings in view' }) as HTMLInputElement;
+    all_.checked = pickable.length > 0 && inView === pickable.length; all_.indeterminate = inView > 0 && inView < pickable.length;
+    all_.onchange = () => { const value = inView < pickable.length; for (const finding of pickable) toggle(finding.id, value); render(); };
     const clear = el('button', { type: 'button', class: 'rd-linkish', text: 'Clear' }); clear.onclick = () => { selected.clear(); done = undefined; render(); };
-    const listHead = el('div', { class: 'rd-list-head' }, all_, el('span', { class: 'rd-selcount', text: selected.size ? `${selected.size} of ${all.length} selected` : `Select all ${shown.length}` }), selected.size ? clear : '',
+    const listHead = el('div', { class: 'rd-list-head' }, all_, el('span', { class: 'rd-selcount', text: selected.size ? `${selected.size} of ${all.length} selected` : `Select all ${pickable.length}` }), selected.size ? clear : '',
       selected.size ? el('span', { class: 'rd-right rd-breakdown', title: selectedSummary().breakdown, text: selectedSummary().breakdown }) : el('span', { class: 'rd-right', text: 'Most severe first' }));
     const scroll = listbox.scrollTop;
     listbox.replaceChildren(...shown.map(finding => {
       const checked = selected.has(finding.id), tag = statusTag(finding.id), status = data!.statuses[finding.id] ?? 'open';
       const box = el('input', { type: 'checkbox', class: 'rd-cb', tabindex: -1, 'aria-label': `Select ${finding.id}` }) as HTMLInputElement; box.checked = checked;
       box.onclick = event => { event.stopPropagation(); toggle(finding.id, box.checked); focus = finding.id; render(); };
+      const last = data!.history[finding.id]?.at(-1), handedOff = delegated(finding.id) && !checked;
+      const mark = handedOff ? el('span', { class: `rd-sent-mark ${status}`, title: status === 'queued' ? `Queued for ${last?.agentTitle ?? 'an agent'}` : `Sent to ${last?.agentTitle ?? 'an agent'}` }, pixel(document, 'send', true)) : box;
       const first = finding.locations[0], more = finding.locations.length - 1, level = LEVELS[finding.verification.level];
       const line3 = el('div', { class: 'rd-line3' }, el('span', { class: 'rd-loc', text: `${first.path.slice(first.path.lastIndexOf('/') + 1)}:${first.startLine}` }), more ? el('span', { text: `+${more}` }) : '',
         tag ?? el('span', { class: 'rd-ver' }, pixel(document, level[0], true), finding.verification.note && finding.verification.level === 'verified' && finding.verification.note.length < 24 ? finding.verification.note : level[1]));
-      const row = el('div', { class: `rd-row${focus === finding.id && !notes ? ' active' : ''}${status === 'fixed' ? ' fixed' : ''}`, role: 'option', id: `rd-${resource.id}-${finding.id}`, 'aria-selected': String(checked), 'data-finding': finding.id },
-        box, el('div', {}, el('div', { class: 'rd-line1' }, badge(document, finding), finding.qualifier ? el('span', { class: 'rd-qual', text: /accept/i.test(finding.qualifier) ? 'accepted' : finding.qualifier }) : '', loop?.seen[finding.id] ? el('span', { class: 'rd-seen', title: `Reported fixed in round ${loop.seen[finding.id]} of this review loop`, text: `seen in R${loop.seen[finding.id]}` }) : '', el('span', { class: 'rd-fid', text: finding.id })),
+      const row = el('div', { class: `rd-row${focus === finding.id && !notes ? ' active' : ''}${status === 'fixed' ? ' fixed' : ''}${handedOff ? ' sent' : ''}`, role: 'option', id: `rd-${resource.id}-${finding.id}`, 'aria-selected': String(checked), 'data-finding': finding.id },
+        mark, el('div', {}, el('div', { class: 'rd-line1' }, badge(document, finding), finding.qualifier ? el('span', { class: 'rd-qual', text: /accept/i.test(finding.qualifier) ? 'accepted' : finding.qualifier }) : '', loop?.seen[finding.id] ? el('span', { class: 'rd-seen', title: `Reported fixed in round ${loop.seen[finding.id]} of this review loop`, text: `seen in R${loop.seen[finding.id]}` }) : '', el('span', { class: 'rd-fid', text: finding.id })),
           el('div', { class: 'rd-title', title: finding.title, text: finding.title }), line3));
       row.onclick = () => { focus = finding.id; notes = false; render(); listbox.focus({ preventScroll: true }); };
       return row;
@@ -277,9 +280,10 @@ export function mountReviewDesk(container: HTMLElement, resource: ResourceRecord
     if (events.length) rows.push(['History', el('ul', { class: 'rd-history' }, ...events.map(historyLine))]);
     const dl = el('dl', { class: 'rd-dl' });
     for (const [label, value] of rows) dl.append(el('dt', { text: label }), el('dd', {}, ...(Array.isArray(value) ? value : [value])));
-    const chosen = selected.has(finding.id), selectButton = el('button', { type: 'button', class: 'rd-btn', 'aria-pressed': String(chosen) }, el('span', { class: `rd-cb-look${chosen ? ' on' : ''}`, 'aria-hidden': 'true' }), chosen ? 'Selected' : 'Select for fixing');
+    const status = data!.statuses[finding.id] ?? 'open', chosen = selected.has(finding.id);
+    const selectButton = el('button', { type: 'button', class: 'rd-btn', 'aria-pressed': String(chosen), disabled: status === 'queued', ...(status === 'queued' ? { title: 'Queued for an agent. Cancel that send first.' } : {}) }, el('span', { class: `rd-cb-look${chosen ? ' on' : ''}`, 'aria-hidden': 'true' }), chosen ? 'Selected' : status === 'sent' ? 'Select to send again' : 'Select for fixing');
     selectButton.onclick = () => { toggle(finding.id); render(); };
-    const status = data!.statuses[finding.id] ?? 'open', ignored = status === 'fixed' && ignoredByPerson(events.at(-1));
+    const ignored = status === 'fixed' && ignoredByPerson(events.at(-1));
     const mark = el('button', { type: 'button', class: 'rd-btn quiet', text: ignored ? 'Stop ignoring' : status === 'fixed' ? 'Reopen' : 'Ignore' });
     mark.disabled = status === 'queued';
     mark.onclick = () => void act(() => services.runAction('review.findings', { operation: 'mark', reviewSessionId: data!.reviewSessionId, findingIds: [finding.id], status: status === 'fixed' ? 'open' : 'fixed' }));
@@ -560,7 +564,7 @@ export function mountReviewDesk(container: HTMLElement, resource: ResourceRecord
       if (event.shiftKey) { if (!anchor || !selected.size) anchor = focus || next.id; toggle(focus || next.id, true); toggle(next.id, true); }
       focus = next.id; notes = false;
     } else if (event.key === ' ' && focus && !target.closest('button')) { toggle(focus); anchor = focus; }
-    else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') { for (const finding of shown) toggle(finding.id, true); }
+    else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') { for (const finding of shown) if (!delegated(finding.id)) toggle(finding.id, true); }
     else if (event.key === 'Enter' && selected.size && !target.closest('button, a')) { void openPicker(); }
     else if (/^[1-9]$/.test(event.key) && !event.metaKey && !event.ctrlKey && !event.altKey) { const chip = body.querySelectorAll<HTMLButtonElement>('.rd-fchip')[Number(event.key) - 1]; if (!chip) return; chip.click(); }
     else return;

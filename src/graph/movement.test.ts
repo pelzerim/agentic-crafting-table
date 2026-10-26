@@ -119,3 +119,44 @@ test('seeded dense mixed footprints stay clear and deterministic across negative
     assertClear(next); nodes = next;
   }
 });
+
+test('solid moves stop at the first item in the way and leave it in place', () => {
+  const input = [item('held', -800), item('wall', 0)];
+  const held = itemFootprint(input[0], resources, registry), wall = itemFootprint(input[1], resources, registry);
+  const result = moveItems(input, resources, registry, [{ id: 'held', position: { x: 0, y: 0 } }], {}, undefined, 'solid');
+  assert.deepEqual(result[1], input[1]);
+  assert.ok(Math.abs(result[0].position.x - (-(held.width + wall.width) / 2 - ITEM_GAP)) < .01, `stopped at ${result[0].position.x}`);
+  assert.equal(result[0].position.y, 0);
+  assertClear(result);
+});
+
+test('solid moves slide along an item and land on clear targets beyond it', () => {
+  const input = [item('held', -800), item('wall', 0)];
+  const held = itemFootprint(input[0], resources, registry), wall = itemFootprint(input[1], resources, registry);
+  const slid = moveItems(input, resources, registry, [{ id: 'held', position: { x: 0, y: 40 } }], {}, undefined, 'solid');
+  assert.ok(Math.abs(slid[0].position.x - (-(held.width + wall.width) / 2 - ITEM_GAP)) < .01);
+  assert.ok(Math.abs(slid[0].position.y - 40) < .01, `slid to ${slid[0].position.y}`);
+  const beyond = moveItems(input, resources, registry, [{ id: 'held', position: { x: 900, y: 0 } }], {}, undefined, 'solid');
+  assert.deepEqual(beyond[0].position, { x: 900, y: 0 }); assert.deepEqual(beyond[1], input[1]);
+});
+
+test('solid project moves stop the whole group together, keeping member offsets', () => {
+  const input = [
+    { id: 'project', title: 'Project', position: { x: -1500, y: 0 } },
+    item('a', -1000, 0, 'agent-r', 'project'), item('b', -1000, 300, 'pr-r', 'project'), item('wall', 0),
+  ];
+  const result = moveItems(input, resources, registry, [{ id: 'project', position: { x: -500, y: 0 } }], {}, undefined, 'solid');
+  assert.deepEqual(result[3], input[3]);
+  const dx = result[1].position.x - input[1].position.x;
+  assert.ok(dx > 0 && dx < 1000, `moved ${dx}`);
+  for (const index of [0, 2]) assert.deepEqual(result[index].position, { x: input[index].position.x + dx, y: input[index].position.y });
+  assertClear(result);
+});
+
+test('solid moves on a grid stop at the last clear grid point', () => {
+  const input = [item('held', -960), item('wall', 0)];
+  const result = moveItems(input, resources, registry, [{ id: 'held', position: { x: 0, y: 0 } }], {}, 48, 'solid');
+  assert.deepEqual(result[1], input[1]);
+  assert.equal(Math.abs(result[0].position.x % 48), 0); assert.equal(Math.abs(result[0].position.y), 0);
+  assertClear(result);
+});

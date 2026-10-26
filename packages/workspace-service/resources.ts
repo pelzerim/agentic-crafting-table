@@ -480,7 +480,10 @@ export class ResourceCoordinator {
     const action = this.host.actions(resource, signal).find(action => action.id === actionId);
     if (action?.completion && !completing) throw new Error('Use Mark done or Reopen on the item; that updates the provider too.');
     const blockers = action?.heedsBlockers ? await this.blockers(nodeId) : [];
-    if (!action?.updatesSnapshot) return blockers.length ? heedBlockers(await this.host.execute(resource, actionId, input, signal), blockers) : this.host.execute(resource, actionId, input, signal);
+    if (!action?.updatesSnapshot) {
+      const sent = action?.readOnly === false ? this.signal() : signal;
+      return blockers.length ? heedBlockers(await this.host.execute(resource, actionId, input, sent), blockers) : this.host.execute(resource, actionId, input, sent);
+    }
     const acknowledged = new Set(String(input.overrideBlockers ?? '').split(','));
     const unacknowledged = blockers.filter(blocker => !acknowledged.has(blocker.id));
     if (unacknowledged.length) throw new Error(`Blocked by ${blockerList(unacknowledged.map(blocker => blocker.name))}. Reopen the menu and choose an option marked “anyway” to go ahead.`);
@@ -491,18 +494,19 @@ export class ResourceCoordinator {
     if (waiting && waiting.requestId !== requestId) throw new Error('The last change to this item is still being confirmed. Try again once it settles.');
     let show!: (result: JsonValue) => void;
     const shown = new Promise<JsonValue>(resolve => { show = resolve; });
-    const written = this.once(`write:${resource.id}`, { actionId, input }, () => this.write(nodeId, resource, actionId, input, requestId, signal, show));
+    const written = this.once(`write:${resource.id}`, { actionId, input }, () => this.write(nodeId, resource, actionId, input, requestId, show));
     return Promise.race([shown, written]);
   }
-  /** Sends one write, never retried. An action that declares its expected result shows it at
-   * once through `show`; the write then continues on the service's own deadline, so closing
-   * the view or menu that asked for it never cancels it, and its outcome reconciles the overlay. */
-  private async write(nodeId: string, resource: ResourceRecord, actionId: string, input: JsonObject, requestId: string, caller: AbortSignal, show: (result: JsonValue) => void) {
+  /** Sends one write, never retried, on the service's own deadline: the caller's shorter one would cut a write
+   * off mid-request and leave its outcome unknown. An action that declares its expected result shows it at
+   * once through `show`, so closing the view or menu that asked for it never matters; its outcome reconciles the overlay. */
+  private async write(nodeId: string, resource: ResourceRecord, actionId: string, input: JsonObject, requestId: string, show: (result: JsonValue) => void) {
     let job = this.store.enqueueJob(requestId, { action: 'resource.action', nodeId, arguments: { actionId, input, fingerprint: fingerprint(resource) } });
     if (job.state === 'succeeded') return job.result;
     if (job.state !== 'queued') throw job.state === 'failed' ? new Error(job.error) : unconfirmed(new Error('The previous update could not be confirmed. Refresh the item before choosing a status again.'));
     job = this.store.transitionJob(job.id, 'queued', 'running');
-    let confirmed = false, signal = caller, pending: PendingWrite | undefined;
+    let confirmed = false, pending: PendingWrite | undefined;
+    const signal = this.signal();
     try {
       // Drain an older poll before dispatching; new reads wait for this write.
       await this.pending.get(`read:${resource.id}`)?.promise.catch(() => {});
@@ -514,7 +518,6 @@ export class ResourceCoordinator {
       if (optimism) {
         pending = { requestId, actionId, nodeId, input, base: base!, since: this.now(), writing: true, optimism };
         this.writes.set(resource.id, pending); this.failures.delete(resource.id); this.persist(resource.id, pending);
-        signal = this.signal();
         await this.changed();
         show({ snapshot: this.presented(resource.id, base!), pending: optimism.pending } as unknown as JsonValue);
       }

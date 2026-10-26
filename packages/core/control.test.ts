@@ -30,7 +30,7 @@ test('partial node updates preserve activity, attention and lifecycle unless exp
   assert.equal(state.nodes[0].completedAt, before.completedAt);
 });
 
-test('atomic command batches commit once and replay exactly without rewriting newer state', async () => {
+test('atomic command batches commit once and replay as applied with the current state, without rewriting it', async () => {
   const control = new WorkspaceControl();
   const input = envelope('create', 0, [project('a'), project('b')]);
   const first = await control.dispatch(input);
@@ -38,7 +38,7 @@ test('atomic command batches commit once and replay exactly without rewriting ne
   await control.dispatch(envelope('move', 1, [{ type: 'nodes.move', positions: [{ id: 'a', position: { x: 20, y: 30 } }, { id: 'b', position: { x: 390, y: 30 } }] }]));
   const replay = await control.dispatch(input);
   assert.equal(replay.replayed, true);
-  assert.deepEqual(replay.state, first.state);
+  assert.deepEqual(replay.state, await control.read());
   assert.equal((await control.read()).revision, 2);
   assert.deepEqual((await control.read()).nodes[0].position, { x: 20, y: 30 });
   await assert.rejects(control.dispatch({ ...input, commands: [project('c')] }), CommandIdConflict);
@@ -311,4 +311,19 @@ test('an agent\'s last line is saved on its node and cleared with null', async (
   assert.equal((await control.read()).nodes[0].lastLine, 'I pushed the fix to main.', 'other updates leave it');
   await control.apply({ type: 'node.update', id: 'agent', lastLine: null }, 3);
   assert.equal((await control.read()).nodes[0].lastLine, undefined);
+});
+
+test('a scene-only update is saved without a new revision, so it never makes a pending action stale', async () => {
+  const control = new WorkspaceControl(new MemoryStore());
+  const provider = { kind: 'provider' as const, id: 'session' };
+  await control.dispatch({ commandId: 'add', expectedRevision: 0, actor: { kind: 'user', id: 'test' }, commands: [
+    { type: 'item.add', id: 'agent', resourceId: 'agent-r', pluginId: 'workspace.note', title: 'Agent', data: { text: 'a' }, position: { x: 0, y: 0 } },
+    { type: 'node.update', id: 'agent', activity: 'working' }] });
+  const seen = await control.read();
+  const scene = await control.dispatch({ commandId: 'pose', expectedRevision: seen.revision, actor: provider, commands: [{ type: 'node.update', id: 'agent', pose: 'command', helpers: 2, beside: 1, moment: { kind: 'enter', at: 1 } }] });
+  assert.equal(scene.state.revision, seen.revision);
+  assert.equal(scene.state.nodes[0].pose, 'command'); assert.equal(scene.state.nodes[0].helpers, 2);
+  await control.dispatch({ commandId: 'rename', expectedRevision: seen.revision, actor: { kind: 'user', id: 'test' }, commands: [{ type: 'node.update', id: 'agent', title: 'Renamed' }] });
+  const status = await control.dispatch({ commandId: 'summary', expectedRevision: seen.revision + 1, actor: provider, commands: [{ type: 'node.update', id: 'agent', pose: 'none', summary: 'Done' }] });
+  assert.equal(status.state.revision, seen.revision + 2, 'a change that also carries status other than the scene is a new revision');
 });

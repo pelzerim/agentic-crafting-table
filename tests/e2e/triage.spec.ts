@@ -104,6 +104,9 @@ test('assigned Linear tickets wait in the From Linear inbox, survive restart, an
     await expect(inbox.locator('.todo-row')).toHaveCount(1); expect((await read(page)).todos).toHaveLength(2);
 
     // Card menu: Move to project, with the current project checked and unavailable; another project takes the to-do and its ticket.
+    // The first right click on the card only closes the kept list; the second opens the card's menu.
+    await card.click({ button: 'right' });
+    await expect(list).not.toHaveAttribute('data-open', 'true'); await expect(menu).toHaveCount(0);
     await card.click({ button: 'right' });
     await expect(menu.getByRole('menuitem', { name: 'Send to project', exact: true })).toHaveCount(0);
     await menu.getByRole('menuitem', { name: 'Move to project', exact: true }).click();
@@ -111,8 +114,7 @@ test('assigned Linear tickets wait in the From Linear inbox, survive restart, an
     await expect(moves.getByRole('menuitemradio', { name: 'Billing', exact: true })).toHaveAttribute('aria-checked', 'true');
     await expect(moves.getByRole('menuitemradio', { name: 'Billing', exact: true })).toBeDisabled();
     await moves.getByRole('menuitemradio', { name: 'Docs', exact: true }).click();
-    // The right click on the card closed the list.
-    await expect(list).not.toHaveAttribute('data-open', 'true'); await page.getByRole('button', { name: /^Keep to-dos open/ }).click();
+    await page.getByRole('button', { name: /^Keep to-dos open/ }).click();
     await expect(list.locator(`[data-todo-id="map:${todo.id}"] .todo-project`)).toHaveText('Docs');
     state = await read(page);
     expect(state.nodes.filter(node => [todo.id, ticket.id].includes(node.id)).map(node => node.projectId)).toEqual(['docs', 'docs']);

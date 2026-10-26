@@ -2,6 +2,24 @@
 
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one.
 
+## 0.4.0 — 2026-10-26
+
+### Map
+- **Moving into items** (Settings → Map → Placing items): **Push aside** (the default) moves other items out of the way as before; **Solid** stops a dragged item at the items in its way and lets it slide along them. Items never overlap in either mode, with the grid on or off.
+- A right click while a sidebar panel is open only closes the panel; it no longer also opens the map menu.
+- Actions on the map no longer fail with **Revision conflict** while agents are busy. An agent's animation (pose, helpers, background tasks) no longer counts as a change to the map, and an action that raced with another change is applied to the newest map when nothing it acts on changed. Otherwise it says **This changed elsewhere while you were acting on it**.
+
+### Reviews
+- A finding sent to an agent shows a send flag instead of its checkbox in the findings list. **Select all** skips it, and **Select to send again** picks it once more.
+
+### Rollouts
+- **Approve**, merge and other GitHub writes no longer end in **The operation was aborted due to timeout** after 10 seconds; they get the service's own time limits.
+
+### Speed
+- The local service no longer stalls for up to 0.7 s on every rollout pass, so **Local service disconnected** no longer comes and goes on large workspaces.
+- Reading the workspace is cached, and a save writes only what changed (about half the time per save).
+- Saved commands no longer keep a copy of the whole workspace; the database shrinks (about half on a large one) the first time this version opens it.
+
 ## 0.3.0 — 2026-10-25
 
 ### Map

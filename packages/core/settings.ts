@@ -3,6 +3,7 @@ import { REVIEW_AGENT_IDS } from '../../src/pull-requests/review-agents.ts';
 import * as z from 'zod/v4';
 import { itemViewsSchema } from './item-views.ts';
 import { LARGE_ITEM_WIDTH } from '../../src/graph/footprints.ts';
+import { MAP_COLLISIONS } from '../../src/graph/spatial.ts';
 import { providerConnectionsSchema } from './connections.ts';
 import { DEFAULT_QUICK_ITEMS, MAX_QUICK_ITEMS } from './item-picker.ts';
 import { DEFAULT_LOG_POLICY, logPolicySchema } from './log-policy.ts';
@@ -128,6 +129,8 @@ export const settingsSchema = z.object({
   doubleClickOpensWeb: z.boolean().default(false),
   /** Item centres land on an invisible 48 px grid when moved or placed (MAP-30). */
   snapToGrid: z.boolean().default(false),
+  /** A moved item pushes the items in its way aside, or stops at them (MAP-13). */
+  mapCollisions: z.enum(MAP_COLLISIONS).default('shove'),
   /** Item menus end in Delete…, which removes the item for good after a confirmation. */
   itemDelete: z.boolean().default(false),
   /** Pull requests that land on the map while this is on get one direct review from each chosen agent. */

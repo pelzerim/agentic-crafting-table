@@ -30,6 +30,32 @@ export function overlaps(a: SpatialBox, b: SpatialBox, gap = 16): boolean {
     Math.abs(a.y - b.y) < (a.height + b.height) / 2 + gap - .001;
 }
 
+/** What a moved item does to the items in its way: `shove` settles them at clear edges, `solid` stops it at them (MAP-13). */
+export const MAP_COLLISIONS = ['shove', 'solid'] as const;
+export type MapCollisions = typeof MAP_COLLISIONS[number];
+
+/** How far `boxes` can travel together along `delta` before touching an obstacle, sliding along
+ * whatever they touch. An obstacle a box already overlaps does not hold that box back. */
+export function sweepBoxes(boxes: readonly SpatialBox[], delta: { x: number; y: number }, obstacles: readonly SpatialBox[], gap = 16) {
+  const pairs = boxes.flatMap(box => obstacles.filter(other => !overlaps(box, other, gap)).map(other => ({ box, other })));
+  let moved = { x: 0, y: 0 }, left = { ...delta };
+  for (let pass = 0; pass < 3 && (left.x || left.y); pass++) {
+    let first = 1, axis: 'x' | 'y' | undefined;
+    for (const { box, other } of pairs) {
+      const reach = { x: (box.width + other.width) / 2 + gap - .001, y: (box.height + other.height) / 2 + gap - .001 };
+      const from = { x: box.x + moved.x - other.x, y: box.y + moved.y - other.y };
+      const span = (key: 'x' | 'y') => left[key] ? [(-reach[key] - from[key]) / left[key], (reach[key] - from[key]) / left[key]].sort((a, b) => a - b)
+        : Math.abs(from[key]) < reach[key] ? [-Infinity, Infinity] : [Infinity, -Infinity];
+      const [x0, x1] = span('x'), [y0, y1] = span('y'), enter = Math.max(x0, y0), exit = Math.min(x1, y1);
+      if (enter < exit && enter >= -1e-9 && enter < first) { first = Math.max(0, enter); axis = x0 >= y0 ? 'x' : 'y'; }
+    }
+    moved = { x: moved.x + left.x * first, y: moved.y + left.y * first };
+    if (!axis) break;
+    left = axis === 'x' ? { x: 0, y: left.y * (1 - first) } : { x: left.x * (1 - first), y: 0 };
+  }
+  return moved;
+}
+
 /** Keep the held item fixed. Place other items at the nearest free edge, without changing sizes. */
 export function separateItems(items: readonly SpatialBox[], heldId?: string, gap = 16): SpatialBox[] {
   const placed: SpatialBox[] = [];

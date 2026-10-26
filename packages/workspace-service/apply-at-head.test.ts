@@ -56,8 +56,8 @@ for (const [name, open] of [
       await control.dispatch({ commandId: 'later', expectedRevision: first.state.revision, actor: { kind: 'user', id: 'user' }, commands: [project('later')] });
       const again = await applyAtHead(control, envelope, revisionGuard);
       assert.equal(again.replayed, true);
-      assert.equal(again.state.revision, first.state.revision, 'the replay returns what the command produced');
       const now = await control.read();
+      assert.equal(again.state.revision, now.revision, 'the replay returns the current workspace');
       assert.equal(now.revision, first.state.revision + 1);
       assert.equal(now.nodes.filter(node => node.id === 'pr').length, 1);
       await assert.rejects(applyAtHead(control, { ...envelope, commands: [{ ...pullRequest, id: 'pr-2' }] }, revisionGuard), { code: 'COMMAND_ID_CONFLICT' });

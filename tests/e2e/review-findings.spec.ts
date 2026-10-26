@@ -102,6 +102,12 @@ test('structured review findings: triage, send to idle and busy agents, fixed re
     expect(received.split('<review>')[1]).toContain('Readers match exact file names');
     expect(received).toContain('workspace_report_review_fixes');
     await desk.screenshot({ path: 'test-results/review-findings-b4-sent.png' });
+    const sentRow = desk.getByRole('option', { name: /Tokens are logged/ });
+    await expect(sentRow).toHaveClass(/\bsent\b/); await expect(sentRow.locator('input[type=checkbox]')).toHaveCount(0);
+    await expect(sentRow.locator('.rd-sent-mark')).toHaveAttribute('title', 'Sent to Claude · impl');
+    await desk.getByRole('checkbox', { name: 'Select all findings in view' }).check();
+    await expect(desk.locator('.rd-selcount')).toHaveText('1 of 3 selected');
+    await desk.locator('.rd-list-head').getByRole('button', { name: 'Clear' }).click();
 
     // A working agent gets the findings queued, then delivered when it becomes idle.
     await desk.getByRole('option', { name: /Readers match exact file names/ }).locator('input[type=checkbox]').check();

@@ -12,6 +12,7 @@ import type { GraphNode, GraphLink } from '../../../src/graph/graph.ts';
 import { itemDropProject, containingProject, neighborhoodTitlePosition, projectActivity, projectNeighborhoods } from '../../../src/graph/project-neighborhoods.ts';
 import type { NeighborhoodCache } from '../../../src/graph/project-neighborhoods.ts';
 import { ZOOM_LEVELS, attentionTakesOver, neighborhoodZoom, zoomDetail, zoomLevel } from '../../../src/graph/spatial.ts';
+import type { MapCollisions } from '../../../src/graph/spatial.ts';
 import { isArchived } from '../../../src/graph/archive.ts';
 import { blockerList, blockerName, blockingState } from '../../../src/graph/blocking.ts';
 import './blocking.css';
@@ -195,6 +196,8 @@ export interface ProjectMapProps {
   hideImpliedLinks?: boolean;
   /** Grid pitch item centres land on when dropped, nudged or settled aside; none keeps free placement. */
   snap?: number;
+  /** Settings → Map → Moving into items (MAP-13): push them aside (absent) or stop at them. */
+  collisions?: MapCollisions;
   /** Whether Finished joins the Needs me number on dashboards (Settings → Notifications). */
   attentionCounting?: AttentionCounting;
   /** Mute or unmute a project (MAP-25). Without it no project is drawn covered. */
@@ -468,6 +471,8 @@ function MapCanvas(props: ProjectMapProps) {
   /** Moves still saving, in order. A card grabbed meanwhile drags from the map they leave (`settling`), not from the last commit. */
   const saves = useRef({ queue: Promise.resolve(), pending: 0 }), moving = useRef(false);
   const [settling, setSettling] = useState<MapItem[]>();
+  // A solid drag travels from where the previous frame stopped it, so it slides along items instead of jumping past them.
+  const solidFrom = useRef<Map<string, MapItem['position']>>(undefined);
   // A list task without a map item previews as a ghost; a map task previews as a drag of its own item.
   const [todoGhost, setTodoGhost] = useState<{ x: number; y: number }>(), todoMoving = useRef(false);
   const itemResize = useItemResize(props.onResize);
@@ -555,14 +560,16 @@ function MapCanvas(props: ProjectMapProps) {
   useEffect(() => { if (!props.todoDrag && !dropping) endTodoPreview(); }, [props.todoDrag]);
   const layout = useMemo(() => {
     const base = settling ?? props.nodes, intent = itemResize.preview ?? drag;
-    if (!intent || !base.some(node => node.id === intent.id)) return base;
-    const started = performance.now();
+    if (!intent || !base.some(node => node.id === intent.id)) { solidFrom.current = undefined; return base; }
+    const started = performance.now(), stopped = !itemResize.preview && props.collisions === 'solid' ? solidFrom.current : undefined;
+    const from = stopped ? base.map(node => stopped.has(node.id) ? { ...node, position: stopped.get(node.id)! } : node) : base;
     const result = itemResize.preview
       ? resizeItem(base, props.resources, props.registry ?? registry, itemResize.preview, props.itemMapSizes)
-      : moveItems(attachingTo ? base.map(node => node.id === drag!.id ? { ...node, projectId: attachingTo } : node) : base,
-        props.resources, props.registry ?? registry, selectionMoves(base, dragStart.current?.selected ?? [drag!.id], drag!.id, drag!), props.itemMapSizes, props.snap);
+      : moveItems(attachingTo ? from.map(node => node.id === drag!.id ? { ...node, projectId: attachingTo } : node) : from,
+        props.resources, props.registry ?? registry, selectionMoves(from, dragStart.current?.selected ?? [drag!.id], drag!.id, drag!), props.itemMapSizes, props.snap, props.collisions);
+    if (!itemResize.preview && props.collisions === 'solid') solidFrom.current = new Map(result.filter((node, index) => node.position !== base[index].position).map(node => [node.id, node.position]));
     performanceMetrics.record('map.placement', performance.now() - started); return result;
-  }, [props.nodes, settling, props.resources, props.registry, props.itemMapSizes, props.snap, drag, itemResize.preview, attachingTo]);
+  }, [props.nodes, settling, props.resources, props.registry, props.itemMapSizes, props.snap, props.collisions, drag, itemResize.preview, attachingTo]);
   const measureBox = (item: MapItem) => {
     const view = item.resourceId ? presentations.get(item.resourceId) : undefined;
     const { width, height } = itemFootprint(item, props.resources, props.registry ?? registry, props.itemMapSizes);
@@ -995,7 +1002,7 @@ function MapCanvas(props: ProjectMapProps) {
   /** The dropped card stays where it was let go until its save lands. Saves run one after another,
    * and the cards stay draggable meanwhile: a press during a save never falls through to the map. */
   const finishMove = (id: string, dropped: { x: number; y: number }, screen: { x: number; y: number }) => {
-    const position = snapPosition(dropped, props.snap);
+    const position = snapPosition(props.collisions === 'solid' ? layout.find(node => node.id === id)?.position ?? dropped : dropped, props.snap);
     const held = dragStart.current, base = settling ?? props.nodes, item = base.find(node => node.id === id), saving = saves.current;
     const many = held && held.selected.length > 1 ? selectionMoves(base, held.selected, id, position) : undefined, projectId = !many && item ? dropProject(item, position) : undefined;
     moving.current = false; setDrag({ id, ...position }); saving.pending++;

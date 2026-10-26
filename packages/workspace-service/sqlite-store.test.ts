@@ -10,7 +10,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { settingsSchema } from '../core/settings.ts';
-import { RECEIPT_STATES_KEPT, SqliteStore, migrations } from './sqlite-store.ts';
+import { SqliteStore, migrations } from './sqlite-store.ts';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { todoContext, todoList } from '../../src/graph/todos.ts';
 import { CommandIdConflict, emptyState, RevisionConflict, WorkspaceControl, envelopeSchema, reduceCommands } from '../core/control.ts';
@@ -66,6 +66,23 @@ async function fixture(run: (directory: string) => Promise<void>) {
   const directory = await mkdtemp(join(tmpdir(), 'craft-sqlite-'));
   try { await run(directory); } finally { await rm(directory, { recursive: true, force: true }); }
 }
+
+test('a refused stale command is recorded with the commits that landed after the revision it named', () => fixture(async directory => {
+  const file = join(directory, 'conflicts.sqlite');
+  let store = new SqliteStore(file); const control = new WorkspaceControl(store);
+  try {
+    await control.dispatch({ commandId: 'add', expectedRevision: 0, actor, commands: [{ type: 'item.add', id: 'one', resourceId: 'one-r', pluginId: 'workspace.note', title: 'one', data: { text: 'one' }, position: { x: 100, y: 100 } }] });
+    const seen = (await control.read()).revision;
+    await control.dispatch({ commandId: 'quiet', expectedRevision: seen, actor: { kind: 'system', id: 'agent-quiet' }, commands: [{ type: 'node.update', id: 'one', summary: 'idle' }] });
+    await assert.rejects(control.dispatch({ commandId: 'stale', expectedRevision: seen, actor: { kind: 'user', id: 'desktop' }, commands: [{ type: 'node.archive', id: 'one' }] }), RevisionConflict);
+    const [conflict, ...rest] = store.revisionConflicts();
+    assert.equal(rest.length, 0);
+    assert.deepEqual({ ...conflict, at: undefined }, { at: undefined, actor: 'user:desktop', commands: [{ type: 'node.archive', id: 'one' }], expected: seen, current: seen + 1,
+      landed: [{ revision: seen + 1, actor: 'system:agent-quiet', commands: [{ type: 'node.update', id: 'one' }] }] });
+    store.close(); store = new SqliteStore(file);
+    assert.equal(store.revisionConflicts().length, 1, 'conflicts survive a restart');
+  } finally { store.close(); }
+}));
 
 test('SQLite persists graph, command receipts, views and event cursor across restart', () => fixture(async directory => {
   const file = join(directory, 'workspace.sqlite');
@@ -127,6 +144,47 @@ test('failed batch rolls back graph, receipt and event; independent writers reje
     assert.deepEqual(await a.read(), await b.read());
     assert.equal((await a.events(0)).events.length, 1);
   } finally { a.close(); b.close(); }
+}));
+
+test('reads decode the workspace once per change, hand out copies and see other connections and rollbacks', () => fixture(async directory => {
+  const file = join(directory, 'workspace.sqlite');
+  const a = new SqliteStore(file), b = new SqliteStore(file);
+  try {
+    const ca = new WorkspaceControl(a), cb = new WorkspaceControl(b);
+    await ca.dispatch(create());
+    const db = (a as unknown as { db: DatabaseSync }).db, prepare = db.prepare.bind(db);
+    let decodes = 0;
+    db.prepare = (sql: string) => { if (sql.startsWith('SELECT body FROM nodes')) decodes++; return prepare(sql); };
+    const first = await a.read(); first.nodes[0].title = 'mutated by a reader';
+    const second = await a.read();
+    assert.equal(decodes, 1);
+    assert.notEqual(second.nodes[0].title, 'mutated by a reader');
+    await cb.dispatch(create('other', 1, 'other'));
+    assert.equal((await a.read()).revision, 2);
+    await assert.rejects(ca.dispatch({ ...create('third', 2, 'third'), commands: [...create('third', 2, 'third').commands, { type: 'node.move', id: 'missing', position: { x: 1, y: 2 } }] }), /Node not found/);
+    assert.deepEqual(await a.read(), await b.read());
+  } finally { a.close(); b.close(); }
+}));
+
+test('a save rewrites only the rows that changed and keeps order, identities and rollbacks', () => fixture(async directory => {
+  const file = join(directory, 'workspace.sqlite');
+  const store = new SqliteStore(file), control = new WorkspaceControl(store);
+  try {
+    const add = (index: number) => ({ type: 'item.add', id: `note-${index}`, resourceId: `note-r-${index}`, pluginId: 'workspace.note', title: `Note ${index}`, data: { text: `n${index}` }, position: { x: index * 400, y: 0 } });
+    await control.dispatch({ commandId: 'seed', expectedRevision: 0, actor, commands: Array.from({ length: 40 }, (_, index) => add(index)) });
+    const db = (store as unknown as { db: DatabaseSync }).db, changes = () => Number(db.prepare('SELECT total_changes() AS n').get()!.n);
+    const before = changes();
+    await control.dispatch({ commandId: 'rename', expectedRevision: 1, actor, commands: [{ type: 'node.update', id: 'note-7', title: 'Renamed' }] });
+    assert.ok(changes() - before < 10, `rows written: ${changes() - before}`);
+    await control.dispatch({ commandId: 'archive', expectedRevision: 2, actor, commands: [{ type: 'node.archive', id: 'note-3' }, { type: 'link.save', link: { id: 'link', sourceId: 'note-1', targetId: 'note-2', kind: 'reference' } }] });
+    await assert.rejects(control.dispatch({ commandId: 'bad', expectedRevision: 3, actor, commands: [{ type: 'node.update', id: 'note-9', title: 'Lost' }, { type: 'node.move', id: 'missing', position: { x: 0, y: 0 } }] }), /Node not found/);
+    const saved = await control.read(), reopened = new SqliteStore(file);
+    try { assert.deepEqual(await reopened.read(), saved); } finally { reopened.close(); }
+    assert.equal(saved.nodes.find(node => node.id === 'note-7')!.title, 'Renamed');
+    assert.equal(saved.nodes.find(node => node.id === 'note-9')!.title, 'Note 9');
+    assert.deepEqual(saved.nodes.map(node => node.id), Array.from({ length: 40 }, (_, index) => `note-${index}`));
+    assert.equal(saved.links.length, 1);
+  } finally { store.close(); }
 }));
 
 test('native hook ordering survives restart without changing the graph revision or event cursor', () => fixture(async directory => {
@@ -294,6 +352,21 @@ test('durable jobs reconcile interrupted side effects instead of automatically r
     assert.throws(() => store.transitionJob(queued.id, 'running', 'failed'), /state conflict/);
     assert.equal((await store.read()).revision, 0);
     assert.equal((await store.events(0)).events.length, 4);
+  } finally { store.close(); }
+}));
+
+test('rollout approval jobs are only the succeeded rollout.approve actions', () => fixture(async directory => {
+  const store = new SqliteStore(join(directory, 'workspace.sqlite'));
+  try {
+    const approve = (key: string, nodeId: string) => store.enqueueJob(key, { action: 'resource.action', nodeId, arguments: { actionId: 'rollout.approve', input: { runId: 1, attempt: 1, environmentIds: '2' } } });
+    const done = approve('approve-1', 'rollout'), pending = approve('approve-2', 'rollout');
+    store.transitionJob(done.id, 'queued', 'running'); store.transitionJob(done.id, 'running', 'succeeded', { result: { ok: true } });
+    const other = store.enqueueJob('merge-1', { action: 'resource.action', nodeId: 'rollout', arguments: { actionId: 'pr.merge' } });
+    store.transitionJob(other.id, 'queued', 'running'); store.transitionJob(other.id, 'running', 'succeeded');
+    const review = store.enqueueJob('review-1', { action: 'pr.review.workflow', nodeId: 'rollout', arguments: { actionId: 'rollout.approve' } });
+    store.transitionJob(review.id, 'queued', 'running'); store.transitionJob(review.id, 'running', 'succeeded');
+    assert.deepEqual(store.rolloutApprovalJobs().map(job => job.id), [done.id]);
+    assert.equal(pending.state, 'queued');
   } finally { store.close(); }
 }));
 
@@ -559,24 +632,24 @@ test('plot naming shares the summary allowance and is limited per plot', () => f
   } finally { store.close(); }
 }));
 
-test('only recent commands keep a copy of the workspace; an old command still replays as applied, with the current state', () => fixture(async directory => {
+test('receipts keep the command, not a copy of the workspace; a replay is reported as applied, with the current state', () => fixture(async directory => {
   const file = join(directory, 'receipts.sqlite');
   let store = new SqliteStore(file), control = new WorkspaceControl(store);
   try {
     const first = { commandId: 'attach:stable', expectedRevision: 0, actor, commands: [{ type: 'item.add', id: 'note', resourceId: 'note-r', pluginId: 'workspace.note', title: 'A note', data: { text: 'x'.repeat(4000) }, position: { x: 0, y: 0 } }] };
     await control.dispatch(first);
-    for (let revision = 1; revision <= RECEIPT_STATES_KEPT + 20; revision++) await control.dispatch({ commandId: `move-${revision}`, expectedRevision: revision, actor, commands: [{ type: 'node.move', id: 'note', position: { x: revision, y: 0 } }] });
+    for (let revision = 1; revision <= 20; revision++) await control.dispatch({ commandId: `move-${revision}`, expectedRevision: revision, actor, commands: [{ type: 'node.move', id: 'note', position: { x: revision, y: 0 } }] });
     const raw = new DatabaseSync(file, { readOnly: true });
     const kept = Number(raw.prepare("SELECT count(*) AS n FROM receipts WHERE result <> ''").get()!.n), all = Number(raw.prepare('SELECT count(*) AS n FROM receipts').get()!.n);
     raw.close();
-    assert.equal(all, RECEIPT_STATES_KEPT + 21, 'every command id is remembered');
-    assert.equal(kept, RECEIPT_STATES_KEPT, 'only the recent ones keep a workspace copy');
+    assert.equal(all, 21, 'every command id is remembered');
+    assert.equal(kept, 0, 'no receipt keeps a workspace copy');
     const current = await control.read(), replay = await control.dispatch(first);
     assert.equal(replay.replayed, true); assert.deepEqual(replay.state, current, 'an old command is not applied again');
     assert.equal((await control.read()).nodes.length, 1);
     await assert.rejects(control.dispatch({ ...first, commands: [{ ...first.commands[0], title: 'Other' }] }), CommandIdConflict);
-    const recent = await control.dispatch({ commandId: `move-${RECEIPT_STATES_KEPT + 20}`, expectedRevision: RECEIPT_STATES_KEPT + 20, actor, commands: [{ type: 'node.move', id: 'note', position: { x: RECEIPT_STATES_KEPT + 20, y: 0 } }] });
-    assert.equal(recent.replayed, true);
+    const recent = await control.dispatch({ commandId: 'move-20', expectedRevision: 20, actor, commands: [{ type: 'node.move', id: 'note', position: { x: 20, y: 0 } }] });
+    assert.equal(recent.replayed, true); assert.deepEqual(recent.state, current);
   } finally { store.close(); }
 }));
 
@@ -589,7 +662,7 @@ test('opening a workspace drops old command copies left by earlier versions and 
   store = new SqliteStore(file);
   try {
     const check = new DatabaseSync(file, { readOnly: true });
-    assert.equal(Number(check.prepare("SELECT count(*) AS n FROM receipts WHERE result <> ''").get()!.n), RECEIPT_STATES_KEPT);
+    assert.equal(Number(check.prepare("SELECT count(*) AS n FROM receipts WHERE result <> ''").get()!.n), 0);
     assert.equal(Number(check.prepare('SELECT count(*) AS n FROM receipts').get()!.n), 600);
     check.close();
     assert.ok(statSync(file).size < before / 2, `file shrank from ${before} to ${statSync(file).size}`);

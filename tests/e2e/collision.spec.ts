@@ -121,3 +121,24 @@ test('project dragging keeps member offsets while clearing a floating obstructio
   expect(after.nodes.find(node => node.id === 'pr')!.position).not.toEqual(pr.position);
   await expectClear(page);
 });
+
+test('with solid collisions a dragged card stops at the card in its way and nothing is pushed aside', async ({ visual: { page } }) => {
+  await page.evaluate(async () => {
+    const saved = await window.craftingTable.settingsRead();
+    await window.craftingTable.settingsWrite({ expectedRevision: saved.revision, value: { ...saved.value, mapCollisions: 'solid' } });
+  });
+  const before = await read(page), pr = page.getByRole('article', { name: 'Plan switcher' }), agent = page.getByRole('article', { name: 'Claude · implementation' });
+  const from = (await pr.boundingBox())!, to = (await agent.boundingBox())!, { pr: start, ...resting } = await preview(page);
+  await page.mouse.move(Math.round(from.x + from.width / 2), Math.round(from.y + from.height / 2)); await page.mouse.down();
+  await page.mouse.move(Math.round(to.x + to.width / 2), Math.round(to.y + to.height / 2), { steps: 12 });
+  const { pr: held, ...dragging } = await preview(page);
+  expect(dragging).toEqual(resting); expect(held).not.toEqual(start);
+  await expectClear(page);
+  await page.mouse.up();
+  const others = (nodes: { id: string; position: unknown }[]) => nodes.filter(node => node.id !== 'pr').map(node => node.position);
+  await expect.poll(async () => (await read(page)).revision).toBe(before.revision + 1);
+  const after = await read(page);
+  expect(others(after.nodes)).toEqual(others(before.nodes));
+  expect(after.nodes.find(node => node.id === 'pr')!.position).not.toEqual(before.nodes.find(node => node.id === 'pr')!.position);
+  await expectClear(page);
+});

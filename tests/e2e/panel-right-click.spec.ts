@@ -14,7 +14,7 @@ const panels: { name: string; open(page: Page): Promise<void>; shown(page: Page)
     shown: page => page.getByRole('dialog', { name: 'Reminders', exact: true }), inside: page => page.locator('.reminders-tool .rail-panel-header h2') },
 ];
 
-for (const panel of panels) test(`a right click on the map closes ${panel.name} and still opens the map menu; one on the sheet itself closes it too`, async ({ visual: { page } }) => {
+for (const panel of panels) test(`a right click on the map only closes ${panel.name}, the next one opens the map menu; one on the sheet itself closes it too`, async ({ visual: { page } }) => {
   const menu = page.getByRole('menu', { name: 'Context actions' });
   await panel.open(page); await expect(panel.shown(page)).toBeVisible();
   await panel.inside(page).click({ button: 'right' });
@@ -23,14 +23,17 @@ for (const panel of panels) test(`a right click on the map closes ${panel.name} 
 
   await panel.open(page); await expect(panel.shown(page)).toBeVisible();
   await page.mouse.click(EMPTY_MAP.x, EMPTY_MAP.y, { button: 'right' });
+  await expect(panel.shown(page)).toHaveCount(0); await expect(menu).toHaveCount(0);
+  await page.mouse.click(EMPTY_MAP.x, EMPTY_MAP.y, { button: 'right' });
   await expect(page.getByRole('menuitem')).toHaveText(['New item', 'New project', 'Open archive']);
-  await expect(panel.shown(page)).toHaveCount(0);
   await page.keyboard.press('Escape'); await expect(menu).toHaveCount(0);
 
   await panel.open(page); await expect(panel.shown(page)).toBeVisible();
-  await page.getByRole('article', { name: 'Claude · implementation', exact: true }).click({ button: 'right' });
+  const card = page.getByRole('article', { name: 'Claude · implementation', exact: true });
+  await card.click({ button: 'right' });
+  await expect(panel.shown(page)).toHaveCount(0); await expect(menu).toHaveCount(0);
+  await card.click({ button: 'right' });
   await expect(menu.getByRole('menuitem', { name: 'Open', exact: true })).toBeVisible();
-  await expect(panel.shown(page)).toHaveCount(0);
 });
 
 for (const panel of panels) test(`a left click on the map leaves ${panel.name} open, and so does a right click inside Settings`, async ({ visual: { page } }) => {

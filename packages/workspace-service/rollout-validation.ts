@@ -683,7 +683,7 @@ export class RolloutValidations {
   }
   private approvals(state: WorkspaceState, resourceId: string): AppApproval[] {
     const aliases = new Set(state.nodes.filter(node => node.resourceId === resourceId).map(node => node.id));
-    return this.store.listJobs().filter(job => job.state === 'succeeded' && job.input.action === 'resource.action' && aliases.has(job.input.nodeId) && job.input.arguments.actionId === 'rollout.approve').map(job => {
+    return this.store.rolloutApprovalJobs().filter(job => aliases.has(job.input.nodeId)).map(job => {
       const input = job.input.arguments.input as Record<string, unknown>;
       return { runId: Number(input.runId), attempt: Number(input.attempt), environmentIds: String(input.environmentIds).split(',').map(Number), at: Date.parse(job.updatedAt) };
     });
