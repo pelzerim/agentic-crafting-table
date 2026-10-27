@@ -57,7 +57,7 @@ import type { NeighborhoodAppearance } from '../../../src/graph/neighborhood-fil
 import { droppedUrl, mayContainUrl } from './dropped-url.ts';
 import { Atlas } from './atlas.tsx';
 import { ProjectColumn } from './project-column.tsx';
-import { plotMapOrder, projectColumn } from '../../../src/graph/project-column.ts';
+import { columnItems, columnKind, plotMapOrder, projectColumn } from '../../../src/graph/project-column.ts';
 import type { ProjectColumnModel, ProjectSummaryLines } from '../../../src/graph/project-column.ts';
 import type { MapCorner } from '../../../packages/core/settings.ts';
 import type { AtlasItemEntry, AtlasProjectEntry } from './atlas.tsx';
@@ -73,6 +73,7 @@ import { RAIL, RAIL_HEIGHT } from './tool-rail.tsx';
 import { PaperFace, expandedPaperHeight } from './paper-face.tsx';
 import type { PaperMode } from './paper-face.tsx';
 import type { DashboardIcon } from './project-dashboard.tsx';
+import type { ProjectsPanelState } from '../../../packages/core/control.ts';
 import { neighborhoodContours } from '../../../src/graph/neighborhood.ts';
 import type { Point } from '../../../src/graph/neighborhood.ts';
 import { plotFill } from '../../../src/graph/plot-fill.ts';
@@ -179,6 +180,9 @@ export interface ProjectMapProps {
   /** The corner's unfolded state (the project list or the Atlas overview); controlled by the host so it survives layer travel. */
   overview?: boolean;
   onOverview?(open: boolean): void;
+  /** The Projects panel's saved size, folds, filters and pin (MAP-22). */
+  projectsPanel?: ProjectsPanelState;
+  onProjectsPanel?(patch: Partial<ProjectsPanelState>): void;
   undermapCount?: number;
   onTravel?(to: 'map' | 'below'): void;
   /** Below this zoom each neighbourhood shows its project's dashboard instead of its items. */
@@ -513,8 +517,11 @@ function MapCanvas(props: ProjectMapProps) {
   const [ownOverview, setOwnOverview] = useState(false);
   // The project column is not shown below (MAP-22), so there is nothing to unfold there.
   const cornerShown = props.mapCorner === 'atlas' || props.layer !== 'below';
-  const overview = !focus && cornerShown && (props.overview ?? ownOverview), setOverview = props.onOverview ?? setOwnOverview;
-  useWorkspaceShortcuts({ 'map.overview': () => { if (focus || !cornerShown) return false; setOverview(!overview); },
+  // The Projects panel stays open beside an open item and, pinned, until M or unpinning; the Atlas folds as before.
+  const columnMode = props.mapCorner !== 'atlas', pinned = Boolean(columnMode && props.projectsPanel?.pinned);
+  const overview = cornerShown && (pinned || ((columnMode || !focus) && (props.overview ?? ownOverview)));
+  const setOverview = (open: boolean) => { (props.onOverview ?? setOwnOverview)(open); if (!open && pinned) props.onProjectsPanel?.({ pinned: false }); };
+  useWorkspaceShortcuts({ 'map.overview': () => { if ((focus && !columnMode) || !cornerShown) return false; setOverview(!overview); },
     'map.zoomIn': () => { if (focus) return false; void zoomIn(); }, 'map.zoomOut': () => { if (focus) return false; void zoomOut(); },
     'map.zoomReset': () => { if (focus) return false; void zoomTo(1); },
     'project.mute': () => {
@@ -545,7 +552,7 @@ function MapCanvas(props: ProjectMapProps) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && dashboardGesture.current?.moved) { event.preventDefault(); event.stopImmediatePropagation(); dashboardDrag.cancel(); return; }
-      if (event.key === 'Escape' && overview && !document.querySelector('[role="menu"],.inline-editor')) { event.preventDefault(); event.stopImmediatePropagation(); setOverview(false); return; }
+      if (event.key === 'Escape' && overview && !pinned && (!focus || (event.target as HTMLElement).closest('.project-column-panel')) && !document.querySelector('[role="menu"],.inline-editor')) { event.preventDefault(); event.stopImmediatePropagation(); setOverview(false); return; }
       if (event.key === 'Escape' && !focus && (selection.size || marqueeRef.current)) { event.preventDefault(); setSelection(new Set()); marqueeRef.current = undefined; setMarquee(undefined); return; }
       if (event.key === 'Escape' && !focus && props.undermap && !(event.target as HTMLElement).closest('input,textarea,select,[data-owns-escape]') && !document.querySelector('[role="menu"],.inline-editor,.attention-list') && props.undermap.collapse()) { event.preventDefault(); event.stopImmediatePropagation(); return; }
       if (event.key === 'Escape' && itemResize.preview) return;
@@ -928,17 +935,21 @@ function MapCanvas(props: ProjectMapProps) {
     if (!columnShown) return undefined;
     const byId = new Map(props.nodes.map(node => [node.id, node])), tint = props.neighborhoodColor ?? ((color: string) => color);
     const pipelineOf = (node: MapItem) => node.resourceId ? presentations.get(node.resourceId)?.overview?.pipeline : undefined;
-    const plotOrder = plotMapOrder(props.plots ?? [], props.nodes);
-    const model = projectColumn(projectKey ? projectKey.split('\n').map(id => ({ id, title: byId.get(id)?.title ?? '', color: tint(projectColor(byId.get(id))), muted: mutedProjects.has(id),
-      board: projectDashboard(id, props.nodes, { pipelineOf, todos: props.todos, plots: props.plots, counting: props.attentionCounting }), summary: props.projectSummaries?.get(id), plotOrder })) : [], now);
+    const plotOrder = plotMapOrder(props.plots ?? [], props.nodes), filters = props.projectsPanel?.filters, everything = filters?.needsMe === false;
+    const kindOf = (id: string) => columnKind(presentations.get(byId.get(id)?.resourceId ?? '')?.pluginId);
+    const model = projectColumn(projectKey ? projectKey.split('\n').map(id => {
+      const board = projectDashboard(id, props.nodes, { pipelineOf, todos: props.todos, plots: props.plots, counting: props.attentionCounting });
+      return { id, title: byId.get(id)?.title ?? '', color: tint(projectColor(byId.get(id))), muted: mutedProjects.has(id), board, summary: props.projectSummaries?.get(id), plotOrder,
+        ...(everything ? { items: columnItems(id, props.nodes, board, props.plots ?? [], node => kindOf(node.id)) } : {}) };
+    }) : [], now, { filters, kindOf });
     const key = JSON.stringify(model);
     if (settledColumn.current?.key === key) return settledColumn.current.model;
     settledColumn.current = { key, model }; return model;
-  }, [columnShown, projectKey, props.nodes, props.todos, props.plots, props.attentionCounting, props.projectSummaries, props.neighborhoodColor, presentations, mutedProjects, now]);
+  }, [columnShown, projectKey, props.nodes, props.todos, props.plots, props.attentionCounting, props.projectSummaries, props.neighborhoodColor, presentations, mutedProjects, now, props.projectsPanel?.filters]);
   const atlasActions = useStableHandlers({
-    fitProject: (id: string) => { const project = projects.find(project => project.id === id); if (project) void fitBounds({ x: project.left, y: project.top, width: project.right - project.left, height: project.bottom - project.top }, { padding: .08, duration: duration() }); },
+    fitProject: (id: string) => { const project = projects.find(project => project.id === id); if (focus) back(); if (project) void fitBounds({ x: project.left, y: project.top, width: project.right - project.left, height: project.bottom - project.top }, { padding: .08, duration: duration() }); },
     locate, centre: (point: { x: number; y: number }) => void setCenter(point.x, point.y, { zoom: viewport.zoom, duration: duration() }),
-    fitPlot: (id: string) => dashboardActions.plot(id), markSeen: (id: string) => props.onMarkSeen?.(id), showTodo: (id: string) => props.onTodoShow?.(id),
+    fitPlot: (id: string) => { if (focus) back(); dashboardActions.plot(id); }, openItem: (id: string) => { if (focus) open(id); else dashboardActions.go(id); }, showNeed: (id: string) => { if (focus) open(id); else locate(id); }, markSeen: (id: string) => props.onMarkSeen?.(id), showTodo: (id: string) => props.onTodoShow?.(id),
     pan: (next: Viewport) => void setViewport(next), travel: (to: 'map' | 'below') => props.onTravel?.(to),
   });
   const open = (id: string, origin: 'user' | 'program' = 'user') => {
@@ -1475,7 +1486,7 @@ function MapCanvas(props: ProjectMapProps) {
     {linkDrag && <svg className="connection-preview" aria-label="Connection preview"><path d={`M${linkDrag.from.x},${linkDrag.from.y} L${linkDrag.to.x},${linkDrag.to.y}`} /></svg>}
     {props.mapCorner === 'atlas' ? <Atlas projects={atlas.projects} items={atlas.items} needsMe={needsMe} viewport={viewport} screen={size} layer={props.layer ?? 'map'} highlighted={props.highlightedNodes}
       overview={overview} setOverview={setOverview} undermapCount={props.undermapCount} actions={atlasActions} />
-      : column && <ProjectColumn model={column} open={overview} setOpen={setOverview} actions={atlasActions} />}
+      : column && <ProjectColumn model={column} open={overview} setOpen={setOverview} actions={atlasActions} icons={dashboardIcons} panel={props.projectsPanel} onPanel={props.onProjectsPanel} />}
     {focus && <nav className="map-trail" aria-label="Map location"><span>{props.nodes.find(node => node.id === props.nodes.find(item => item.id === focus)?.projectId)?.title ?? 'Floating item'}</span><span>/</span><span>{props.nodes.find(node => node.id === focus)?.title}</span>
       {connected.length > 0 && <div className="connected-items" role="group" aria-label="Connected items">{connected.map(box => <button key={box.item.id} aria-label={`Open connected item: ${box.item.title}`} title={box.item.title} onClick={() => open(box.item.id)}><ItemIcon icon={box.icon} brand={box.brand} tint={box.tint} /></button>)}</div>}
     </nav>}

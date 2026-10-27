@@ -9,6 +9,7 @@ import { ITEM_SIZES, existingRelationship, saveLink } from '../../src/graph/grap
 import type { GraphNode } from '../../src/graph/graph.ts';
 import { ITEM_GAP, layoutFootprints, moveItems, repairLayout, resizeItem } from '../../src/graph/movement.ts';
 import { arrivalPlacement } from '../../src/graph/project-arrival.ts';
+import { COLUMN_KINDS } from '../../src/graph/project-column.ts';
 import { creationAnchors, creationContext, itemPlacement, projectPlacement } from '../../src/graph/creation-placement.ts';
 import type { TodoContext, TodoEntry } from '../../src/graph/todos.ts';
 import { archiveNode, restoreNode, isArchived, isDrawn, isOffMap, surfaceBlocker } from '../../src/graph/archive.ts';
@@ -116,6 +117,9 @@ export const viewSchema = z.object({
   inboxPanel: z.object({ width: z.number().min(260).max(900).optional(), height: z.number().min(160).max(1000).optional() }).optional(),
   attentionPanel: z.object({ width: z.number().min(260).max(900).optional(), height: z.number().min(160).max(1000).optional() }).optional(),
   remindersPanel: z.object({ width: z.number().min(260).max(900).optional(), height: z.number().min(160).max(1000).optional() }).optional(),
+  /** The Projects panel (MAP-22): its size, folded project and plot ids, row filters, and whether it stays open. */
+  projectsPanel: z.object({ width: z.number().min(260).max(900).optional(), height: z.number().min(160).max(1000).optional(), folded: z.array(id).max(500).optional(),
+    filters: z.object({ needsMe: z.boolean().optional(), off: z.array(z.enum(COLUMN_KINDS)).max(COLUMN_KINDS.length).optional() }).optional(), pinned: z.boolean().optional() }).optional(),
   /** Update offers the person closed, by subject (`app` or `plugin:<id>`) and the tag dismissed; a newer tag is offered again. */
   dismissedUpdates: z.record(z.string().regex(/^(app|plugin:[A-Za-z0-9._-]{1,80})$/), z.string().max(80)).optional(),
 });
@@ -283,6 +287,7 @@ export type CommandEnvelope = z.infer<typeof envelopeSchema>;
 /** `alreadyOnMap` is present when an agent's item command resolved to a node its project already showed. */
 export interface CommandResult { state: WorkspaceState; replayed: boolean; alreadyOnMap?: ExistingItem[] }
 export type ViewState = z.infer<typeof viewSchema>;
+export type ProjectsPanelState = NonNullable<ViewState['projectsPanel']>;
 export class RevisionConflict extends Error {
   readonly code = 'REVISION_CONFLICT';
   readonly currentRevision: number;

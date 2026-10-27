@@ -14,6 +14,11 @@ Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newes
 
 ### Map
 - Shift-drag selects a rectangle of items while Needs me is held open beside the map.
+- **Resize the Projects panel** from its top-left corner; the size is kept.
+- **Fold** each project and plot in the Projects panel with its chevron; folds are kept.
+- **Filters** in the Projects panel: untick **Needs me** to list every item of each project by plot, and switch off **Agents**, **PRs**, **Rollouts**, **Tickets**, **Notes** or **Other** to hide that kind.
+- The Projects panel **stays open while an item is open**, and **M** toggles it there too. An item row opens that item in place of the open one; a project or plot row closes it and flies there.
+- **Pin the Projects panel** to keep it open beside Needs me, To-dos, Reminders, the GitHub inbox and the Controls card, across Esc and relaunch. M closes it and unpins.
 
 ## 0.6.0 — 2026-10-27
 

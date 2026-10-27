@@ -463,8 +463,22 @@ restates them. Last, a dimmed **meta** line with only what a person still acts o
 “N to-dos” (open ones; opens the to-do list at the project's first open to-do) and “N working”; zeros,
 done to-dos and pipeline totals are never shown. Working agents are never rows. Quiet projects (no
 Needs me, nothing working, no activity for 24 h) fold into one “N quiet projects ›” line that expands.
-Up and Down move through rows, Enter acts, Esc or M folds. The panel and the Needs me sheet are never
-open together. src/graph/project-column.ts builds the model from `projectDashboard()`; the column
+Up and Down move through rows, Enter acts, Esc or M folds. Unpinned, the panel and the Needs me sheet
+are never open together.
+The panel's header holds **filters** and a **pin**, and its top-left corner a **resize grip** (drag, or
+arrow keys; Home resets; 260 × 160 px at least, bounded by the window). Each project row and plot header
+has a fold chevron (“Fold <name>” / “Unfold <name>”). **Needs me** (ticked by default) shows the rows
+above; unticked, each project lists every item on the Map in it (no archived, Undermap or hidden-plot
+items; muted projects stay absent), grouped by plot in map order with a header per plot, then “Loose”;
+in each group items waiting on the person first, then by title; a row shows the item's icon, title and
+state (Asking me, My turn, Working). Type chips, all on by default, hide items and Needs me rows of their
+kind: **Agents** (agent and terminal sessions), **PRs** (pull requests, code reviews, review runs),
+**Rollouts**, **Tickets** (Linear), **Notes** (notes, to-dos), **Other**. The panel stays open while an
+item is open, and M toggles it then too; an item row opens its item (closing the open one), a project or
+plot row closes the open item and flies there. **Pinned** (“Keep the projects panel open”), it also stays
+open with Needs me, To-dos, Reminders, the GitHub inbox or the Controls card, moving left of an open rail
+panel, and Esc and row clicks leave it open; M closes it and unpins. Size, folds, filters and the pin are
+saved in `view.projectsPanel`. src/graph/project-column.ts builds the model from `projectDashboard()`; the column
 re-renders only when its model changes, never with the camera. On the
 Undermap the column is not shown (Needs me and Working pause there) and M does nothing; with
 `mapCorner: 'atlas'` the Atlas keeps its Undermap behaviour.
@@ -4355,6 +4369,20 @@ while the app runs or tracked files have local changes, fetches tags, checks out
 newest release (detached), then `npm ci`, `npm run package`, `npm run install:local`;
 `--dry-run` prints the plan. Builds without a release version (`dev`) are never offered
 an update.
+When a newer release is available and the app runs from the checkout it was installed into
+(`<checkout>/release/mac-arm64/Agentic Crafting Table.app`, with `.git` and this `package.json`),
+**Check now** becomes **Update and restart**, and the notice reads “Update from Settings → General”.
+It first asks the person's login shell for `node` and its PATH; without them it does not quit and
+says why in About. Then it quits through the normal close path (the warning about active sessions,
+Cancel leaves nothing running); only after both services have drained it starts
+`scripts/update-restart.mjs` from the checkout with that node, detached, logging to
+`logs/update-restart.log` in the app data folder; if it cannot start, the failure is noted and the
+app relaunches. The script waits until nothing runs from the installed or staged app (2 minutes at
+most), runs `npm run update` with its usual refusals, rebuilds and installs when an earlier run left
+the checkout on the release without installing it, and succeeds only when the installed app carries
+that version; then it opens the app. A failure is written to
+`update-failure.json` in the app data folder; Settings → About shows it as an alert until a later check
+succeeds, which deletes the file.
 
 **QUALITY-01:** The same validation controls UI, MCP and provider-originated writes.
 Persist before announcing success. No duplicated processes/comments on uncertain
