@@ -2,6 +2,19 @@
 
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one.
 
+## Unreleased
+
+### Needs me
+- **Close and mark seen**: an open item in Needs me has a close X with a check beside Mark seen. It marks the item seen and closes it; **⌘E** does the same, also from inside a terminal.
+
+### Terminals
+- In a terminal, **⌘⌫** deletes to the start of the line and **⌘←** / **⌘→** move to its start and end, as in iTerm2 and Terminal.app.
+- **⌘C** copies in an agent session that captures the mouse, such as Claude Code, when the terminal has no selection of its own. Other terminal apps never receive it.
+- **⌘F** finds text in a terminal: matches highlight as you type, Enter and Shift+Enter step through them, Esc closes the bar.
+
+### Map
+- Shift-drag selects a rectangle of items while Needs me is held open beside the map.
+
 ## 0.6.0 — 2026-10-27
 
 ### Map

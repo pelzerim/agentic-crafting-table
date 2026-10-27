@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test';
 import { join, resolve } from 'node:path';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { test } from './visual-fixture.ts';
+import { openTerminal, test } from './visual-fixture.ts';
 
 const quote = (text: string) => "'" + text.replaceAll("'", "'\\''") + "'";
 async function start(page: Page, mode: string) {
@@ -132,4 +132,26 @@ test('Shift+Enter in a real zsh prompt inserts a second command line without exe
     await page.keyboard.press('Enter');
     await expect.poll(() => readFile(file, 'utf8').catch(() => '')).toBe('firstsecond');
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('⌘F finds text in the terminal: it counts matches, Enter steps through them and Esc hands focus back', async ({ visual: { page } }) => {
+  await openTerminal(page);
+  await page.keyboard.press('Meta+f');
+  const bar = page.getByRole('search', { name: 'Find in terminal' }), field = bar.getByRole('searchbox', { name: 'Find in terminal' }), count = bar.locator('output');
+  await expect(field).toBeFocused();
+  await page.keyboard.type('billing');
+  await expect(count).toHaveText('1 of 3');
+  await page.keyboard.press('Enter'); await expect(count).toHaveText('2 of 3');
+  await page.keyboard.press('Shift+Enter'); await expect(count).toHaveText('1 of 3');
+  await field.fill('nowhere to be seen'); await expect(count).toHaveText('No results');
+  await field.fill('billing'); await expect(count).toHaveText('1 of 3');
+  await bar.getByRole('button', { name: 'Next match' }).click(); await expect(count).toHaveText('2 of 3');
+  await page.keyboard.press('Escape');
+  await expect(bar).toHaveCount(0);
+  await page.keyboard.press('Meta+f');
+  await expect(field).toHaveValue('');
+  await page.keyboard.press('Escape');
+  await expect(bar).toHaveCount(0);
+  await expect(page.locator('.map-area')).not.toHaveAttribute('data-focus', '');
+  await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
 });

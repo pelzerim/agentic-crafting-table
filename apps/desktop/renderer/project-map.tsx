@@ -62,7 +62,7 @@ import type { ProjectColumnModel, ProjectSummaryLines } from '../../../src/graph
 import type { MapCorner } from '../../../packages/core/settings.ts';
 import type { AtlasItemEntry, AtlasProjectEntry } from './atlas.tsx';
 import { needsMeIds } from '../../../src/graph/atlas.ts';
-import { useWorkspaceShortcuts } from './shortcuts.ts';
+import { matchWorkspaceShortcut, OPEN_ALONGSIDE, shortcutKey, shortcutsPaused, useWorkspaceShortcuts } from './shortcuts.ts';
 import { DEFAULT_MAP_DASHBOARDS, dashboardArea, dashboardLayout, dashboardPreview, dashboardsShown, projectDashboard } from '../../../src/graph/project-dashboard.ts';
 import type { DashboardLayout, DashboardTodo, MapDashboards, ProjectDashboard } from '../../../src/graph/project-dashboard.ts';
 import type { ScreenRect } from '../../../src/graph/label-placement.ts';
@@ -338,6 +338,9 @@ function CardFace({ data }: { data: CardData }) {
       <div className="item-frame-slot" hidden={!expanded} />
       <div className="session-toolbar-slot" hidden={!expanded} />
       {expanded && data.needsMe && need && <span className="item-needs" data-tier={need.tier} title={attentionLabel(need.tier, need.detail)}><TierMark tier={need.tier} /><b>{attentionTierInfo[need.tier].name}</b><span> · {need.details[0]}</span></span>}
+      {expanded && data.needsMe && markSeen && <button type="button" className="nodrag item-seen-close" aria-label="Close and mark seen" title={`Close and mark seen (${shortcutKey('view.closeSeen')})`} onClick={event => { event.stopPropagation(); markSeen(item.id); back(); }}>
+        <PixelGlyph name="close" size={12} className="" /><PixelGlyph name="check" className="item-seen-close-mark" />
+      </button>}
       {expanded && data.needsMe && markSeen && <button type="button" className="nodrag item-seen" aria-label="Mark seen" title="Mark seen (remove from Needs me)" onClick={event => { event.stopPropagation(); markSeen(item.id); }}>
         <PixelGlyph name="check" size={12} className="" />
       </button>}
@@ -547,6 +550,9 @@ function MapCanvas(props: ProjectMapProps) {
       if (event.key === 'Escape' && !focus && props.undermap && !(event.target as HTMLElement).closest('input,textarea,select,[data-owns-escape]') && !document.querySelector('[role="menu"],.inline-editor,.attention-list') && props.undermap.collapse()) { event.preventDefault(); event.stopImmediatePropagation(); return; }
       if (event.key === 'Escape' && itemResize.preview) return;
       if (event.key === 'Escape' && viewGesture.current) { event.preventDefault(); event.stopImmediatePropagation(); cancelViewGesture(); return; }
+      // Capture phase, so ⌘E also works while a terminal has focus; keys meant for another panel are left alone.
+      const inView = event.target === document.body || (event.target as HTMLElement).closest(`[data-expanded-item-id="${CSS.escape(focus ?? '')}"]`);
+      if (focus && needsMe.has(focus) && props.onMarkSeen && matchWorkspaceShortcut(event) === 'view.closeSeen' && inView && !shortcutsPaused() && !document.querySelector('[role="menu"]')) { event.preventDefault(); event.stopImmediatePropagation(); props.onMarkSeen(focus); back(); return; }
       if (event.key === 'Escape' && !(event.target as HTMLElement).closest('.terminal-surface,input,textarea,select,[data-owns-escape]') && !document.querySelector('[role="menu"],.inline-editor,.attention-list')) back();
     };
     window.addEventListener('keydown', onKey, true);
@@ -1405,7 +1411,7 @@ function MapCanvas(props: ProjectMapProps) {
     onPointerDownCapture={event => {
       if (event.button !== 0 || dropping) return;
       const target = event.target as HTMLElement;
-      if (!focus && !document.querySelector('.inline-editor,[role=dialog]') && event.shiftKey && !target.closest('input,textarea,select,.terminal-host,.item-view,button,a,[contenteditable=true]')) {
+      if (!focus && !document.querySelector(`.inline-editor:not(${OPEN_ALONGSIDE}),[role=dialog]:not(${OPEN_ALONGSIDE})`) && event.shiftKey && !target.closest('input,textarea,select,.terminal-host,.item-view,button,a,[contenteditable=true]')) {
         const id = target.closest('.react-flow__node')?.getAttribute('data-id');
         if (id || target.classList.contains('react-flow__pane')) {
           event.preventDefault(); event.stopPropagation(); suppressClick.current = true;

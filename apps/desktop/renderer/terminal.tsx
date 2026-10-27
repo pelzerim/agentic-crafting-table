@@ -2,9 +2,12 @@ import { terminalKey } from './terminal-keys.ts';
 import { bindTerminalLinks } from './terminal-links.ts';
 import type { TerminalLink } from './terminal-links.ts';
 import { TerminalLinkMenu } from './terminal-link-menu.tsx';
+import { TerminalFind } from './terminal-find.tsx';
+import type { TerminalFindRequest } from './terminal-find.tsx';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { SearchAddon } from '@xterm/addon-search';
 import '@xterm/xterm/css/xterm.css';
 import { observeTerminalPerformance, performanceMetrics } from './performance.ts';
 import { bindTerminalWheel } from './terminal-wheel.ts';
@@ -26,23 +29,30 @@ export interface TerminalChannel {
 /** A view only: unmounting never stops the underlying session. */
 export function TerminalSurface({ channel, active, readOnly = false, nativeShiftEnter = false }: { channel: TerminalChannel; active: boolean; readOnly?: boolean; nativeShiftEnter?: boolean }) {
   const container = useRef<HTMLDivElement>(null), host = useRef<HTMLDivElement>(null);
-  const instance = useRef<{ terminal: Terminal; fit: FitAddon; renderer: ReturnType<typeof createTerminalRenderer>; wheel: ReturnType<typeof bindTerminalWheel> } | null>(null);
+  const instance = useRef<{ terminal: Terminal; fit: FitAddon; search: SearchAddon; renderer: ReturnType<typeof createTerminalRenderer>; wheel: ReturnType<typeof bindTerminalWheel> } | null>(null);
   const [linkMenu, setLinkMenu] = useState<TerminalLink>();
+  const [find, setFind] = useState<TerminalFindRequest>();
   const activeRef = useRef(active); activeRef.current = active;
   const nativeKeyRef = useRef(nativeShiftEnter); nativeKeyRef.current = nativeShiftEnter;
-  useEffect(() => { if (!active) setLinkMenu(undefined); }, [active]);
+  const findRef = useRef(find); findRef.current = find;
+  const closeFind = () => { if (findRef.current) { instance.current?.search.clearDecorations(); instance.current?.terminal.clearSelection(); } setFind(undefined); };
+  useEffect(() => { if (!active) { setLinkMenu(undefined); closeFind(); } }, [active]);
   const [mountId] = useState(() => crypto.randomUUID());
   const preferences = useTerminalPreferences(), preferencesRef = useRef(preferences); preferencesRef.current = preferences;
   useEffect(() => { if (active) return observeTerminalPerformance(); }, [active]);
   useLayoutEffect(() => {
     // Leave ordinary history on the native viewport default: xterm 6 smoothing
     // can retain an old bottom target after output arrives while reading history.
-    const terminal = new Terminal({ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: Math.max(8, Math.min(32, Number(localStorage.getItem('craft.terminal.fontSize')) || 13)), cursorBlink: true, screenReaderMode: preferencesRef.current.screenReaderMode, scrollback: preferencesRef.current.scrollback, theme: { background: '#101612', foreground: '#dce8df', cursor: '#98d6ac' } });
+    // Search decorations use xterm's proposed decoration API.
+    const terminal = new Terminal({ allowProposedApi: true, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: Math.max(8, Math.min(32, Number(localStorage.getItem('craft.terminal.fontSize')) || 13)), cursorBlink: true, screenReaderMode: preferencesRef.current.screenReaderMode, scrollback: preferencesRef.current.scrollback, theme: { background: '#101612', foreground: '#dce8df', cursor: '#98d6ac' } });
     const fit = new FitAddon();
-    terminal.loadAddon(fit);
+    const search = new SearchAddon();
+    terminal.loadAddon(fit); terminal.loadAddon(search);
     const element = host.current!;
     terminal.open(element);
-    terminal.attachCustomKeyEventHandler(event => terminalKey(terminal, event, nativeKeyRef.current));
+    setFind(undefined);
+    const openFind = () => { const selected = terminal.getSelection(); setFind(old => ({ query: selected && !selected.includes('\n') ? selected : old?.query ?? '', request: (old?.request ?? 0) + 1 })); };
+    terminal.attachCustomKeyEventHandler(event => terminalKey(terminal, event, nativeKeyRef.current, openFind));
     const links = bindTerminalLinks(terminal, link => { if (activeRef.current) setLinkMenu(link); });
     const renderer = createTerminalRenderer(terminal, mode => { element.dataset.terminalRenderer = mode; });
     renderer.setActive(active);
@@ -74,7 +84,7 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
     // irreversibly scrolls its first rows away before our observer runs.
     if (active && host.current!.clientWidth > 0 && host.current!.clientHeight > 0) fit.fit();
     terminal.write(channel.history);
-    instance.current = { terminal, fit, renderer, wheel: input };
+    instance.current = { terminal, fit, search, renderer, wheel: input };
     return () => { unsubscribe(); reset?.(); input.dispose(); identity.dispose(); links(); resize.dispose(); renderer.dispose(); terminal.dispose(); for (const resolve of pending) resolve(); pending.clear(); instance.current = null; };
   }, [channel]);
   useLayoutEffect(() => {
@@ -125,7 +135,9 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
     const frame = requestAnimationFrame(() => { if (active && !readOnly) current.terminal.focus(); });
     return () => { cancelAnimationFrame(frame); cancelAnimationFrame(fitFrame); observer.disconnect(); offZoom(); window.removeEventListener('keydown', keyZoom, true); if (active) window.craftingTable.terminalZoomTarget(null); };
   }, [active, readOnly, channel]);
-  return <><div ref={container} className="terminal-surface nodrag nopan nowheel" data-terminal-id={channel.id} data-mount-id={mountId} aria-label="Terminal"><div ref={host} className="terminal-host" /></div>{active && linkMenu && <TerminalLinkMenu link={linkMenu} close={focus => {
+  return <><div ref={container} className="terminal-surface nodrag nopan nowheel" data-terminal-id={channel.id} data-mount-id={mountId} aria-label="Terminal"><div ref={host} className="terminal-host" />{active && find && instance.current && <TerminalFind terminal={instance.current.terminal} search={instance.current.search} find={find} setQuery={query => setFind(old => old && { ...old, query })} close={() => {
+    closeFind(); instance.current?.terminal.focus();
+  }} />}</div>{active && linkMenu && <TerminalLinkMenu link={linkMenu} close={focus => {
     setLinkMenu(current => current === linkMenu ? undefined : current);
     if (focus && activeRef.current) instance.current?.terminal.focus();
   }} />}</>;

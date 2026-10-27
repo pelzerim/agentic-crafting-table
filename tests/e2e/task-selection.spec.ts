@@ -77,6 +77,16 @@ test('Shift-drag marquee selects only intersecting items and ordinary background
   await page.mouse.click(1200, 520); await expect(page.locator('.map-selection rect[data-selected-id]')).toHaveCount(0);
 });
 
+test('Shift-drag marquee still selects while the Needs me sheet is held open beside the map', async ({ visual: { page } }) => {
+  await page.getByRole('button', { name: /^Needs me: \d+$/ }).click({ button: 'right' });
+  await expect(page.locator('.rail-panel[data-held]')).toHaveCount(1); await expect(page.getByRole('dialog', { name: 'Needs me', exact: true })).toBeVisible();
+  const box = (await card(page, 'pr').boundingBox())!, start = { x: box.x - 12, y: box.y - 12 };
+  expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.classList.contains('react-flow__pane'), start)).toBe(true);
+  await page.keyboard.down('Shift'); await page.mouse.move(start.x, start.y); await page.mouse.down(); await page.mouse.move(box.x + box.width + 12, box.y + box.height + 12, { steps: 8 }); await page.mouse.up(); await page.keyboard.up('Shift');
+  await expect(page.locator('.map-selection [data-selected-id="pr"]')).toHaveCount(1);
+  await expect(page.getByRole('dialog', { name: 'Needs me', exact: true })).toBeVisible();
+});
+
 test('to-do drag previews rows without saving until drop, and cancels cleanly', async ({ visual: { page } }) => {
   await apply(page, [
     { type: 'todo.save', todo: { id: 'first', title: 'First task', completed: false, nodeIds: ['billing'] } },

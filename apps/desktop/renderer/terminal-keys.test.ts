@@ -4,7 +4,7 @@ import { terminalKey } from './terminal-keys.ts';
 
 function fixture() {
   const sent: string[] = [];
-  const terminal = { options: { disableStdin: false, ignoreBracketedPasteMode: false }, modes: { bracketedPasteMode: true }, paste: (s: string) => sent.push(`paste:${s}`), input: (s: string) => sent.push(s) };
+  const terminal = { options: { disableStdin: false, ignoreBracketedPasteMode: false }, modes: { bracketedPasteMode: true, mouseTrackingMode: 'none' as string }, hasSelection: () => false, paste: (s: string) => sent.push(`paste:${s}`), input: (s: string) => sent.push(s) };
   const event = (fields: Partial<KeyboardEvent> = {}) => ({ type: 'keydown', key: 'Enter', shiftKey: true, ctrlKey: false, metaKey: false, altKey: false, isComposing: false, keyCode: 13, preventDefault() {}, stopPropagation() {}, ...fields }) as KeyboardEvent;
   return { sent, terminal: terminal as Parameters<typeof terminalKey>[0], event };
 }
@@ -33,4 +33,38 @@ test('Enter, composition and other modifier combinations retain native key proce
   const { terminal, event, sent } = fixture();
   for (const fields of [{ shiftKey: false }, { ctrlKey: true }, { altKey: true }, { metaKey: true }, { isComposing: true }, { keyCode: 229 }, { key: 'a' }]) assert.equal(terminalKey(terminal, event(fields)), true);
   assert.deepEqual(sent, []);
+});
+test('Cmd+C reaches a mouse-owning agent as super+c, and stays native for shells, other mouse apps or a terminal selection', () => {
+  const { terminal, event, sent } = fixture();
+  const cmdC = { key: 'c', metaKey: true, shiftKey: false, keyCode: 67 };
+  assert.equal(terminalKey(terminal, event(cmdC), true), true);
+  (terminal.modes as { mouseTrackingMode: string }).mouseTrackingMode = 'drag';
+  assert.equal(terminalKey(terminal, event(cmdC)), true, 'vim or tmux in a plain terminal never gets the bytes');
+  assert.equal(terminalKey(terminal, event(cmdC), true), false);
+  terminalKey(terminal, event({ ...cmdC, type: 'keyup' }), true);
+  assert.deepEqual(sent, ['\x1b[99;9u']);
+  terminal.hasSelection = () => true;
+  assert.equal(terminalKey(terminal, event(cmdC), true), true);
+  assert.equal(sent.length, 1);
+});
+test('Cmd+Backspace, Cmd+Left and Cmd+Right send the line-editing control keys once', () => {
+  const { terminal, event, sent } = fixture();
+  for (const key of ['Backspace', 'ArrowLeft', 'ArrowRight']) {
+    assert.equal(terminalKey(terminal, event({ key, metaKey: true, shiftKey: false })), false);
+    terminalKey(terminal, event({ key, metaKey: true, shiftKey: false, type: 'keyup' }));
+  }
+  assert.deepEqual(sent, ['\x15', '\x01', '\x05']);
+  sent.length = 0; (terminal.modes as { mouseTrackingMode: string }).mouseTrackingMode = 'drag';
+  for (const key of ['Backspace', 'ArrowLeft', 'ArrowRight', 'c']) for (const composing of [{ isComposing: true }, { keyCode: 229 }]) assert.equal(terminalKey(terminal, event({ key, metaKey: true, shiftKey: false, ...composing }), true), true, `${key} stays with the IME`);
+  assert.deepEqual(sent, [], 'a composition sends nothing to the terminal');
+});
+test('Cmd+F opens the find bar instead of reaching the terminal, and plain F still types', () => {
+  const { terminal, event, sent } = fixture();
+  let opened = 0;
+  const cmdF = { key: 'f', metaKey: true, shiftKey: false, keyCode: 70 };
+  assert.equal(terminalKey(terminal, event(cmdF), true, () => opened++), false);
+  terminalKey(terminal, event({ ...cmdF, type: 'keyup' }), false, () => opened++);
+  assert.equal(opened, 1);
+  assert.equal(terminalKey(terminal, event({ key: 'f', shiftKey: false, keyCode: 70 }), false, () => opened++), true);
+  assert.deepEqual(sent, []); assert.equal(opened, 1);
 });

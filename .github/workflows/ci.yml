@@ -14,4 +14,7 @@ jobs:
       - run: npm run check
       - run: npm run test:runtime
       - run: npm run package
+        # electron-builder skips signing on pull requests; the ad-hoc identity holds no secret.
+        env:
+          CSC_FOR_PULL_REQUEST: "true"
       - run: npm run test:package

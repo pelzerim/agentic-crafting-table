@@ -509,7 +509,8 @@ and Settings slots. **T** toggles the
 to-do list, **U** travels to Undermap and back, **/** focuses the Undermap's find field while below (MAP-18), **+ / − / 0** zoom in,
 out and to 100%, and **?** opens a Controls card that lists every
 key from the same registry (Escape closes it). Keys an item view handles while it has
-focus are listed there under Views: **[** folds or shows a rollout's jobs rail.
+focus are listed there under Views: **[** folds or shows a rollout's jobs rail, and **⌘E**
+does Close and mark seen (STATE-02) while the open item is in Needs me, also from inside a terminal.
 
 Pressing **M** (a workspace shortcut, ignored in text fields, terminals and dialogs)
 or the Atlas's expand corner unfolds it into the **map overview**: the same
@@ -1472,7 +1473,10 @@ same slot holds a pixel close X with the tier mark of that entry in its corner, 
 amber, named “Close and keep in Needs me”. It closes the item and puts back exactly the
 cycles the open acknowledged (`attention.restore` names their versions, as
 `attention.acknowledge` does); a newer cycle, a reason that has since cleared, or
-closing with the plain X ends the offer, and nothing else changes. Seen/Mark seen clears that
+closing with the plain X ends the offer, and nothing else changes. **Close and mark seen** sits
+immediately left of Mark seen whenever Mark seen shows: a pixel close X with a check in its corner, in
+the same amber, named “Close and mark seen” with the tooltip “Close and mark seen (⌘E)”. It sends
+the same acknowledgement as Mark seen, then closes the item; **⌘E** does the same. Seen/Mark seen clears that
 resource from the list across aliases, not its underlying input request, error,
 process or user-done status. Persist the read state across app restarts. A later
 completion or new attention event makes it unread again; unchanged polling and
@@ -1711,6 +1715,11 @@ navigation, Escape and outside-click dismissal.
 Omit redundant "Native Claude session" labels and stacked control bars. Fit every terminal row,
 including the last prompt line, within the available content area after resizing.
 Ctrl/Cmd +/− adjusts the focused terminal's font size only; Ctrl/Cmd 0 resets it.
+**⌘F** never reaches the process: it opens a find bar at the terminal's top right
+(or refocuses it, prefilled with a one-line selection). Typing highlights every match,
+case-insensitive, with a “2 of 5” or “No results” count; Enter or ⌘G steps forward,
+Shift+Enter or ⇧⌘G back, and Esc closes it, clears the highlights and returns focus to
+the terminal. A full-screen CLI can only be searched on its visible screen.
 Shift+Enter inserts a line break without submitting; ordinary Enter keeps the
 CLI’s submit behavior. Agent views send distinct Shift+Enter (CSI-u) for the
 native CLI to interpret. Plain terminals use a bracketed newline when supported,
@@ -3890,7 +3899,8 @@ sign-in): clicking opens a small panel with title, link, provenance and **Open i
 browser**, and the menu offers **Open on claude.ai**; both use the system browser.
 
 **MAP-SELECT — Multiple items.** Shift-click toggles items in a selection;
-Shift-left-drag on empty map selects a rectangle. Drag any selected item to move
+Shift-left-drag on empty map selects a rectangle, also while a rail panel such as
+Needs me or the Controls card stays open beside the map; a modal dialog blocks it. Drag any selected item to move
 all selected items with their relative positions intact. Project moves include
 members once; group movement retains membership. Escape or a plain background
 click clears selection. Shared right-click actions apply atomically to the

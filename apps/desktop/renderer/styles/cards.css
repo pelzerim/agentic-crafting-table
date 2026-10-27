@@ -1215,6 +1215,7 @@
 
 .item-close svg,
 .item-seen svg,
+.item-seen-close svg,
 .item-keep svg {
   width: 16px;
   height: 16px;
@@ -1337,6 +1338,7 @@
 
 .map-card .item-close,
 .map-card .item-seen,
+.map-card .item-seen-close,
 .map-card .item-keep {
   height: 30px;
   flex: none;
@@ -1727,6 +1729,7 @@
     flex: 1 0 100%;
   }
   .expanded .item-seen,
+  .expanded .item-seen-close,
   .expanded .item-keep,
   .expanded .item-close {
     order: 1;
