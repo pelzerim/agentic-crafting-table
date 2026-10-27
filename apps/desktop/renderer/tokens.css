@@ -159,6 +159,11 @@
   --act-paper-lilac: var(--act-tone-violet);
   --act-paper-peach: var(--act-coral-ink);
   --act-paper-slate: var(--act-raised);
+  --act-paper-moss: #cfdcae;
+  --act-paper-ice: #cdeef0;
+  --act-paper-rose: #f3c6ce;
+  --act-paper-sand: #e6dcc8;
+  --act-paper-fog: #d5dad7;
   --act-paper-ink: var(--act-ink-on-accent);
   --act-paper-slate-ink: var(--act-ink);
   --act-paper-tape: color-mix(in srgb, var(--act-ink-bright) 62%, transparent);

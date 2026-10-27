@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { SqliteStore } from './sqlite-store.ts';
 import { WorkspaceControl } from '../core/control.ts';
 import { ReviewCoordinator, terminalText } from './reviews.ts';
+import { ComparisonPruner, PRUNE_CHECK_MS } from './comparison-pruning.ts';
 import type { SessionCoordinator, PreparedSession } from './sessions.ts';
 import type { SessionRecord } from '../session-runtime/protocol.ts';
 import type { ReviewSource } from '../provider-runtime/review-sources.ts';
@@ -312,4 +313,49 @@ test('archiving or deleting the preparing item stops the review without launchin
     assert.equal(f.launchCount, 0); assert.equal((await reviewItems(f)).length, 0); assert.equal(reviews.status('pr', requestId)[0].state, 'cancelled');
     await reviews.close(); const restarted = f.coordinator(); await restarted.recover(); assert.equal(f.launchCount, 0); assert.equal((await reviewItems(f)).length, 0); await restarted.close();
   } finally { hold.release(); await reviews.close(); f.close(); }
+});
+
+test('a review checkout is finished only when no job or session still uses it', async () => {
+  const f = await fixture(), reviews = f.coordinator(), lines: string[] = [];
+  const pruner = new ComparisonPruner(f.directory, f.store, f.sessions, () => true, { log: line => lines.push(line) });
+  try {
+    const requestId = randomUUID(), started = await reviews.run('pr', 'claude', { requestId });
+    assert.equal(await pruner.finished(requestId), false);
+    f.records.get(started.session.id)!.state = 'exited';
+    assert.equal(await pruner.finished(requestId), true);
+    const exited = f.records.get(started.session.id)!; f.records.delete(started.session.id);
+    assert.equal(await pruner.finished(requestId), true, 'a session that cannot be read is not running');
+
+    const architectureId = randomUUID(), prepare = f.store.enqueueJob(`architecture:${architectureId}`, { action: 'architecture.prepare', nodeId: 'pr', arguments: { requestId: architectureId } });
+    f.store.transitionJob(prepare.id, 'queued', 'running');
+    f.store.transitionJob(prepare.id, 'running', 'succeeded', { result: { sourceRequestId: requestId, sourceDirectory: join(f.directory, 'comparisons', requestId) } });
+    const launch = f.store.enqueueJob(`architecture-launch:${architectureId}`, { action: 'architecture.launch', nodeId: 'pr', arguments: { requestId: architectureId } });
+    assert.equal(await pruner.finished(requestId), false, 'an architecture launch on this source is in flight');
+    f.store.transitionJob(launch.id, 'queued', 'running'); f.store.transitionJob(launch.id, 'running', 'succeeded', { result: { nodeId: 'architecture', resourceId: 'architecture-resource', reused: false } });
+    assert.equal(await pruner.finished(requestId), true);
+    f.records.set('architecture-session', { ...exited, id: 'architecture-session', nodeId: 'architecture', cwd: join(f.directory, 'comparisons', requestId), state: 'running' });
+    assert.equal(await pruner.finished(requestId), false, 'the architecture session runs in this checkout');
+    assert.equal(await pruner.finished(randomUUID()), true);
+
+    const folder = join(f.directory, 'comparisons', requestId), later = Date.now() + 2 * 60 * 60 * 1000;
+    mkdirSync(join(folder, 'repository'), { recursive: true }); writeFileSync(join(folder, 'repository', 'code.ts'), 'x'.repeat(2 * 1024 * 1024)); writeFileSync(join(folder, `review-${requestId}.md`), 'request');
+    assert.deepEqual(await pruner.prune(later), []);
+    f.records.get('architecture-session')!.state = 'exited';
+    assert.deepEqual(await pruner.prune(later), [requestId]);
+    assert.deepEqual(readdirSync(folder), [`review-${requestId}.md`]);
+    assert.deepEqual(lines, ['Pruned 1 review checkouts (2 MB).\n']);
+  } finally { await reviews.close(); f.close(); }
+});
+
+test('the checkout pruner first runs a minute after start, then at most every 30 minutes, and never while background work is paused', async () => {
+  const f = await fixture(); let allowed = false, clock = 0; const runs: number[] = [];
+  const pruner = new ComparisonPruner(f.directory, f.store, f.sessions, () => allowed, { now: () => clock });
+  pruner.prune = async now => { runs.push(now); return []; };
+  try {
+    assert.equal(PRUNE_CHECK_MS, 60_000);
+    assert.equal(await pruner.tick(), false); assert.deepEqual(runs, []);
+    allowed = true; clock = 60_000; assert.equal(await pruner.tick(), true);
+    clock += 29 * 60_000; assert.equal(await pruner.tick(), false);
+    clock += 60_000; assert.equal(await pruner.tick(), true); assert.deepEqual(runs, [60_000, 30 * 60_000 + 60_000]);
+  } finally { await pruner.pause(); f.close(); }
 });

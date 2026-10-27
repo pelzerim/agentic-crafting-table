@@ -38,7 +38,7 @@ are imported by their modules and load after `styles.css`.
 | Cards | `--act-card-lift` (the face lift of a hovered or open card; its edge keeps its width, because a 2px edge means Asking me) |
 | Dashboards and blocking | `--act-working-ink` `--act-working-sheep` `--act-working-sheep-head` `--act-todo-ink` `--act-needs-row-bg` `--act-strip-neutral` `--act-strip-violet` `--act-strip-blue` `--act-ink-on-coral` `--act-coral-bg` (+`-hover`) `--act-coral-ink` `--act-shadow-popover` |
 | Agents and brands | `--act-agent-claude` `--act-agent-codex` `--act-brand-linear` `--act-brand-github` `--act-copper` (+`-bg`, `-line`, `-ink`, `-fill`) |
-| Note papers | `--act-paper-mint` (default) `-sky` `-lilac` `-peach` `-slate`, `--act-paper-ink` (`-slate-ink` on slate), `--act-paper-tape`, `--act-paper-agent-tape` (copper, agent-written notes). Decoration only, never status; no yellow, because amber means Needs me |
+| Note papers | `--act-paper-mint` (default) `-moss` `-ice` `-sky` `-lilac` `-rose` `-peach` `-sand` `-fog` `-slate`, `--act-paper-ink` (`-slate-ink` on slate and dark custom papers; a custom paper is set inline as `--paper`), `--act-paper-tape`, `--act-paper-agent-tape` (copper, agent-written notes). Decoration only, never status; no yellow, because amber means Needs me |
 | Type | `--act-font-ui` (system UI stack) `--act-font-mono` and the scale `--act-fs-caps` 10 · `--act-fs-meta` 11 · `--act-fs-ui` 12 · `--act-fs-body` 13 · `--act-fs-panel` 15 · `--act-fs-title` 18 · `--act-fs-display` 24; weights `--act-fw-regular/-medium/-strong` |
 | Spacing | `--act-sp-0_5` 2 · `-1` 4 · `-1_5` 6 · `-2` 8 · `-3` 12 · `-4` 16 · `-6` 24 · `-8` 32 |
 | Sizes | `--act-control-size` 26 (every control in an item view's frame bar: actions, ⋯, ↗, ↻, close) |

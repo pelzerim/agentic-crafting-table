@@ -227,6 +227,104 @@ test('every item with a link inside its project is in a plot', () => {
   }
 });
 
+const pin = (plotId: string, memberIds: string[], projectId = 'photos') => ({ plotId, projectId, memberIds });
+const plotOf = (plots: ReturnType<typeof detectPlots>, id: string) => plots.find(plot => plot.id === id);
+
+test('a pinned pair far apart is one plot, and one pinned member on the map is enough', () => {
+  const boxes = [card('p1', 0, 0), card('p2', 3000, 2000), ...loose(4)];
+  assert.deepEqual(detectPlots(boxes, [], fresh), [], 'unpinned they are just items');
+  assert.deepEqual(detectPlots(boxes, [], fresh, [], [pin('pinned', ['p1', 'p2'])]), [{ id: 'pinned', projectId: 'photos', memberIds: ['p1', 'p2'] }]);
+  assert.deepEqual(detectPlots(boxes, [], fresh, [], [pin('pinned', ['p1'])]), [{ id: 'pinned', projectId: 'photos', memberIds: ['p1'] }]);
+});
+
+test('a pinned plot survives a layout that would split it or cap it', () => {
+  const pinned = [pin('pinned', ['a1', 'a2', 'a3'])], start = detectPlots(sample(), [], fresh, [], pinned);
+  assert.deepEqual(plotOf(start, 'pinned')?.memberIds, ['a1', 'a2', 'a3']);
+  const apart = [...sample().filter(box => box.id !== 'a2'), card('a2', 4000, 4000)];
+  assert.deepEqual(plotOf(detectPlots(apart, start, fresh, [], pinned), 'pinned')?.memberIds, ['a1', 'a2', 'a3']);
+  const all = Array.from({ length: 14 }, (_, i) => card(`g${String(i).padStart(2, '0')}`, i * 260, 0));
+  assert.deepEqual(detectPlots(all, [], fresh, [], [pin('pile', all.map(box => box.id))]).map(plot => plot.memberIds.length), [14], 'never cut by size or share');
+});
+
+test('an unpinned neighbour joins a pinned plot within the join gap and leaves only past the leave gap; a linked item joins it too', () => {
+  const pinned = [pin('pinned', ['p1', 'p2'])], base = [card('p1', 0, 0), card('p2', 3000, 2000), ...loose(4)];
+  const near = detectPlots([...base, card('n', 200 + PLOT_JOIN, 0)], [], fresh, [], pinned);
+  assert.deepEqual(ids(near), ['n,p1,p2']);
+  assert.deepEqual(ids(detectPlots([...base, card('n', 201 + PLOT_JOIN, 0)], [], fresh, [], pinned)), ['p1,p2'], 'a new item beyond the join gap stays out');
+  assert.deepEqual(ids(detectPlots([...base, card('n', 200 + PLOT_LEAVE, 0)], near, fresh, [], pinned)), ['n,p1,p2'], 'a member stays within the leave gap');
+  assert.deepEqual(ids(detectPlots([...base, card('n', 201 + PLOT_LEAVE, 0)], near, fresh, [], pinned)), ['p1,p2'], 'past the leave gap it leaves');
+  assert.deepEqual(ids(detectPlots([...base, card('far', 0, 5000)], [], fresh, [link('far', 'p2')], pinned)), ['far,p1,p2']);
+});
+
+test('two pinned plots never merge, however close or linked', () => {
+  const boxes = [card('a', 0, 0), card('b', 100, 20), card('c', 260, 20), ...loose(4)];
+  const plots = detectPlots(boxes, [], fresh, [link('a', 'b')], [pin('first', ['a']), pin('second', ['b'])]);
+  assert.deepEqual(plots.map(plot => [plot.id, plot.memberIds.join(',')]).sort(), [['first', 'a'], ['second', 'b,c']], 'c joins the nearer one');
+  assert.deepEqual(detectPlots(boxes, plots, fresh, [link('a', 'b')], [pin('first', ['a']), pin('second', ['b'])]), plots);
+});
+
+test('a pinned plot keeps its id outright; another group never takes a pinned id', () => {
+  const previous = [{ id: 'old', projectId: 'photos', memberIds: ['a1', 'a2', 'a3'] }];
+  const plots = detectPlots(sample(), previous, fresh, [], [pin('pinned', ['a1'])]);
+  assert.deepEqual(plotOf(plots, 'pinned')?.memberIds, ['a1', 'a2', 'a3']);
+  assert.ok(!plots.some(plot => plot.id === 'old'));
+  const away = detectPlots(sample(), [{ id: 'pinned', projectId: 'photos', memberIds: ['a1', 'a2', 'a3'] }], fresh, [], [pin('pinned', ['gone'])]);
+  assert.deepEqual(ids(away), ['a1,a2,a3', 'b1,b2,b3', 'c1,c2,c3']);
+  assert.ok(!away.some(plot => plot.id === 'pinned'), 'while its pinned members are away the group is a new plot');
+});
+
+test('an item pinned in two plots stays in the first by id', () => {
+  const plots = detectPlots([card('x', 0, 0), card('y', 3000, 0), ...loose(4)], [], fresh, [], [pin('b', ['x']), pin('a', ['x', 'y'])]);
+  assert.deepEqual(plots.map(plot => [plot.id, plot.memberIds.join(',')]), [['a', 'x,y']]);
+});
+
+test('the six-per-project cap keeps pinned plots first', () => {
+  const groups = Array.from({ length: 7 }, (_, group) => Array.from({ length: 3 }, (_, i) => card(`q${group}-${i}`, group * 1000 + (i % 2) * 260, Math.floor(i / 2) * 100))).flat();
+  const boxes = [...groups, card('single', 0, 4000), ...loose(10)], plots = detectPlots(boxes, [], fresh, [], [pin('pinned', ['single'])]);
+  assert.equal(plots.length, 6);
+  assert.ok(plotOf(plots, 'pinned'));
+  assert.deepEqual(ids(plots).filter(members => members !== 'single'), ['q0-0,q0-1,q0-2', 'q1-0,q1-1,q1-2', 'q2-0,q2-1,q2-2', 'q3-0,q3-1,q3-2', 'q4-0,q4-1,q4-2']);
+});
+
+test('pinned members in another project or off the map are left out, and come back when they return', () => {
+  const pinned = [pin('pinned', ['p1', 'p2', 'p3'])], base = [card('p1', 0, 0), card('p3', 0, 3000), ...loose(4)];
+  assert.deepEqual(ids(detectPlots([...base, card('p2', 3000, 0)], [], fresh, [], pinned)), ['p1,p2,p3']);
+  const moved = detectPlots([...base, card('p2', 3000, 0, 'other')], [], fresh, [], pinned);
+  assert.deepEqual(moved.map(plot => [plot.id, plot.memberIds.join(',')]), [['pinned', 'p1,p3']]);
+  const below = detectPlots(base, moved, fresh, [], pinned);
+  assert.deepEqual(below.map(plot => [plot.id, plot.memberIds.join(',')]), [['pinned', 'p1,p3']]);
+  assert.deepEqual(detectPlots([...base, card('p2', 3000, 0)], below, fresh, [], pinned).map(plot => [plot.id, plot.memberIds.join(',')]), [['pinned', 'p1,p2,p3']]);
+  assert.deepEqual(detectPlots([card('p1', 0, 0, 'other'), ...loose(4)], [], fresh, [], pinned), [], 'none on the map in its project: no plot');
+});
+
+test('detection with pins is stable and keeps every pinned member in its plot', () => {
+  for (let seed = 1; seed <= 200; seed++) {
+    const next = random(seed), pick = (count: number) => Math.floor(next() * count);
+    const count = 4 + pick(24), spread = 400 + pick(2400);
+    let boxes = Array.from({ length: count }, (_, i) => card(`i${String(i).padStart(2, '0')}`, pick(spread), pick(spread), `project-${pick(2)}`, 120 + pick(120), 48 + pick(40)));
+    const links = Array.from({ length: pick(count) }, () => link(boxes[pick(count)].id, boxes[pick(count)].id)).filter(one => one.sourceId !== one.targetId);
+    const taken = new Set<string>(), pins = Array.from({ length: 1 + pick(3) }, (_, i) => {
+      const projectId = `project-${pick(2)}`, memberIds = boxes.filter(box => box.projectId === projectId && !taken.has(box.id) && next() < .25).map(box => box.id);
+      for (const id of memberIds) taken.add(id);
+      return pin(`pin-${i}`, memberIds, projectId);
+    });
+    let plots = detectPlots(boxes, [], fresh, links, pins);
+    for (let step = 0; step < 4; step++) {
+      assert.deepEqual(detectPlots(boxes, plots, fresh, links, pins), plots, `seed ${seed} step ${step}: a second pass changed the plots`);
+      assert.deepEqual(detectPlots([...boxes].reverse(), plots, fresh, [...links].reverse(), pins).map(plot => plot.memberIds), plots.map(plot => plot.memberIds), `seed ${seed} step ${step}: input order changed the plots`);
+      const members = plots.flatMap(plot => plot.memberIds);
+      assert.equal(new Set(members).size, members.length, `seed ${seed}: an item is in two plots`);
+      for (const one of pins) {
+        const present = one.memberIds.filter(id => boxes.some(box => box.id === id && box.projectId === one.projectId));
+        if (present.length) assert.ok(present.every(id => plotOf(plots, one.plotId)?.memberIds.includes(id)), `seed ${seed}: ${one.plotId} lost a pinned member`);
+        else assert.ok(!plotOf(plots, one.plotId), `seed ${seed}: ${one.plotId} exists without pinned members`);
+      }
+      boxes = boxes.map((box, i) => i === step % count ? { ...box, x: pick(spread), y: pick(spread) } : box);
+      plots = detectPlots(boxes, plots, fresh, links, pins);
+    }
+  }
+});
+
 test('a plot is one patch while its parts sit within reach of each other; far parts get their own, largest first', () => {
   // Gaps of 140 and 170 px are over the join distance but under the patch reach, 400 px is not.
   const patches = plotPatches([card('n2', 0, 0), card('pr1', 0, -200), card('pr2', 0, 230), card('ticket', 600, 0), card('ticket-note', 600, 100)]);

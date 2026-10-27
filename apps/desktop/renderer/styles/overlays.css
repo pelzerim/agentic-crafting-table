@@ -74,7 +74,8 @@
   gap: 10px;
 }
 
-.inline-editor label {
+.inline-editor label,
+.inline-editor .field-color {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -334,7 +335,7 @@
   gap: 14px;
 }
 
-/* A row of choices: a dim label over side-by-side swatches, lined up with the item labels; the checked one is ringed. */
+/* A row of colours: a dim label over the colour picker, lined up with the item labels. */
 .canvas-menu-row {
   display: grid;
   gap: var(--act-sp-1);
@@ -344,35 +345,6 @@
 .canvas-menu-row-label {
   font-size: var(--act-fs-meta);
   color: var(--act-ink-dim);
-}
-
-.canvas-menu-row>div {
-  display: flex;
-  gap: var(--act-sp-1_5);
-}
-
-.canvas-menu .canvas-menu-swatch,
-.canvas-menu .canvas-menu-swatch:focus-visible {
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  background: var(--swatch, var(--act-control));
-  box-shadow: inset 0 0 0 1px var(--act-deep);
-  cursor: pointer;
-}
-
-.canvas-menu .canvas-menu-swatch[aria-checked=true] {
-  outline: 2px solid var(--act-ink);
-  outline-offset: 1px;
-}
-
-.canvas-menu .canvas-menu-swatch:focus-visible {
-  outline: var(--act-focus-ring);
-  outline-offset: 2px;
-}
-
-.canvas-menu .canvas-menu-swatch[aria-checked=true]:after {
-  content: none;
 }
 
 .project-color-picker {
@@ -393,54 +365,6 @@
 .project-color-picker legend small {
   color: var(--act-ink-dim);
   margin-left: 6px;
-}
-
-.project-color-picker [role=radiogroup] {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-
-.project-color-swatch {
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 2px solid var(--act-deep);
-  border-radius: 0;
-  box-shadow: inset -3px -3px 0 #0003,inset 3px 3px 0 #fff3;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  color: var(--act-deep);
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.project-color-swatch[aria-checked=true] {
-  border-color: var(--act-ink-bright);
-}
-
-.project-color-swatch[aria-checked=true]:after {
-  content: '✓';
-}
-
-.project-color-swatch:focus-visible {
-  outline: var(--act-focus-ring);
-  outline-offset: 2px;
-}
-
-.project-color-custom {
-  display: inline-flex;
-}
-
-.project-color-custom input {
-  width: 28px;
-  height: 26px;
-  padding: 0;
-  border: 1px solid var(--act-line-control);
-  background: transparent;
-  cursor: pointer;
 }
 
 .canvas-menu button[aria-disabled=true] {

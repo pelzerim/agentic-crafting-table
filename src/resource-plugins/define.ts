@@ -1,3 +1,4 @@
+import { isHexColor } from '../graph/colors.ts';
 import type { JsonObject, ResourceFields, ResourcePluginDefinition } from './types.ts';
 
 /** Copy defaults once when creating a draft/launch; never overwrite explicit input. */
@@ -30,7 +31,7 @@ export function validateFields(fields: ResourceFields, data: JsonObject): boolea
       && (!field.integer || Number.isSafeInteger(value))
       && (field.min === undefined || value >= field.min) && (field.max === undefined || value <= field.max);
     if (typeof value !== 'string' || (field.required && !value.trim())) return false;
-    if (field.kind === 'select' && !field.optionsSource && !field.options?.includes(value)) return false;
+    if (field.kind === 'select' && !field.optionsSource && !field.options?.includes(value) && !(field.customColor && isHexColor(value))) return false;
     if (field.pattern && !new RegExp(field.pattern).test(value)) return false;
     if (field.kind === 'url' && value) {
       try { if (!['https:', 'http:'].includes(new URL(value).protocol)) return false; }
@@ -50,7 +51,7 @@ export function fieldsSchema(fields: ResourceFields): JsonObject {
       title: field.label,
       ...(field.kind === 'multiselect' ? { items: { type: 'string', enum: [...field.options ?? []] }, uniqueItems: true } : {}),
       ...(field.description ? { description: field.description } : {}),
-      ...(field.kind === 'select' && !field.optionsSource ? { enum: [...field.options!] } : {}),
+      ...(field.kind === 'select' && !field.optionsSource ? field.customColor ? { anyOf: [{ enum: [...field.options!] }, { pattern: '^#[0-9a-fA-F]{6}$' }] as JsonObject[] } : { enum: [...field.options!] } : {}),
       ...(field.kind === 'url' ? { format: 'uri', pattern: '^https?://' } : {}),
       ...(field.required && ['text', 'url', 'select'].includes(field.kind) ? { minLength: 1 } : {}),
       ...(field.pattern ? { pattern: field.pattern } : {}),

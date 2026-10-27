@@ -7,7 +7,7 @@ import type { SqliteStore } from './sqlite-store.ts';
 import { nativeSummaryClient, summaryEvidence } from '../session-runtime/activity-summary.ts';
 import type { ActivitySummaryClient } from '../../src/agents/activity-summary.ts';
 import { AGENT_TITLE_MODEL } from '../../src/agents/agent-title.ts';
-import { buildProjectSummaryRequest, normalizeProjectSummary, projectSummarySample } from '../../src/agents/project-summary.ts';
+import { buildProjectSummaryRequest, parseProjectSummary, projectSummarySample, projectSummaryText, readProjectSummary } from '../../src/agents/project-summary.ts';
 import { projectDashboard } from '../../src/graph/project-dashboard.ts';
 import { todoEntries } from '../../src/graph/todos.ts';
 import type { PlotView } from '../../src/graph/plots.ts';
@@ -16,11 +16,11 @@ import { BACKGROUND_HEADROOM } from './standup.ts';
 
 /** A project is summarised once its input has been unchanged this long, and at most this often. */
 export const PROJECT_SUMMARY_DEBOUNCE_MS = 60_000, PROJECT_SUMMARY_INTERVAL_MS = 10 * 60_000;
-/** The latest summary per project while Summarise projects is on; `revision` changes with the list. */
-export interface ProjectSummariesSnapshot { revision: number; list: { projectId: string; text: string; model?: string }[] }
+/** The latest Next and Status lines per project while Summarise projects is on; `revision` changes with the list. */
+export interface ProjectSummariesSnapshot { revision: number; list: { projectId: string; next?: string; status?: string; model?: string }[] }
 export interface ProjectSummaryOptions { clock?: () => number; client?: ActivitySummaryClient | null; directory?: string; changed?: () => Promise<void>; allowed?: () => boolean; timeoutMs?: number; plots?: (state: WorkspaceState) => readonly PlotView[] }
 
-/** Writes a one- or two-sentence summary per project on the Map that is not muted
+/** Writes a Next and a Status line per project on the Map that is not muted
  * (MAP-22, AGENT-07) from its reduced dashboard. One request per tick at most. */
 export class ProjectSummaries {
   private store: SqliteStore;
@@ -65,7 +65,7 @@ export class ProjectSummaries {
   observe(): ProjectSummariesSnapshot {
     const settings = this.store.readSettings(), key = `${settings.revision}:${this.version}`;
     if (this.last?.key === key) return this.last.value;
-    const list = settings.value.summaries.projectSummaries ? this.store.projectSummaries().flatMap(row => row.text ? [{ projectId: row.projectId, text: row.text, ...(row.model ? { model: row.model } : {}) }] : []) : [];
+    const list = settings.value.summaries.projectSummaries ? this.store.projectSummaries().flatMap(row => row.text ? [{ projectId: row.projectId, ...readProjectSummary(row.text), ...(row.model ? { model: row.model } : {}) }] : []) : [];
     const revision = this.last && canonical(this.last.value.list) === canonical(list) ? this.last.value.revision : (this.last?.value.revision ?? 0) + 1;
     this.last = { key, value: { revision, list } };
     return this.last.value;
@@ -86,7 +86,7 @@ export class ProjectSummaries {
     const titled = onMap.map(node => ({ ...node, title: summaryEvidence(node.title), summary: node.summary ? summaryEvidence(node.summary) : node.summary }));
     for (const project of projects) {
       const sample = projectSummarySample(projectDashboard(project.id, titled, { todos, plots, pipelineOf }));
-      const fingerprint = createHash('sha256').update(canonical(['project-summary-v1', AGENT_TITLE_MODEL, sample])).digest('hex');
+      const fingerprint = createHash('sha256').update(canonical(['project-summary-v2', AGENT_TITLE_MODEL, sample])).digest('hex');
       const input = this.inputs.get(project.id);
       if (input?.fingerprint !== fingerprint) { this.inputs.set(project.id, { fingerprint, changedAt: now }); continue; }
       if (now - input.changedAt >= PROJECT_SUMMARY_DEBOUNCE_MS && stored.get(project.id)?.fingerprint !== fingerprint) due.push({ id: project.id, fingerprint, content: sample });
@@ -99,7 +99,8 @@ export class ProjectSummaries {
       let text: string | undefined;
       try {
         const cancelled = new Promise<never>((_, reject) => abort.signal.addEventListener('abort', () => reject(new Error('Cancelled')), { once: true }));
-        text = normalizeProjectSummary(await Promise.race([this.client.complete(buildProjectSummaryRequest(entry.content), abort.signal), cancelled]));
+        const lines = parseProjectSummary(await Promise.race([this.client.complete(buildProjectSummaryRequest(entry.content), abort.signal), cancelled]), entry.content);
+        text = lines && projectSummaryText(lines);
       } catch { /* A failed or uncertain attempt still counts; the earlier text stays. */ }
       finally { clearTimeout(timeout); if (this.pending === abort) this.pending = undefined; }
       if (!text || abort.signal.aborted || this.closed || this.paused || !this.store.readSettings().value.summaries.projectSummaries) return;

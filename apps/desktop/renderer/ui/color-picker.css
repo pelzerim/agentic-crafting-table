@@ -1,0 +1,162 @@
+/* The shared colour picker: square pixel swatches, a Your colours row and the custom pad. Swatch colours come from data (`--swatch`). */
+.color-picker {
+  --color-picker-swatch: 22px;
+  display: grid;
+  gap: var(--act-sp-1_5);
+  justify-items: start;
+}
+
+.color-picker[data-compact] {
+  --color-picker-swatch: 20px;
+}
+
+.color-picker-row,
+.color-picker-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--act-sp-1_5);
+  align-items: center;
+}
+
+.color-picker:not([data-compact]) .color-picker-row>.color-picker-swatches {
+  display: contents;
+}
+
+.color-picker[data-compact] .color-picker-row,
+.color-picker[data-compact] .color-picker-swatches {
+  flex-wrap: nowrap;
+}
+
+.live-workspace .color-picker .color-picker-swatch,
+.color-picker .color-picker-swatch {
+  display: grid;
+  place-items: center;
+  width: var(--color-picker-swatch);
+  height: var(--color-picker-swatch);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  clip-path: none;
+  background: var(--swatch, var(--act-control));
+  box-shadow: inset 0 0 0 1px var(--act-line-strong);
+  color: var(--act-ink);
+  cursor: pointer;
+}
+
+.live-workspace .color-picker .color-picker-swatch:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 1px var(--act-line-strong), inset 0 0 0 2px var(--act-line-accent);
+  border-image: none;
+}
+
+.live-workspace .color-picker .color-picker-swatch[aria-checked=true],
+.color-picker .color-picker-swatch[aria-checked=true] {
+  outline: 2px solid var(--act-ink);
+  outline-offset: 1px;
+}
+
+.live-workspace .color-picker .color-picker-swatch:focus-visible,
+.color-picker .color-picker-swatch:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: 2px;
+  background: var(--swatch, var(--act-control));
+  box-shadow: inset 0 0 0 1px var(--act-line-strong);
+  border-image: none;
+}
+
+.color-picker .color-picker-swatch svg {
+  width: 12px;
+  height: 12px;
+}
+
+.color-picker .color-picker-custom:not([style]) {
+  background: var(--act-sunken);
+}
+
+.color-picker .color-picker-more[aria-expanded=true] {
+  background: var(--act-control-hover);
+}
+
+.color-picker-pad {
+  display: grid;
+  gap: var(--act-sp-1_5);
+  padding: var(--act-sp-1_5);
+  background: var(--act-sunken);
+  box-shadow: inset 0 0 0 1px var(--act-line);
+}
+
+.color-picker-cells {
+  position: relative;
+  width: calc(12 * 12px);
+  height: calc(8 * 12px);
+}
+
+.color-picker[data-compact] .color-picker-cells {
+  width: calc(12 * 11px);
+  height: calc(8 * 11px);
+}
+
+.color-picker-cells svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.color-picker-cell-mark {
+  fill: none;
+  stroke: var(--act-deep);
+  stroke-width: .2;
+}
+
+.color-picker-cell-mark[data-inner] {
+  stroke: var(--act-ink-bright);
+  stroke-width: .1;
+}
+
+.color-picker-axis {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.color-picker-axis:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: 2px;
+}
+
+.color-picker-entry {
+  display: flex;
+  gap: var(--act-sp-1);
+  align-items: center;
+}
+
+.color-picker-preview {
+  width: var(--color-picker-swatch);
+  height: var(--color-picker-swatch);
+  flex: none;
+  background: var(--swatch);
+  box-shadow: inset 0 0 0 1px var(--act-line-strong);
+}
+
+.live-workspace .color-picker-entry input,
+.color-picker-entry input {
+  width: 9ch;
+  min-width: 0;
+  height: var(--color-picker-swatch);
+  padding: 0 var(--act-sp-1);
+  font: var(--act-fs-meta) var(--act-font-mono);
+}
+
+.color-picker-entry input[aria-invalid=true] {
+  box-shadow: inset 0 0 0 1px var(--act-coral-ink);
+}
+
+.live-workspace .color-picker-entry .color-picker-apply {
+  height: var(--color-picker-swatch);
+  background: var(--act-control);
+  color: var(--act-ink);
+  padding: 0 var(--act-sp-2);
+  font-size: var(--act-fs-meta);
+}

@@ -62,7 +62,9 @@ export async function captureGitComparison(directory: string, requestId: string,
   try {
     const saved: GitComparison = JSON.parse(await readFile(manifest, 'utf8')), { digest: expected, ...content } = saved;
     if (canonical(comparisonInput.parse(saved)) !== canonical(input) || saved.cwd !== cwd || digest(content) !== expected) throw new Error('Saved review comparison does not match this request');
-    return saved;
+    // A checkout removed after its review finished is rebuilt from the cache.
+    if (await stat(cwd).then(info => info.isDirectory(), () => false)) return saved;
+    await rm(manifest, { force: true });
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   signal.throwIfAborted(); await mkdir(folder, { recursive: true, mode: 0o700 }); await mkdir(cacheParent, { recursive: true, mode: 0o700 });
   const environment: NodeJS.ProcessEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));

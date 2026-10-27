@@ -1,21 +1,27 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MenuAction, MenuActionId } from '../../../packages/core/context-menu.ts';
 import { ItemIcon } from './icons.tsx';
+import { canonical } from '../../../packages/core/control.ts';
+import { ColorPicker } from './ui/color-picker.tsx';
+import { useRecentColors } from './recent-colors.ts';
 
 const ICONS: Partial<Record<MenuActionId, string>> = {
   open: 'open', connect: 'link', 'open-web': 'external', 'copy-url': 'copy', edit: 'settings', settings: 'settings', 'add-todo': 'square-check', 'remove-todo': 'square', 'auto-title': 'sparkles',
   complete: 'seen', reopen: 'refresh', below: 'undermap', surface: 'open', archive: 'archive', 'archive-browser': 'archive', 'new-item': 'plus', 'new-project': 'project',
-  'remove-link': 'unlink', 'plot-auto': 'sparkles', 'make-blocking': 'link', 'make-normal': 'link', 'reverse-link': 'link', 'send-project': 'project',
+  'remove-link': 'unlink', 'plot-auto': 'sparkles', 'make-blocking': 'link', 'make-normal': 'link', 'reverse-link': 'link', 'send-project': 'project', 'move-plot': 'sprout', 'plot-unpin': 'minus',
   'context-show': 'message-square', 'context-hide': 'message-square', 'context-add': 'message-square', 'standup-report': 'file-text',
 };
 /** Top-level rows lead with a 16px glyph; provider actions pick theirs from the action. */
+/** What a person sees and would send, apart from each choice's fresh request id. */
+const shape = (children: MenuAction[]) => canonical(children.map(action => action.mutation ? { ...action, mutation: { ...action.mutation, input: { ...action.mutation.input, requestId: undefined } } } : action));
 const icon = (action: MenuAction) => ICONS[action.id] ?? (action.id.startsWith('convert:') ? 'refresh' : action.id.includes('review') ? 'review' : action.id.includes('merge') ? 'git-merge' : action.remote ? 'remote' : undefined);
 
 export function CanvasMenu({ screen, avoid, actions, act, close, loadChoices, onHighlight, label = 'Context actions' }: {
   screen: { x: number; y: number }; actions: MenuAction[]; label?: string;
   /** An item's title row: the menu opens at the pointer but moves below or above it rather than covering it. */
   avoid?: { x: number; y: number; width: number; height: number };
-  act(action: MenuAction): void; close(): void; loadChoices?(action: MenuAction): Promise<MenuAction[]>;
+  act(action: MenuAction): void; close(): void; /** `refreshed` replaces the entries while the submenu is open, when a saved answer was shown first. */
+  loadChoices?(action: MenuAction, refreshed: (children: MenuAction[]) => void): Promise<MenuAction[]>;
   /** Hovered/focused options may point at map items and connections. */
   onHighlight?(highlight: MenuAction['highlight']): void;
 }) {
@@ -28,16 +34,21 @@ export function CanvasMenu({ screen, avoid, actions, act, close, loadChoices, on
   // The loaded question is the confirmation when the type says a pick answers it.
   const asks = irreversible && !(group?.choices?.pickConfirms && loaded?.children.some(child => child.id === 'plugin:choice-prompt'));
   const [confirming, setConfirming] = useState<MenuActionId>(), [confirmText, setConfirmText] = useState('');
-  // A row of choices is one stop for Up/Down: the choice last focused, else the checked one.
-  const [rowAt, setRowAt] = useState<Partial<Record<MenuActionId, number>>>({});
+  const { recent, remember } = useRecentColors();
   const children = group?.choices ? loaded?.id === group.id ? [...(irreversible ? [{ id: 'plugin:cancel' as const, label: 'Cancel' }] : []), ...loaded.children] : [{ id: 'plugin:loading' as const, label: group.choices.loadingLabel ?? 'Loading statuses…', disabled: true }] : group?.children;
   useEffect(() => setConfirming(undefined), [submenu]);
   useLayoutEffect(() => { setConfirmText(''); if (confirming) child.current?.querySelector<HTMLElement>('[data-confirm-text], [data-confirm-back]')?.focus(); }, [confirming]);
   const confirmSubject = (action: MenuAction) => { const options = loaded?.children.filter(option => option.mutation) ?? [], prompt = loaded?.children.find(option => option.id === 'plugin:choice-prompt'); return options.length === 1 && prompt ? prompt.label : `${action.label}?`; };
   useEffect(() => {
     if (!group?.choices || !loadChoices) return;
-    let disposed = false; setLoaded(undefined);
-    void loadChoices(group).then(children => { if (!disposed) setLoaded({ id: group.id, children }); })
+    let disposed = false, shown = ''; setLoaded(undefined);
+    // Changed entries end a confirmation in progress and focus the list again; unchanged ones are swapped in place.
+    const refreshed = (children: MenuAction[]) => {
+      if (disposed) return;
+      if (shape(children) !== shown) { focusChild.current = Boolean(child.current?.contains(document.activeElement)); setConfirming(undefined); }
+      shown = shape(children); setLoaded({ id: group.id, children });
+    };
+    void loadChoices(group, refreshed).then(children => { if (!disposed) { shown = shape(children); setLoaded({ id: group.id, children }); } })
       .catch(error => { if (!disposed) setLoaded({ id: group.id, children: [{ id: 'plugin:error', label: error.message ?? String(error), disabled: true }] }); });
     return () => { disposed = true; };
   }, [submenu]);
@@ -87,22 +98,15 @@ export function CanvasMenu({ screen, avoid, actions, act, close, loadChoices, on
       const action = actions[index]; if (action?.children) { event.preventDefault(); event.stopPropagation(); open(action, buttons[index], true); }
     } else if (event.key === 'Escape' || event.key === 'Tab') { event.preventDefault(); event.stopPropagation(); close(); }
   };
-  const rowKeys = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    const direction = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-    if (!direction) return;
-    event.preventDefault(); event.stopPropagation();
-    const choices = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button')], index = choices.indexOf(document.activeElement as HTMLButtonElement);
-    choices[(index + direction + choices.length) % choices.length]?.focus();
-  };
-  const row = (action: MenuAction, choices: NonNullable<MenuAction['row']>, nested: boolean) => {
-    const stop = rowAt[action.id] ?? Math.max(0, choices.findIndex(choice => choice.checked));
-    return <div className="canvas-menu-row" role="radiogroup" aria-label={action.label} onKeyDown={rowKeys}>
+  /** A row of colours is the shared picker in its compact form: one Up/Down stop, Left/Right within it. */
+  const row = (action: MenuAction, choices: NonNullable<MenuAction['row']>, nested: boolean) =>
+    <div className="canvas-menu-row" onPointerEnter={() => { if (!nested) setSubmenu(undefined); }}>
       <span className="canvas-menu-row-label" aria-hidden="true">{action.label}</span>
-      <div>{choices.map((choice, index) => <button key={choice.value} type="button" role="radio" className="canvas-menu-swatch" aria-checked={choice.checked} aria-label={choice.label} title={choice.label} tabIndex={-1}
-        data-row-rest={index === stop ? undefined : true} style={choice.swatch ? { '--swatch': choice.swatch } as React.CSSProperties : undefined}
-        onFocus={() => setRowAt(at => ({ ...at, [action.id]: index }))} onPointerEnter={() => { if (!nested) setSubmenu(undefined); }} onClick={() => act({ ...action, value: choice.value })}>{choice.swatch ? '' : choice.label}</button>)}</div>
+      <ColorPicker compact label={action.label} custom={Boolean(action.customColor)} recent={recent} onRecent={remember}
+        presets={choices.map(choice => ({ id: choice.value, label: choice.label, color: choice.swatch ?? 'var(--act-control)' }))}
+        value={choices.find(choice => choice.checked)?.value ?? action.customColor?.shown}
+        onChange={next => act({ ...action, value: 'custom' in next ? next.custom : next.id })} />
     </div>;
-  };
   const entries = (items: MenuAction[], nested = false) => items.map(action => <div key={action.id}>
     {action.divider && <div role="separator" />}
     {action.row ? row(action, action.row, nested) : nested && confirming === action.id ? <div className="canvas-menu-confirm" role="group" aria-label={action.label}>

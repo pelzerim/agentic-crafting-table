@@ -18,6 +18,11 @@ import { SqliteStore } from './sqlite-store.ts';
 import { prepareWorkspace } from './paths.ts';
 import { MAX_FRAME_BYTES, PROTOCOL_VERSION, serializeError } from './protocol.ts';
 import type { ResponseFrame } from './protocol.ts';
+import { FrameWriter, encodeFrame } from './local-rpc.ts';
+import type { EncodedFrame } from './local-rpc.ts';
+import { presentLayer } from '../../src/graph/layers.ts';
+import type { MapLayer } from '../../src/graph/layers.ts';
+import { ServiceHealth } from './service-health.ts';
 import type { ResourcePluginRegistry } from '../../src/resource-plugins/registry.ts';
 import { SessionCoordinator } from './sessions.ts';
 import type { RuntimeOptions } from '../session-runtime/client.ts';
@@ -78,6 +83,7 @@ import { recordingsSchema, deleteRecordingSchema } from '../session-runtime/prot
 import { ArchitectureRequests } from './architecture-requests.ts';
 import { TriageCoordinator } from './triage.ts';
 import { TodoSweeper } from './todo-sweeper.ts';
+import { ComparisonPruner } from './comparison-pruning.ts';
 import type { TriageAdapter } from './triage.ts';
 import { linearTriageAdapter } from '../provider-runtime/linear-triage.ts';
 import { StandupReports } from './standup.ts';
@@ -94,6 +100,11 @@ function applySettingsPresets(store: SqliteStore, registry: ResourcePluginRegist
     catch (error) { console.error(`Settings preset ${preset.id} of ${preset.owner} was not applied: ${(error as Error).message}`); }
   }
 }
+
+const mapLayer = (value: unknown): MapLayer | undefined => {
+  if (value === undefined || value === 'map' || value === 'below') return value;
+  throw new Error('Unknown map layer');
+};
 
 export async function startWorkspaceService(directory: string, registry?: ResourcePluginRegistry, runtimeOptions?: RuntimeOptions, providers?: { titleClient?: ActivitySummaryClient; connections?: ProviderConnections; host?(registry: ResourcePluginRegistry): ResourcePluginHost; assignments?: AssignmentAdapter[]; triage?: { adapters: TriageAdapter[]; connections?: () => ProviderConnection[] }; reviews?: Record<string, ReviewSource>; workflows?: Record<string, WorkflowSource>; reviewRuntime?: ReviewRuntime; inboxClient?(connection: ProviderConnection): GitHubClient; pluginTimeoutMs?: number; reminderClock?: ReminderClockOptions; todoClock?: () => number; updates?: Partial<UpdateCheckerOptions> }) {
   const paths = prepareWorkspace(directory), instanceId = randomUUID();
@@ -125,7 +136,9 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   for (const failure of loadFailures) pluginStore.recordFailure(failure.id, failure.reason);
   const pluginState = () => pluginStatuses(pluginStore.list(), running, breakers);
   useValidatorStore(store);
-  const sockets = new Set<Socket>(), subscribers = new Set<Socket>();
+  /** Each subscriber's layer; `undefined` asks for the whole state as a read returns it. */
+  const sockets = new Set<Socket>(), subscribers = new Map<Socket, MapLayer | undefined>(), writers = new Map<Socket, FrameWriter>();
+  const health = new ServiceHealth();
   let closing = false;
   let startup: Promise<void> | undefined, startupReviews: Promise<void> | undefined, startupArchitecture: Promise<void> | undefined, shutdown: Promise<void> | undefined;
   const assertStarting = () => { if (closing) throw new Error('Workspace service closed during startup'); };
@@ -137,18 +150,19 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   const projectSummaries = new ProjectSummaries(store, control, { changed: () => broadcast(), allowed: () => !closing && lifecycle.allowsBackgroundWork, directory, client: providers ? providers.titleClient ?? null : undefined,
     plots: state => plots.observe(state).list.filter(plot => !plot.hidden) });
   const reminders = new Reminders(store, { ...providers?.reminderClock, changed: () => broadcast() });
-  reminders.on('due', due => { for (const subscriber of subscribers) send(subscriber, { event: 'reminder-due', ...due }); });
+  reminders.on('due', due => { for (const subscriber of subscribers.keys()) send(subscriber, { event: 'reminder-due', ...due }, 'reminder-due'); });
   const saved = async () => { const value = await store.snapshot(); return { ...value, plots: plots.observe(value.state), projectSummaries: projectSummaries.observe(), reminders: reminders.snapshot() }; };
   // People see a pending provider change at once; background observers keep the saved graph.
   const presented = <T extends { state: WorkspaceState }>(value: T): T => ({ ...value, state: resources.overlay(value.state) });
   const snapshot = async () => presented(await saved());
-  const send = (socket: Socket, frame: ResponseFrame, flushed?: () => void) => {
-    const data = JSON.stringify(frame) + '\n';
-    if (socket.destroyed) return;
-    if (Buffer.byteLength(data) + socket.writableLength > MAX_FRAME_BYTES) { socket.destroy(); return; }
-    socket.write(data, flushed);
+  /** The snapshot as a subscriber on `layer` receives it; without a layer, the whole one. */
+  const forLayer = <T extends { state: WorkspaceState }>(value: T, layer: MapLayer | undefined): T => {
+    if (!layer) return value;
+    const { state, layers } = presentLayer(value.state, layer);
+    return { ...value, state, layer, layers };
   };
-  const broadcast = async () => {
+  const send = (socket: Socket, frame: ResponseFrame, label: string, flushed?: () => void) => writers.get(socket)?.send(frame, label, { flushed });
+  const broadcast = () => health.operation('broadcast', async () => {
     const current = await saved();
     summaries?.observe(current.state);
     titles?.observe(current.state);
@@ -158,9 +172,14 @@ export async function startWorkspaceService(directory: string, registry?: Resour
     loops.observe();
     autoReviews.observe();
     servicePlugins.observe();
-    const shown = presented(current);
-    for (const socket of subscribers) send(socket, { event: 'snapshot', snapshot: shown });
-  };
+    if (!subscribers.size) return;
+    const shown = presented(current), frames = new Map<MapLayer | undefined, EncodedFrame>();
+    for (const [socket, layer] of subscribers) {
+      let frame = frames.get(layer);
+      if (!frame) { frame = encodeFrame({ event: 'snapshot', snapshot: forLayer(shown, layer) } satisfies ResponseFrame); frames.set(layer, frame); }
+      writers.get(socket)?.sendEncoded(frame, 'snapshot', { replaceable: true });
+    }
+  });
   // Rollout validations and events change outside commands; one broadcast covers a burst of them.
   let rolloutBroadcast = false;
   store.onRolloutChange(() => {
@@ -198,6 +217,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   const hostedAgents: HostedAgents | undefined = agents && terminals ? { ready: () => agentProvider('claude').probe(), launch: (request, hosted) => agents.launchHosted(request, hosted), fallbackDirectory: () => terminals.fallbackDirectory() } : undefined;
   const architecture = new ArchitectureRequests(directory, store, control, reviewSources, agents ? (request, hosted) => agents.launchHosted(request, hosted) : undefined);
   const reviews = terminals && Object.keys(reviewSources).length ? new ReviewCoordinator(directory, store, control, terminals, reviewSources, broadcast, providers?.reviewRuntime) : undefined;
+  const checkouts = new ComparisonPruner(directory, store, terminals, () => !closing && lifecycle.allowsBackgroundWork);
   const findings = reviews ? new ReviewFindingsCoordinator(store, control, nodeId => reviews.result(nodeId), terminals, broadcast, () => !closing && lifecycle.allowsBackgroundWork,
     agents ? { create: request => agents.create(request), model: async provider => (await agentProvider(provider).models()).default } : undefined) : undefined;
   // Review loops drive the host's direct reviews and findings; their records live in the code.review package's storage.
@@ -303,25 +323,32 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   attachTitles = new AttachTitles(store, control, broadcast, () => !closing && lifecycle.allowsBackgroundWork, directory, providers ? providers.titleClient ?? null : undefined);
   if (terminals) agentTitles = new AgentTitles(store, control, id => terminals.runtime.call('sessions.read', { sessionId: id }), broadcast, () => !closing && lifecycle.allowsBackgroundWork, directory, providers ? providers.titleClient ?? null : undefined);
   if (agentTitles) { const titler = agentTitles; operation('agent.title', ({ nodeId }) => titler.request(nodeId)); }
+  const pollers: [object, string, string][] = [[resources, 'poll', 'resources.poll'], [assignments, 'tick', 'assignments.tick'], [triage, 'tick', 'triage.tick'], [todoSweeper, 'sweep', 'todos.sweep'],
+    [workflows, 'tick', 'workflows.tick'], [checkouts, 'tick', 'checkouts.tick'], [inbox, 'refresh', 'inbox.refresh'], [loops, 'reconcileOnce', 'review-loops.reconcile'],
+    [autoReviews, 'reconcileOnce', 'auto-reviews.reconcile'], ...(summaries ? [[summaries, 'tick', 'summaries.tick'] as [object, string, string]] : [])];
+  for (const [target, method, name] of pollers) health.timed(target, method, name);
   const creators: Record<string, (request: ResourceCreate) => Promise<unknown>> = { 'resource.attach': request => resources.attach(request), ...(terminals ? {
     'terminal.create': request => terminals.create({ ...request, sessionId: request.requestId, cwd: request.data.cwd }),
     'agent.create': request => agents!.create(request),
   } : {}) };
   const server = createServer(socket => {
     sockets.add(socket); socket.setEncoding('utf8'); socket.setTimeout(5000, () => socket.destroy());
+    const writer = new FrameWriter(socket, health);
+    writers.set(socket, writer);
     let buffer = '';
     socket.on('error', () => {});
-    socket.on('close', () => { sockets.delete(socket); subscribers.delete(socket); });
+    socket.on('close', () => { sockets.delete(socket); subscribers.delete(socket); writers.delete(socket); health.disconnected(writer.peer); });
     const handle = async (line: string) => {
-      let id = '';
+      let id = '', method = 'request', finish: (() => void) | undefined;
       try {
         const request = JSON.parse(line);
         if (typeof request.id !== 'string' || request.id.length > 128) throw new Error('Invalid request ID');
         id = request.id;
         if (typeof request.token !== 'string' || !/^[a-f0-9]{64}$/.test(request.token) || !timingSafeEqual(Buffer.from(request.token), Buffer.from(paths.secret))) {
-          send(socket, { id, error: { code: 'UNAUTHORIZED', message: 'Workspace authentication failed' } }, () => socket.end()); return;
+          send(socket, { id, error: { code: 'UNAUTHORIZED', message: 'Workspace authentication failed' } }, method, () => socket.end()); return;
         }
         socket.setTimeout(0);
+        if (typeof request.method === 'string') { method = request.method.slice(0, 100); finish = health.started(method); }
         if (closing) throw Object.assign(new Error('Workspace is shutting down'), { code: 'WORKSPACE_CLOSING' });
         const args = request.args ?? {};
         let result: unknown;
@@ -347,14 +374,15 @@ export async function startWorkspaceService(directory: string, registry?: Resour
             if (!terminals) throw new Error('Native sessions are not configured');
             result = await terminals.runtime.call(request.method, request.method === 'recordings.list' ? recordingsSchema.parse(args) : deleteRecordingSchema.parse(args));
             if (request.method === 'recordings.delete') {
-              for (const subscriber of subscribers) send(subscriber, { event: 'recording-deleted', sessionId: (result as { session: SessionRecord }).session.id });
+              for (const subscriber of subscribers.keys()) send(subscriber, { event: 'recording-deleted', sessionId: (result as { session: SessionRecord }).session.id }, 'recording-deleted');
             }
             break;
           }
           case 'diagnostics.report': {
             const sessions = terminals ? await terminals.runtime.call<SessionRecord[]>('sessions.list').catch(() => undefined) : undefined;
-            result = supportReport(await control.read(), store.readSettings().value, store.listJobs(), sessions); break;
+            result = supportReport(await control.read(), store.readSettings().value, store.listJobs(), sessions, health.report()); break;
           }
+          case 'diagnostics.health': result = health.report(); break;
           case 'settings.write': case 'connections.select': {
             let write = args;
             if (request.method === 'connections.select') {
@@ -377,7 +405,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
             triage.settingsChanged();
             todoSweeper.settingsChanged();
             await resources.refreshPresentation();
-            for (const subscriber of subscribers) send(subscriber, { event: 'settings', settings });
+            for (const subscriber of subscribers.keys()) send(subscriber, { event: 'settings', settings }, 'settings');
             await broadcast();
             break;
           }
@@ -406,8 +434,8 @@ export async function startWorkspaceService(directory: string, registry?: Resour
           case 'attention.history': { const input = z.object({ offset: z.number().int().min(0).max(99).default(0), limit: z.number().int().min(1).max(100).default(10) }).strict().parse(args ?? {}); result = store.attentionHistory(input.offset, input.limit); break; }
           case 'lifecycle.active': result = await lifecycle.active(); break;
           case 'lifecycle.preview': result = { sessions: await lifecycle.active(), pending: lifecycle.pendingCount }; break;
-          case 'lifecycle.close': inbox.stop(); await agents?.pause(); await workflows.pause(); await servicePlugins.pause(); await findings?.close(); await loops.close(); await autoReviews.close(); await reviews?.close(); await architecture.close(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await resources.pause(); await summaries?.pause(); await titles?.pause(); await agentTitles?.pause(); await attachTitles?.pause(); await standup.pause(); await updates.pause(); await plots.pause(); await projectSummaries.pause(); await reminders.pause(); result = await lifecycle.close(); break;
-          case 'lifecycle.recover': { const input = z.object({ retry: z.boolean().default(false), startupId: z.string().uuid().optional() }).parse(args); result = lifecycle.recover(input.retry, input.startupId); summaries?.start(); titles?.start(); agentTitles?.start(); attachTitles?.start(); standup.start(); updates.start(); plots.start(); projectSummaries.start(); reminders.start(); assignments.start(); triage.start(); todoSweeper.start(); resources.start(); workflows.resume(); findings?.start(); loops.start(); autoReviews.start(); servicePlugins.start(); agents?.start(); break; }
+          case 'lifecycle.close': inbox.stop(); await agents?.pause(); await workflows.pause(); await servicePlugins.pause(); await findings?.close(); await loops.close(); await autoReviews.close(); await reviews?.close(); await architecture.close(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await checkouts.pause(); await resources.pause(); await summaries?.pause(); await titles?.pause(); await agentTitles?.pause(); await attachTitles?.pause(); await standup.pause(); await updates.pause(); await plots.pause(); await projectSummaries.pause(); await reminders.pause(); result = await lifecycle.close(); break;
+          case 'lifecycle.recover': { const input = z.object({ retry: z.boolean().default(false), startupId: z.string().uuid().optional() }).parse(args); result = lifecycle.recover(input.retry, input.startupId); summaries?.start(); titles?.start(); agentTitles?.start(); attachTitles?.start(); standup.start(); updates.start(); plots.start(); projectSummaries.start(); reminders.start(); assignments.start(); triage.start(); todoSweeper.start(); checkouts.start(); resources.start(); workflows.resume(); findings?.start(); loops.start(); autoReviews.start(); servicePlugins.start(); agents?.start(); break; }
           case 'agent.hook': if (!agents) throw new Error('Native agents are not configured'); result = await agents.hook(args); break;
           case 'plugins.discover': {
             const input = pluginDiscoverySchema.parse(args);
@@ -462,17 +490,17 @@ export async function startWorkspaceService(directory: string, registry?: Resour
           case 'view.read': result = await store.readView(String(args.clientId)); break;
           case 'view.write': result = await store.writeView(String(args.clientId), args.view); break;
           case 'subscribe': {
-            const cursor = await store.events(args.after ?? 0);
-            subscribers.add(socket);
-            result = { ...await snapshot(), resetRequired: cursor.resetRequired };
+            const cursor = await store.events(args.after ?? 0), layer = mapLayer(args.layer);
+            subscribers.set(socket, layer);
+            result = { ...forLayer(await snapshot(), layer), resetRequired: cursor.resetRequired };
             break;
           }
           case 'unsubscribe': subscribers.delete(socket); result = {}; break;
-          case 'admin.shutdown': send(socket, { id, result: {} }, () => { void close(); }); return;
+          case 'admin.shutdown': send(socket, { id, result: {} }, method, () => { void close(); }); return;
           default: throw new Error('Unknown workspace method');
         }
-        send(socket, { id, result });
-      } catch (error) { send(socket, { id, error: serializeError(error) }); }
+        send(socket, { id, result }, method);
+      } catch (error) { send(socket, { id, error: serializeError(error) }, method); } finally { finish?.(); }
     };
     socket.on('data', (data: string) => {
       buffer += data;
@@ -488,8 +516,9 @@ export async function startWorkspaceService(directory: string, registry?: Resour
     if (shutdown) return shutdown;
     closing = true;
     shutdown = (async () => {
+      health.stop();
       await workflows.pause();
-      await inbox.close(); await agents?.pause(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await resources.pause();
+      await inbox.close(); await agents?.pause(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await checkouts.pause(); await resources.pause();
       await summaries?.close();
       await titles?.close();
       await agentTitles?.close();
@@ -534,6 +563,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
     rmSync(paths.socket, { force: true });
     await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(paths.socket, () => { server.removeListener('error', reject); resolve(); }); });
     chmodSync(paths.socket, 0o600);
+    health.start();
     store.recoverInterruptedJobs();
     await configureLogs();
     assertStarting();
@@ -558,7 +588,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
     plots.start();
     projectSummaries.start();
     reminders.start();
-    assignments.start(); triage.start(); todoSweeper.start(); resources.start(); inbox.start(); loops.start(); servicePlugins.start(); agents?.start();
+    assignments.start(); triage.start(); todoSweeper.start(); checkouts.start(); resources.start(); inbox.start(); loops.start(); servicePlugins.start(); agents?.start();
   })();
   try { await startup; } catch (error) { await close(); throw error; }
   return { close, store, control, resources, paths, instanceId };

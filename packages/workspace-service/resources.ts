@@ -1,6 +1,7 @@
 import * as z from 'zod/v4';
 import { resourceMapIndicators, hasResourceMapPresentation, presentationAttention } from './resource-presentation.ts';
 import { isArchived, isOffMap } from '../../src/graph/archive.ts';
+import { isMuted, mutedProjectIds } from '../../src/graph/mute.ts';
 import { blockedBy, blockerList, blockerName } from '../../src/graph/blocking.ts';
 import { resourceReference } from '../../src/resource-plugins/views.ts';
 import { createHash, randomUUID } from 'node:crypto';
@@ -37,7 +38,7 @@ const fingerprint = (resource: ResourceRecord) => createHash('sha256').update(ca
 export const PENDING_WRITE_MS = 30 * 60_000;
 /** How long an item's reads carry the reason its last change was taken back. */
 const REVERTED_NOTICE_MS = 15 * 60_000;
-const PENDING_SLOT = 'pending-write', PENDING_KEY = 'write';
+const PENDING_SLOT = 'pending-write', PENDING_KEY = 'write', CHOICES_SLOT = 'choices:';
 const PENDING_CUE: ResourceIndicator = { id: 'pending', label: 'Confirming', icon: 'clock', tone: 'amber' };
 /** A person's change shown before the provider confirms it; `writing` while the write is in flight. */
 interface PendingWrite { requestId: string; actionId: string; nodeId: string; input: JsonObject; base: ResourceSnapshot; since: number; writing: boolean; optimism: ResourceOptimism }
@@ -52,6 +53,8 @@ export class ResourceCoordinator {
   private enabled = false;
   private accountBackoff = new Map<string, number>();
   private cadence = new Map<string, { unchanged: number; attention: number; complete: boolean; within?: number }>();
+  /** Resources whose every on-map item was in a muted project at the last poll. */
+  private mutedResources = new Set<string>();
   private allowed: () => boolean;
   private pending = new Map<string, { input: string; promise: Promise<unknown> }>();
   private binding: Promise<unknown> = Promise.resolve();
@@ -59,6 +62,8 @@ export class ResourceCoordinator {
   private writes = new Map<string, PendingWrite>();
   private failures = new Map<string, { requestId: string; message: string; at: number }>();
   private restored = false;
+  /** Counts the writes on each resource, so a choices read that a write overtook is not saved. */
+  private choiceWrites = new Map<string, number>();
   constructor(store: SqliteStore, control: WorkspaceControl, host: ResourcePluginHost, connections: ProviderConnections, changed: () => Promise<void>, now = Date.now, allowed = () => true) {
     this.store = store; this.control = control; this.host = host; this.connections = connections; this.changed = changed; this.now = now; this.allowed = allowed;
   }
@@ -95,17 +100,24 @@ export class ResourceCoordinator {
         const retry = this.store.resourceCache(resource.id, 'snapshot', fingerprint(resource))?.retryAt ?? 0;
         this.accountBackoff.set(resource.connectionId, Math.max(this.accountBackoff.get(resource.connectionId) ?? 0, retry));
       }
+      const quiet = mutedProjectIds(state.nodes), wasMuted = this.mutedResources;
+      this.mutedResources = new Set();
       for (const node of state.nodes) {
         if (!this.allowed() || signal.aborted || this.closing.signal.aborted) return;
         if (!node.resourceId || seen.has(node.resourceId) || isOffMap(node, state.nodes)) continue;
         seen.add(node.resourceId);
-        const resource = state.resources.find(record => record.id === node.resourceId)!;
-        const interval = this.interval(resource, Math.max(...state.nodes.filter(alias => alias.resourceId === resource.id).map(alias => alias.attentionVersion ?? 0)));
+        const resource = state.resources.find(record => record.id === node.resourceId)!, aliases = state.nodes.filter(alias => alias.resourceId === resource.id);
+        const muted = quiet.size > 0 && aliases.every(alias => isOffMap(alias, state.nodes) || isMuted(alias, state.nodes, quiet));
+        if (muted) this.mutedResources.add(resource.id);
+        // An unmuted resource starts over at the first step and reads now.
+        const unmuted = !muted && wasMuted.has(resource.id);
+        if (unmuted) this.cadence.delete(resource.id);
+        const interval = this.interval(resource, Math.max(...aliases.map(alias => alias.attentionVersion ?? 0)), muted);
         // An unconfirmed change asks for a fresh read on every tick until one settles it.
         const unsettled = this.writes.get(resource.id);
         if (unsettled?.writing || !interval && !unsettled || (this.accountBackoff.get(resource.connectionId ?? '') ?? 0) > this.now()) continue;
         const cache = this.store.resourceCache(resource.id, 'snapshot', fingerprint(resource));
-        if (!unsettled && cache && this.now() - cache.checkedAt < interval!) continue;
+        if (!unsettled && !unmuted && cache && this.now() - cache.checkedAt < interval!) continue;
         try { await inBackground(() => this.read(node.id, Boolean(unsettled), signal, true)); } catch { /* Keep prior content; other accounts still refresh. */ }
       }
     };
@@ -113,14 +125,17 @@ export class ResourceCoordinator {
   }
   /** This resource's background interval now: its plugin interval stretched by
    * unchanged observations and by its account's request budget; undefined when
-   * it is not polled or its account's background work is paused. */
-  interval(resource: ResourceRecord, attention = 0) {
+   * it is not polled or its account's background work is paused. A resource only
+   * a muted project shows waits the longest step of its cadence. */
+  interval(resource: ResourceRecord, attention = 0, muted = false) {
     const base = this.host.pollingInterval(resource.pluginId); if (!base) return undefined;
     const cadence = this.cadence.get(resource.id) ?? { unchanged: 0, attention, complete: false };
     if (cadence.attention !== attention) Object.assign(cadence, { unchanged: 0, attention });
     this.cadence.set(resource.id, cadence);
     const steps = cadence.complete ? CADENCE.complete : CADENCE.open, factor = this.budget(resource)?.backgroundFactor() ?? 1;
-    return factor === Infinity ? undefined : Math.min(base * steps[Math.min(cadence.unchanged, steps.length - 1)], Math.max(base, cadence.within ?? Infinity)) * factor;
+    if (factor === Infinity) return undefined;
+    if (muted) return base * steps[steps.length - 1] * factor;
+    return Math.min(base * steps[Math.min(cadence.unchanged, steps.length - 1)], Math.max(base, cadence.within ?? Infinity)) * factor;
   }
   private budget(resource: ResourceRecord) {
     const provider = this.control.registry.get(resource.pluginId)?.connectionProvider;
@@ -480,6 +495,11 @@ export class ResourceCoordinator {
     const action = this.host.actions(resource, signal).find(action => action.id === actionId);
     if (action?.completion && !completing) throw new Error('Use Mark done or Reopen on the item; that updates the provider too.');
     const blockers = action?.heedsBlockers ? await this.blockers(nodeId) : [];
+    if (action?.readOnly && action.cacheChoices) {
+      const choices = await this.choices(nodeId, resource, actionId, input, signal);
+      return blockers.length ? heedBlockers(choices, blockers) : choices;
+    }
+    if (action?.readOnly === false) this.forgetChoices(resource.id);
     if (!action?.updatesSnapshot) {
       const sent = action?.readOnly === false ? this.signal() : signal;
       return blockers.length ? heedBlockers(await this.host.execute(resource, actionId, input, sent), blockers) : this.host.execute(resource, actionId, input, sent);
@@ -496,6 +516,24 @@ export class ResourceCoordinator {
     const shown = new Promise<JsonValue>(resolve => { show = resolve; });
     const written = this.once(`write:${resource.id}`, { actionId, input }, () => this.write(nodeId, resource, actionId, input, requestId, show));
     return Promise.race([shown, written]);
+  }
+  /** A menu's choices, saved per item: the prompt, the context it carries back (head SHA, node id, expected
+   * state or title) and the blockers are the item's own, so another pull request in the same repository
+   * could not reuse them. `cached` answers from the saved copy when there is one; `refresh` always reads. */
+  private async choices(nodeId: string, resource: ResourceRecord, actionId: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue> {
+    const { cached, refresh, ...rest } = input, slot = `${CHOICES_SLOT}${actionId}`, key = fingerprint(resource);
+    if (cached === true && refresh !== true) {
+      const saved = this.store.resourceCache(resource.id, slot, key);
+      if (saved?.value !== undefined) return { ...(saved.value as JsonObject), cachedAt: saved.checkedAt };
+    }
+    const writes = this.choiceWrites.get(resource.id) ?? 0, now = this.now();
+    const result = await this.host.execute(resource, actionId, rest, signal);
+    if ((this.choiceWrites.get(resource.id) ?? 0) === writes && fingerprint(await this.record(nodeId, false)) === key) this.store.cacheResource(resource.id, slot, key, result, now);
+    return result;
+  }
+  private forgetChoices(resourceId: string) {
+    this.choiceWrites.set(resourceId, (this.choiceWrites.get(resourceId) ?? 0) + 1);
+    this.store.forgetResourceCache(resourceId, CHOICES_SLOT);
   }
   /** Sends one write, never retried, on the service's own deadline: the caller's shorter one would cut a write
    * off mid-request and leave its outcome unknown. An action that declares its expected result shows it at

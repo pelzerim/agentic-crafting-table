@@ -33,3 +33,38 @@ test('diagnostic settings persist and support download contains only safe aggreg
     await expect(page.locator('.local-diagnostics')).toHaveScreenshot('local-data-support.png');
   } finally { await exitWithoutShutdown(app); await service.close(); await rm(directory, { recursive: true, force: true }); }
 });
+
+test('service health shows lag, snapshot rates, disconnects and the slowest operations after a few commits', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-service-health-')), file = join(directory, 'health.json');
+  const service = await startWorkspaceService(directory, undefined, undefined, {});
+  const app = await electron.launch({ args: ['.'], env: { ...process.env, ACT_TEST_DATA_DIR: directory } });
+  try {
+    const page = await app.firstWindow(); await resize(app, page, 1100, 800); await page.emulateMedia({ reducedMotion: 'reduce' });
+    for (let n = 0; n < 3; n++) {
+      await page.evaluate(async n => {
+        const { state } = await window.craftingTable.workspaceRead();
+        await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: state.revision, actor: { kind: 'user', id: 'test' },
+          commands: [{ type: 'project.create', id: `PRIVATE_ID_${n}`, title: `PRIVATE_TITLE_${n}`, summary: '', position: { x: n * 500, y: 0 } }] });
+      }, n);
+    }
+    await page.getByRole('button', { name: 'Settings', exact: true }).click(); await page.getByRole('treeitem', { name: 'Data & diagnostics', exact: true }).click();
+    const health = page.getByRole('region', { name: 'Service health' });
+    await expect(health.getByRole('table')).toHaveCount(0);
+    await health.getByRole('button', { name: 'Show service health', exact: true }).click();
+    await health.getByRole('button', { name: 'Refresh service health', exact: true }).click();
+    await expect(health).toContainText(/Event-loop lag: max \d+(\.\d)? ms · p95 \d+(\.\d)? ms/);
+    await expect(health).toContainText(/Snapshots: \d+(\.\d)? per minute · [\d.]+ (B|KB|MB) per minute/);
+    await expect(health).toContainText(/Coalesced snapshots: 0 · Dropped clients: 0/);
+    await expect(health).toContainText('No disconnects since the app started');
+    const operations = health.getByRole('table', { name: 'Slowest operations' });
+    await expect(operations.getByRole('row').filter({ hasText: /^apply/ }).first()).toBeVisible();
+    await app.evaluate(({ session }, path) => { session.defaultSession.once('will-download', (_event, item) => item.setSavePath(path)); }, file);
+    await health.getByRole('button', { name: 'Download service health', exact: true }).click();
+    await expect.poll(() => readFile(file, 'utf8').catch(() => '')).toContain('slowestOperations');
+    const text = await readFile(file, 'utf8'), report = JSON.parse(text);
+    expect(report.service.broadcasts.snapshots).toBeGreaterThanOrEqual(3);
+    expect(report.service.operationCounts.broadcast.count).toBeGreaterThanOrEqual(3);
+    expect(report.connection.events.map((event: { status: string }) => event.status)).toContain('connected');
+    expect(text).not.toMatch(/PRIVATE_/);
+  } finally { await exitWithoutShutdown(app); await service.close(); await rm(directory, { recursive: true, force: true }); }
+});

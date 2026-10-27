@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { captureGitComparison } from './git-comparison.ts';
+import { pruneComparisons } from './comparison-pruning.ts';
 import { fetchGitHubComparison } from './github-comparison.ts';
 import type { FetchComparison, GitComparison } from './git-comparison.ts';
 
@@ -83,6 +84,23 @@ test('a shared repository cache makes later captures incremental with results id
     const before = await listFiles(f.cache); await writeFile(join(second.cwd, 'agent.txt'), 'agent\n'); work('add', '.'); work('commit', '-qm', 'agent'); work('gc', '--quiet', '--prune=now');
     assert.deepEqual(await listFiles(f.cache), before); assert.equal(f.inPack(), incremental);
     execFileSync('git', ['fsck', '--no-progress'], { env: { ...process.env, GIT_DIR: f.cache } });
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test('a pruned checkout, or one whose repository went missing, is rebuilt from the cache with the same comparison', async () => {
+  const f = await remoteFixture('act-comparison-pruned-'), signal = new AbortController().signal;
+  try {
+    const head = await f.pull(1, 'file-3.txt'), id = randomUUID(), input = { repository: 'fixture/repo', number: 1, baseTipSha: f.base, headSha: head };
+    const first = await captureGitComparison(f.data, id, input, f.fetch(), signal), folder = join(f.data, 'comparisons', id);
+    await writeFile(join(folder, `review-${id}.md`), 'request');
+    const cache = await listFiles(f.cache);
+    assert.deepEqual(await pruneComparisons(f.data, { finished: () => true, now: Date.now() + 1000, minAgeMs: 0 }).then(result => result.pruned), [id]);
+    assert.deepEqual(await listFiles(f.cache), cache);
+    assert.deepEqual(await captureGitComparison(f.data, id, input, f.fetch(), signal), first);
+    assert.equal(await readFile(join(first.cwd, 'file-3.txt'), 'utf8'), 'pull 1\n'); assert.equal(await readFile(join(folder, `review-${id}.md`), 'utf8'), 'request');
+    await rm(first.cwd, { recursive: true, force: true });
+    assert.deepEqual(await captureGitComparison(f.data, id, input, f.fetch(), signal), first);
+    assert.equal(await readFile(join(first.cwd, 'file-3.txt'), 'utf8'), 'pull 1\n');
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 

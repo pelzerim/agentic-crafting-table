@@ -24,12 +24,8 @@
   --working-can-ink: color-mix(in srgb, var(--paper) 30%, var(--act-deep));
 }
 
-.map-card.paper-card[data-paper=sky] { --paper: var(--act-paper-sky); }
-.map-card.paper-card[data-paper=lilac] { --paper: var(--act-paper-lilac); }
-.map-card.paper-card[data-paper=peach] { --paper: var(--act-paper-peach); }
-
-.map-card.paper-card[data-paper=slate] {
-  --paper: var(--act-paper-slate);
+/* The paper itself is set inline (`--paper`): a named paper's token or a custom colour. A dark paper takes light ink. */
+.map-card.paper-card[data-paper-tone=dark] {
   --paper-ink: var(--act-paper-slate-ink);
   --card-edge: var(--act-line-strong);
   --working-tuft: var(--act-line-strong);
@@ -249,7 +245,7 @@
   left: 0;
   z-index: 20;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   padding: 6px 8px;
   background: var(--act-panel);
@@ -260,30 +256,6 @@
   font-size: var(--act-fs-meta);
   white-space: nowrap;
   cursor: default;
-}
-
-.paper-tools [role=radiogroup] {
-  display: flex;
-  gap: 4px;
-}
-
-.live-workspace .paper-tools .paper-swatch {
-  --paper: var(--act-paper-mint);
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: 1px solid var(--act-line-strong);
-  border-radius: 0;
-  background: var(--paper);
-}
-
-.live-workspace .paper-tools .paper-swatch[data-paper=sky] { --paper: var(--act-paper-sky); }
-.live-workspace .paper-tools .paper-swatch[data-paper=lilac] { --paper: var(--act-paper-lilac); }
-.live-workspace .paper-tools .paper-swatch[data-paper=peach] { --paper: var(--act-paper-peach); }
-.live-workspace .paper-tools .paper-swatch[data-paper=slate] { --paper: var(--act-paper-slate); }
-
-.live-workspace .paper-tools .paper-swatch[aria-checked=true] {
-  box-shadow: 0 0 0 2px var(--act-panel), 0 0 0 3px var(--act-focus);
 }
 
 .live-workspace .paper-tools .paper-list {
@@ -436,6 +408,17 @@
   display: block;
   height: 100%;
   background: var(--paper-ink);
+}
+
+.paper-tools .paper-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-1);
+  height: 22px;
+}
+
+.paper-tools .paper-colors {
+  padding-top: 1px;
 }
 
 .paper-hint kbd {

@@ -138,7 +138,7 @@ test('a web link to a Notion page becomes a Notion page item on the next start: 
     await expect(page.getByRole('dialog', { name: 'Needs me', exact: true })).toContainText(/Billing experience.*New comment/);
     await page.keyboard.press('Escape');
     await card.click({ button: 'right' });
-    expect(await page.getByRole('menuitem').allTextContents()).toEqual(['Open', 'Connect to…', 'Open on Notion', 'Copy URL', 'Settings', 'Move to project', 'Mark done', 'Send to Undermap']);
+    expect(await page.getByRole('menuitem').allTextContents()).toEqual(['Open', 'Connect to…', 'Open on Notion', 'Copy URL', 'Settings', 'Move to project', 'Move to plot', 'Mark done', 'Send to Undermap']);
   } finally { client.close(); await exitWithoutShutdown(app); await service.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
@@ -158,7 +158,7 @@ test('Convert to Notion page in the item menu upgrades a web link the start coul
     await link.click({ button: 'right' });
     const convert = page.getByRole('menuitem', { name: 'Convert to Notion page', exact: true });
     await expect(convert).toBeVisible();
-    expect(await page.getByRole('menuitem').allTextContents()).toEqual(['Open', 'Connect to…', 'Open in browser', 'Copy URL', 'Convert to Notion page', 'Settings', 'Move to project', 'Mark done', 'Send to Undermap']);
+    expect(await page.getByRole('menuitem').allTextContents()).toEqual(['Open', 'Connect to…', 'Open in browser', 'Copy URL', 'Convert to Notion page', 'Settings', 'Move to project', 'Move to plot', 'Mark done', 'Send to Undermap']);
     await convert.click();
     await expect(page.getByRole('article', { name: 'Billing experience', exact: true })).toBeVisible();
     const state = await service.control.read();

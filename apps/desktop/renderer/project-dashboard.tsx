@@ -29,7 +29,7 @@ const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 const count = (n: number, name: { singular: string; plural: string }) => `${n} ${n === 1 ? name.singular : name.plural}`;
 const ITEMS = { singular: 'item', plural: 'items' };
 /** A plot's counts as the Plots row and a block header say them. */
-type PlotCounts = { id: string; name: string; color?: PlotColor; items: number; needs: number; working: number; tiers: DashboardTiers };
+type PlotCounts = { id: string; name: string; color?: PlotColor | string; items: number; needs: number; working: number; tiers: DashboardTiers };
 const plotLabel = (plot: PlotCounts) => `${plot.name}: ${[count(plot.items, ITEMS), attentionCountText(plot.tiers, ', '), plot.working ? `${plot.working} working` : ''].filter(Boolean).join(', ')}`;
 const blockCounts = (block: DashboardBlock): PlotCounts => ({ id: block.id, name: block.name, color: block.color, items: block.items, needs: block.needs, working: block.active, tiers: block.tiers });
 const topTier = (tiers: DashboardTiers) => attentionTiers.find(tier => tiers[tier] > 0);

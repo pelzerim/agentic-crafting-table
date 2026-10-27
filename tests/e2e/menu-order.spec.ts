@@ -3,10 +3,10 @@ import type { Page } from '@playwright/test';
 import { test, capture } from './visual-fixture.ts';
 
 const PR = 'github.pull-request';
-const PR_ENTRIES = ['Open', 'Connect to…', 'Trigger review', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', 'Open on GitHub', 'Copy URL', 'Settings', 'Move to project', 'Mark done / Reopen', 'Send to Undermap'];
-const PR_IDS = ['open', 'connect', '---', 'plugin:review', 'plugin:reviewLoop', 'plugin:architecture', 'plugin:merge', 'plugin:autoDeploy', 'plugin:state', 'plugin:showShip', '---', 'open-web', 'copy-url', 'edit', '---', 'send-project', 'complete', 'below'];
-const PR_MENU = ['Open', 'Connect to…', '---', 'Trigger review', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', '---', 'Open on GitHub', 'Copy URL', 'Settings', '---', 'Move to project', 'Mark done', 'Send to Undermap'];
-const NOTION_MENU = ['Open', 'Connect to…', '---', 'Open on Notion', 'Copy URL', 'Settings', '---', 'Move to project', 'Mark done', 'Send to Undermap'];
+const PR_ENTRIES = ['Open', 'Connect to…', 'Trigger review', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', 'Open on GitHub', 'Copy URL', 'Settings', 'Move to project', 'Move to plot', 'Remove from plot', 'Mark done / Reopen', 'Send to Undermap'];
+const PR_IDS = ['open', 'connect', '---', 'plugin:review', 'plugin:reviewLoop', 'plugin:architecture', 'plugin:merge', 'plugin:autoDeploy', 'plugin:state', 'plugin:showShip', '---', 'open-web', 'copy-url', 'edit', '---', 'send-project', 'move-plot', 'plot-unpin', 'complete', 'below'];
+const PR_MENU = ['Open', 'Connect to…', '---', 'Trigger review', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', '---', 'Open on GitHub', 'Copy URL', 'Settings', '---', 'Move to project', 'Move to plot', 'Mark done', 'Send to Undermap'];
+const NOTION_MENU = ['Open', 'Connect to…', '---', 'Open on Notion', 'Copy URL', 'Settings', '---', 'Move to project', 'Move to plot', 'Mark done', 'Send to Undermap'];
 const NOTHING_SAVED = { order: {}, layout: {}, hidden: {} };
 const without = (list: string[], ...remove: string[]) => list.filter(entry => !remove.includes(entry));
 
@@ -61,12 +61,12 @@ test('Settings → Items reorders one item type’s menu by keyboard; other type
   expect(await ids(page)).toEqual(moved);
   await page.keyboard.press('ArrowUp');
   expect(await ids(page)).toEqual(moved);
-  await expect(section(page).getByRole('status')).toHaveText('Copy URL is 1 of 18');
+  await expect(section(page).getByRole('status')).toHaveText('Copy URL is 1 of 20');
   await expect(reset(page)).toBeEnabled();
   await expect(typeSelect(page).locator('option:checked')).toHaveText('GitHub pull request · custom menu');
   await expect(page.locator('#settings-entry-Items .settings-tree-marker')).toHaveAttribute('data-marker', 'dirty');
   await typeSelect(page).selectOption('notion.page');
-  await expect(labels(page)).toHaveText(without(NOTION_MENU, '---').map(label => label === 'Mark done' ? 'Mark done / Reopen' : label));
+  await expect(labels(page)).toHaveText(['Open', 'Connect to…', 'Open on Notion', 'Copy URL', 'Settings', 'Move to project', 'Move to plot', 'Remove from plot', 'Mark done / Reopen', 'Send to Undermap']);
   await expect(reset(page)).toBeDisabled();
   await save(page);
   expect(await savedMenus(page)).toEqual({ ...NOTHING_SAVED, layout: { [PR]: moved } });
@@ -149,7 +149,7 @@ test('a separator is a row: it drags between two entries, is removed with × and
   const at = removed.indexOf('copy-url') + 1, added = [...removed.slice(0, at), '---', ...removed.slice(at)];
   expect(await ids(page)).toEqual(added);
   await expect(grip(page, 'Separator').nth(1)).toBeFocused();
-  await expect(section(page).getByRole('status')).toHaveText(`Separator added, ${at + 1} of 18`);
+  await expect(section(page).getByRole('status')).toHaveText(`Separator added, ${at + 1} of 20`);
   // Two lines in a row and one at the very end are rows here, and one line or none in the menu.
   await page.keyboard.press('ArrowDown');
   expect(await ids(page)).toEqual([...removed.slice(0, at), 'edit', '---', '---', ...removed.slice(at + 2)]);
@@ -158,7 +158,7 @@ test('a separator is a row: it drags between two entries, is removed with × and
   expect((await ids(page)).slice(-2)).toEqual(['below', '---']);
   await expect(typeSelect(page).locator('option:checked')).toHaveText('Notion page · custom menu');
   await save(page);
-  expect(await itemMenu(page, 'Plan switcher')).toEqual(['Open', 'Connect to…', 'Trigger review', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', '---', 'Open on GitHub', 'Copy URL', 'Settings', '---', 'Move to project', 'Mark done', 'Send to Undermap']);
+  expect(await itemMenu(page, 'Plan switcher')).toEqual(['Open', 'Connect to…', 'Trigger review', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', '---', 'Open on GitHub', 'Copy URL', 'Settings', '---', 'Move to project', 'Move to plot', 'Mark done', 'Send to Undermap']);
   expect(await itemMenu(page, 'Billing experience')).toEqual(NOTION_MENU);
 });
 
@@ -180,7 +180,7 @@ test('an entry can be hidden from one item type’s menu and shown again; the la
   await capture(page, 'settings-menu-order.png');
   await save(page);
   expect(await savedMenus(page)).toEqual({ ...NOTHING_SAVED, layout: { [PR]: layout }, hidden: { [PR]: ['below', 'plugin:review'] } });
-  expect(await itemMenu(page, 'Plan switcher')).toEqual(['Open', 'Connect to…', '---', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', 'Open on GitHub', 'Copy URL', '---', 'Settings', '---', 'Move to project', 'Mark done']);
+  expect(await itemMenu(page, 'Plan switcher')).toEqual(['Open', 'Connect to…', '---', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', 'Open on GitHub', 'Copy URL', '---', 'Settings', '---', 'Move to project', 'Move to plot', 'Mark done']);
   expect(await itemMenu(page, 'Billing experience')).toEqual(NOTION_MENU);
 
   await openMenus(page);
@@ -218,11 +218,11 @@ test('hiding an entry leaves the selection menu and Undermap as they were', asyn
     const settings = await window.craftingTable.settingsRead();
     await window.craftingTable.settingsWrite({ expectedRevision: settings.revision, value: { ...settings.value, menus: { order: {}, layout: {}, hidden: { [type]: ['below', 'complete', 'copy-url', 'send-project', 'edit'] } } } });
   }, PR);
-  await expect.poll(() => itemMenu(page, 'Plan switcher')).toEqual(without(PR_MENU.slice(0, 12), 'Copy URL'));
+  await expect.poll(() => itemMenu(page, 'Plan switcher')).toEqual([...without(PR_MENU.slice(0, 12), 'Copy URL'), '---', 'Move to plot']);
   await page.getByRole('article', { name: 'Plan switcher', exact: true }).click({ modifiers: ['Shift'] });
   await page.getByRole('article', { name: 'Billing experience', exact: true }).click({ modifiers: ['Shift'] });
   await page.getByRole('article', { name: 'Billing experience', exact: true }).click({ button: 'right' });
-  await expect(menu(page).getByRole('menuitem')).toHaveText(['Copy URLs', 'Move to project', 'Mark done', 'Send selection to Undermap']);
+  await expect(menu(page).getByRole('menuitem')).toHaveText(['Copy URLs', 'Move to project', 'Move to plot', 'Mark done', 'Send selection to Undermap']);
   await menu(page).getByRole('menuitem', { name: 'Send selection to Undermap', exact: true }).click();
   await expect(page.getByRole('article', { name: 'Plan switcher', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Go to Undermap', exact: true }).click();
@@ -235,10 +235,10 @@ test('an order saved before separators were rows draws the same menu and becomes
     const settings = await window.craftingTable.settingsRead();
     await window.craftingTable.settingsWrite({ expectedRevision: settings.revision, value: { ...settings.value, menus: { order: { [type as string]: saved as string[] }, layout: {}, hidden: {} } } });
   }, [PR, order] as const);
-  const drawn = ['Copy URL', '---', 'Open', 'Connect to…', '---', 'Trigger review', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', '---', 'Open on GitHub', 'Settings', '---', 'Move to project', 'Mark done', 'Send to Undermap'];
+  const drawn = ['Copy URL', '---', 'Open', 'Connect to…', '---', 'Trigger review', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', '---', 'Open on GitHub', 'Settings', '---', 'Move to project', 'Move to plot', 'Mark done', 'Send to Undermap'];
   await expect.poll(() => itemMenu(page, 'Plan switcher')).toEqual(drawn);
   await openMenus(page);
-  const converted = ['copy-url', '---', 'open', 'connect', '---', 'plugin:review', 'plugin:reviewLoop', 'plugin:architecture', 'plugin:merge', 'plugin:autoDeploy', 'plugin:state', 'plugin:showShip', '---', 'open-web', 'edit', '---', 'send-project', 'complete', 'below'];
+  const converted = ['copy-url', '---', 'open', 'connect', '---', 'plugin:review', 'plugin:reviewLoop', 'plugin:architecture', 'plugin:merge', 'plugin:autoDeploy', 'plugin:state', 'plugin:showShip', '---', 'open-web', 'edit', '---', 'send-project', 'move-plot', 'plot-unpin', 'complete', 'below'];
   expect(await ids(page)).toEqual(converted);
   await expect(typeSelect(page).locator('option:checked')).toHaveText('GitHub pull request · custom menu');
   await expect(page.locator('#settings-entry-Items .settings-tree-marker[data-marker=dirty]')).toHaveCount(0);

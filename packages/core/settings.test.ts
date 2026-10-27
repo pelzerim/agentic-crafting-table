@@ -33,6 +33,15 @@ test('double-click opening the web page is off by default and only accepts a boo
   for (const value of ['yes', 1, null]) assert.equal(settingsSchema.safeParse({ doubleClickOpensWeb: value }).success, false, String(value));
 });
 
+test('Your colours is empty by default, keeps up to eight #rrggbb colours newest first, each once, and refuses other values', () => {
+  assert.deepEqual(settingsSchema.parse({}).recentColors, [], 'settings saved before Your colours existed');
+  assert.deepEqual(settingsSchema.parse({ recentColors: ['#3366CC', '#aabbcc'] }).recentColors, ['#3366cc', '#aabbcc']);
+  assert.deepEqual(settingsSchema.parse({ recentColors: ['#111111', '#222222', '#111111'] }).recentColors, ['#111111', '#222222']);
+  const ten = Array.from({ length: 10 }, (_, index) => `#00000${index}`);
+  assert.deepEqual(settingsSchema.parse({ recentColors: ten }).recentColors, ten.slice(0, 8));
+  for (const recentColors of [['mint'], ['#abc'], 'x', [3]]) assert.equal(settingsSchema.safeParse({ recentColors }).success, false, JSON.stringify(recentColors));
+});
+
 test('implied connections are hidden by default, also for settings saved before the choice existed', () => {
   assert.equal(settingsSchema.parse({}).hideImpliedLinks, true);
   assert.equal(settingsSchema.parse({ hideImpliedLinks: false }).hideImpliedLinks, false);

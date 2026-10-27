@@ -1,13 +1,14 @@
-import { PLOT_COLORS } from './plots.ts';
+import { PLOT_COLORS, isPlotColor } from './plots.ts';
 import type { PlotColor } from './plots.ts';
-import { PROJECT_COLORS, projectColor } from './project-colors.ts';
+import { BIOME_PROJECT_COLORS, projectColor } from './project-colors.ts';
+import { hexToHsl, hslToHex } from './colors.ts';
 
 /** What a plot slot shows in one neighborhood: `color` tints its patch and dashboard band,
  * `tone` (the color lifted when dark) draws its sign bar and sprout on the dark sign plate. */
 export interface PlotSwatch { slot: PlotColor; name: string; color: string; tone: string }
 
-/** Six colors that belong to each preset's place, in slot order (MAP-24). */
-export const PLOT_PALETTES: Readonly<Record<typeof PROJECT_COLORS[number]['id'], readonly (readonly [name: string, color: string])[]>> = {
+/** Six colors that belong to each biome preset's place, in slot order (MAP-24). */
+export const PLOT_PALETTES: Readonly<Record<typeof BIOME_PROJECT_COLORS[number]['id'], readonly (readonly [name: string, color: string])[]>> = {
   grass: [['Buttercup', '#f2c94c'], ['Daisy', '#f6f6ee'], ['Fern', '#4f8a52'], ['Bluebell', '#8fa8e8'], ['Bark', '#a07a4a'], ['Sage', '#c4dcb4']],
   oak: [['Moss', '#8fa868'], ['Acorn', '#c27a3a'], ['Pine', '#3f6f3a'], ['Birch', '#f4ece0'], ['Toadstool', '#c8473c'], ['Honey', '#e6c27e']],
   stone: [['Quartz', '#f0f0f0'], ['Slate', '#6f8296'], ['Lichen', '#a8b878'], ['Iron', '#d9a987'], ['Flint', '#4a4a52'], ['Granite', '#c8a8a0']],
@@ -19,31 +20,19 @@ export const PLOT_PALETTES: Readonly<Record<typeof PROJECT_COLORS[number]['id'],
   prismarine: [['Lily', '#a8dc7a'], ['Murk', '#2f6a64'], ['Reed', '#d4c47a'], ['Mud', '#6a4a32'], ['Bloom', '#ec9cc4'], ['Mist', '#d6ece4']],
   netherrack: [['Lava', '#ff9a3a'], ['Ember', '#ffd45a'], ['Ash', '#8a7a78'], ['Soul', '#6fe3e6'], ['Crimson', '#d8303a'], ['Bone', '#eee2cc']],
 };
-const BY_COLOR = new Map<string, readonly (readonly [string, string])[]>(PROJECT_COLORS.map(preset => [preset.color, PLOT_PALETTES[preset.id]]));
+const BY_COLOR = new Map<string, readonly (readonly [string, string])[]>(BIOME_PROJECT_COLORS.map(preset => [preset.color, PLOT_PALETTES[preset.id]]));
 /** A custom color's slots fan out from its hue; each is named after the 30° band it lands in, so the six never share a name. */
 const CUSTOM_OFFSETS = [-25, 25, -55, 55, -90, 90], HUE_NAMES = ['Red', 'Orange', 'Yellow', 'Lime', 'Green', 'Jade', 'Teal', 'Sky', 'Blue', 'Violet', 'Magenta', 'Rose'];
 
-function toHsl(hex: string): [number, number, number] {
-  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255), max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
-  if (max === min) return [0, 0, l];
-  const d = max - min, s = l > .5 ? d / (2 - max - min) : d / (max + min);
-  return [60 * (max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4), s, l];
-}
-function fromHsl(hue: number, saturation: number, lightness: number) {
-  const h = (hue % 360 + 360) % 360, s = Math.max(0, Math.min(1, saturation)), l = Math.max(0, Math.min(1, lightness)), a = s * Math.min(l, 1 - l);
-  const channel = (n: number) => { const k = (n + h / 30) % 12; return Math.max(0, Math.min(255, Math.round((l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))) * 255))); };
-  return '#' + [0, 8, 4].map(n => channel(n).toString(16).padStart(2, '0')).join('');
-}
-
 /** The sign and sprout tone: a color darker than half lightness is lifted to .62. */
 export function signTone(color: string) {
-  const [h, s, l] = toHsl(color);
-  return l < .5 ? fromHsl(h, s, .62) : color;
+  const [h, s, l] = hexToHsl(color);
+  return l < .5 ? hslToHex(h, s, .62) : color;
 }
 
 function customPalette(color: string): (readonly [string, string])[] {
-  const [h, s, l] = toHsl(color), saturation = Math.max(.45, s), lightness = Math.max(.62, Math.min(.74, l + .08));
-  return CUSTOM_OFFSETS.map(offset => [HUE_NAMES[Math.floor(((h + offset + 15) % 360 + 360) % 360 / 30)], fromHsl(h + offset, saturation, lightness)]);
+  const [h, s, l] = hexToHsl(color), saturation = Math.max(.45, s), lightness = Math.max(.62, Math.min(.74, l + .08));
+  return CUSTOM_OFFSETS.map(offset => [HUE_NAMES[Math.floor(((h + offset + 15) % 360 + 360) % 360 / 30)], hslToHex(h + offset, saturation, lightness)]);
 }
 
 const palettes = new Map<string, readonly PlotSwatch[]>();
@@ -56,3 +45,9 @@ export function plotPalette(neighborhoodColor: string | undefined): readonly Plo
   return palette;
 }
 export const plotSwatch = (neighborhoodColor: string | undefined, slot: PlotColor) => plotPalette(neighborhoodColor)[PLOT_COLORS.indexOf(slot)];
+/** What a plot is drawn in: its slot's swatch in the neighborhood, or a custom `#rrggbb` as it is with its own sign tone. */
+export function plotPaint(neighborhoodColor: string | undefined, color: PlotColor | string): { color: string; tone: string } {
+  if (isPlotColor(color)) { const swatch = plotSwatch(neighborhoodColor, color); return { color: swatch.color, tone: swatch.tone }; }
+  const custom = color.toLowerCase();
+  return { color: custom, tone: signTone(custom) };
+}

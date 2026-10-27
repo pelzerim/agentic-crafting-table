@@ -1997,10 +1997,7 @@
   outline-offset: 2px;
 }
 
-.card-badge[data-paper=sky] { --badge-paper: var(--act-paper-sky); }
-.card-badge[data-paper=lilac] { --badge-paper: var(--act-paper-lilac); }
-.card-badge[data-paper=peach] { --badge-paper: var(--act-paper-peach); }
-.card-badge[data-paper=slate] { --badge-paper: var(--act-paper-slate); color: var(--act-paper-slate-ink); }
+.card-badge[data-paper-tone=dark] { color: var(--act-paper-slate-ink); }
 
 .card-badge-more {
   color: var(--act-ink);
@@ -2033,7 +2030,4 @@
   background: var(--badge-paper, var(--act-paper-mint));
 }
 
-.badge-chip[data-paper=sky] { --badge-paper: var(--act-paper-sky); }
-.badge-chip[data-paper=lilac] { --badge-paper: var(--act-paper-lilac); }
-.badge-chip[data-paper=peach] { --badge-paper: var(--act-paper-peach); }
-.badge-chip[data-paper=slate] { --badge-paper: var(--act-paper-slate); color: var(--act-paper-slate-ink); }
+.badge-chip[data-paper-tone=dark] { color: var(--act-paper-slate-ink); }

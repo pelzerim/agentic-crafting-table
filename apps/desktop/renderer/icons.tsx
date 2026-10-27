@@ -5,7 +5,7 @@ import type { GlyphName, GlyphSize } from '../../../src/resource-plugins/pixel-g
 /** Item, menu and control icon names drawn from the 12×12 UI and type glyphs. */
 const UI_GLYPHS: Record<string, GlyphName<12>> = {
   terminal: 'terminal', 'square-terminal': 'terminal', 'message-square': 'message', 'messages-square': 'messages',
-  'git-pull-request': 'git-pull-request', 'git-merge': 'git-merge', project: 'folder', sparkles: 'sparkles', grid: 'grid',
+  'git-pull-request': 'git-pull-request', 'git-merge': 'git-merge', project: 'folder', sparkles: 'sparkles', sprout: 'sprout', grid: 'grid',
   server: 'server', link: 'link', unlink: 'unlink', globe: 'globe', square: 'square', 'square-check': 'square-check',
   check: 'check', seen: 'check', settings: 'settings', file: 'file', 'file-text': 'file', note: 'file', review: 'search',
   workflow: 'workflow', bookmark: 'bookmark', circle: 'circle', 'circle-dashed': 'circle-dashed', open: 'open',

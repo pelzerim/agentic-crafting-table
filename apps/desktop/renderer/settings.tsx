@@ -20,6 +20,7 @@ import { Segmented } from './ui/segmented.tsx';
 import { useOverlayFocus } from './ui/overlay-focus.ts';
 import { useMovablePanel } from './use-movable-panel.ts';
 import { PerformanceDiagnostics } from './performance-diagnostics.tsx';
+import { ServiceHealthDiagnostics } from './service-health.tsx';
 import type { ProviderDescription } from '../../../packages/core/connections.ts';
 import { ItemPickerSettings } from './item-picker-settings.tsx';
 import { MenuOrderSettings } from './menu-order-settings.tsx';
@@ -379,7 +380,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
           <SettingsSection label="Archive"><SettingRow label="Archived items, to-dos, sessions and recordings" description="Archive is the one place to restore or permanently delete them. Your unsaved changes are kept."><button type="button" onClick={openArchive}>Open archive</button></SettingRow></SettingsSection>
         </>}
         {diagnostics && <LocalDiagnostics policy={diagnostics} change={setDiagnostics} />}
-        <SettingsSection label="Support"><SupportReport /><PerformanceDiagnostics /></SettingsSection>
+        <SettingsSection label="Support"><SupportReport /><PerformanceDiagnostics /><ServiceHealthDiagnostics /></SettingsSection>
       </SettingsPage>
       </div></div>
       {error && <ErrorNotice message={error} />}

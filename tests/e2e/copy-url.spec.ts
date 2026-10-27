@@ -42,7 +42,7 @@ test('Copy URL sits right after "Open on …", copies the item URL and neither o
     await expect.poll(() => clipboardText(app)).toBe(PR_URL);
     await expect(page.getByRole('status').filter({ hasText: 'URL copied' })).toBeVisible();
     await card(page, 'Billing spec').click({ button: 'right' });
-    await expect(menu(page).getByRole('menuitem')).toHaveText(['Open', 'Connect to…', 'Open in browser', 'Copy URL', 'Settings', 'Move to project', 'Mark done', 'Send to Undermap']);
+    await expect(menu(page).getByRole('menuitem')).toHaveText(['Open', 'Connect to…', 'Open in browser', 'Copy URL', 'Settings', 'Move to project', 'Move to plot', 'Mark done', 'Send to Undermap']);
     await menu(page).getByRole('menuitem', { name: 'Copy URL', exact: true }).focus(); await page.keyboard.press('Enter');
     await expect.poll(() => clipboardText(app)).toBe(BOOKMARK_URL);
     await expect(page.getByRole('menu')).toHaveCount(0);
@@ -68,7 +68,7 @@ test('items without a web page have no Copy URL; a selection copies every URL, o
   await withClipboard(app, [`${PR_URL}\n${BOOKMARK_URL}`], async () => {
     await card(page, 'Plan switcher').click({ modifiers: ['Shift'] }); await card(page, 'Billing spec').click({ modifiers: ['Shift'] });
     await card(page, 'Billing spec').click({ button: 'right' });
-    await expect(menu(page).getByRole('menuitem')).toHaveText(['Copy URLs', 'Move to project', 'Mark done', 'Send selection to Undermap']);
+    await expect(menu(page).getByRole('menuitem')).toHaveText(['Copy URLs', 'Move to project', 'Move to plot', 'Mark done', 'Send selection to Undermap']);
     await menu(page).getByRole('menuitem', { name: 'Copy URLs', exact: true }).click();
     await expect.poll(() => clipboardText(app)).toBe(`${PR_URL}\n${BOOKMARK_URL}`);
     await expect(page.getByRole('status').filter({ hasText: '2 URLs copied' })).toBeVisible();

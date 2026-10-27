@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PLOT_PALETTES, plotPalette, plotSwatch, signTone } from './plot-palette.ts';
+import { PLOT_PALETTES, plotPaint, plotPalette, plotSwatch, signTone } from './plot-palette.ts';
 import { PLOT_COLORS } from './plots.ts';
-import { PROJECT_COLORS } from './project-colors.ts';
+import { BIOME_PROJECT_COLORS, PROJECT_COLORS } from './project-colors.ts';
 
 const named = (color: string) => plotPalette(color).map(swatch => [swatch.name, swatch.color]);
 
 test('each neighborhood preset has its own six plot colors, in slot order', () => {
-  assert.deepEqual(Object.keys(PLOT_PALETTES), PROJECT_COLORS.map(preset => preset.id));
+  assert.deepEqual(Object.keys(PLOT_PALETTES), BIOME_PROJECT_COLORS.map(preset => preset.id));
   assert.deepEqual(named('#91b78b'), [['Buttercup', '#f2c94c'], ['Daisy', '#f6f6ee'], ['Fern', '#4f8a52'], ['Bluebell', '#8fa8e8'], ['Bark', '#a07a4a'], ['Sage', '#c4dcb4']]);
   assert.deepEqual(named('#b8945f'), [['Moss', '#8fa868'], ['Acorn', '#c27a3a'], ['Pine', '#3f6f3a'], ['Birch', '#f4ece0'], ['Toadstool', '#c8473c'], ['Honey', '#e6c27e']]);
   assert.deepEqual(named('#9a9a9a'), [['Quartz', '#f0f0f0'], ['Slate', '#6f8296'], ['Lichen', '#a8b878'], ['Iron', '#d9a987'], ['Flint', '#4a4a52'], ['Granite', '#c8a8a0']]);
@@ -31,6 +31,12 @@ test('a custom neighborhood color fans its hue out, lifted to stay visible, each
   for (const color of ['#000000', '#ffffff', '#123456', '#fedcba', '#e3c55b']) assert.equal(new Set(plotPalette(color).map(swatch => swatch.name)).size, 6, `${color}: six different names`);
 });
 
+test('a preset without a biome computes its six as a custom color does', () => {
+  const emerald = PROJECT_COLORS.find(preset => preset.id === 'emerald')!.color;
+  assert.deepEqual(named(emerald).map(([name]) => name).length, 6);
+  assert.equal(new Set(named(emerald).map(([name]) => name)).size, 6);
+});
+
 test('a dark slot color is lifted for the sign bar and sprout; a light one is kept', () => {
   assert.equal(signTone('#3f6f3a'), '#85bc80');
   assert.equal(signTone('#2e2442'), '#9582bb');
@@ -40,4 +46,10 @@ test('a dark slot color is lifted for the sign bar and sprout; a light one is ke
   assert.equal(signTone('#f2c94c'), '#f2c94c');
   assert.equal(signTone('#7a52b4'), '#7a52b4', 'at lightness .5 or more the color stays');
   assert.deepEqual(plotPalette('#5b7fd6').map(swatch => swatch.tone), ['#dce6fb', '#6fd6cf', '#f08aa8', '#5fae6a', '#e8d8a8', '#6982d3']);
+});
+
+test('a plot shows its slot in its neighborhood, or a chosen #rrggbb as it is with its own sign tone', () => {
+  assert.deepEqual(plotPaint('#e3c55a', 'sky'), { color: '#5f9a54', tone: '#8bbb82' });
+  assert.deepEqual(plotPaint('#e3c55a', '#24387A'), { color: '#24387a', tone: '#6982d3' });
+  assert.deepEqual(plotPaint(undefined, '#f2c94c'), { color: '#f2c94c', tone: '#f2c94c' });
 });

@@ -57,7 +57,7 @@ test('Undermap dashboards omit Needs you and Working, and empty sections stay em
   assert.equal(below.pipelines[0].total, 6); assert.equal(below.pipelines[0].groups.reduce((sum, group) => sum + group.yours, 0), 0);
   assert.ok(below.pipelines[0].cells.every(cell => !cell.needsYou));
   const quiet = projectDashboard('q', [{ id: 'q', title: 'Quiet', position: { x: 0, y: 0 } }], { pipelineOf, tallyOf });
-  assert.deepEqual(quiet, { id: 'q', title: 'Quiet', items: 0, needs: 0, counts: { asking: 0, turn: 0, finished: 0, needsMe: 0 }, needsYou: [], working: [], pipelines: [], pipelineIds: [], tallies: [], todos: { open: [], done: 0 }, plots: [], lastActivityAt: undefined });
+  assert.deepEqual(quiet, { id: 'q', title: 'Quiet', items: 0, needs: 0, counts: { asking: 0, turn: 0, finished: 0, needsMe: 0 }, needsYou: [], waiting: [], working: [], pipelines: [], pipelineIds: [], tallies: [], todos: { open: [], done: 0 }, plots: [], lastActivityAt: undefined });
 });
 
 test('layout picks full or compact from the on-screen size and truncates long lists with +N more', () => {
@@ -161,7 +161,7 @@ test('blocked PRs carry a marker in the strip and their preview names what still
 });
 
 test('the plots section lists the project’s plots with their Needs me, working and item counts', () => {
-  const plot = (id: string, name: string, memberIds: string[], projectId = 'p'): PlotView => ({ id, projectId, name, memberIds, source: 'local', hidden: false, color: 'rose' });
+  const plot = (id: string, name: string, memberIds: string[], projectId = 'p'): PlotView => ({ id, projectId, name, memberIds, source: 'local', hidden: false, color: 'rose', pinnedMemberIds: [] });
   const plots = [plot('thumbs', 'Thumbnail refresh fix', ['split', 'pr-b', 't-1', 'gone']), plot('billing', 'Billing plan switch', ['input', 'fair', 'pr-d', 'pr-a']), plot('elsewhere', 'Other', ['elsewhere'], 'q')];
   const board = projectDashboard('p', nodes, { pipelineOf, tallyOf, plots });
   assert.deepEqual(board.plots.map(row => [row.id, row.name, row.items, row.needs, row.working]), [['billing', 'Billing plan switch', 4, 2, 1], ['thumbs', 'Thumbnail refresh fix', 3, 1, 1]], 'Needs me first, archived members and other projects do not count');
@@ -172,7 +172,7 @@ test('the plots section lists the project’s plots with their Needs me, working
   assert.ok(roomy.height > without.height);
 });
 
-const plotView = (id: string, name: string, memberIds: string[], projectId = 'p'): PlotView => ({ id, projectId, name, memberIds, source: 'local', hidden: false, color: 'rose' });
+const plotView = (id: string, name: string, memberIds: string[], projectId = 'p'): PlotView => ({ id, projectId, name, memberIds, source: 'local', hidden: false, color: 'rose', pinnedMemberIds: [] });
 const twoPlots = [plotView('thumbs', 'Thumbnail refresh fix', ['split', 'pr-b', 't-1', 'gone']), plotView('billing', 'Billing plan switch', ['input', 'fair', 'pr-d', 'pr-a'])];
 test('with two or more shown plots the dashboard splits into plot blocks and a last Loose block', () => {
   const board = projectDashboard('p', nodes, { pipelineOf, tallyOf, plots: twoPlots });
@@ -345,7 +345,7 @@ test('Needs me rows carry their tier and wait; the counted number leaves Finishe
   const members = [{ id: 'p', title: 'Photos', position: { x: 0, y: 0 } },
     at('done', { attentionSources: { completion: 'finished' }, attentionAt: '2026-10-06T07:00:00.000Z' }), at('review', { attention: 'review', attentionAt: '2026-10-06T09:00:00.000Z' }),
     at('ask', { attention: 'input', attentionNote: 'Needs permission to push', attentionAt: '2026-10-06T10:00:00.000Z' }), at('checks', { attentionSources: { ci: 'checks-failing' }, attentionAt: '2026-10-06T08:00:00.000Z' })];
-  const plots = [{ id: 'plot', projectId: 'p', name: 'Thumbnail', memberIds: ['ask', 'done', 'review'], source: 'local' as const, hidden: false, color: 'rose' as const }];
+  const plots = [{ id: 'plot', projectId: 'p', name: 'Thumbnail', memberIds: ['ask', 'done', 'review'], source: 'local' as const, hidden: false, color: 'rose' as const, pinnedMemberIds: [] }];
   const board = projectDashboard('p', members, { plots });
   assert.deepEqual(board.needsYou.map(row => [row.id, row.tier, row.detail, row.since]), [['ask', 'asking', 'Needs permission to push', '2026-10-06T10:00:00.000Z'], ['checks', 'turn', 'Checks failing', '2026-10-06T08:00:00.000Z'], ['review', 'turn', 'Ready for your review', '2026-10-06T09:00:00.000Z'], ['done', 'finished', 'Finished · ready to view', '2026-10-06T07:00:00.000Z']]);
   assert.deepEqual(board.counts, { asking: 1, turn: 2, finished: 1, needsMe: 3, top: 'asking' });

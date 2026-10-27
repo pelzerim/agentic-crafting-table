@@ -4,10 +4,14 @@ import { GROW_LINE, grownHeight, wrappedLines } from '../../../packages/core/ite
 import type { MapSizePreset } from '../../../src/resource-plugins/types.ts';
 import { renderMarkdown } from '../../../src/resource-plugins/markdown-view.ts';
 import { formatWhen } from '../../../src/resource-plugins/format-when.ts';
+import { ColorPicker } from './ui/color-picker.tsx';
+import type { ColorChoice } from './ui/color-picker.tsx';
+import { useRecentColors } from './recent-colors.ts';
+import { NOTE_PAPERS, NOTE_PAPER_LABELS } from '../../../src/resource-plugins/items/note/definition.ts';
 import { applyTextChange, indentList, sourceOffset, taskProgress, toggleChecklist, toggleTask, wrapSelection } from './paper-text.ts';
 
 export const PAPER_SHOWN_LINES = 14, PAPER_EXPANDED_LINES = 28, PAPER_SAVE_MS = 600, PAPER_DRAG_PX = 6, PAPER_FLASH_MS = 1200;
-export const PAPER_COLORS = [['mint', 'Mint'], ['sky', 'Sky'], ['lilac', 'Lilac'], ['peach', 'Peach'], ['slate', 'Slate']] as const;
+const PAPER_COLORS: readonly ColorChoice[] = NOTE_PAPERS.map(id => ({ id, label: NOTE_PAPER_LABELS[id], color: `var(--act-paper-${id})` }));
 export type PaperMode = 'near' | 'mid' | 'far';
 type Grow = NonNullable<MapSizePreset['growLines']>;
 export interface PaperActions {
@@ -63,6 +67,14 @@ function caretAt(face: HTMLElement, x: number, y: number) {
 /** The note's text is the card face. A click writes where it lands, a drag past 6px
  * moves the tile, and Esc, ⌘↵, blur or zooming out commit; nothing discards a draft.
  * A save made elsewhere while writing holds autosave and offers Compare or Keep mine. */
+/** The note tools' paper picker. A swatch press keeps the caret in the note. */
+function PaperColors({ paper, choose }: { paper: string; choose(paper: string): void }) {
+  const { recent, remember } = useRecentColors();
+  return <span className="paper-colors" onPointerDown={event => { if ((event.target as Element).closest('[role=radio]')) event.preventDefault(); }}>
+    <ColorPicker compact label="Paper" presets={PAPER_COLORS} value={paper} recent={recent} onRecent={remember} onChange={next => choose('custom' in next ? next.custom : next.id)} />
+  </span>;
+}
+
 export function PaperFace({ title, text, width, grow, mode, paper, writer, expanded, expand, onHeight, actions }: {
   title: string; text: string; width: number; grow?: Grow; mode: PaperMode; paper: string; writer?: { name: string; at: string }; expanded: boolean; expand(open: boolean): void;
   onHeight(height: number | undefined): void; actions: PaperActions;
@@ -218,8 +230,7 @@ export function PaperFace({ title, text, width, grow, mode, paper, writer, expan
         <button type="button" onPointerDown={event => event.preventDefault()} onClick={useTheirs}>Use saved version</button>
       </section>}
       <div className="paper-tools" role="toolbar" aria-label="Note" style={{ top: height + 8 }}>
-      <span role="radiogroup" aria-label="Paper">{PAPER_COLORS.map(([id, label]) => <button key={id} type="button" role="radio" aria-checked={paper === id} aria-label={label} title={label} className="paper-swatch" data-paper={id}
-        onPointerDown={event => event.preventDefault()} onClick={() => { void latest.current.actions.write({ paper: id }).catch(failure => setError((failure as Error).message)); }} />)}</span>
+      <PaperColors paper={paper} choose={next => { void latest.current.actions.write({ paper: next }).catch(failure => setError((failure as Error).message)); }} />
       <button type="button" className="paper-list" onPointerDown={event => event.preventDefault()} onClick={() => { const element = editor.current; if (element) applyTextChange(element, toggleChecklist(element.value, element.selectionStart, element.selectionEnd)); }}>List</button>
       <span className="paper-hint"><kbd>Esc</kbd> done</span>
     </div></div>, host)}

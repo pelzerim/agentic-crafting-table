@@ -1,5 +1,5 @@
 import { test as base, expect, _electron as electron } from '@playwright/test';
-import type { Page, ElectronApplication } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -98,10 +98,11 @@ export async function resize(app: ElectronApplication, page: Page, width: number
   await expect.poll(() => page.evaluate(() => ({ width: innerWidth, height: innerHeight }))).toEqual({ width, height });
 }
 
-export async function capture(page: Page, name: string) {
+/** `mask` covers elements whose content changes between runs, such as live measurements. */
+export async function capture(page: Page, name: string, mask: Locator[] = []) {
   await page.mouse.move(4, 4);
   await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); });
-  await expect(page).toHaveScreenshot(name);
+  await expect(page).toHaveScreenshot(name, { mask });
 }
 
 export async function captureTerminal(page: Page, name: string) {

@@ -62,3 +62,34 @@ test('background polling stops while the account budget is paused and user reads
   assert.equal(input.providers.requests - before, 5);
   assert.ok((await schedule(input, 3)).length > 0, 'after the reset background polling resumes');
 }));
+
+const placeIn = (input: { apply(commands: WorkspaceCommand[]): Promise<void>; nodeId: string }, ...projects: string[]) => input.apply([
+  ...projects.map((id, index) => ({ type: 'project.create' as const, id, title: id, summary: '', position: { x: index * 2000, y: 0 } })),
+  { type: 'node.attach', id: input.nodeId, projectId: projects[0] }]);
+
+test('a pull request in a muted project polls only at the slowest step while an unmuted one backs off as usual', async () => {
+  await fixture(async input => {
+    await placeIn(input, 'quiet');
+    await input.apply([{ type: 'project.mute', id: 'quiet', muted: true }]);
+    assert.deepEqual(await schedule(input, 30), [10, 20, 30], 'muted: every ten minutes from the start');
+  });
+  await fixture(async input => {
+    await placeIn(input, 'loud');
+    assert.deepEqual(await schedule(input, 30), [1, 2, 4, 9, 19, 29], 'its unmuted twin');
+  });
+});
+
+test('unmuting reads the pull request on the next tick and returns it to the first step', () => fixture(async input => {
+  await placeIn(input, 'quiet');
+  await input.apply([{ type: 'project.mute', id: 'quiet', muted: true }]);
+  assert.deepEqual(await schedule(input, 3), []);
+  await input.apply([{ type: 'project.mute', id: 'quiet', muted: false }]);
+  assert.deepEqual(await schedule(input, 3), [0.25, 1.25], 'read at once, then backing off from one minute');
+}));
+
+test('a pull request also placed in an unmuted project keeps the ordinary cadence', () => fixture(async input => {
+  await placeIn(input, 'quiet', 'loud');
+  await input.coordinator.attach({ requestId: randomUUID(), nodeId: randomUUID(), resourceId: randomUUID(), expectedRevision: 0, pluginId: 'github.pull-request', title: 'PR', projectId: 'loud', position: { x: 2000, y: 0 }, data: { url: 'https://github.com/fixture/billing/pull/42' } });
+  await input.apply([{ type: 'project.mute', id: 'quiet', muted: true }]);
+  assert.deepEqual(await schedule(input, 30), [1, 2, 4, 9, 19, 29]);
+}));

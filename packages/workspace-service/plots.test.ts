@@ -132,7 +132,19 @@ test(`a person picks a plot color; it survives recomputes and a restart, may rep
   assert.equal(agentRuntimeRefusal({ action: 'plot', arguments: { operation: 'color' } }), humanOnlyMessage);
 }));
 
-test('a plot moved to another project keeps its identity, name and chosen color there', () => fixture(async ({ store, control, apply }) => {
+test('a person may choose a custom #rrggbb plot color; it is stored in lower case, keeps its slot for others and is refused in any other form', () => fixture(async ({ store, control, apply }) => {
+  const plots = new Plots(store, control), [billing, uploads] = plots.observe(await control.read()).list;
+  await plots.run('photos', { operation: 'color', plotId: uploads.id, color: '#3366CC' });
+  assert.deepEqual(colors(plots.observe(await control.read())), [['a1', 'rose', undefined], ['b1', 'sky', '#3366cc']]);
+  assert.deepEqual(colors(new Plots(store, control).observe(await control.read())), [['a1', 'rose', undefined], ['b1', 'sky', '#3366cc']], 'across a restart');
+  await apply(note('c1', 0, 3000), note('c2', 0, 3000), note('c3', 0, 3000));
+  assert.equal(plots.observe(await control.read()).list.find(plot => plot.memberIds[0] === 'c1')!.color, 'citron', 'the custom plot still holds its slot');
+  for (const color of ['#36c', '3366cc', 'blue', '#3366cg']) await assert.rejects(plots.run('photos', { operation: 'color', plotId: billing.id, color }), Error, color);
+  await plots.run('photos', { operation: 'color', plotId: uploads.id, color: null });
+  assert.equal(plots.observe(await control.read()).list.find(plot => plot.id === uploads.id)!.chosenColor, undefined);
+}));
+
+test('a plot moved to another project keeps its identity, name and chosen color there',() => fixture(async ({ store, control, apply }) => {
   const plots = new Plots(store, control), [billing] = plots.observe(await control.read()).list;
   await plots.run('photos', { operation: 'rename', plotId: billing.id, name: 'Pricing' });
   await plots.run('photos', { operation: 'color', plotId: billing.id, color: 'orchid' });
@@ -144,6 +156,60 @@ test('a plot moved to another project keeps its identity, name and chosen color 
   assert.ok(['a1', 'a2', 'a3'].every(id => moved.memberIds.includes(id)));
   assert.equal(plots.observe(await control.read()).list.filter(plot => plot.id === billing.id).length, 1);
   await plots.run('video', { operation: 'rename', plotId: billing.id, name: 'Pricing v2' });
+}));
+
+const pinnedOnly = (plots: ReturnType<Plots['observe']>) => plots.list.filter(plot => plot.pinnedMemberIds.length).map(plot => [plot.id, plot.pinnedMemberIds.join(',')]);
+const pinnedGroups = (plots: ReturnType<Plots['observe']>) => plots.list.filter(plot => plot.pinnedMemberIds.length).map(plot => [plot.id, plot.memberIds.join(','), plot.pinnedMemberIds.join(',')]);
+
+test('a person creates a pinned plot of far-apart items, pins more into it and unpins; pins hold through moves and a restart', () => fixture(async ({ store, control, apply }) => {
+  const plots = new Plots(store, control);
+  await apply(note('f1', -4000, 4000), note('f2', 6000, 5000));
+  assert.deepEqual(plots.observe(await control.read()).list.map(plot => plot.pinnedMemberIds), [[], []]);
+  const created = await plots.run('photos', { operation: 'create', memberIds: ['f1', 'f2'] }) as { ok: boolean; plotId: string };
+  assert.equal(created.ok, true);
+  let view = plots.observe(await control.read());
+  assert.deepEqual(pinnedGroups(view), [[created.plotId, 'f1,f2', 'f1,f2']]);
+  assert.deepEqual([view.list.find(plot => plot.id === created.plotId)!.name, view.list.find(plot => plot.id === created.plotId)!.source], ['2 items', 'local'], 'named like any other plot');
+  await plots.run('photos', { operation: 'pin', plotId: created.plotId, memberIds: ['loose'] });
+  await apply({ type: 'node.move', id: 'f2', position: { x: -9000, y: -9000 } });
+  assert.deepEqual(pinnedGroups(plots.observe(await control.read())), [[created.plotId, 'f1,f2,loose', 'f1,f2,loose']]);
+  assert.deepEqual(pinnedGroups(new Plots(store, control).observe(await control.read())), [[created.plotId, 'f1,f2,loose', 'f1,f2,loose']], 'after a restart');
+  const billing = plots.observe(await control.read()).list.find(plot => plot.memberIds.includes('a1'))!;
+  await plots.run('photos', { operation: 'pin', plotId: billing.id, memberIds: ['loose'] });
+  view = plots.observe(await control.read());
+  assert.deepEqual(pinnedGroups(view), [[billing.id, 'a1,a2,a3,loose', 'a1,a2,a3,loose'], [created.plotId, 'f1,f2', 'f1,f2']], 'a pin in a second plot replaces the first; a plot pinned into the first time keeps its members pinned');
+  await plots.run('photos', { operation: 'unpin', memberIds: ['f1'] });
+  assert.deepEqual(pinnedGroups(plots.observe(await control.read())), [[billing.id, 'a1,a2,a3,loose', 'a1,a2,a3,loose'], [created.plotId, 'f2', 'f2']], 'one pinned member keeps the plot');
+  await plots.run('photos', { operation: 'unpin', memberIds: ['f2', 'loose', 'a1', 'a2', 'a3'] });
+  view = plots.observe(await control.read());
+  assert.deepEqual(pinnedGroups(view), []);
+  assert.deepEqual(groups(view), ['a1,a2,a3', 'b1,b2,b3'], 'unpinned, the items follow detection again');
+}));
+
+test('pinned members in another project or below are left out and come back; the pin stays', () => fixture(async ({ store, control, apply }) => {
+  const plots = new Plots(store, control);
+  await apply(note('f1', -4000, 4000), note('f2', 6000, 5000), note('f3', 6000, -5000), { type: 'project.create', id: 'video', title: 'Video', summary: '', position: { x: 0, y: 9000 } });
+  const { plotId } = await plots.run('photos', { operation: 'create', memberIds: ['f1', 'f2', 'f3'] }) as { plotId: string };
+  await apply({ type: 'nodes.send', ids: ['f2'], projectId: 'video' }, { type: 'node.below', id: 'f3' });
+  assert.deepEqual(pinnedOnly(plots.observe(await control.read())), [[plotId, 'f1']]);
+  await apply({ type: 'nodes.send', ids: ['f2'], projectId: 'photos' }, { type: 'node.surface', id: 'f3' });
+  assert.deepEqual(pinnedOnly(plots.observe(await control.read())), [[plotId, 'f1,f2,f3']]);
+  await apply({ type: 'node.below', id: 'f1' }, { type: 'node.below', id: 'f2' }, { type: 'node.below', id: 'f3' });
+  assert.ok(!plots.observe(await control.read()).list.some(plot => plot.id === plotId), 'with none on the map there is no plot');
+  await apply({ type: 'node.surface', id: 'f2' });
+  assert.deepEqual(pinnedOnly(plots.observe(await control.read())), [[plotId, 'f2']], 'and it returns with its identity');
+}));
+
+test('pin and create are refused for items outside the project or a plot of another project; agents cannot pin', () => fixture(async ({ store, control, apply }) => {
+  const plots = new Plots(store, control), [billing] = plots.observe(await control.read()).list;
+  await apply({ type: 'project.create', id: 'video', title: 'Video', summary: '', position: { x: 0, y: 9000 } }, { ...note('v1', 0, 9000), projectId: 'video' } as WorkspaceCommand);
+  await assert.rejects(plots.run('photos', { operation: 'pin', plotId: billing.id, memberIds: ['v1'] }), /not in this project/);
+  await assert.rejects(plots.run('photos', { operation: 'pin', plotId: billing.id, memberIds: ['ghost'] }), /not in this project/);
+  await assert.rejects(plots.run('video', { operation: 'pin', plotId: billing.id, memberIds: ['v1'] }), /not in this project/);
+  await assert.rejects(plots.run('photos', { operation: 'create', memberIds: ['loose', 'v1'] }), /not in this project/);
+  await assert.rejects(plots.run('photos', { operation: 'create', memberIds: [] }));
+  assert.deepEqual(store.plotRecords().map(record => record.pinnedMemberIds), store.plotRecords().map(() => []), 'nothing was pinned');
+  for (const operation of ['pin', 'create', 'unpin']) assert.equal(agentRuntimeRefusal({ action: 'plot', arguments: { operation } }), humanOnlyMessage);
 }));
 
 test('a short note shown as a badge on an item is no plot member', async () => fixture(async ({ store, control, apply }) => {

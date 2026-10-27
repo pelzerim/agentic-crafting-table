@@ -1,5 +1,5 @@
-import { isArchived } from './archive.ts';
-import { attentionCounts, attentionDetails, attentionItems, attentionTier, memberAttentionCounts, nodeAttentionReasons } from './attention.ts';
+import { isArchived, isDrawn } from './archive.ts';
+import { attentionCounts, attentionDetails, attentionItems, attentionTier, memberAttentionCounts, nodeAttentionReasons, nodeWaitingAttention } from './attention.ts';
 import type { AttentionCounting, AttentionCounts, AttentionTier } from './attention.ts';
 import { intersects } from './label-placement.ts';
 import type { ScreenRect } from './label-placement.ts';
@@ -12,8 +12,8 @@ import { plotColor } from './plots.ts';
 import type { PlotColor, PlotView } from './plots.ts';
 
 type DashboardNode = GraphNode & { activity?: string; attention?: string; summary?: string };
-/** A Needs me row carries its `tier` and, when recorded, `since` when it was raised; a Working row `at`. */
-export interface DashboardRow { id: string; title: string; detail: string; at?: string; tier?: AttentionTier; since?: string }
+/** A Needs me row carries its `tier`, when recorded `since` when it was raised, and its attention `version` when above 0; a Working row `at`. */
+export interface DashboardRow { id: string; title: string; detail: string; at?: string; tier?: AttentionTier; since?: string; version?: number }
 /** How many entries each Needs me tier has. */
 export type DashboardTiers = Pick<AttentionCounts, AttentionTier>;
 const NO_TIERS: DashboardTiers = { asking: 0, turn: 0, finished: 0 };
@@ -22,16 +22,18 @@ export interface DashboardCell { id: string; title: string; label: string; tone:
 export interface DashboardSection { name: PipelineName; total: number; groups: DashboardGroup[]; cells: DashboardCell[] }
 export interface DashboardTodo { id: string; title: string; nodeId?: string; nodeIds: string[] }
 /** A plot row (MAP-24): its name and how many of its items need you, are working, or exist. */
-export interface DashboardPlot { id: string; name: string; color: PlotColor; items: number; needs: number; working: number; tiers: DashboardTiers }
+export interface DashboardPlot { id: string; name: string; color: PlotColor | string; items: number; needs: number; working: number; tiers: DashboardTiers }
 /** One plot's part of a split dashboard (MAP-23), or the Loose block of items in no shown plot.
  * `needs` and `active` count its Needs you and Working rows, also when those sections are off. */
-export interface DashboardBlock { id: string; plot: boolean; name: string; color?: PlotColor; items: number; needs: number; active: number; tiers: DashboardTiers; needsYou: DashboardRow[]; working: DashboardRow[]; todos: DashboardTodo[]; pipelines: DashboardSection[] }
+export interface DashboardBlock { id: string; plot: boolean; name: string; color?: PlotColor | string; items: number; needs: number; active: number; tiers: DashboardTiers; needsYou: DashboardRow[]; waiting: DashboardRow[]; working: DashboardRow[]; todos: DashboardTodo[]; pipelines: DashboardSection[] }
 /** `blocks` and `otherTodos` are present only when two or more plots are shown. `needs` counts
  * Needs you entries even when that section is off; `pipelineIds` lists items in any pipeline,
  * also when pipeline lines are off, so their rows keep the hover preview. */
 export interface ProjectDashboard { id: string; title: string; items: number; needs: number;
   /** Tier counts of every Needs me entry, also with that section off; `needsMe` is the counted number (Asking me + My turn). */
-  counts: AttentionCounts; needsYou: DashboardRow[]; working: DashboardRow[]; pipelines: DashboardSection[]; pipelineIds: string[]; tallies: DashboardSection[]; todos: { open: DashboardTodo[]; done: number }; plots: DashboardPlot[]; lastActivityAt?: string; blocks?: DashboardBlock[]; otherTodos?: DashboardTodo[];
+  counts: AttentionCounts; needsYou: DashboardRow[];
+  /** Items still waiting on the person after their alert was seen (a gate, a question, a review); never counted. */
+  waiting: DashboardRow[]; working: DashboardRow[]; pipelines: DashboardSection[]; pipelineIds: string[]; tallies: DashboardSection[]; todos: { open: DashboardTodo[]; done: number }; plots: DashboardPlot[]; lastActivityAt?: string; blocks?: DashboardBlock[]; otherTodos?: DashboardTodo[];
   /** A muted project (MAP-25) keeps its name and item count and lists nothing else. */
   muted?: true }
 export const LOOSE_BLOCK = 'loose';
@@ -61,7 +63,7 @@ const STAGE_ORDER = { failing: 0, open: 1, ready: 2, done: 3 } as const;
  * means no split. Blocks are still ranked by their Needs you and Working rows. */
 export function projectDashboard(projectId: string, nodes: readonly DashboardNode[], sources: { pipelineOf?(node: DashboardNode): PipelineName | undefined; tallyOf?(node: DashboardNode): PipelineName | undefined; paused?: boolean; todos?: readonly TodoEntry[]; links?: readonly GraphLink[]; plots?: readonly PlotView[]; sections?: DashboardSections; counting?: AttentionCounting } = {}): ProjectDashboard {
   const project = nodes.find(node => node.id === projectId);
-  const board: ProjectDashboard = { id: projectId, title: project?.title ?? '', items: 0, needs: 0, counts: attentionCounts([]), needsYou: [], working: [], pipelines: [], pipelineIds: [], tallies: [], todos: { open: [], done: 0 }, plots: [], lastActivityAt: undefined };
+  const board: ProjectDashboard = { id: projectId, title: project?.title ?? '', items: 0, needs: 0, counts: attentionCounts([]), needsYou: [], waiting: [], working: [], pipelines: [], pipelineIds: [], tallies: [], todos: { open: [], done: 0 }, plots: [], lastActivityAt: undefined };
   if (!project || project.archivedAt) return board;
   for (const entry of sources.todos ?? []) {
     if (entry.projectId !== projectId) continue;
@@ -88,8 +90,16 @@ export function projectDashboard(projectId: string, nodes: readonly DashboardNod
   // Undermap already pauses Needs me and draws no cover, so a muted project there is an ordinary paused board.
   if (project.mutedAt && !sources.paused) return { ...board, muted: true, todos: { open: [], done: 0 }, lastActivityAt: undefined };
   const entries = sources.paused ? [] : attentionItems(nodes, projectId);
-  board.needsYou = entries.map(item => ({ id: item.node.id, title: item.node.title, detail: item.details[0], tier: item.tier, ...(item.since ? { since: item.since } : {}) }));
+  board.needsYou = entries.map(item => {
+    const version = Math.max(0, ...item.aliases.map(alias => alias.attentionVersion ?? 0));
+    return { id: item.node.id, title: item.node.title, detail: item.details[0], tier: item.tier, ...(item.since ? { since: item.since } : {}), ...(version ? { version } : {}) };
+  });
   board.counts = attentionCounts(entries, sources.counting);
+  const alerted = new Set(entries.map(item => item.identity));
+  board.waiting = sources.paused ? [] : nodes.filter(node => node.projectId === projectId && !alerted.has(node.resourceId ?? node.id) && isDrawn(node, nodes)).flatMap(node => {
+    const waiting = nodeWaitingAttention(node);
+    return waiting ? [{ id: node.id, title: node.title, detail: waiting.detail, tier: waiting.tier, ...(waiting.since ? { since: waiting.since } : {}) }] : [];
+  });
   board.working = [...working.values()].sort((a, b) => (b.activityAt ?? '').localeCompare(a.activityAt ?? '') || a.title.localeCompare(b.title) || a.id.localeCompare(b.id))
     .map(node => ({ id: node.id, title: node.title, detail: node.summary?.trim() ?? '', ...(node.activityAt ? { at: node.activityAt } : {}) }));
   const blocked = sources.links?.length ? blockingState(nodes, sources.links).blocked : undefined;
@@ -134,10 +144,11 @@ function splitByPlot(board: ProjectDashboard, counted: readonly DashboardNode[],
   for (const plot of plots) if (shown.has(plot.id)) for (const id of plot.memberIds) if (!blockOf.has(id)) blockOf.set(id, plot.id);
   const of = (id: string) => blockOf.get(id) ?? LOOSE_BLOCK;
   const blocks = new Map<string, DashboardBlock>([...board.plots.map(plot => plot.id), LOOSE_BLOCK].map(id => [id,
-    { id, plot: id !== LOOSE_BLOCK, name: shown.get(id)?.name ?? 'Loose', ...(shown.has(id) ? { color: shown.get(id)!.color } : {}), items: 0, needs: 0, active: 0, tiers: { ...NO_TIERS }, needsYou: [], working: [], todos: [], pipelines: [] }]));
+    { id, plot: id !== LOOSE_BLOCK, name: shown.get(id)?.name ?? 'Loose', ...(shown.has(id) ? { color: shown.get(id)!.color } : {}), items: 0, needs: 0, active: 0, tiers: { ...NO_TIERS }, needsYou: [], waiting: [], working: [], todos: [], pipelines: [] }]));
   const members = new Map<string, DashboardNode[]>();
   for (const node of counted) { const id = of(node.id); blocks.get(id)!.items++; members.set(id, [...members.get(id) ?? [], node]); }
   for (const row of board.needsYou) { const block = blocks.get(of(row.id))!; block.needsYou.push(row); block.needs++; if (row.tier) block.tiers[row.tier]++; }
+  for (const row of board.waiting) blocks.get(of(row.id))?.waiting.push(row);
   for (const row of board.working) { const block = blocks.get(of(row.id))!; block.working.push(row); block.active++; }
   board.otherTodos = [];
   for (const todo of board.todos.open) {

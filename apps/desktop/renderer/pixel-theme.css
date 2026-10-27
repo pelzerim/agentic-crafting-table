@@ -18,7 +18,7 @@
 .inline-editor input:focus,.inline-editor textarea:focus,.inline-editor select:focus,.pr-review-action select:focus-visible{outline:0;box-shadow:inset 0 0 0 2px var(--act-focus)}
 .live-workspace .terminal-status .session-stop:not(:disabled){border-image:none}
 .live-workspace :is(.todo-row-title,.todo-links,.todo-title,.todo-remove){border-radius:0;clip-path:none}
-.live-workspace :is(.connect-handle,.canvas-menu-swatch){clip-path:none}
+.live-workspace :is(.connect-handle,.color-picker-swatch){clip-path:none}
 .map-locator{border-radius:0;clip-path:var(--pixel-panel-shape)}
 /* Forced colours drop the pixel border images, so controls keep a plain system edge. */
 @media (forced-colors: active){*{border-image:none!important}.live-workspace button:where(:not(.btn)),.live-workspace .btn,.live-workspace input,.live-workspace select,.live-workspace textarea{border:1px solid ButtonText}}

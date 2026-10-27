@@ -171,7 +171,12 @@ filesystem scanning, arbitrary package loading or marketplace is involved.
 
 `ResourcePluginHost` resolves connectors by plugin id, validates action inputs,
 rejects unadvertised actions, and bounds callers on cancellation even when a
-connector ignores its signal. Late observations/results are discarded; cancellation
+connector ignores its signal. A read-only action that returns menu choices may set
+`cacheChoices: true`: the coordinator saves its last answer per item, answers an ask
+with input `{ cached: true }` from it at once (marked `cachedAt`) and `{ refresh: true }`
+from the provider, and forgets it before any write on that item. `loadResourceChoices`
+uses this to show the saved menu first and replace it when the live read differs;
+`heedsBlockers` still applies to a saved answer. Late observations/results are discarded; cancellation
 does not promise to undo an external write. Durable writes need a coordinator. `getContext` lets any new
 item become a context source for an agent. `acceptsContext` is a separate definition
 capability for receiving context, typically an agent session.

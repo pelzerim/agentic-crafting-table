@@ -432,23 +432,40 @@ nags and nothing carries over. Nothing fires for a reminder disabled at its time
 the **project column** by default; `mapCorner: 'projects' | 'atlas'` (Settings value, default
 `projects`, no Settings row yet) switches it to the Atlas described below, which behaves as before.
 The folded column (44 px wide, pixel panel, growing upward) has one 32 × 32 icon per project on the
-Map that is not muted (MAP-25), in the project's colour with one mark and its count: the tier shape of
-its highest Needs me tier (diamond Asking me, triangle My turn, dim dot Finished), else the mint working
-spark with the number working, else a quiet dot. Projects with Asking me come first, then My turn, then
-working, then by last activity; at most 10 icons, then “+N”. Hovering or focusing an icon shows a tooltip
-with the project's name and its summary line; clicking it fits the project (as an Atlas blob click).
-**M**, the fold control or “+N” unfolds it into the **Projects** panel (360 px, at most 60 % of the
-window, scrolls): one row per project with its colour, name, tier and working counts and the age of its
-last activity, its summary line, and its Needs me rows (tier mark, title, reason, age) straight from
-`projectDashboard().needsYou` (src/graph/project-column.ts builds the model). Quiet projects (no Needs me,
-nothing working, no activity for 24 h) fold into one “N quiet projects ›” line that expands. Clicking a
-project row flies there; clicking a Needs me row centres its item without opening it or marking it seen
-(“Go to item on map”). Up and Down move through rows, Enter acts, Esc or M folds. The panel and the
-Needs me sheet are never open together. The **summary line** is the project's AI summary while
-Summarise projects is on (SETTINGS-AI) and one exists, marked with a pen glyph and the title “Written
-by the summary model”; otherwise a counts line built locally (“2 asking · 1 my turn · 1 working ·
-4 to-dos · active 3 h ago”, zeros left out, “Nothing open” when empty). The summary never replaces the
-Needs me rows. The column re-renders only when its model changes, never with the camera. On the
+Map that is not muted (MAP-25), in the project's colour with its **tag**: the initials of a name of two
+or more words (first letters, at most three) or the first three letters of a one-word name, upper case;
+tags that clash within the column get a trailing digit, numbered by project id. The icon's top-right
+corner carries a badge only when something waits on the person: the shape of its highest such tier
+(diamond Asking me, triangle My turn) and that tier's count; working agents and Finished items earn
+no badge, so the column stays quiet until something needs the person. A 3 px copper left edge marks a
+project with something **new since the column was last unfolded**: a Needs me row (item id and
+attention version) that was not there, or a last activity later than it was; unfolding (and anything
+shown while unfolded) clears it. The baseline is kept per window in the renderer, never saved; the
+first projects a window shows are the first baseline. Quiet projects dim. Projects with Asking me come
+first, then My turn, then working, then by last activity; at most 10 icons, then “+N”. Hovering or
+focusing an icon shows a tooltip with the project's name, counts and age, its Needs me rows (at most
+four, then “+N more”), its written Next line and its meta text (“2 to-dos · 1 working”, or “Nothing
+open”); clicking it fits the project (as an Atlas blob click). **M**, the fold control or “+N” unfolds
+it into the **Projects** panel (380 px, at most 60 % of the window, scrolls). The panel says each fact
+once and spends colour only on what waits on the person. Each project row, top down: a header (a 3 px
+bar and the tag in the project's colour, the name as a button that flies there, tier counts, age of its
+last activity); its **Needs me rows**, each a tier mark, “title — reason” and the age it has waited,
+clicking it centres the item without opening or marking it, and on hover or focus one action, **Seen**
+(the same acknowledge as the Needs me sheet); a row still waiting after Seen stays, dimmed, without
+Seen. Rows **group by plot only when Needs me rows lie in two or more plots** (MAP-24): a plot header
+(swatch in the plot's colour and the name) flies to the plot and selects its items as a dashboard plot
+row does; plots in map order (band of their topmost item, then leftmost), plots without rows left out,
+then “Loose” for rows in no plot; rows indented under their header. Then the model's two lines while
+Summarise projects is on (SETTINGS-AI, AGENT-07) and each exists: **Next** (copper pen, the one
+recommendation) and **Status** (dimmed, one sentence on what agents are doing), both titled “Written
+by the summary model”; without them nothing stands in: the rows are the facts and no local line
+restates them. Last, a dimmed **meta** line with only what a person still acts on besides the rows:
+“N to-dos” (open ones; opens the to-do list at the project's first open to-do) and “N working”; zeros,
+done to-dos and pipeline totals are never shown. Working agents are never rows. Quiet projects (no
+Needs me, nothing working, no activity for 24 h) fold into one “N quiet projects ›” line that expands.
+Up and Down move through rows, Enter acts, Esc or M folds. The panel and the Needs me sheet are never
+open together. src/graph/project-column.ts builds the model from `projectDashboard()`; the column
+re-renders only when its model changes, never with the camera. On the
 Undermap the column is not shown (Needs me and Working pause there) and M does nothing; with
 `mapCorner: 'atlas'` the Atlas keeps its Undermap behaviour.
 
@@ -698,6 +715,33 @@ its members (Jaccard ≥ 0.5) with a previous or recently dissolved plot; otherw
 new. Geometry is never persisted; plot identity, names, hiding and the per-project
 switch are kept in SQLite (`plots`, `plot_projects`, migration 18; colors, migration 28).
 
+**Pinned members** (Move to plot): a person can choose membership. Right-click on an item
+or a selection on the map offers **Move to plot ▸** after Move to project: the plots of the
+project every selected item is in, by name in map order (hidden ones as “Name (hidden)”), the
+plot every selected item is already pinned in checked and unavailable, then a line and
+**New plot**. With items of several projects, or an item in no project, the submenu holds only
+the unavailable line “Items in one project only”. Picking a plot pins the items in it; New plot
+makes a plot of exactly the items, named like any other (the local fallback until Name plots
+names it). Pinning into a plot with no pinned members yet also pins the members it shows, so the
+plot stays the one the person picked rather than moving its identity to the new item. An item is
+pinned in one plot at most: pinning it in another unpins it. An item pinned in a plot (and a
+selection all pinned in the same plot) has **Remove from plot**: the item is unpinned and follows
+detection again; a plot whose last pinned member is removed is an ordinary plot from then on and
+dissolves if detection does not keep it. A plot with pinned members is a **pinned plot**: its
+pinned members on the map are always its members wherever they sit, one member is enough, and it
+keeps its id outright. Detection treats them as one linked group that is never cut by size or
+share, never merged with another pinned plot and kept first among the six plots of a project; an
+unpinned item near a pinned member (72 px, or 120 px for an item already in the plot) or linked
+to one joins the plot as it would join a linked group, and leaves again by the same rules, so a
+detected plot whose items sit next to a pinned member becomes part of the pinned plot. Pinned
+members moved to another project, below or archived are left out while they are, the pin
+is kept and they come back when they return; a pinned plot with none on the map is dormant and
+never reclaimed by another group. The sign of a pinned plot shows an 8 px pin glyph in the sign
+tone between the sprout and the name, and its tooltip starts “Pinned · N items”. Pin, create
+and unpin are person-only `plot` requests (`pin` refused for items outside the project or a plot
+of another project); pins are stored per plot (`plots.pinned_member_ids`), and `PlotView` gains
+`pinnedMemberIds`, the pinned members it holds.
+
 **Look:** each plot is a tinted patch on the neighbourhood's 24 px world grid: a quiet
 tint in the plot's color (about 0.13 inside and 0.07 on a one-cell edge ring, so the
 ground still shows through and the plot reads as a variation of its place; hover lifts it
@@ -754,7 +798,12 @@ with the plot and travels with its identity like its name; another plot appearin
 dissolving never recolors the rest, and a plot reclaiming a dormant identity keeps its
 color unless a plot that stayed shows it now. A person's color (the sign menu) overrides
 the assigned one, survives recomputes and restarts, and may repeat another plot's: both
-keep theirs. **Automatic** clears it and the assigned color returns.
+keep theirs. **Automatic** clears it and the assigned color returns. The sign menu's color
+row is the shared colour picker (COLOR-PICKER) in its compact form: the six slots, then
+**More colours** for Your colours and **Custom colour…**. A person's color may be a custom
+`#rrggbb` (`chosenColor` holds a slot id or the hex, lower case): it is drawn as it is,
+its sign tone computed the same way, and the plot keeps its assigned slot for the
+assignment of the others.
 
 **Signpost:** hover or focus brightens the patch, dims other cards to 50% and shows a
 tooltip (name, item count, Needs me and working counts). Click or Enter selects the
@@ -802,9 +851,13 @@ them. Settings → Map → **Show plots** (on by default) hides every plot and p
 naming.
 
 **MAP-25 — Mute a project.** (Night.) Mute is a **display
-preference on one project**. It changes what the app shows and announces and nothing
-about what runs: agents, terminals, provider polling, AI titles and MCP are untouched,
-and no attention is acknowledged. A muted project stays where it is on the map.
+preference on one project**. It changes what the app shows and announces and almost
+nothing about what runs: agents, terminals, AI titles and MCP are untouched, and no
+attention is acknowledged. Provider polling of an item that only muted projects show
+slows to the longest step of its cadence (an item also placed in an unmuted project
+keeps the ordinary one, and an unconfirmed change still reads every tick); unmuting
+reads such items on the next tick and starts their cadence over. A muted project stays
+where it is on the map.
 
 **State:** `mutedAt` (a timestamp) on the project node, set and cleared by the shared
 command `project.mute { id, muted }`. It is one revision, survives a restart, and is
@@ -861,6 +914,12 @@ hold stay in both cases, because they are about intent.
 | Atlas and overview (MAP-22) | Dim hull with a moon, no item marks; footer and Projects list show “Muted” instead of counts; N skips its items |
 | Needs me button and Dock badge | Count only unmuted projects |
 | Needs me panel | Its rows collapse into one line **Muted · N** below the counted rows; opening it shows the rows with Seen and Map. An item also placed in an unmuted project stays counted through that alias |
+An item that still waits on the person after its alert was seen (a question, a review
+request, an approval gate, a failure) stays listed as a dimmed row without the Seen
+action and is never counted; it is the fallback Next when no alert is unseen. The strip
+leaves out zero counts: no to-dos line without to-dos, no done count at zero, no empty
+pipeline stage. Rows end in an ellipsis and the strip wraps, so nothing runs past the
+panel's edge.
 | Native notifications and sound | None for its items; open banners close when it is muted; unmuting announces nothing |
 | Bottom-left finished and unblocked notices | None for its items |
 | To-do list | Its to-dos leave the list, by when and grouped by project (Next, Later and Done), and return when the project is unmuted. Triage is unaffected and Send to project works; agents still read them |
@@ -1875,15 +1934,22 @@ state must win over pending generated labels.
 **Project summaries** (MAP-22) are a helper of the same kind: for each project on the Map that is not
 muted (never one below), the service builds a reduced input from its dashboard (name, tier counts, Needs
 me titles and reasons, Working titles with their activity summaries, open to-do titles, plot names,
-pipeline counts; never terminal output, note bodies, diffs or comments; at most ~2,000 characters,
-lists trimmed from the end, Needs me last) and fingerprints it without ages or times. It asks Haiku
-for one or two sentences (≤ 160 characters, 96 output tokens, thinking off, one tool-free turn) once the
-fingerprint has been unchanged for 60 s, at most once per 10 minutes per project, never twice for the
-same input, from the shared allowance while leaving 4 requests to the other helpers. `project_summaries
-(project_id, fingerprint, attempted_at, text, model)` keeps the latest text, which stays until a newer
-attempt is answered; a failed or unusable answer still counts. Summaries reach the renderer as
-`snapshot.projectSummaries` with their own revision. The text only describes; tiers, counts and the
-Needs me rows come from attention state.
+pipeline counts per stage; with two or more plots each Needs me and Working row names its plot; never
+terminal output, note bodies, diffs or comments; at most ~2,000 characters, lists trimmed from the end,
+Needs me last) and fingerprints it without ages or times. It asks Haiku for two labelled lines (96
+output tokens, thinking off, one tool-free turn, at most 60 words together): `Next:` one action for the
+person naming one item of the project, and `Status:` one sentence on where it stands, per plot when
+rows carry plots. The reply is parsed into `{ next, status }` (a reply without labels is a Status; each
+line plain, Next ≤ 140 and Status ≤ 240 characters). **Grounding:** Next is kept only when it mentions an
+item of the input, a Needs me or Working title as a case-insensitive substring or one of a title's words
+of four or more letters; otherwise it is dropped and the column shows the top Needs me row instead. It
+asks once the fingerprint has been unchanged for 60 s, at most once per 10 minutes per project, never
+twice for the same input, from the shared allowance while leaving 4 requests to the other helpers.
+`project_summaries (project_id, fingerprint, attempted_at, text, model)` keeps the latest lines as JSON
+`{"next","status"}` in `text` (a plain-text row saved before reads as Status), which stays until a newer
+attempt is answered; a failed or unusable answer still counts. Both lines reach the renderer in
+`snapshot.projectSummaries` with their own revision. The lines only describe; tiers, counts and the rows
+come from attention state.
 
 **AGENT-07b — Background work.** A Claude item whose main turn has stopped while
 its process still runs background subagents, teammates, workflows or other background
@@ -2105,14 +2171,32 @@ camera. Preserve the chosen padding across restarts; older settings use the defa
 Zoom scales the gap normally and must not recompute or rearrange world geometry.
 
 **PROJECT-COLOR — Neighborhood color.** Creating a project and Project settings
-offer a neighborhood base color: Minecraft-like presets (Grass default, Oak planks,
-Stone, Diamond, Lapis, Amethyst, Redstone, Gold, Prismarine, Netherrack) and a
+offer a neighborhood base color in the shared colour picker (COLOR-PICKER): twenty
+presets, the ten Minecraft-like biome presets (Grass default, Oak planks, Stone,
+Diamond, Lapis, Amethyst, Redstone, Gold, Prismarine, Netherrack) then Emerald, Moss,
+Ice, Quartz, Birch, Sand, Clay, Copper, Coral and Obsidian, plus Your colours and a
 custom color. It is saved on the project (`color`, #rrggbb) and paints only that
 neighborhood; items cannot have one. While the neighborhood style is **Biomes**
-(SETTINGS-09), a preset color also chooses that neighborhood's biome (BIOME-01);
-a custom color keeps a plain fill. The saved color and the picker are unchanged.
+(SETTINGS-09), one of the ten biome presets also chooses that neighborhood's biome
+(BIOME-01); the other presets and a custom color keep a plain fill and compute their
+plot palette as a custom color does (MAP-24). Saved colors read as before.
 
-**BIOME-01 — Neighborhood biomes.** Each color preset is a biome: Grass is
+**COLOR-PICKER — One colour picker.** The project's neighborhood color, a plot's color
+(sign menu) and a note's paper (note tools, its menu's Colour row and its form) use one
+picker (`apps/desktop/renderer/ui/color-picker.tsx`): square pixel swatches of the place's
+presets (a radio group named for the place; arrow keys move within it, one tab stop),
+**Your colours** (the last eight custom colours chosen in any picker, newest first, each
+once; setting `recentColors`) and **Custom colour…**, which opens a pixel pad inline:
+12 hues across (30° apart) by 8 shades down (HSL saturation 0.6, lightness 0.88 down to
+0.18 in steps of 0.1), drawn as crisp cells, exposed to assistive technology as a Hue and
+a Lightness slider, plus a hex field (`#rrggbb`, `#rgb`, the `#` optional; invalid input
+disables Apply) with a live preview. Nothing changes until Apply (or Enter in the hex
+field); Esc closes the pad and leaves the rest open. In menus and the note tools the
+picker is compact: one row of presets ending in **More colours**, which shows Your colours
+and Custom colour…; in a menu the row is one Up/Down stop and Left/Right moves within it.
+There is no OS colour dialog.
+
+**BIOME-01 — Neighborhood biomes.** Each of the ten biome presets is a biome: Grass is
 Grassland, Oak planks Woodland, Stone Mountain, Diamond Tundra, Lapis Ocean,
 Amethyst Geode, Redstone Badlands, Gold Desert, Prismarine Swamp and Netherrack
 Nether. The design reference is the level
@@ -2169,8 +2253,9 @@ material never changes graph positions, membership, padding, camera or sessions.
 **SETTINGS-AI — AI features.** Settings → AI features holds Agent titles
 (**Auto-title agents**), Slack titles (**Auto-title Slack messages**, on by default),
 Plot names (**Name plots**, MAP-24, on by default; off keeps
-local names), Project summaries (**Summarise projects**, MAP-22, on by default; off shows the
-counts line), Activity summaries (**Summarize agent and terminal
+local names), Project summaries (**Summarise projects**, MAP-22, on by default; writes each project's
+Next and Status lines, with Next grounded in one of its items as AGENT-07 describes; off, Next is the top
+Needs me row's “title — reason”, Status the counts line, and no pen glyph shows), Activity summaries (**Summarize agent and terminal
 activity**, with the summary model and per-item interval as dependents) and a
 separate **Request limits** section (requests per hour and per day). The limits are
 shared by all of these features (project summaries leave 4 requests an hour and a day to the others, as
@@ -2387,6 +2472,39 @@ and bounded performance measurements. Exclude account details, item/session IDs,
 titles, paths, URLs, prompts, terminal output, raw errors and log contents. Never
 upload a report automatically. Preserve ordinary performance-report export.
 
+**SERVICE-HEALTH-01 — Local connection and service health.** The app and the workspace
+service talk over a local socket in newline-delimited JSON frames; the service sends
+every subscriber a snapshot after each commit. A subscriber names its layer
+(`subscribe { after, layer: 'map' | 'below' }`) and receives the snapshot presented for
+it (`presentLayer` in `src/graph/layers.ts`, shared with the desktop): on the map the
+items below are left out, except those a kept node links to or a to-do holds, with the
+resources and links only they use; projects, hidden and archived items stay. Below,
+the whole state is sent, since Needs me, the badge, notifications and the to-do list
+keep counting the map there. Both carry `layer` and `layers.below` (the number of items
+below and the projects the Undermap draws). Subscribing again with another layer
+replaces it and answers with that layer's snapshot. A subscriber without a layer (MCP,
+older clients) and every `read` receive the whole state. The service encodes one frame
+per layer in use. Only the newest snapshot waits for
+a slow client: while a client's socket still has unsent data, a new snapshot replaces
+the one waiting and is written when the socket drains; replies and other events are
+never replaced. A client is dropped only when one frame would take its unsent data
+over 8 MB, and the service writes `Local client dropped: <queued> bytes queued,
+<frame> bytes frame, <event or method>` to service.log first. The service measures its
+own health: event-loop lag (a one-second timer's drift; per-minute max and p95 for the
+last hour, and each lag of 250 ms or more with the operations then running), the
+50 slowest operations with counts per name (each RPC method and the named background
+passes such as `broadcast`, `resources.poll` and `summaries.tick`), snapshots and bytes
+per subscriber, coalesced snapshots, dropped clients, and memory each minute. The
+read-only `diagnostics.health` call returns it and the support report includes it; it
+holds operation and event names, counts and times only, never titles or content. The
+app keeps its last 50 connection changes with their reasons (the socket error,
+`closed`, or `subscribe failed: …`), writes each to `app.log` in the data directory,
+and keeps the 20 slowest snapshot deliveries (parse plus forward to the windows).
+Settings → Data & diagnostics → Support → **Service health** shows lag max and p95,
+snapshots and bytes per minute, coalesced and dropped counts over the last 10 minutes,
+the last disconnects with their reasons and the slowest operations, with Refresh and
+a Download of the health JSON.
+
 **SAFETY-01 — Crash and load failure.** A top-level error boundary and per-view
 boundaries (terminals, plugin views) replace a blank window. A render crash or a
 failed initial load shows **Couldn’t open your table**: a one-line cause, “Your
@@ -2425,7 +2543,7 @@ session view provides per-session **Archive** and **Stop** actions. Only the
 inline confirm (the compatible runtime action remains `remove`). The same page
 lists terminal recordings, diagnostic log limits as rows with units, and Support
 actions (support report, performance measurements with a Show measurements
-table); the app version is the page header's meta. Archive hides the entry from the default list
+table, service health, SERVICE-HEALTH-01); the app version is the page header's meta. Archive hides the entry from the default list
 while retaining session identity, metadata and history; an archived-sessions view
 provides Restore and Delete, also reachable from the main Archive. Archive is the one home for archived things: segmented tabs Items · To-dos · Sessions · Recordings, each with its count (Sessions shows only archived entries, Recordings the recordings of archived or removed sessions). Settings → Data & diagnostics keeps live processes and storage totals and links into Archive. Delete removes
 the archived entry from the managed session list without
@@ -3033,7 +3151,7 @@ carry a plain tooltip instead.
 
 | ID | Type | Required behavior |
 | --- | --- | --- |
-| RES-01 | Pull request | URL-only creation; authenticated provider title, description, comparison summary and state inside the item. “Open pull request” opens its canonical GitHub URL directly, with state shown separately. The expanded view uses Review desk: repository/PR number in the movable frame, one content title, lifecycle/review state, compact author/diff metadata (branch details inside the description), and refresh. Conversation threads are ordered by latest activity with oldest-first replies grouped by GitHub parent identity, file/line context when available, author/date and canonical source links; bodyless approvals and other review activity are hidden by default. Settings → Items → GitHub pull request configures discussion comments, code comments/thread replies, written review feedback, bots/GitHub Actions and textless review activity. Default to human comments and replies. The map comment pill counts only unseen comments under the saved conversation filters and disappears at zero. Mark seen/unseen updates it immediately across aliases; edited comments and new replies count again. Count only known cached comments, without guessing unread totals outside bounded coverage. Keep approval/check status syncing independently of conversation visibility; retain cached content and seen receipts. A collapsed Connected reviews row above the single conversation column shows directly connected review summaries, state and revision freshness when expanded. No right-hand column. Root comments have distinct stepped cards and replies are inset. An unseen comment is marked new: a blue (info) bar on its left edge, a blue edge and a “New” chip after the author; a seen one has a quiet grey bar and a softer author name, and loses the chip. Every comment starts with a 180-code-point plain-text preview; click or keyboard expands safe full content independently of Seen. Human comments opens per-view visibility controls; persistent defaults remain in Settings. Missing or filtered code-thread parents have an explicit source link, never a fabricated root. Description is collapsed behind Show/Hide description, rendered as safe Markdown. Group the three review-launch actions under a collapsed Trigger Review button. Show discussion comments, inline code comments and review bodies with author/date, safe Markdown and sanitized HTML (including details/summary; no scripts, embedded images, events or active form fields). Comments have Copy link, Mark seen/unseen, Reply and, when linked, Fix with agent. Seen is local, persists across restart and aliases, collapses fully read threads under one Seen disclosure below unseen; edits or new replies resurface the thread. Preserve comment expansion and Seen disclosure state across unchanged polls. Replies post only on explicit submission: inline code replies stay in their root thread, discussion/review-summary replies link the original in the PR discussion. Preserve drafts during refresh. Fix prompts are explicitly sent to a selected connected idle agent, bound to this PR/comment and process; busy/stopped agents are unavailable. Journal writes/delivery before dispatch; do not automatically retry uncertain outcomes. On opening a PR after restart, immediately display its persisted description, state and comments with Seen receipts, even when the cache is expired or credentials are disconnected. Show that saved content is being refreshed and its last checked time; refresh in the background, retain content on failure, and never acknowledge newer attention from the saved preview alone. Retain saved comments when offline; large conversations explicitly show recent bounded coverage and a GitHub link. No Files/Discussion/Reviews tabs. Preserve immutable revisions for analyses. **Mark all seen:** beside “Conversation · N unseen” a button marks every comment loaded in the view as seen in one local request, filtered ones included; it shows only while one is unseen, never writes to GitHub, and a comment edited or added after the list was shown stays unseen. |
+| RES-01 | Pull request | URL-only creation; authenticated provider title, description, comparison summary and state inside the item. “Open pull request” opens its canonical GitHub URL directly, with state shown separately. The expanded view uses Review desk: repository/PR number in the movable frame, one content title, lifecycle/review state, compact author/diff metadata (branch details inside the description), and refresh. Conversation threads are ordered by latest activity with oldest-first replies grouped by GitHub parent identity, file/line context when available, author/date and canonical source links; bodyless approvals and other review activity are hidden by default. Settings → Items → GitHub pull request configures discussion comments, code comments/thread replies, written review feedback, bots/GitHub Actions and textless review activity. Default to human comments and replies. The map comment pill counts only unseen comments under the saved conversation filters and disappears at zero. Mark seen/unseen updates it immediately across aliases; edited comments and new replies count again. Count only known cached comments, without guessing unread totals outside bounded coverage. Keep approval/check status syncing independently of conversation visibility; retain cached content and seen receipts. A collapsed Connected reviews row above the single conversation column shows directly connected review summaries, state and revision freshness when expanded. No right-hand column. Root comments have distinct stepped cards and replies are inset. An unseen comment is marked new: a blue (info) bar on its left edge, a blue edge and a “New” chip after the author; a seen one has a quiet grey bar and a softer author name, and loses the chip. Every comment starts with a 180-code-point plain-text preview; click or keyboard expands safe full content independently of Seen. Human comments opens per-view visibility controls; persistent defaults remain in Settings. Missing or filtered code-thread parents have an explicit source link, never a fabricated root. Description is collapsed behind Show/Hide description, rendered as safe Markdown. Group the three review-launch actions under a collapsed Trigger Review button. Show discussion comments, inline code comments and review bodies with author/date, safe Markdown and sanitized HTML (including details/summary; no scripts, embedded images, events or active form fields). Comments have Copy link, Mark seen/unseen, Reply and, when linked, Fix with agent. Seen is local, persists across restart and aliases, collapses fully read threads under one Seen disclosure below unseen; edits or new replies resurface the thread. Preserve comment expansion and Seen disclosure state across unchanged polls. Replies post only on explicit submission: inline code replies stay in their root thread, discussion/review-summary replies link the original in the PR discussion. Preserve drafts during refresh. Fix prompts are explicitly sent to a selected connected idle agent, bound to this PR/comment and process; busy/stopped agents are unavailable. Journal writes/delivery before dispatch; do not automatically retry uncertain outcomes. On opening a PR after restart, immediately display its persisted description, state and comments with Seen receipts, even when the cache is expired or credentials are disconnected. Show that saved content is being refreshed and its last checked time; refresh in the background, retain content on failure, and never acknowledge newer attention from the saved preview alone. Retain saved comments when offline; large conversations explicitly show recent bounded coverage and a GitHub link. No Files/Discussion/Reviews tabs. Preserve immutable revisions for analyses. **Mark all seen:** beside “Conversation · N unseen” a button marks every comment loaded in the view as seen in one local request, filtered ones included; it shows only while one is unseen, never writes to GitHub, and a comment edited or added after the list was shown stays unseen. **Menu choices:** Merge, Change state and Show/Ship show the choices saved from their last read at once and refresh them from GitHub in the background (PR-MERGE); only the first open of an item shows “Checking …” while it reads. |
 | RES-02 | Types from a plugin pack | Not part of the public app. A plugin pack may contribute a type (for example an internal ticket tracker) with its account type and views; its own documentation holds the requirements. Saved items of a pack that is not installed stay as placeholders with their data. |
 | RES-03 | Notion | URL-only creation from `www.notion.so`, `*.notion.site`, `notion.com` and `app.notion.com/p/<workspace>/<slug>-<id>` links; provider title and readable page content with source link. Auth/error/loading states are explicit. **Title:** the item is named after the page's title property, read in full on the first read and again on every read that sees a new edit time, so renaming the page in Notion renames the item (and its resource) on the next poll; a page without a title is “Untitled”. As for every provider-titled type, Item settings shows the name read-only. The one exception is a web link upgraded under RES-10 whose title the person had chosen: that title is kept and later reads leave it alone, while the full view still shows the page title. **Comments:** pages are polled on the shared cadence (60 s, stretching to 10 min while unchanged; an unchanged page costs two page requests). Each read lists the page's open page-level comments plus inline discussions on blocks: up to 10 blocks already known to have discussions and the next 10 blocks of the page in turn (first 500 eligible blocks), so an inline comment on a block not yet visited appears within a few reads. Resolved discussions are not listed by Notion. Unread state is local, never written to Notion: a watermark per item (whole minute + ids of that minute) in the resource cache, surviving restarts. Comments present at the first observation are read; later comments by anyone but me are unread. “Me” is the connected integration (its bot, plus a user owner for OAuth integrations) and the IDs in Settings → Items → Notion page → Comments (“Your Notion user ID”); the Notion CLI's internal integration tokens cannot identify the person, so without that setting comments written by the person in Notion count. The map card shows the unread count with the shared comment cue, the same one a pull request uses for unseen comments (one builder, `unreadCommentsIndicator`; cue id `comments`, message glyph, blue, label “N unread comments”, which a narrow card shortens to glyph plus number; the count stays visible at the small size). Being an ordinary indicator it also is the item's far-zoom badge and its status in dashboard rows and previews. The full view's status chip reads “N unread comments” (in the meta line while Archived); both hide at zero. New unread comments raise Needs me (reason `comment`, source `notion.comments`) with “New comment” / “N new comments” once per batch; unchanged polls and restarts do not notify again. Opening the page link from the app (Open on Notion in the item menu, double-click to web, or ↗ Open in Notion in the full view) moves the watermark to that minute and clears the count, but does not withdraw Needs me: the entry stays until the person marks it seen (Seen in Needs me or Mark seen in the frame; STATE-02). Expanding the item changes neither. A later unread comment raises a new Needs me cycle. A missing Read comments capability (403) is an explicit degraded state (“Comments unavailable” in the full view, no badge); page content still loads, background polls ask again after 30 minutes and Refresh asks at once. |
 | RES-04 | Linear | URL-only creation; issue identifier, provider title, status and Markdown description rendered with an established library. Support headings, emphasis, nested/task lists, links, quotes, fenced code and tables; keep code/tables horizontally scrollable inside the view. Provider HTML stays inert, task checkboxes are read-only and links use the existing browser-opening path. Compact bubble shows identifier, title and a colored workflow status label. Default small footprint is 240×64: allow a two-line title beside the icon and place the status on a separate, left-aligned row with a clear gap. Preserve manually saved sizes; shorter cards use a single-line title to prevent overlap. Right-click → Change status and clicking the current status in the full view open the ticket team’s actual workflow states, including custom states. **Linked pull requests.** The issue read asks for `attachments(first: 50) { nodes { url } }` and keeps the GitHub pull requests among them (`https://github.com/{owner}/{repo}/pull/{n}`, each once, owner and repository compared without case) as `pulls` in the cached detail. The ticket's map menu offers **Linked pull requests ▸ Add to the map** (runtime operation `linear.ticket.pulls`, human only; agents may read `options`): every listed pull request is attached as a pull request item with the default GitHub account, in the ticket's project, placed beside the ticket and linked from it (reference); one already in that project is reused, not added twice. The map flies to the first; one that cannot load is reported while the rest are added; a ticket Linear lists none on says so. Nothing is added without the click. |
@@ -3041,7 +3159,7 @@ carry a plain tooltip instead.
 | RES-06 | Web link | URL-only creation; detect page title with domain fallback. Activation opens a browser at the exact URL and preserves map location. Private/authenticated pages can remain links even when metadata is unavailable. A link whose URL a connected, more specific type claims is upgraded to that type (RES-10). |
 | RES-07 | Terminal | Label the type simply “Terminal”. The name is optional when starting one; left empty it is “Terminal · ” and the folder’s name (just “Terminal” without a folder). Local shell with stable identity, cwd, resize/input/output and reconnect history. A reference/context gesture must never execute text as a shell command. |
 | RES-08 | Review/artifact | Each run/output has its own compact item, state, originating session and explicit PR link. Completed outputs remain navigable and retain the revision actually analyzed. |
-| RES-09 | Note | A sticky paper tile whose text is the card face. Create from the ring (Note, hotkey N while the ring is open) with the caret already in an unsaved tile, or by pasting plain text over the map; nothing is saved until it has text; a size given to the unsaved tile stays with it, writing goes on, and its first text saves both. A click edits with the caret where it landed; a drag past 6px moves the tile; tape and margin drag while editing. Esc, ⌘↵, blur or zooming out commit (Esc never discards); typing saves after 600 ms; ⌘Z undoes. Delete edits text while writing and archives a selected tile with Undo. Light markdown on the idle face (bold first line, lists, clickable checkboxes, code, guarded links; HTML inert); raw text while editing; no full view. Mint paper by default plus sky, lilac, peach, slate. Agent-written notes get copper tape and a byline. A local label, then a Haiku title for mid zoom, dashboards and MCP. Supports floating/project placement, links, archive/restore/delete and agent context of saved text only; separate from to-dos. |
+| RES-09 | Note | A sticky paper tile whose text is the card face. Create from the ring (Note, hotkey N while the ring is open) with the caret already in an unsaved tile, or by pasting plain text over the map; nothing is saved until it has text; a size given to the unsaved tile stays with it, writing goes on, and its first text saves both. A click edits with the caret where it landed; a drag past 6px moves the tile; tape and margin drag while editing. Esc, ⌘↵, blur or zooming out commit (Esc never discards); typing saves after 600 ms; ⌘Z undoes. Delete edits text while writing and archives a selected tile with Undo. Light markdown on the idle face (bold first line, lists, clickable checkboxes, code, guarded links; HTML inert); raw text while editing; no full view. Mint paper by default plus moss, ice, sky, lilac, rose, peach, sand, fog and slate, or a custom `#rrggbb` from the colour picker (COLOR-PICKER); a dark paper (slate, or a custom one dark ink would not read on) takes light ink. Agent-written notes get copper tape and a byline. A local label, then a Haiku title for mid zoom, dashboards and MCP. Supports floating/project placement, links, archive/restore/delete and agent context of saved text only; separate from to-dos. |
 | RES-10 | Link upgrade | A web link (the URL fallback type) whose URL a more specific URL type claims becomes an item of that type in place, e.g. an `app.notion.com` page saved before those links were recognised. The rule is the shared URL matching of From URL and drops (`registry.conversions`), never a provider branch; exactly one claiming type is required for the automatic path. **What stays:** node id, resource id, position, size (a preset the new type lacks falls back to its default), project, links, to-do attachments, archive/done state and Needs me. **What changes:** the resource's type, its data (the type's normalized identity, so the original URL spelling is not kept) and its account binding (the provider's default connection); the old summary and status cues are cleared and the first read fills them. **Migration note:** persisted identities stay valid because the resource id is kept and only `pluginId`, `schemaVersion`, `data` and `connectionId` are rewritten by one atomic `item.convert` command; nothing is renamed, no table changes, and caches are keyed by resource id plus a fingerprint that includes the type, so the old type's snapshot is never shown for the new one. **Order:** the provider is read first and the item changes only after that read succeeds, so an unreadable page stays a working link and is asked again at the next start. **Automatic:** once at service start and when accounts change, for links on the map whose provider has an enabled account; quiet (no notice, no Needs me from the upgrade itself; the first read records existing comments as read) and idempotent (nothing to upgrade means no provider request and no workspace change). Archived and Undermap links are not upgraded automatically. **Duplicate guard:** if the provider item is already on the map under the same account, the link stays as it is. **Title:** a title the link got on its own (its saved page title, host name or a type name) is replaced by the provider title; a title that differs from the saved page title was chosen by the person and is kept; when no saved page title exists the title is not treated as chosen. **Manual:** the item menu of such a link offers “Convert to <type name>” beside Open in browser (one entry per claiming type; not in Undermap or for selections); it runs the shared `resource.convert` runtime action, available to the app and to agents under the same policy as attaching an item, and reports a missing account (“Connect … in Settings”), an unreadable page or a duplicate instead of changing anything. |
 
 **Linear workflow updates.** Cache the available status catalogue
@@ -3291,7 +3409,16 @@ loaded for, which GitHub enforces) or `enqueuePullRequest` mutation, never
 retried. GraphQL errors become a bounded, sanitized decline (“GitHub declined the
 merge: …”); interrupted or
 unconfirmed replies are outcome-unknown (“Check the PR before trying again.”). Success
-returns the refreshed snapshot (Merged or Queued). In the full view, a failure to load or apply Merge,
+returns the refreshed snapshot (Merged or Queued). **Saved choices:** the Merge, Change
+state and Show/Ship options are saved per pull request item (not per repository: the
+prompt, the head SHA and node ID they carry back and the blockers belong to that PR).
+A menu opened again shows the saved choices at once, with blocker warnings applied
+as of now, and reads GitHub again in the background; when that read differs the
+entries are replaced in place (a confirmation in progress goes back to the list only
+if the entries changed), and a failed read keeps the saved ones. A choice may
+therefore be outdated: GitHub then declines it, as above. Any write on the item
+(merge, state change, Show/Ship, whether it succeeds, fails or stays unconfirmed)
+forgets its saved choices first, so the next menu reads GitHub before showing them. In the full view, a failure to load or apply Merge,
 Show/Ship or a state change (including GitHub's decline) appears in the view's notice
 and stays through background reads until the next such action or Refresh. The PR transport allows only
 those GraphQL documents with validated variables; no other write becomes reachable.
@@ -3705,6 +3832,14 @@ comparison, prompt, project and result link retain that source while navigating
 or preparing simultaneous reviews. Desktop requests assert the clicked resource
 identity; mismatched captures or source changes during revision retries fail
 before launch instead of silently retargeting the review.
+
+Each review or architecture request checks the PR out into
+`comparisons/<requestId>/repository` (objects hardlinked from the shared
+`git-cache`). Once an hour old, with no queued, running or uncertain job naming it
+and no session running in that folder, the checkout and its `comparison.json` are
+removed (checked every minute, at most every 30 minutes, only while background work
+is allowed; never the cache). The request and result Markdown stay. A later request
+on the same comparison captures the checkout again from the cache.
 
 **PR-03 — Workflow review.** A third action posts exactly `/review` and watches the
 repository's supported workflow. Persist trigger/run/job/result identities and

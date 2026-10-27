@@ -47,11 +47,30 @@ test('a project is summarised once its input has been unchanged for a minute, fr
   assert.deepEqual([sent.project, sent.needsMe], ['Billing', [{ title: 'Webhook agent', reason: 'Waiting for your input' }]]);
   assert.ok(!requests[0].messages[0].content.includes('Private note body'));
   assert.equal(requests[0].max_tokens, 96); assert.equal(requests[0].model, 'haiku');
-  assert.deepEqual(helper.observe().list, [{ projectId: 'billing', text: 'Webhook agent asks about retries; the refund fixer is editing.', model: 'haiku' }]);
+  assert.deepEqual(helper.observe().list, [{ projectId: 'billing', status: 'Webhook agent asks about retries; the refund fixer is editing.', model: 'haiku' }]);
   assert.notEqual(helper.observe().revision, before);
-  assert.equal(store.projectSummaries()[0].text, 'Webhook agent asks about retries; the refund fixer is editing.');
+  assert.equal(store.projectSummaries()[0].text, `{"status":"Webhook agent asks about retries; the refund fixer is editing."}`);
   clock.now += PROJECT_SUMMARY_INTERVAL_MS * 2; await helper.tick();
   assert.equal(requests.length, 1, 'unchanged input is not sent again');
+}));
+
+test('a Next and Status reply is kept as both lines; a Next that names no item is dropped', () => fixture(async ({ summaries, clock, turnOn, apply, store }) => {
+  turnOn(); let reply = 'Next: Answer the webhook agent about retries.\nStatus: One question waits on you.';
+  const helper = summaries({ reply: () => reply });
+  await helper.tick(); clock.now += PROJECT_SUMMARY_DEBOUNCE_MS; await helper.tick();
+  assert.deepEqual(helper.observe().list, [{ projectId: 'billing', next: 'Answer the webhook agent about retries.', status: 'One question waits on you.', model: 'haiku' }]);
+  assert.equal(store.projectSummaries()[0].text, `{"next":"Answer the webhook agent about retries.","status":"One question waits on you."}`);
+  reply = 'Next: Take a break.\nStatus: Calm.';
+  await apply({ type: 'node.update', id: 'agent', title: 'Webhook agent v2' });
+  await helper.tick(); clock.now += PROJECT_SUMMARY_INTERVAL_MS; await helper.tick();
+  assert.deepEqual(helper.observe().list, [{ projectId: 'billing', status: 'Calm.', model: 'haiku' }]);
+}));
+
+test('a plain-text summary saved before there were two lines reads as Status', () => fixture(async ({ summaries, turnOn, store }) => {
+  turnOn();
+  store.reserveProjectSummary('billing', 'old', store.readSettings().value.summaries, Date.now(), 0);
+  store.finishProjectSummary('billing', 'old', 'Billing waits on your answer.', 'haiku');
+  assert.deepEqual(summaries().observe().list, [{ projectId: 'billing', status: 'Billing waits on your answer.', model: 'haiku' }]);
 }));
 
 test('changed input waits for the debounce and the ten-minute floor per project', () => fixture(async ({ summaries, requests, clock, turnOn, apply }) => {
@@ -91,11 +110,11 @@ test('turning summaries off empties the snapshot; an unusable reply keeps the ea
   turnOn(); let reply = 'Billing waits on your answer.';
   const helper = summaries({ reply: () => reply });
   await helper.tick(); clock.now += PROJECT_SUMMARY_DEBOUNCE_MS; await helper.tick();
-  assert.equal(helper.observe().list[0].text, 'Billing waits on your answer.');
+  assert.equal(helper.observe().list[0].status, 'Billing waits on your answer.');
   reply = '<b>bad</b>';
   await apply({ type: 'node.update', id: 'agent', title: 'Webhook agent v2' });
   await helper.tick(); clock.now += PROJECT_SUMMARY_INTERVAL_MS; await helper.tick();
-  assert.equal(requests.length, 2); assert.equal(helper.observe().list[0].text, 'Billing waits on your answer.');
+  assert.equal(requests.length, 2); assert.equal(helper.observe().list[0].status, 'Billing waits on your answer.');
   const current = store.readSettings();
   store.writeSettings({ expectedRevision: current.revision, value: { ...current.value, summaries: { ...current.value.summaries, projectSummaries: false } } });
   assert.deepEqual(helper.observe().list, []);

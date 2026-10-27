@@ -39,7 +39,7 @@ test('Move to project sends a card to the chosen project and the map follows it 
   await apply(page, projects);
   const before = await read(page);
   await card(page, 'Plan switcher').click({ button: 'right' });
-  await expect(menu(page).getByRole('menuitem')).toHaveText(['Open', 'Connect to…', 'Trigger review', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', 'Open on GitHub', 'Copy URL', 'Settings', 'Move to project', 'Mark done', 'Send to Undermap']);
+  await expect(menu(page).getByRole('menuitem')).toHaveText(['Open', 'Connect to…', 'Trigger review', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', 'Open on GitHub', 'Copy URL', 'Settings', 'Move to project', 'Move to plot', 'Mark done', 'Send to Undermap']);
   await menu(page).getByRole('menuitem', { name: 'Move to project', exact: true }).click();
   // Active map projects only, the card's own project checked and unavailable.
   await expect(submenu(page).getByRole('menuitemradio')).toHaveText(['Billing redesign', 'Docs site', 'Spare']);
@@ -110,7 +110,7 @@ test('a selection moves as one block from the right-clicked card and stays selec
   await card(page, 'Plan switcher').click({ modifiers: ['Shift'] }); await card(page, 'BIL-128 · Plan changes').click({ modifiers: ['Shift'] });
   expect(await selected(page)).toEqual(['pr', 'ticket']);
   await card(page, 'BIL-128 · Plan changes').click({ button: 'right' });
-  await expect(menu(page).getByRole('menuitem')).toHaveText(['Move to project', 'Mark done', 'Send selection to Undermap']);
+  await expect(menu(page).getByRole('menuitem')).toHaveText(['Move to project', 'Move to plot', 'Mark done', 'Send selection to Undermap']);
   await menu(page).getByRole('menuitem', { name: 'Move to project', exact: true }).click();
   await expect(target(page, 'Billing redesign')).toBeDisabled();
   await target(page, 'Docs site').click();

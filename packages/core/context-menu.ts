@@ -1,14 +1,18 @@
 import type { ChoiceConfirm, ChoiceHighlight, ChoiceSource, JsonObject, ResourceFields, ResourceMenuGroup } from '../../src/resource-plugins/types.ts';
 import { plotPalette } from '../../src/graph/plot-palette.ts';
-import type { PlotColor } from '../../src/graph/plots.ts';
+import { isPlotColor } from '../../src/graph/plots.ts';
+import { isHexColor } from '../../src/graph/colors.ts';
+import type { PlotColor, PlotView } from '../../src/graph/plots.ts';
+import type { GraphNode } from '../../src/graph/graph.ts';
+import { plotMapOrder } from '../../src/graph/project-column.ts';
 
 export type MenuScope = 'board' | 'neighborhood' | 'item' | 'project' | 'link';
-export type MenuActionId = 'open' | 'connect' | 'new-item' | 'new-project' | 'archive-browser' | 'edit' | 'complete' | 'reopen' | 'archive' | 'below' | 'surface' | 'remove-link' | 'make-blocking' | 'make-normal' | 'reverse-link' | 'open-web' | 'copy-url' | 'add-todo' | 'remove-todo' | 'auto-title' | 'plot-select' | 'plot-rename' | 'plot-auto' | 'plot-color' | 'plot-color-auto' | 'plot-hide' | 'plot-leave' | 'plot-below' | 'delete' | 'delete-cancel' | 'delete-confirm' | 'plots-toggle' | 'plots-unhide' | 'send-project' | 'context-show' | 'context-hide' | 'context-add' | 'context-clear' | 'archive-stale' | 'mute' | 'unmute' | 'settings' | 'size-default' | 'standup-report' | 'show-hidden' | 'hide-item' | `send:${string}` | `convert:${string}` | `plugin:${string}` | `field:${string}`;
+export type MenuActionId = 'open' | 'connect' | 'new-item' | 'new-project' | 'archive-browser' | 'edit' | 'complete' | 'reopen' | 'archive' | 'below' | 'surface' | 'remove-link' | 'make-blocking' | 'make-normal' | 'reverse-link' | 'open-web' | 'copy-url' | 'add-todo' | 'remove-todo' | 'auto-title' | 'move-plot' | 'plot-new' | 'plot-unpin' | `plot-pin:${string}` | 'plot-select' | 'plot-rename' | 'plot-auto' | 'plot-color' | 'plot-color-auto' | 'plot-hide' | 'plot-leave' | 'plot-below' | 'delete' | 'delete-cancel' | 'delete-confirm' | 'plots-toggle' | 'plots-unhide' | 'send-project' | 'context-show' | 'context-hide' | 'context-add' | 'context-clear' | 'archive-stale' | 'mute' | 'unmute' | 'settings' | 'size-default' | 'standup-report' | 'show-hidden' | 'hide-item' | `send:${string}` | `convert:${string}` | `plugin:${string}` | `field:${string}`;
 /** One choice of a row: `swatch` is the colour it is drawn in. */
 export interface MenuRowChoice { value: string; label: string; swatch?: string; checked: boolean }
 /** `remote` marks actions that write to a provider (drawn with a remote glyph). An action with a `row` is a labelled
  * row of choices side by side (one radio group); a pick reaches `act` with its `value`. */
-export interface MenuAction { id: MenuActionId; label: string; /** Menu ids a pick of this entry runs together instead of itself. */ runs?: MenuActionId[]; description?: string; divider?: boolean; destructive?: boolean; remote?: boolean; children?: MenuAction[]; choices?: ChoiceSource; selection?: { label: string; children: readonly string[] }; mutation?: { actionId: string; input: JsonObject; label?: string; runtime?: string }; checked?: boolean; disabled?: boolean; highlight?: ChoiceHighlight; confirm?: ChoiceConfirm; row?: MenuRowChoice[]; value?: string }
+export interface MenuAction { id: MenuActionId; label: string; /** Menu ids a pick of this entry runs together instead of itself. */ runs?: MenuActionId[]; description?: string; divider?: boolean; destructive?: boolean; remote?: boolean; children?: MenuAction[]; choices?: ChoiceSource; selection?: { label: string; children: readonly string[] }; mutation?: { actionId: string; input: JsonObject; label?: string; runtime?: string }; checked?: boolean; disabled?: boolean; highlight?: ChoiceHighlight; confirm?: ChoiceConfirm; row?: MenuRowChoice[]; /** A row of colours that also takes a custom `#rrggbb` (picked as its `value`); `shown` is the custom colour the item shows. */ customColor?: { shown?: string }; value?: string }
 
 /** Entries that replace each other by state share one slot, so a saved order places both variants alike. The Settings
  * submenu holds the `edit` slot, the place of the entry it contains. */
@@ -129,7 +133,7 @@ export interface ItemMenuRow { id: string; label: string; separator?: true; hidd
  * place is kept either way, and so are hidden ones. */
 export function itemMenuEntries(type: { name: string; generatedTitle?: unknown; fields?: ResourceFields; contextMenu?: readonly ResourceMenuGroup[]; webLink?: { label: string }; todoSupport?: unknown; activityTitle?: unknown; creation?: { urlFallback?: boolean } }, custom: ItemMenuCustom = {}): ItemMenuRow[] {
   const actions = contextMenuActions('item', false, itemEditLabel(type), type.contextMenu, type.todoSupport ? { enabled: false } : undefined, undefined, type.webLink, Boolean(type.activityTitle), undefined, moveToProjectAction([]), undefined,
-    type.creation?.urlFallback ? [{ id: 'convert:', label: '' }] : [], {}, undefined, {}, fieldMenuActions(type.fields));
+    type.creation?.urlFallback ? [{ id: 'convert:', label: '' }] : [], {}, undefined, {}, fieldMenuActions(type.fields), [moveToPlotAction([]), removeFromPlotAction()]);
   const labels = new Map(actions.map(action => { const id = menuSlot(action.id); return [id, SLOT_LABELS[id] ?? action.label]; }));
   const off = new Set(slotsOf(custom.hidden ?? []));
   return menuLayout(actions.flatMap(action => action.divider ? [MENU_SEPARATOR, action.id] : [action.id]), custom)
@@ -140,8 +144,9 @@ export function itemMenuEntries(type: { name: string; generatedTitle?: unknown; 
  * Below the map, items can only return to it or move on to the archive.
  * `custom` is the user's saved menu for this item type (MAP-27): its order, separators and hidden entries. It
  * applies to an item on the map only; every other menu draws its default layout, a separator between its groups.
- * `size.disabled` is why Use size as default has nothing to change for this item. */
-export function contextMenuActions(scope: MenuScope, completed = false, editLabel = 'Item settings…', groups: readonly ResourceMenuGroup[] = [], todo?: { enabled: boolean }, below?: { blocker?: string }, web?: { label: string }, autoTitle = false, plots?: { shown: boolean; hidden: number }, send?: MenuAction, mute?: MenuAction, convert: readonly MenuAction[] = [], custom: ItemMenuCustom = {}, size?: { disabled?: string }, visibility: { show?: string; hide?: string } = {}, fields: readonly MenuAction[] = []): MenuAction[] {
+ * `size.disabled` is why Use size as default has nothing to change for this item. `plot` holds an item's Move to plot and
+ * Remove from plot entries, which follow Move to project. */
+export function contextMenuActions(scope: MenuScope, completed = false, editLabel = 'Item settings…', groups: readonly ResourceMenuGroup[] = [], todo?: { enabled: boolean }, below?: { blocker?: string }, web?: { label: string }, autoTitle = false, plots?: { shown: boolean; hidden: number }, send?: MenuAction, mute?: MenuAction, convert: readonly MenuAction[] = [], custom: ItemMenuCustom = {}, size?: { disabled?: string }, visibility: { show?: string; hide?: string } = {}, fields: readonly MenuAction[] = [], plot: readonly MenuAction[] = []): MenuAction[] {
   const open = web && scope === 'item' ? [{ id: 'open-web' as const, label: web.label }, { id: 'copy-url' as const, label: 'Copy URL' }] : [];
   if (scope === 'link') return [{ id: 'remove-link', label: 'Remove connection' }];
   if (below) {
@@ -166,6 +171,7 @@ export function contextMenuActions(scope: MenuScope, completed = false, editLabe
       { id: 'size-default' as const, label: 'Use size as default', ...(size?.disabled ? { disabled: true, description: size.disabled } : {}) }] }])],
     [
       ...(send && !project ? [send] : []),
+      ...(project ? [] : plot),
       ...(todo ? [{ id: todo.enabled ? 'remove-todo' as const : 'add-todo' as const, label: todo.enabled ? 'Remove from to-dos' : 'Turn into todo' }] : []),
       ...(autoTitle && !project ? [{ id: 'auto-title' as const, label: 'Auto-name from activity' }] : []),
       ...(plots && project ? [{ id: 'plots-toggle' as const, label: 'Show plots', checked: plots.shown }, ...(plots.hidden ? [{ id: 'plots-unhide' as const, label: `Show hidden plots (${plots.hidden})` }] : [])] : []),
@@ -191,9 +197,10 @@ export function fieldMenuActions(fields: ResourceFields = {}, data: JsonObject =
     const menu = field.menu;
     if (!menu) return [];
     const options = menu.options ?? field.options ?? [], label = (option: string) => menu.optionLabels?.[option] ?? field.optionLabels?.[option] ?? option;
-    const saved = typeof data[key] === 'string' && options.includes(data[key] as string) ? data[key] as string : undefined, value = shown[key] ?? saved ?? menu.fallback;
+    const custom = field.customColor && isHexColor(data[key]) ? (data[key] as string).toLowerCase() : undefined;
+    const saved = typeof data[key] === 'string' && options.includes(data[key] as string) ? data[key] as string : custom, value = shown[key] ?? saved ?? menu.fallback;
     const id = `field:${key}` as const;
-    return [menu.swatches ? { id, label: menu.label, row: options.map(option => ({ value: option, label: label(option), swatch: menu.swatches![option], checked: option === value })) }
+    return [menu.swatches ? { id, label: menu.label, row: options.map(option => ({ value: option, label: label(option), swatch: menu.swatches![option], checked: option === value })), ...(field.customColor ? { customColor: { shown: value === custom ? custom : undefined } } : {}) }
       : { id, label: menu.label, children: options.map(option => ({ id: `field:${key}:${option}` as const, label: label(option), checked: option === value })) }];
   });
 }
@@ -224,6 +231,24 @@ export const todoContextActions = (hasContext: boolean, shown: boolean): MenuAct
 export const laterGroupActions = (stale: number, days: number): MenuAction[] => [{ id: 'archive-stale', label: `Archive rows untouched for ${days} days`, ...(stale ? {} : { disabled: true }) }];
 /** A map item's (or selection's) Move to project submenu; `targets` come from `moveTargets`. */
 export const moveToProjectAction = (targets: readonly ProjectTarget[]): MenuAction => projectSubmenu('Move to project', targets);
+type PlotTarget = { id: string; name: string; hidden: boolean; current: boolean };
+/** A map item's (or selection's) Move to plot submenu (MAP-24): the plots of the project every item is in, in map order, the
+ * one they are all pinned in checked, then New plot. `undefined` plots: the items are not all in one project. */
+export const moveToPlotAction = (plots: readonly PlotTarget[] | undefined): MenuAction => ({ id: 'move-plot', label: 'Move to plot', children: plots
+  ? [...plots.map(plot => ({ id: `plot-pin:${plot.id}` as const, label: plot.hidden ? `${plot.name} (hidden)` : plot.name, checked: plot.current, ...(plot.current ? { disabled: true } : {}) })),
+    { id: 'plot-new' as const, label: 'New plot', ...(plots.length ? { divider: true } : {}) }]
+  : [{ id: 'plot-pin:' as const, label: 'Items in one project only', disabled: true }] });
+/** For an item pinned in a plot, or a selection all pinned in the same one. */
+export const removeFromPlotAction = (): MenuAction => ({ id: 'plot-unpin', label: 'Remove from plot' });
+/** The plot entries for map items `ids`: Move to plot with their project's plots (hidden ones too) in map order, and Remove
+ * from plot when every item is pinned in the same plot. */
+export function itemPlotActions(nodes: readonly Pick<GraphNode, 'id' | 'projectId' | 'position'>[], plots: readonly Pick<PlotView, 'id' | 'projectId' | 'memberIds' | 'pinnedMemberIds' | 'name' | 'hidden'>[], ids: readonly string[]): MenuAction[] {
+  const projects = new Set(ids.map(id => nodes.find(node => node.id === id)?.projectId)), projectId = projects.size === 1 ? [...projects][0] : undefined;
+  const pinnedIn = ids.map(id => plots.find(plot => plot.pinnedMemberIds.includes(id))?.id), shared = pinnedIn.every(id => id !== undefined && id === pinnedIn[0]) ? pinnedIn[0] : undefined;
+  const own = new Map(plots.filter(plot => plot.projectId === projectId).map(plot => [plot.id, plot]));
+  const targets = projectId === undefined ? undefined : plotMapOrder([...own.values()], nodes).map(id => { const plot = own.get(id)!; return { id, name: plot.name, hidden: plot.hidden, current: id === shared }; });
+  return [moveToPlotAction(targets), ...shared ? [removeFromPlotAction()] : []];
+}
 
 /** Groups whose `when` package setting is not on are left out; `settings` has defaults filled in. */
 export function enabledMenuGroups(groups: readonly ResourceMenuGroup[] = [], settings: Readonly<Record<string, JsonObject>> = {}): ResourceMenuGroup[] {
@@ -233,14 +258,14 @@ export function enabledMenuGroups(groups: readonly ResourceMenuGroup[] = [], set
 /** A plot's signpost menu (MAP-24). Name automatically needs Name plots on. With the plot's colors it offers
  * the six swatches of its project's neighborhood, the shown one checked, and Automatic, checked while no color is chosen. */
 /** A sign's menu. With `targets` (from `moveTargets` for its members) the whole plot can move to another project or to none, or go to Undermap. */
-export function plotMenuActions(naming = true, colors?: { color: PlotColor; chosenColor?: PlotColor }, neighborhoodColor?: string, targets?: readonly ProjectTarget[]): MenuAction[] {
+export function plotMenuActions(naming = true, colors?: { color: PlotColor; chosenColor?: PlotColor | string }, neighborhoodColor?: string, targets?: readonly ProjectTarget[]): MenuAction[] {
   const shown = colors && (colors.chosenColor ?? colors.color), palette = plotPalette(neighborhoodColor);
   return [
     { id: 'plot-select', label: 'Select items' },
     { id: 'plot-rename', label: 'Rename plot…' },
     { id: 'plot-auto', label: 'Name automatically', ...(naming ? {} : { disabled: true, description: 'Turn on Name plots in Settings → AI features' }) },
     ...colors ? [
-      { id: 'plot-color' as const, label: 'Color', divider: true, row: palette.map(({ slot, name, color }) => ({ value: slot, label: name, swatch: color, checked: slot === shown })) },
+      { id: 'plot-color' as const, label: 'Color', divider: true, row: palette.map(({ slot, name, color }) => ({ value: slot, label: name, swatch: color, checked: slot === shown })), customColor: { shown: isPlotColor(shown) ? undefined : shown } },
       { id: 'plot-color-auto' as const, label: `Automatic · ${palette.find(swatch => swatch.slot === colors.color)!.name}`, checked: !colors.chosenColor },
     ] : [],
     ...targets ? [
@@ -269,7 +294,7 @@ export function linkMenuActions(kind: 'reference' | 'context' | 'blocks', source
 /** Only actions with an atomic shared-command meaning can apply to a group, plus a plugin group every item offers
  * for a selection: it runs its named children once per item. */
 export function sharedContextMenuActions(menus: readonly MenuAction[][]): MenuAction[] {
-  const batchable: MenuActionId[] = ['copy-url', 'send-project', 'complete', 'reopen', 'archive', 'below', 'surface', 'add-todo', 'remove-todo'];
+  const batchable: MenuActionId[] = ['copy-url', 'send-project', 'move-plot', 'plot-unpin', 'complete', 'reopen', 'archive', 'below', 'surface', 'add-todo', 'remove-todo'];
   return (menus[0] ?? []).filter(action => (batchable.includes(action.id) || action.selection) && menus.every(menu => menu.some(other => other.id === action.id)))
     .map(action => action.selection ? { id: action.id, label: action.selection.label, remote: true, children: (action.children ?? []).filter(child => action.selection!.children.includes(child.id)) }
       : action.id === 'copy-url' ? { id: action.id, label: 'Copy URLs' } : action.id === 'archive' ? { ...action, label: 'Archive selection' } : action.id === 'below' ? { ...action, label: 'Send selection to Undermap' }

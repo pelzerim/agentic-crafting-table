@@ -11,17 +11,22 @@ import { buildPlotNameRequest, normalizePlotName } from '../../src/agents/plot-n
 import type { WorkspaceControl, WorkspaceState } from '../core/control.ts';
 import type { SqliteStore } from './sqlite-store.ts';
 import { itemFootprint } from '../../src/graph/footprints.ts';
+import { HEX_COLOR_PATTERN, isHexColor } from '../../src/graph/colors.ts';
 import { PLOT_COLORS, PLOT_SAME, assignPlotColors, detectPlots, isPlotColor, jaccard, plotFallbackName } from '../../src/graph/plots.ts';
 import type { PlotBox, PlotSnapshot } from '../../src/graph/plots.ts';
 
-const plotId = z.string().min(1).max(200);
-/** A person's plot changes from the map; agents are refused before reaching them. */
+const plotId = z.string().min(1).max(200), memberIds = z.array(z.string().min(1).max(200)).min(1).max(500);
+/** A person's plot changes from the map; agents are refused before reaching them. `pin` pins items into a plot of the
+ * project, `create` makes a new plot of them, `unpin` hands them back to detection. */
 export const plotRequestSchema = z.discriminatedUnion('operation', [
+  z.object({ operation: z.literal('pin'), plotId, memberIds }),
+  z.object({ operation: z.literal('create'), memberIds }),
+  z.object({ operation: z.literal('unpin'), memberIds }),
   z.object({ operation: z.literal('rename'), plotId, name: z.string().max(200).transform(name => name.trim().replace(/\s+/g, ' ')).pipe(z.string().max(48).regex(/^[^\x00-\x1f\x7f<>`]*$/)) }),
   z.object({ operation: z.literal('hide'), plotId, hidden: z.boolean() }),
   z.object({ operation: z.literal('project'), shown: z.boolean() }),
   z.object({ operation: z.literal('auto'), plotId }),
-  z.object({ operation: z.literal('color'), plotId, color: z.enum(PLOT_COLORS).nullable() }),
+  z.object({ operation: z.literal('color'), plotId, color: z.enum(PLOT_COLORS).or(z.string().regex(HEX_COLOR_PATTERN).transform(color => color.toLowerCase())).nullable() }),
   z.object({ operation: z.literal('seen'), plotIds: z.array(plotId).max(60) }),
 ]);
 /** A plot is named once its membership has settled, and at most this often. */
@@ -74,12 +79,23 @@ export class Plots {
   invalidate() { this.version++; }
   async run(projectId: string, input: unknown) {
     const request = plotRequestSchema.parse(input);
+    if (request.operation === 'pin' || request.operation === 'create') {
+      const nodes = new Map((await this.control.read()).nodes.map(node => [node.id, node]));
+      if (!request.memberIds.every(id => nodes.get(id)?.resourceId && nodes.get(id)!.projectId === projectId)) throw new Error('Some of these items are not in this project.');
+    }
     if (request.operation === 'project') this.store.setPlotsShown(projectId, request.shown);
     else if (request.operation === 'seen') { for (const id of request.plotIds) this.seen.set(id, this.clock()); return { ok: true }; }
+    else if (request.operation === 'create') {
+      const id = randomUUID();
+      this.store.createPinnedPlot(id, projectId, request.memberIds, this.clock()); this.invalidate();
+      return { ok: true, plotId: id };
+    } else if (request.operation === 'unpin') this.store.unpinPlotMembers(request.memberIds);
     else {
       const record = this.store.plotRecords().find(record => record.id === request.plotId);
       if (!record || record.projectId !== projectId) throw new Error('This plot is not in this project any more.');
-      if (request.operation === 'rename') this.store.renamePlot(record.id, request.name || undefined, false);
+      // A detected plot pinned into for the first time keeps the members it shows, so it stays the plot the person picked.
+      if (request.operation === 'pin') this.store.pinPlotMembers(record.id, [...record.active && !record.pinnedMemberIds.length ? record.memberIds : [], ...request.memberIds]);
+      else if (request.operation === 'rename') this.store.renamePlot(record.id, request.name || undefined, false);
       else if (request.operation === 'hide') this.store.hidePlot(record.id, request.hidden);
       else if (request.operation === 'color') this.store.choosePlotColor(record.id, request.color ?? undefined);
       else {
@@ -139,11 +155,14 @@ export class Plots {
       const box = itemFootprint(node, state.resources, this.control.registry, settings.value.itemMapSizes);
       boxes.push({ ...box, projectId: project.id });
     }
-    const records = this.store.plotRecords(), dormant = records.filter(record => !record.active);
-    const detected = detectPlots(boxes, records.filter(record => record.active), () => randomUUID(), state.links);
+    const records = this.store.plotRecords(), pinned = records.filter(record => record.pinnedMemberIds.length);
+    const detected = detectPlots(boxes, records.filter(record => record.active), () => randomUUID(), state.links,
+      pinned.map(record => ({ plotId: record.id, projectId: record.projectId, memberIds: record.pinnedMemberIds })));
     const known = new Set(records.map(record => record.id)), reclaimed = new Set<string>(), claimed = new Set(detected.map(plot => plot.id));
-    // A plot whose items moved to another project as a group is the same plot there.
-    const left = records.filter(record => record.active && !claimed.has(record.id));
+    // A plot whose items moved to another project as a group is the same plot there. A pinned plot keeps its project
+    // and identity for its pinned members' return, so detection never reclaims it.
+    const dormant = records.filter(record => !record.active && !record.pinnedMemberIds.length);
+    const left = records.filter(record => record.active && !claimed.has(record.id) && !record.pinnedMemberIds.length);
     const plots = detected.map(plot => {
       if (known.has(plot.id)) return plot;
       const match = [...dormant.filter(record => record.projectId === plot.projectId), ...left.filter(record => record.projectId !== plot.projectId)].filter(record => !reclaimed.has(record.id))
@@ -154,18 +173,19 @@ export class Plots {
     });
     this.store.savePlots(plots, this.clock());
     const saved = new Map(this.store.plotRecords().map(record => [record.id, record]));
-    const colorOf = (id: string) => { const record = saved.get(id)!, chosen = isPlotColor(record.chosenColor) ? record.chosenColor : undefined; return { color: isPlotColor(record.color) ? record.color : undefined, ...(chosen ? { chosenColor: chosen } : {}) }; };
-    // A reclaimed plot keeps its color unless a plot that stayed shows it now.
-    const kept = plots.filter(plot => !reclaimed.has(plot.id)).map(plot => { const { color, chosenColor } = colorOf(plot.id); return { projectId: plot.projectId, color: chosenColor ?? color }; });
+    const colorOf = (id: string) => { const record = saved.get(id)!, chosen = isPlotColor(record.chosenColor) || isHexColor(record.chosenColor) ? record.chosenColor : undefined; return { color: isPlotColor(record.color) ? record.color : undefined, ...(chosen ? { chosenColor: chosen } : {}) }; };
+    // A reclaimed plot keeps its color unless a plot that stayed shows it now. A custom color holds the plot's own slot.
+    const shownSlot = (id: string) => { const { color, chosenColor } = colorOf(id); return isPlotColor(chosenColor) ? chosenColor : color; };
+    const kept = plots.filter(plot => !reclaimed.has(plot.id)).map(plot => ({ projectId: plot.projectId, color: shownSlot(plot.id) }));
     const assigned = assignPlotColors(plots.map(plot => {
       const { color, chosenColor } = colorOf(plot.id), clashes = reclaimed.has(plot.id) && !chosenColor && kept.some(other => other.projectId === plot.projectId && other.color === color);
-      return { ...plot, ...(color && !clashes ? { color: chosenColor ?? color } : {}) };
+      return { ...plot, ...(color && !clashes ? { color: shownSlot(plot.id) } : {}) };
     }), boxes);
     this.store.colorPlots(assigned);
     const value: PlotSnapshot = { list: plots.map(plot => {
       const record = saved.get(plot.id)!, titles = plot.memberIds.map(id => byId.get(id)?.title ?? ''), { color, chosenColor } = colorOf(plot.id);
       return { id: plot.id, projectId: plot.projectId, memberIds: plot.memberIds, name: record.name ?? plotFallbackName(titles), source: record.name === undefined ? 'local' : record.generated ? 'generated' : 'user', hidden: record.hidden,
-        color: assigned.get(plot.id) ?? color!, ...(chosenColor ? { chosenColor } : {}) };
+        color: assigned.get(plot.id) ?? color!, ...(chosenColor ? { chosenColor } : {}), pinnedMemberIds: record.pinnedMemberIds.filter(id => plot.memberIds.includes(id)) };
     }), hiddenProjects: this.store.hiddenPlotProjects(), revision: this.version };
     this.last = { key, value };
     return value;

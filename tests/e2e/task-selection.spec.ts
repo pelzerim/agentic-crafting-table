@@ -58,7 +58,7 @@ test('Shift selection moves a group atomically, preserves membership and offers 
   expect(a1.position.x - a0.position.x).toBeCloseTo(p1.position.x - p0.position.x, 5); expect(a1.position.y - a0.position.y).toBeCloseTo(p1.position.y - p0.position.y, 5);
   expect(a1.projectId).toBe(a0.projectId); expect(p1.projectId).toBe(p0.projectId); expect(after.links).toEqual(before.links);
   await card(page, 'pr').click({ button: 'right' });
-  expect(await page.getByRole('menuitem').allTextContents()).toEqual(['Move to project', 'Mark done', 'Send selection to Undermap']);
+  expect(await page.getByRole('menuitem').allTextContents()).toEqual(['Move to project', 'Move to plot', 'Mark done', 'Send selection to Undermap']);
   await page.getByRole('menuitem', { name: 'Mark done', exact: true }).click();
   await expect.poll(async () => (await read(page)).nodes.filter(n => ['agent', 'pr'].includes(n.id) && n.completedAt).length).toBe(2);
   await page.keyboard.press('Escape'); await expect(page.locator('.map-selection rect[data-selected-id]')).toHaveCount(0);

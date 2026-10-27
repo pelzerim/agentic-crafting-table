@@ -97,7 +97,7 @@ test('the reading list example loads from a folder, raises Needs me, shows its v
     await page.getByRole('treeitem', { name: 'Items', exact: true }).click();
     const menus = page.getByRole('group', { name: 'Right-click menus', exact: true });
     await menus.getByLabel('Item type', { exact: true }).selectOption({ label: 'Reading link' });
-    await expect(menus.getByRole('listitem').locator('.menu-order-label')).toHaveText(['Open', 'Connect to…', 'Read state', 'Open in browser', 'Copy URL', 'Settings', 'Move to project', 'Mark done / Reopen', 'Send to Undermap']);
+    await expect(menus.getByRole('listitem').locator('.menu-order-label')).toHaveText(['Open', 'Connect to…', 'Read state', 'Open in browser', 'Copy URL', 'Settings', 'Move to project', 'Move to plot', 'Remove from plot', 'Mark done / Reopen', 'Send to Undermap']);
     await page.getByRole('button', { name: 'Close settings', exact: true }).click();
 
     // Create an item through the creation ring, from the definition's fields.

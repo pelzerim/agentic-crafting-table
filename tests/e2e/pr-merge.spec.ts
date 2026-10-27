@@ -38,6 +38,42 @@ test('right-click Merge > method merges the confirmed head without opening the P
   } finally { await close(); }
 });
 
+test('the Merge menu shows the saved methods at once, updates them from GitHub, and an outdated pick fails and is read live next time', async () => {
+  const { providers, page, close } = await start('craft-pr-merge-cached-');
+  /** Holds every GitHub read until the returned function is called. */
+  const hold = () => { let release!: () => void; const held = new Promise<void>(resolve => { release = resolve; }); providers.delay(() => held); return () => { providers.delay(undefined); release(); }; };
+  try {
+    const card = page.locator('[data-item-id="pr"]'), submenu = page.getByRole('menu', { name: 'Merge…', exact: true });
+    const openMerge = async () => { await card.click({ button: 'right' }); await page.getByRole('menuitem', { name: 'Merge…', exact: true }).hover(); };
+    await expect(card.locator('[data-indicator="review-state"]')).toHaveAttribute('aria-label', 'Open');
+    await openMerge();
+    await expect(submenu.getByRole('menuitem')).toHaveText(['Cancel', /Merge #42/, 'Squash and merge', 'Create a merge commit', 'Rebase and merge']);
+    await page.keyboard.press('Escape');
+
+    providers.mergeSettings = { ...providers.mergeSettings, squash: false };
+    let release = hold();
+    await openMerge();
+    await expect(submenu.getByRole('menuitem')).toHaveText(['Cancel', /Merge #42/, 'Squash and merge', 'Create a merge commit', 'Rebase and merge']);
+    release();
+    await expect(submenu.getByRole('menuitem')).toHaveText(['Cancel', /Merge #42/, 'Create a merge commit', 'Rebase and merge'], { timeout: 20_000 });
+    await page.keyboard.press('Escape');
+
+    providers.mergeSettings = { ...providers.mergeSettings, rebase: false };
+    release = hold();
+    await openMerge();
+    await submenu.getByRole('menuitem', { name: 'Rebase and merge', exact: true }).click();
+    await expect(page.getByRole('alert').filter({ hasText: 'Merge of #42 didn’t go through' })).toBeVisible({ timeout: 20_000 });
+    expect(providers.merges).toEqual([{ pullRequestId: 'PR_kwDOfixture42', expectedHeadOid: 'a'.repeat(40), method: 'REBASE' }]);
+    release();
+
+    release = hold();
+    await openMerge();
+    await expect(submenu.getByRole('menuitem', { name: 'Checking merge options…', exact: true })).toBeVisible();
+    release();
+    await expect(submenu.getByRole('menuitem')).toHaveText(['Cancel', /Merge #42/, 'Create a merge commit'], { timeout: 20_000 });
+  } finally { await close(); }
+});
+
 test('the full PR view merges with one click using the default method, and adds to a merge queue', async () => {
   const { providers, page, close } = await start('craft-pr-merge-view-');
   try {

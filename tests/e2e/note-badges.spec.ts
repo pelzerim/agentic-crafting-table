@@ -38,6 +38,7 @@ test('clicking a badge opens its note to edit, right-clicking opens its note men
   await tab.click();
   const form = page.getByRole('form', { name: 'Edit note' });
   await expect(form.getByRole('textbox', { name: 'Text' })).toHaveValue('S2');
+  await expect(form.getByRole('radiogroup', { name: 'Paper' }).getByRole('radio', { name: 'Mint', exact: true })).toHaveAttribute('aria-checked', 'true');
   await form.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(form).toHaveCount(0);
   await tab.click({ button: 'right' });

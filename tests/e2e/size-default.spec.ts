@@ -21,7 +21,7 @@ test('Settings ▸ holds the item settings entry and Use size as default, which 
   await page.getByRole('slider', { name: 'Map zoom' }).fill('1');
   const before = await read(page), card = page.locator('[data-item-id="agent"]');
   await card.click({ button: 'right' });
-  await expect(page.getByRole('menu', { name: 'Context actions' }).getByRole('menuitem')).toHaveText(['Open', 'Connect to…', 'Settings', 'Move to project', 'Auto-name from activity', 'Mark done', 'Send to Undermap']);
+  await expect(page.getByRole('menu', { name: 'Context actions' }).getByRole('menuitem')).toHaveText(['Open', 'Connect to…', 'Settings', 'Move to project', 'Move to plot', 'Auto-name from activity', 'Mark done', 'Send to Undermap']);
   await expect(settingsEntry(page)).toHaveAttribute('aria-haspopup', 'menu');
   await settingsEntry(page).hover();
   await expect(submenu(page).getByRole('menuitem')).toHaveText(['Item settings…', 'Use size as default']);
@@ -90,7 +90,7 @@ test('hiding the Settings entry of a type hides both of its entries', async ({ v
     await window.craftingTable.settingsWrite({ expectedRevision: saved.revision, value: { ...saved.value, menus: { ...saved.value.menus, hidden: { 'agent.session': ['edit'] } } } });
   });
   await page.locator('[data-item-id="agent"]').click({ button: 'right' });
-  await expect(page.getByRole('menu', { name: 'Context actions' }).getByRole('menuitem')).toHaveText(['Open', 'Connect to…', 'Move to project', 'Auto-name from activity', 'Mark done', 'Send to Undermap']);
+  await expect(page.getByRole('menu', { name: 'Context actions' }).getByRole('menuitem')).toHaveText(['Open', 'Connect to…', 'Move to project', 'Move to plot', 'Auto-name from activity', 'Mark done', 'Send to Undermap']);
   await page.keyboard.press('Escape');
   await page.locator('[data-item-id="pr"]').click({ button: 'right' });
   await expect(settingsEntry(page)).toBeVisible();

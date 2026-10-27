@@ -85,6 +85,8 @@ export interface ResourceField {
   placeholder?: string;
   options?: readonly string[];
   optionLabels?: Readonly<Record<string, string>>;
+  /** A colour `select` that also takes any custom `#rrggbb`; its menu row then offers the colour picker's custom colours. */
+  customColor?: true;
   optionsSource?: string;
   dependsOn?: string;
   default?: string | number | boolean | readonly string[];
@@ -251,6 +253,10 @@ export interface ResourceAction {
   /** While the item has unresolved blockers, choices from this read-only action
    * name them and read “… anyway”; this write then needs that acknowledgement. */
   heedsBlockers?: boolean;
+  /** For a read-only action returning `ResourceChoices`: the host saves the last answer per item and
+   * returns it at once to an ask with input `cached: true` (marked `cachedAt`), while the caller asks
+   * again with `refresh: true`. Any write on the item forgets it. */
+  cacheChoices?: boolean;
   /** Invoked by the host when a person marks the item done or reopens it (input `done`
    * "true"/"false" and `restore`, the state it returns `restore` for); never directly. */
   completion?: boolean;
@@ -394,6 +400,8 @@ export interface ResourceChoices {
   /** Optional question shown above the options. */
   prompt?: string;
   options: { id: string; label: string; description?: string; disabled?: boolean; highlight?: ChoiceHighlight; confirm?: ChoiceConfirm }[];
+  /** Set by the host on a saved answer to a `cacheChoices` action: when it was read (ms). */
+  cachedAt?: number;
 }
 
 /** Native conversation metadata; never transcript contents or launch commands. */

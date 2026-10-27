@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { contextMenuActions, convertLinkActions, enabledMenuGroups, itemEditLabel, addMenuSeparator, canHideMenuEntry, drawnMenuLayout, isCustomMenu, itemMenuCustom, itemMenuEntries, linkMenuActions, MENU_SEPARATOR, menuLayout, menuSlot, mergeMenuOrder, moveMenuRow, muteProjectAction, removeMenuSeparator, resetItemMenu, saveItemMenu, setMenuEntryHidden, plotMenuActions, deleteItemAction, moveToProjectAction, sendToProjectAction, sharedContextMenuActions, todoContextActions, fieldMenuActions } from './context-menu.ts';
+import { contextMenuActions, convertLinkActions, enabledMenuGroups, itemEditLabel, addMenuSeparator, canHideMenuEntry, drawnMenuLayout, isCustomMenu, itemMenuCustom, itemMenuEntries, linkMenuActions, MENU_SEPARATOR, menuLayout, menuSlot, mergeMenuOrder, moveMenuRow, muteProjectAction, removeMenuSeparator, resetItemMenu, saveItemMenu, setMenuEntryHidden, plotMenuActions, deleteItemAction, itemPlotActions, moveToPlotAction, moveToProjectAction, removeFromPlotAction, sendToProjectAction, sharedContextMenuActions, todoContextActions, fieldMenuActions } from './context-menu.ts';
 import { noteItem } from '../../src/resource-plugins/items/note/definition.ts';
 import { pluginSettingsValues } from '../../src/resource-plugins/describe.client.ts';
 import { githubPullRequest } from '../../src/resource-plugins/items/github-pull-request/definition.ts';
@@ -96,6 +96,11 @@ test(`a sign's menu holds a row of color swatches and Automatic, between Name au
   const chosen = plotMenuActions(true, { color: 'sky', chosenColor: 'clay' });
   assert.deepEqual(chosen[3].row!.filter(choice => choice.checked).map(choice => choice.value), ['clay']);
   assert.deepEqual([chosen[4].label, chosen[4].checked], ['Automatic · Daisy', false]);
+  assert.deepEqual(chosen[3].customColor, { shown: undefined }, 'the row takes custom colours');
+  const custom = plotMenuActions(true, { color: 'sky', chosenColor: '#3366cc' });
+  assert.deepEqual(custom[3].row!.filter(choice => choice.checked), [], 'a custom color checks no swatch');
+  assert.deepEqual(custom[3].customColor, { shown: '#3366cc' });
+  assert.deepEqual([custom[4].label, custom[4].checked], ['Automatic · Daisy', false]);
 });
 
 test(`a sign's menu moves the whole plot to another project or to none, and sends it to Undermap`, () => {
@@ -143,6 +148,36 @@ test('a selection of items offers Move to project once; a selection with a proje
   assert.deepEqual(sharedContextMenuActions([item, item]).map(action => action.label), ['Move to project', 'Mark done', 'Send selection to Undermap']);
   assert.deepEqual(sharedContextMenuActions([item, item])[0].children, move.children);
   assert.deepEqual(sharedContextMenuActions([item, project]).map(action => action.label), ['Mark done', 'Send selection to Undermap']);
+});
+
+test('map items offer Move to plot beside Move to project: the project plots in order, the current one checked, hidden ones marked, then New plot', () => {
+  const plots = [{ id: 'billing', name: 'Billing', hidden: false, current: true }, { id: 'uploads', name: 'Uploads', hidden: true, current: false }];
+  assert.deepEqual(moveToPlotAction(plots), { id: 'move-plot', label: 'Move to plot', children: [
+    { id: 'plot-pin:billing', label: 'Billing', checked: true, disabled: true }, { id: 'plot-pin:uploads', label: 'Uploads (hidden)', checked: false }, { id: 'plot-new', label: 'New plot', divider: true }] });
+  assert.deepEqual(moveToPlotAction([]).children, [{ id: 'plot-new', label: 'New plot' }], 'a project without plots offers New plot');
+  assert.deepEqual(moveToPlotAction(undefined).children, [{ id: 'plot-pin:', label: 'Items in one project only', disabled: true }]);
+  const move = moveToProjectAction([{ id: 'docs', title: 'Docs', current: true }]), plot = [moveToPlotAction(plots), removeFromPlotAction()];
+  const menu = (scope: 'item' | 'project', actions = plot) => contextMenuActions(scope, false, undefined, [], undefined, undefined, undefined, false, undefined, move, undefined, [], {}, undefined, {}, [], actions);
+  assert.deepEqual(menu('item').map(action => [action.label, Boolean(action.divider)]),
+    [['Open', false], ['Connect to…', false], ['Settings', true], ['Move to project', true], ['Move to plot', false], ['Remove from plot', false], ['Mark done', false], ['Send to Undermap', false]]);
+  assert.ok(!menu('project').some(action => action.id === 'move-plot' || action.id === 'plot-unpin'));
+  const pinned = menu('item'), unpinned = menu('item', [moveToPlotAction(plots)]);
+  assert.deepEqual(sharedContextMenuActions([pinned, pinned]).map(action => action.label), ['Move to project', 'Move to plot', 'Remove from plot', 'Mark done', 'Send selection to Undermap']);
+  assert.deepEqual(sharedContextMenuActions([pinned, unpinned]).map(action => action.label), ['Move to project', 'Move to plot', 'Mark done', 'Send selection to Undermap']);
+  assert.deepEqual(itemMenuEntries({ name: 'Note' }).filter(entry => !entry.separator).map(entry => entry.label), ['Open', 'Connect to…', 'Settings', 'Move to project', 'Move to plot', 'Remove from plot', 'Mark done / Reopen', 'Send to Undermap'], 'Settings lists both');
+});
+
+test('the plot entries of map items: their project plots in map order, Remove from plot only when all are pinned in one', () => {
+  const node = (id: string, projectId: string | undefined, x: number, y: number) => ({ id, ...(projectId ? { projectId } : {}), position: { x, y } });
+  const nodes = [node('photos', undefined, 0, 0), node('video', undefined, 0, 5000), node('a', 'photos', 900, 0), node('b', 'photos', 0, 0), node('c', 'photos', 0, 900), node('v', 'video', 0, 5000), node('loose', undefined, 0, 0)];
+  const plot = (id: string, memberIds: string[], pinnedMemberIds: string[] = [], hidden = false, projectId = 'photos') => ({ id, projectId, memberIds, pinnedMemberIds, name: id.toUpperCase(), hidden });
+  const plots = [plot('east', ['a'], ['a']), plot('west', ['b'], ['b'], true), plot('south', ['c']), plot('other', ['v'], ['v'], false, 'video')];
+  const children = (ids: string[]) => itemPlotActions(nodes, plots, ids).map(action => [action.id, action.children?.map(child => [child.label, Boolean(child.checked)])]);
+  assert.deepEqual(children(['a']), [['move-plot', [['WEST (hidden)', false], ['EAST', true], ['SOUTH', false], ['New plot', false]]], ['plot-unpin', undefined]]);
+  assert.deepEqual(children(['c']), [['move-plot', [['WEST (hidden)', false], ['EAST', false], ['SOUTH', false], ['New plot', false]]]], 'a member detection added is not pinned');
+  assert.deepEqual(children(['a', 'b']).map(([id]) => id), ['move-plot'], 'pinned in different plots');
+  assert.deepEqual(children(['a', 'v']), [['move-plot', [['Items in one project only', false]]]]);
+  assert.deepEqual(children(['loose']), [['move-plot', [['Items in one project only', false]]]]);
 });
 
 test('the to-do list row keeps Send to project', () => {
@@ -217,9 +252,9 @@ test('the default layout holds a separator at each default group boundary and dr
   assert.equal(MENU_SEPARATOR, '---');
   assert.equal(menuSlot(MENU_SEPARATOR), MENU_SEPARATOR);
   assert.deepEqual(itemMenuEntries({ name: 'Note' }), [{ id: 'open', label: 'Open' }, { id: 'connect', label: 'Connect to…' }, { id: '---', label: 'Separator', separator: true }, { id: 'edit', label: 'Settings' },
-    { id: '---', label: 'Separator', separator: true }, { id: 'send-project', label: 'Move to project' }, { id: 'complete', label: 'Mark done / Reopen' }, { id: 'below', label: 'Send to Undermap' }]);
+    { id: '---', label: 'Separator', separator: true }, { id: 'send-project', label: 'Move to project' }, { id: 'move-plot', label: 'Move to plot' }, { id: 'plot-unpin', label: 'Remove from plot' }, { id: 'complete', label: 'Mark done / Reopen' }, { id: 'below', label: 'Send to Undermap' }]);
   const layout = itemMenuEntries({ ...githubPullRequest, todoSupport: {}, activityTitle: {} }).map(entry => entry.id);
-  assert.deepEqual(layout, ['open', 'connect', '---', 'plugin:review', 'plugin:reviewLoop', 'plugin:architecture', 'plugin:merge', 'plugin:autoDeploy', 'plugin:state', 'plugin:showShip', '---', 'open-web', 'copy-url', 'edit', '---', 'send-project', 'add-todo', 'auto-title', 'complete', 'below']);
+  assert.deepEqual(layout, ['open', 'connect', '---', 'plugin:review', 'plugin:reviewLoop', 'plugin:architecture', 'plugin:merge', 'plugin:autoDeploy', 'plugin:state', 'plugin:showShip', '---', 'open-web', 'copy-url', 'edit', '---', 'send-project', 'move-plot', 'plot-unpin', 'add-todo', 'auto-title', 'complete', 'below']);
   assert.deepEqual(prMenu().map(action => [action.label, Boolean(action.divider)]), [
     ['Open', false], ['Connect to…', false],
     ['Trigger review', true], ['Review loop', false], ['Explain architecture', false], ['Merge…', false], ['Auto deploy', false], ['Change state', false], ['Show/Ship', false],
@@ -284,9 +319,9 @@ test('an earlier saved order converts to a layout with the separators it used to
   const mixed = contextMenuActions('item', false, undefined, [], undefined, undefined, undefined, false, undefined, undefined, undefined, [], { order: ['open', 'below', 'connect'] });
   assert.deepEqual(mixed.map(action => [action.id, Boolean(action.divider)]), [['open', false], ['below', true], ['connect', true], ['settings', true], ['complete', true]]);
   const type = { ...githubPullRequest, todoSupport: {}, activityTitle: {} }, converted = itemMenuEntries(type, { order }).map(entry => entry.id);
-  assert.deepEqual(converted, ['copy-url', '---', 'open', 'connect', '---', 'plugin:review', 'plugin:reviewLoop', 'plugin:architecture', 'plugin:merge', 'plugin:autoDeploy', 'plugin:state', 'plugin:showShip', '---', 'open-web', 'edit', '---', 'send-project', 'add-todo', 'auto-title', 'complete', 'below']);
+  assert.deepEqual(converted, ['copy-url', '---', 'open', 'connect', '---', 'plugin:review', 'plugin:reviewLoop', 'plugin:architecture', 'plugin:merge', 'plugin:autoDeploy', 'plugin:state', 'plugin:showShip', '---', 'open-web', 'edit', '---', 'send-project', 'move-plot', 'plot-unpin', 'add-todo', 'auto-title', 'complete', 'below']);
   assert.deepEqual(prMenu({ layout: converted }), prMenu({ order }), 'saved in the new shape, it draws the same menu');
-  assert.deepEqual(itemMenuEntries({ name: 'Note' }, { order: ['below', 'open'] }).map(entry => entry.id), ['below', '---', 'open', 'connect', '---', 'edit', '---', 'send-project', 'complete']);
+  assert.deepEqual(itemMenuEntries({ name: 'Note' }, { order: ['below', 'open'] }).map(entry => entry.id), ['below', '---', 'open', 'connect', '---', 'edit', '---', 'send-project', 'move-plot', 'plot-unpin', 'complete']);
 });
 
 test('a saved menu never changes projects, boards, connections or Undermap menus', () => {
@@ -300,13 +335,13 @@ test('a saved menu never changes projects, boards, connections or Undermap menus
 test('every item type lists its possible menu entries, one per slot, with its separators, for Settings', () => {
   const labels = (rows: ReturnType<typeof itemMenuEntries>) => rows.filter(row => !row.separator).map(row => row.label);
   assert.deepEqual(labels(itemMenuEntries(githubPullRequest)),
-    ['Open', 'Connect to…', 'Trigger review', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', 'Open on GitHub', 'Copy URL', 'Settings', 'Move to project', 'Mark done / Reopen', 'Send to Undermap']);
+    ['Open', 'Connect to…', 'Trigger review', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', 'Open on GitHub', 'Copy URL', 'Settings', 'Move to project', 'Move to plot', 'Remove from plot', 'Mark done / Reopen', 'Send to Undermap']);
   const everything = itemMenuEntries({ name: 'Web link', generatedTitle: true, webLink: { label: 'Open in browser' }, todoSupport: {}, activityTitle: {}, creation: { urlFallback: true }, contextMenu: [{ id: 'tags', label: 'Tags', children: [], when: { plugin: 'acme', setting: 'on' } }] });
   assert.deepEqual(everything.map(entry => [entry.id, entry.label]), [['open', 'Open'], ['connect', 'Connect to…'], ['---', 'Separator'], ['plugin:tags', 'Tags'], ['---', 'Separator'], ['open-web', 'Open in browser'], ['copy-url', 'Copy URL'], ['convert', 'Convert to a specific type'], ['edit', 'Settings'],
-    ['---', 'Separator'], ['send-project', 'Move to project'], ['add-todo', 'Turn into todo / Remove from to-dos'], ['auto-title', 'Auto-name from activity'], ['complete', 'Mark done / Reopen'], ['below', 'Send to Undermap']]);
+    ['---', 'Separator'], ['send-project', 'Move to project'], ['move-plot', 'Move to plot'], ['plot-unpin', 'Remove from plot'], ['add-todo', 'Turn into todo / Remove from to-dos'], ['auto-title', 'Auto-name from activity'], ['complete', 'Mark done / Reopen'], ['below', 'Send to Undermap']]);
   const slots = everything.filter(entry => !entry.separator);
   assert.equal(new Set(slots.map(entry => entry.id)).size, slots.length);
-  assert.deepEqual(itemMenuEntries({ name: 'Note' }, { layout: ['below', '---', '---', 'open'] }).map(entry => entry.id), ['below', '---', '---', 'open', 'connect', 'edit', 'send-project', 'complete'], 'the saved rows as placed, doubled separators included');
+  assert.deepEqual(itemMenuEntries({ name: 'Note' }, { layout: ['below', '---', '---', 'open'] }).map(entry => entry.id), ['below', '---', '---', 'open', 'connect', 'edit', 'send-project', 'move-plot', 'plot-unpin', 'complete'], 'the saved rows as placed, doubled separators included');
   assert.equal(itemEditLabel({ name: 'Note', generatedTitle: true }), 'Edit note…');
   assert.equal(itemEditLabel(undefined), 'Item settings…');
 });
@@ -361,7 +396,7 @@ test('a hidden slot leaves the single item menu with all its variants and its su
   assert.deepEqual(note(false, { hidden: ['gone', 'plugin:removed', '---'] }), note(false, {}), 'ids the menu does not have hide nothing');
   assert.deepEqual(note(false, { layout: ['below', 'complete', '---', 'open'], hidden: ['complete'] }), ['below', 'open', 'connect', 'settings', 'send-project', 'add-todo']);
   const rows = itemMenuEntries({ name: 'Note' }, { layout: ['below', 'complete', '---', 'open'], hidden: ['reopen', 'open'] });
-  assert.deepEqual(rows.map(row => [row.id, Boolean(row.hidden)]), [['below', false], ['complete', true], ['---', false], ['open', true], ['connect', false], ['edit', false], ['send-project', false]], 'Settings keeps hidden rows where they are');
+  assert.deepEqual(rows.map(row => [row.id, Boolean(row.hidden)]), [['below', false], ['complete', true], ['---', false], ['open', true], ['connect', false], ['edit', false], ['send-project', false], ['move-plot', false], ['plot-unpin', false]], 'Settings keeps hidden rows where they are');
   assert.deepEqual(itemMenuEntries({ name: 'Note' }, { hidden: ['edit'] }).map(row => row.id), itemMenuEntries({ name: 'Note' }).map(row => row.id));
 });
 
@@ -481,8 +516,13 @@ test('Delete… asks inside its submenu: Cancel first, then the destructive Dele
 test('a note offers Show as and its colour in its menu, the shown value checked, ahead of Settings', () => {
   const fields = fieldMenuActions(noteItem.fields, { text: 'S2' }, { display: 'badge' });
   assert.deepEqual(fields.map(action => [action.id, action.label]), [['field:paper', 'Colour'], ['field:display', 'Show as']]);
-  assert.deepEqual(fields[0]!.row!.map(choice => [choice.value, choice.swatch, choice.checked]), [['mint', 'var(--act-paper-mint)', true], ['sky', 'var(--act-paper-sky)', false],
-    ['lilac', 'var(--act-paper-lilac)', false], ['peach', 'var(--act-paper-peach)', false], ['slate', 'var(--act-paper-slate)', false]]);
+  assert.deepEqual(fields[0]!.row!.map(choice => [choice.value, choice.label, choice.swatch, choice.checked]), [['mint', 'Mint', 'var(--act-paper-mint)', true], ['moss', 'Moss', 'var(--act-paper-moss)', false],
+    ['ice', 'Ice', 'var(--act-paper-ice)', false], ['sky', 'Sky', 'var(--act-paper-sky)', false], ['lilac', 'Lilac', 'var(--act-paper-lilac)', false], ['rose', 'Rose', 'var(--act-paper-rose)', false],
+    ['peach', 'Peach', 'var(--act-paper-peach)', false], ['sand', 'Sand', 'var(--act-paper-sand)', false], ['fog', 'Fog', 'var(--act-paper-fog)', false], ['slate', 'Slate', 'var(--act-paper-slate)', false]]);
+  assert.deepEqual(fields[0]!.customColor, { shown: undefined });
+  const custom = fieldMenuActions(noteItem.fields, { text: 'S2', paper: '#3366CC' })[0]!;
+  assert.deepEqual([custom.row!.filter(choice => choice.checked), custom.customColor], [[], { shown: '#3366cc' }], 'a custom paper checks no swatch and is shown as the custom colour');
+  assert.equal(fieldMenuActions(githubPullRequest.fields, {}).some(action => action.customColor), false);
   assert.deepEqual(fields[1]!.children!.map(child => [child.id, child.label, child.checked]), [['field:display:note', 'Note', false], ['field:display:badge', 'Badge', true]]);
   assert.equal(fieldMenuActions(noteItem.fields, { text: 'S2', paper: 'peach' })[0]!.row!.find(choice => choice.checked)!.value, 'peach');
   assert.deepEqual(fieldMenuActions(githubPullRequest.fields, {}), []);

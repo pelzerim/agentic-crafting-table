@@ -13,10 +13,10 @@ test('menus are scoped, short and identical through project options and keyboard
   await page.mouse.click(point.x, point.y, { button: 'right' });
   await expect(page.getByRole('menu')).toHaveCount(0);
   await page.getByRole('article', { name: 'Claude · implementation', exact: true }).click({ button: 'right' });
-  expect(await labels()).toEqual(['Open', 'Connect to…', 'Settings', 'Move to project', 'Auto-name from activity', 'Mark done', 'Send to Undermap']);
+  expect(await labels()).toEqual(['Open', 'Connect to…', 'Settings', 'Move to project', 'Move to plot', 'Auto-name from activity', 'Mark done', 'Send to Undermap']);
   const menu = page.getByRole('menu', { name: 'Context actions' });
   expect((await menu.boundingBox())!.width).toBeGreaterThanOrEqual(200);
-  await expect(menu.getByRole('menuitem').locator('.item-icon')).toHaveCount(7);
+  await expect(menu.getByRole('menuitem').locator('.item-icon')).toHaveCount(8);
   for (const item of await menu.getByRole('menuitem').all()) expect((await item.boundingBox())!.height).toBeLessThan(36);
   await capture(page, 'context-menu-item.png');
   await page.keyboard.press('Escape');
@@ -37,7 +37,7 @@ test('menus are scoped, short and identical through project options and keyboard
   await page.getByRole('article', { name: 'Claude · implementation', exact: true }).click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Mark done' }).click();
   await page.getByRole('article', { name: 'Claude · implementation', exact: true }).click({ button: 'right' });
-  expect(await labels()).toEqual(['Open', 'Connect to…', 'Settings', 'Move to project', 'Auto-name from activity', 'Reopen', 'Send to Undermap']);
+  expect(await labels()).toEqual(['Open', 'Connect to…', 'Settings', 'Move to project', 'Move to plot', 'Auto-name from activity', 'Reopen', 'Send to Undermap']);
 });
 
 test('item settings keep provider titles authoritative and move membership only on save', async ({ visual: { app, page } }) => {
@@ -54,7 +54,7 @@ test('item settings keep provider titles authoritative and move membership only 
   expect(after.nodes.find(node => node.id === 'pr')?.projectId).toBeUndefined();
   expect(after.resources).toEqual(before.resources); expect(after.links).toEqual(before.links);
   await page.getByRole('article', { name: 'Plan switcher', exact: true }).click({ button: 'right' });
-  expect(await page.getByRole('menuitem').allTextContents()).toEqual(['Open', 'Connect to…', 'Trigger review', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', 'Open on GitHub', 'Copy URL', 'Settings', 'Move to project', 'Mark done', 'Send to Undermap']);
+  expect(await page.getByRole('menuitem').allTextContents()).toEqual(['Open', 'Connect to…', 'Trigger review', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', 'Open on GitHub', 'Copy URL', 'Settings', 'Move to project', 'Move to plot', 'Mark done', 'Send to Undermap']);
   await app.evaluate(({ shell }) => { (globalThis as any).openedUrl = ''; shell.openExternal = async url => { (globalThis as any).openedUrl = url; }; });
   await page.getByRole('menuitem', { name: 'Open on GitHub', exact: true }).click();
   await expect.poll(() => app.evaluate(() => (globalThis as any).openedUrl)).toMatch(/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/);

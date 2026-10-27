@@ -238,7 +238,7 @@ test('Review selection starts one Claude review per selected pull request, each 
     for (const pull of pulls) await page.getByRole('article', { name: pull.title, exact: true }).click({ modifiers: ['Shift'] });
     await expect(page.locator('.map-selection rect[data-selected-id]')).toHaveCount(2);
     await page.getByRole('article', { name: pulls[0].title, exact: true }).click({ button: 'right' });
-    await expect(page.getByRole('menuitem')).toHaveText(['Review selection', 'Copy URLs', 'Move to project', 'Mark done', 'Send selection to Undermap']);
+    await expect(page.getByRole('menuitem')).toHaveText(['Review selection', 'Copy URLs', 'Move to project', 'Move to plot', 'Mark done', 'Send selection to Undermap']);
     await page.getByRole('menuitem', { name: 'Review selection', exact: true }).hover();
     await expect(page.getByRole('menuitem', { name: 'Claude', exact: true })).toBeVisible();
     await expect(page.getByRole('menuitem', { name: '/review', exact: true })).toHaveCount(0);

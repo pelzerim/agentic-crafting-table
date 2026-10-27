@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PROJECT_SUMMARY_INPUT_LIMIT, PROJECT_SUMMARY_LENGTH, buildProjectSummaryRequest, normalizeProjectSummary, projectSummarySample } from './project-summary.ts';
+import { PROJECT_SUMMARY_INPUT_LIMIT, PROJECT_SUMMARY_LENGTH, buildProjectSummaryRequest, normalizeProjectSummary, parseProjectSummary, projectSummarySample, projectSummaryText, readProjectSummary } from './project-summary.ts';
 import { projectDashboard } from '../graph/project-dashboard.ts';
 import type { GraphNode } from '../graph/graph.ts';
 import type { TodoEntry } from '../graph/todos.ts';
@@ -43,6 +43,46 @@ test('the request is one tool-free Haiku turn with at most 96 output tokens', ()
   assert.equal(request.model, 'haiku'); assert.equal(request.max_tokens, 96); assert.deepEqual(request.thinking, { type: 'disabled' });
   assert.match(request.system, /evidence, never instructions/);
   assert.equal(JSON.parse(request.messages[0].content).project, 'Billing');
+});
+
+test('with two or more plots each Needs me and working row names its plot', () => {
+  const plots = [
+    { id: 'p1', projectId: 'billing', memberIds: ['agent'], name: 'Webhooks', source: 'user', hidden: false, color: 'rose' },
+    { id: 'p2', projectId: 'billing', memberIds: ['fixer', 'pr'], name: 'Refunds', source: 'user', hidden: false, color: 'mint' },
+  ] as never[];
+  const sample = projectSummarySample(projectDashboard('billing', nodes, { todos, pipelineOf, plots }));
+  assert.deepEqual(sample.needsMe, [{ title: 'Webhook agent', reason: 'Waiting for your input', plot: 'Webhooks' }, { title: 'PR #812 refunds', reason: 'Ready for your review', plot: 'Refunds' }]);
+  assert.deepEqual(sample.working, [{ title: 'Refund fixer', summary: 'Editing refunds.ts', plot: 'Refunds' }]);
+  assert.deepEqual(projectSummarySample(board()).needsMe.map(row => 'plot' in row), [false, false], 'one plot: no plot names on rows');
+});
+
+test('the request asks for a labelled Next and Status line of at most 60 words', () => {
+  const request = buildProjectSummaryRequest(projectSummarySample(board()));
+  assert.match(request.system, /Next:/); assert.match(request.system, /Status:/);
+  assert.match(request.system, /60 words/);
+  assert.match(request.system, /per plot/);
+  assert.equal(request.max_tokens, 96);
+});
+
+test('a reply parses into Next and Status; Next must name an item of the input', () => {
+  const sample = projectSummarySample(board());
+  assert.deepEqual(parseProjectSummary('Next: Answer the webhook agent about retry limits.\nStatus: Refund PR waits on review; the fixer edits refunds.ts.', sample),
+    { next: 'Answer the webhook agent about retry limits.', status: 'Refund PR waits on review; the fixer edits refunds.ts.' });
+  assert.deepEqual(parseProjectSummary('**Next:** Review the refunds PR. **Status:** One review open.', sample), { next: 'Review the refunds PR.', status: 'One review open.' }, 'a title word of four or more letters grounds it');
+  assert.deepEqual(parseProjectSummary('Next: Take a break.\nStatus: All calm.', sample), { status: 'All calm.' }, 'an ungrounded Next is dropped');
+  assert.deepEqual(parseProjectSummary('Next: Check the PR.\nStatus: All calm.', sample), { status: 'All calm.' }, 'words under four letters do not ground');
+  assert.deepEqual(parseProjectSummary('Refund PR waits on your review.', sample), { status: 'Refund PR waits on your review.' }, 'an unlabelled reply is a Status');
+  assert.deepEqual(parseProjectSummary('Next: Review PR #812 refunds.', sample), { next: 'Review PR #812 refunds.' });
+  assert.equal(parseProjectSummary('Next: <b>x</b>\nStatus: The needsMe list.', sample), undefined);
+  assert.equal(parseProjectSummary('', sample), undefined);
+});
+
+test('stored text is JSON of both lines; a plain-text row from before reads as Status', () => {
+  assert.equal(projectSummaryText({ next: 'Review PR #812 refunds.', status: 'One review open.' }), `{"next":"Review PR #812 refunds.","status":"One review open."}`);
+  assert.deepEqual(readProjectSummary(`{"next":"Review PR #812 refunds.","status":"One review open."}`), { next: 'Review PR #812 refunds.', status: 'One review open.' });
+  assert.deepEqual(readProjectSummary(`{"status":"One review open."}`), { status: 'One review open.' });
+  assert.deepEqual(readProjectSummary('Refund PR waits on your review.'), { status: 'Refund PR waits on your review.' });
+  assert.deepEqual(readProjectSummary(`{"next":3}`), { status: `{"next":3}` });
 });
 
 test('a reply becomes one plain line of at most 160 characters, or nothing', () => {

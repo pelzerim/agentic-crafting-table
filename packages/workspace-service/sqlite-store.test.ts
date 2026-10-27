@@ -10,7 +10,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { settingsSchema } from '../core/settings.ts';
-import { SqliteStore, migrations } from './sqlite-store.ts';
+import { DORMANT_PLOTS_PER_PROJECT, SqliteStore, migrations } from './sqlite-store.ts';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { todoContext, todoList } from '../../src/graph/todos.ts';
 import { CommandIdConflict, emptyState, RevisionConflict, WorkspaceControl, envelopeSchema, reduceCommands } from '../core/control.ts';
@@ -81,6 +81,25 @@ test('a refused stale command is recorded with the commits that landed after the
       landed: [{ revision: seen + 1, actor: 'system:agent-quiet', commands: [{ type: 'node.update', id: 'one' }] }] });
     store.close(); store = new SqliteStore(file);
     assert.equal(store.revisionConflicts().length, 1, 'conflicts survive a restart');
+  } finally { store.close(); }
+}));
+
+test('jobs are decoded once and kept until a job is written, so a poller listing them every second costs nothing', () => fixture(async directory => {
+  const store = new SqliteStore(join(directory, 'jobs.sqlite'));
+  try {
+    for (let i = 0; i < 50; i++) store.enqueueJob(`request-${i}`, { action: 'review.workflow', nodeId: `node-${i}`, arguments: { i } });
+    const first = store.listJobs(), again = store.listJobs();
+    assert.equal(first.length, 50);
+    assert.equal(again, first, 'the same list comes back while nothing changed');
+    const job = store.transitionJob(first[0].id, 'queued', 'running');
+    const after = store.listJobs();
+    assert.notEqual(after, first, 'a job write gives a fresh list');
+    assert.equal(after.find(entry => entry.id === job.id)?.state, 'running');
+    store.enqueueJob('request-new', { action: 'review.workflow', nodeId: 'node-new', arguments: {} });
+    assert.equal(store.listJobs().length, 51);
+    const other = new SqliteStore(join(directory, 'jobs.sqlite'));
+    try { other.enqueueJob('request-other', { action: 'review.workflow', nodeId: 'node-other', arguments: {} }); } finally { other.close(); }
+    assert.equal(store.listJobs().length, 52, 'a write from another connection is seen too');
   } finally { store.close(); }
 }));
 
@@ -842,6 +861,46 @@ test('v28 upgrade: plots gain an assigned and a chosen color and keep their iden
     assert.deepEqual(store.plotRecords().map(record => [record.id, record.color, record.chosenColor]), [['plot-1', 'sky', 'rose']]);
     store.choosePlotColor('plot-1', undefined);
     assert.deepEqual(store.plotRecords().map(record => [record.color, record.chosenColor]), [['sky', undefined]]);
+  } finally { store.close(); }
+}));
+
+test('pinned plot members upgrade: plots gain pinned members and keep their identity, names and colors', () => fixture(async directory => {
+  const file = join(directory, 'plot-pins.sqlite'), step = migrations.findIndex(migration => migration.includes('pinned_member_ids'));
+  assert.ok(step > 0);
+  let store = new SqliteStore(file);
+  store.savePlots([{ id: 'plot-1', projectId: 'kept', memberIds: ['a', 'b', 'c'] }], 1000); store.renamePlot('plot-1', 'Q4 pricing', false); store.colorPlots(new Map([['plot-1', 'sky']])); store.close();
+  const old = new DatabaseSync(file); old.exec(`ALTER TABLE plots DROP COLUMN pinned_member_ids; PRAGMA user_version = ${step};`); old.close();
+  store = new SqliteStore(file);
+  try {
+    assert.ok(store.backupFile?.includes(`backup-v${step}-`));
+    assert.deepEqual(store.plotRecords().map(record => [record.id, record.name, record.color, record.pinnedMemberIds]), [['plot-1', 'Q4 pricing', 'sky', []]]);
+    assert.equal(store.pinPlotMembers('plot-1', ['b', 'a', 'b']), true);
+  } finally { store.close(); }
+  store = new SqliteStore(file);
+  try { assert.deepEqual(store.plotRecords()[0].pinnedMemberIds, ['a', 'b']); } finally { store.close(); }
+}));
+
+test('pinning an item in one plot unpins it from any other; a pinned plot is never forgotten while dormant', () => fixture(async directory => {
+  const store = new SqliteStore(join(directory, 'plot-pins.sqlite'));
+  try {
+    store.savePlots([{ id: 'p1', projectId: 'x', memberIds: ['a', 'b', 'c'] }, { id: 'p2', projectId: 'x', memberIds: ['d', 'e', 'f'] }], 1000);
+    store.pinPlotMembers('p1', ['a', 'b']);
+    store.pinPlotMembers('p2', ['b', 'd']);
+    const pins = () => store.plotRecords().map(record => [record.id, record.pinnedMemberIds]);
+    assert.deepEqual(pins(), [['p1', ['a']], ['p2', ['b', 'd']]]);
+    assert.equal(store.pinPlotMembers('missing', ['a']), false);
+    assert.deepEqual(pins(), [['p1', ['a']], ['p2', ['b', 'd']]], 'nothing changes for a plot that is gone');
+    store.createPinnedPlot('p3', 'x', ['d', 'g'], 2000);
+    assert.deepEqual(store.plotRecords().find(record => record.id === 'p3'), { id: 'p3', projectId: 'x', memberIds: ['d', 'g'], active: true, generated: false, hidden: false, changedAt: 2000, pinnedMemberIds: ['d', 'g'] });
+    assert.deepEqual(pins(), [['p1', ['a']], ['p2', ['b']], ['p3', ['d', 'g']]]);
+    store.unpinPlotMembers(['a', 'g']);
+    assert.deepEqual(pins(), [['p1', []], ['p2', ['b']], ['p3', ['d']]]);
+    store.savePlots([], 3000);
+    for (let i = 0; i < DORMANT_PLOTS_PER_PROJECT + 5; i++) store.savePlots([{ id: `d${i}`, projectId: 'x', memberIds: [`m${i}`] }], 4000 + i);
+    store.savePlots([], 9000);
+    const kept = store.plotRecords().map(record => record.id);
+    assert.ok(kept.includes('p2') && kept.includes('p3'), 'dormant plots with pins stay');
+    assert.ok(!kept.includes('p1'), 'one without pins is forgotten like any other');
   } finally { store.close(); }
 }));
 

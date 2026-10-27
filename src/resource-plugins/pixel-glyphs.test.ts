@@ -32,3 +32,12 @@ test('the reminders bell is a 12×12 glyph of its own, symmetric like a bell', (
   assert.deepEqual(mirror(bell), bell);
   for (const [name, rows] of Object.entries(PIXEL_GLYPHS[12])) if (name !== 'bell') assert.notDeepEqual(rows, bell, `bell differs from ${name}`);
 });
+
+test('the plot pin is an 8×8 glyph of its own, symmetric like a push pin', () => {
+  const pin = glyphs.pin;
+  assert.ok(pin, 'PIXEL_GLYPHS[8].pin exists');
+  assert.equal(pin.length, 8);
+  assert.ok(pin.every(row => row.length === 8 && /^[.X]+$/.test(row)));
+  assert.deepEqual(mirror(pin), pin);
+  for (const [name, rows] of Object.entries(glyphs)) if (name !== 'pin') assert.notDeepEqual(pin, rows, `pin differs from ${name}`);
+});

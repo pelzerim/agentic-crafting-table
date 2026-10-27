@@ -20,6 +20,10 @@ export interface DesktopBridge {
   takeInstallLink(): Promise<import('./install-link.ts').InstallLinkRequest | null>;
   onInstallLink(listener: () => void): () => void;
   diagnosticsReport(): Promise<import('../../packages/diagnostics/support-report.ts').SupportReport>;
+  /** The workspace service's event-loop lag, operations, broadcasts, dropped clients and memory. */
+  serviceHealth(): Promise<import('../../packages/workspace-service/service-health.ts').ServiceHealthReport>;
+  /** This app's last 50 workspace connection changes with their reasons, and the 20 slowest snapshot deliveries. */
+  connectionEvents(): Promise<{ events: import('../../packages/workspace-service/connection.ts').ConnectionEvent[]; slowestSnapshots: import('../../packages/workspace-service/connection.ts').SnapshotDelivery[] }>;
   /** Appends a bounded renderer failure to the local renderer.log; never uploaded. */
   reportError(entry: { kind: 'uncaught' | 'caught' | 'recoverable'; message: string; stack?: string }): void;
   openLogs(): Promise<void>;
@@ -80,6 +84,8 @@ export interface DesktopBridge {
   sessionResize(sessionId: string, cols: number, rows: number): Promise<void>;
   sessionStop(sessionId: string): Promise<SessionRecord>;
   workspaceRead(): Promise<WorkspaceSnapshot>;
+  /** Snapshots from now on are presented for `layer` (map or Undermap); answers with that layer's snapshot once connected. */
+  workspaceSubscribe(input: { layer: import('../../src/graph/layers.ts').MapLayer }): Promise<WorkspaceSnapshot | undefined>;
   workspaceApply(envelope: CommandEnvelope): Promise<CommandResult>;
   resourceMatchUrl(input: string): Promise<import('../../src/resource-plugins/registry.ts').AttachmentCandidate[]>;
   workspacePlugins(): Promise<ReturnType<WorkspaceControl['registry']['describe']>>;

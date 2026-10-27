@@ -98,6 +98,9 @@ export const migrations = [
   `CREATE TABLE IF NOT EXISTS revision_conflicts (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, actor TEXT NOT NULL, commands TEXT NOT NULL, expected INTEGER NOT NULL, current INTEGER NOT NULL, landed TEXT NOT NULL);`,
   // Project summaries for the project column (MAP-22): the input last sent per project and the latest text.
   `CREATE TABLE IF NOT EXISTS project_summaries (project_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, attempted_at INTEGER NOT NULL, text TEXT, model TEXT);`,
+  // Pinned plot members (MAP-24): the item ids a person pinned in a plot as a JSON array, NULL for none, added once as
+  // the `pinned_member_ids` column (`PLOT_PINS_VERSION`).
+  `SELECT 1; -- plots.pinned_member_ids`,
 ] as const;
 const CONFLICTS_KEPT = 1000, CONFLICT_LANDED_SHOWN = 20;
 export interface RevisionConflictRecord { at: string; actor: string; commands: CommandSubject[]; expected: number; current: number; landed: { revision: number; actor: string; commands: CommandSubject[] }[] }
@@ -108,6 +111,7 @@ function commandSubject(command: WorkspaceCommand): CommandSubject {
   return { type, ...(typeof id === 'string' ? { id } : {}), ...(Array.isArray(ids) ? { ids: ids.map(String) } : {}) };
 }
 const TODO_HORIZONS_VERSION = 25, VALIDATION_LINKS_VERSION = 26, PLOT_COLORS_VERSION = 28;
+const PLOT_PINS_VERSION = migrations.findIndex(migration => migration.includes('plots.pinned_member_ids')) + 1;
 /** Per-package storage quota and largest single record, in bytes of stored JSON. */
 export const PLUGIN_STORAGE_BYTES = 16 * 1024 * 1024, PLUGIN_RECORD_BYTES = 1024 * 1024;
 /** Conditional-request cache bounds per provider account (least recently used first out). */
@@ -131,10 +135,10 @@ function attentionCycles(state: WorkspaceState): Map<string, AttentionCycle> {
 
 /** Former plots a re-formed group can reclaim by identity; the oldest are forgotten. */
 export const DORMANT_PLOTS_PER_PROJECT = 20;
-/** A plot's identity, name and color. `generated` is false for a user's name; no name means the local fallback.
- * `color` is assigned once, `chosenColor` is a person's override. */
 export interface ProjectSummaryRecord { projectId: string; fingerprint: string; attemptedAt: number; text?: string; model?: string }
-export interface PlotRecord { id: string; projectId: string; memberIds: string[]; active: boolean; name?: string; generated: boolean; hidden: boolean; changedAt: number; fingerprint?: string; attemptedAt?: number; color?: string; chosenColor?: string }
+/** A plot's identity, name and color. `generated` is false for a user's name; no name means the local fallback.
+ * `color` is assigned once, `chosenColor` is a person's override. `pinnedMemberIds` are the items a person pinned in it. */
+export interface PlotRecord { id: string; projectId: string; memberIds: string[]; active: boolean; name?: string; generated: boolean; hidden: boolean; changedAt: number; fingerprint?: string; attemptedAt?: number; color?: string; chosenColor?: string; pinnedMemberIds: string[] }
 /** The latest hook a Claude process sent, and when its hook process saw it. */
 export interface AgentObservation { event: string; observedAt: number }
 export type RolloutValidationPatch = Partial<Pick<Validation, 'state' | 'verdict' | 'sequence' | 'reports' | 'report' | 'scope' | 'startedAt' | 'finishedAt'>> & { idleSince?: number | null };
@@ -202,6 +206,10 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
           const columns = new Set(this.db.prepare('PRAGMA table_info(plots)').all().map(row => String(row.name)));
           for (const column of ['color', 'chosen_color']) if (!columns.has(column)) this.db.exec(`ALTER TABLE plots ADD COLUMN ${column} TEXT`);
         }
+        if (current < PLOT_PINS_VERSION) {
+          const columns = new Set(this.db.prepare('PRAGMA table_info(plots)').all().map(row => String(row.name)));
+          if (!columns.has('pinned_member_ids')) this.db.exec('ALTER TABLE plots ADD COLUMN pinned_member_ids TEXT');
+        }
       });
       this.db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;');
       if (this.backupFile) this.keepOnlyBackup(this.backupFile);
@@ -247,6 +255,10 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     // records whose logical resource is gone, and obsolete comparison entries.
     this.db.exec('DELETE FROM resource_cache WHERE resource_id NOT IN (SELECT id FROM resources)');
     this.db.prepare('INSERT INTO resource_cache(resource_id, cache_key, fingerprint, body, error, retry_at, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(resource_id, cache_key) DO UPDATE SET fingerprint=excluded.fingerprint, body=excluded.body, error=excluded.error, retry_at=excluded.retry_at, checked_at=excluded.checked_at').run(resourceId, key, fingerprint, body, error ?? null, retryAt ?? null, checkedAt);
+  }
+
+  forgetResourceCache(resourceId: string, slotPrefix: string) {
+    this.db.prepare('DELETE FROM resource_cache WHERE resource_id = ? AND substr(cache_key, 1, length(?)) = ?').run(resourceId, slotPrefix, slotPrefix);
   }
 
   validator(provider: string, account: string, path: string): CachedResponse | undefined {
@@ -549,7 +561,8 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     return this.db.prepare('SELECT * FROM plots ORDER BY project_id, id').all().map(row => ({ id: String(row.id), projectId: String(row.project_id), memberIds: decode<string[]>(row.member_ids),
       active: Boolean(row.active), ...(row.name === null ? {} : { name: String(row.name) }), generated: Boolean(row.generated), hidden: Boolean(row.hidden), changedAt: Number(row.changed_at),
       ...(row.fingerprint === null ? {} : { fingerprint: String(row.fingerprint) }), ...(row.attempted_at === null ? {} : { attemptedAt: Number(row.attempted_at) }),
-      ...(row.color === null ? {} : { color: String(row.color) }), ...(row.chosen_color === null ? {} : { chosenColor: String(row.chosen_color) }) }));
+      ...(row.color === null ? {} : { color: String(row.color) }), ...(row.chosen_color === null ? {} : { chosenColor: String(row.chosen_color) }),
+      pinnedMemberIds: row.pinned_member_ids === null ? [] : decode<string[]>(row.pinned_member_ids) }));
   }
   /** Records the current plots; any other plot becomes dormant, kept only for identity. */
   savePlots(plots: readonly { id: string; projectId: string; memberIds: readonly string[] }[], now: number) {
@@ -563,9 +576,37 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
         upsert.run(plot.id, plot.projectId, members, record && JSON.stringify(record.memberIds) === members ? record.changedAt : now);
       }
       this.db.prepare('UPDATE plots SET active = 0 WHERE active = 1 AND id NOT IN (SELECT value FROM json_each(?))').run(JSON.stringify(plots.map(plot => plot.id)));
-      this.db.prepare(`DELETE FROM plots WHERE active = 0 AND rowid NOT IN (SELECT rowid FROM (SELECT rowid, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY changed_at DESC, id) AS rank FROM plots WHERE active = 0) WHERE rank <= ?)`).run(DORMANT_PLOTS_PER_PROJECT);
+      this.db.prepare(`DELETE FROM plots WHERE active = 0 AND pinned_member_ids IS NULL AND rowid NOT IN (SELECT rowid FROM (SELECT rowid, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY changed_at DESC, id) AS rank FROM plots WHERE active = 0 AND pinned_member_ids IS NULL) WHERE rank <= ?)`).run(DORMANT_PLOTS_PER_PROJECT);
     });
   }
+  /** An item is pinned in one plot at most: these members leave every plot's pins. */
+  private unpinEverywhere(memberIds: readonly string[]) {
+    const leaving = new Set(memberIds), update = this.db.prepare('UPDATE plots SET pinned_member_ids = ? WHERE id = ?');
+    for (const record of this.plotRecords()) {
+      const kept = record.pinnedMemberIds.filter(id => !leaving.has(id));
+      if (kept.length !== record.pinnedMemberIds.length) update.run(kept.length ? JSON.stringify(kept) : null, record.id);
+    }
+  }
+  /** Pins the members in the plot, taking them out of any other; false when the plot is gone. */
+  pinPlotMembers(id: string, memberIds: readonly string[]) {
+    return this.transaction(() => {
+      const record = this.plotRecords().find(record => record.id === id);
+      if (!record) return false;
+      this.unpinEverywhere(memberIds);
+      const pinned = [...new Set([...record.pinnedMemberIds, ...memberIds])].sort();
+      this.db.prepare('UPDATE plots SET pinned_member_ids = ? WHERE id = ?').run(JSON.stringify(pinned), id);
+      return true;
+    });
+  }
+  /** A new plot of the members, all pinned in it and taken out of any other. */
+  createPinnedPlot(id: string, projectId: string, memberIds: readonly string[], now: number) {
+    this.transaction(() => {
+      this.unpinEverywhere(memberIds);
+      const members = JSON.stringify([...new Set(memberIds)].sort());
+      this.db.prepare('INSERT INTO plots(id, project_id, member_ids, active, changed_at, pinned_member_ids) VALUES (?, ?, ?, 1, ?, ?)').run(id, projectId, members, now, members);
+    });
+  }
+  unpinPlotMembers(memberIds: readonly string[]) { this.transaction(() => this.unpinEverywhere(memberIds)); }
   /** A user name (`generated` false) always applies; a generated one only for the evidence it was asked for and never over a user name. */
   renamePlot(id: string, name: string | undefined, generated: boolean, fingerprint?: string) {
     return this.transaction(() => {
@@ -896,6 +937,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
   /** The decoded workspace as of a SQLite `data_version`; another connection's commit changes that version,
    * and this connection's writes and rollbacks drop the copy. Readers get their own deep copy. */
   private decoded?: { version: number; state: WorkspaceState };
+  private jobs?: { version: number; list: JobRecord[] };
   private readState(): WorkspaceState {
     const version = Number(this.db.prepare('PRAGMA data_version').get()!.data_version);
     if (this.decoded?.version !== version) this.decoded = { version, state: this.decodeState() };
@@ -1071,7 +1113,12 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
   }
   getJob(id: string): JobRecord | undefined { const row = this.db.prepare('SELECT * FROM jobs WHERE id = ?').get(id); return row ? this.job(row) : undefined; }
   jobByRequest(requestKey: string): JobRecord | undefined { const row = this.db.prepare('SELECT * FROM jobs WHERE request_key = ?').get(requestKey); return row ? this.job(row) : undefined; }
-  listJobs(): JobRecord[] { return this.db.prepare('SELECT * FROM jobs ORDER BY rowid').all().map(row => this.job(row)); }
+  /** Every job, decoded once per change: pollers list the jobs every second, and decoding thousands of rows each time blocked the service. Callers never change the records they get. */
+  listJobs(): JobRecord[] {
+    const version = Number(this.db.prepare('PRAGMA data_version').get()!.data_version);
+    if (this.jobs?.version !== version) this.jobs = { version, list: this.db.prepare('SELECT * FROM jobs ORDER BY rowid').all().map(row => this.job(row)) };
+    return this.jobs.list;
+  }
   /** Succeeded rollout approvals, picked out in SQL: decoding every job on each rollout pass blocked the service. */
   rolloutApprovalJobs(): JobRecord[] {
     return this.db.prepare(`SELECT * FROM jobs WHERE state = 'succeeded' AND json_extract(input, '$.action') = 'resource.action' AND json_extract(input, '$.arguments.actionId') = 'rollout.approve' ORDER BY rowid`).all().map(row => this.job(row));
@@ -1083,7 +1130,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       const saved = this.db.prepare('SELECT * FROM jobs WHERE request_key = ?').get(requestKey);
       if (saved) { if (saved.input !== encoded) throw new CommandIdConflict(); return this.job(saved); }
       const id = randomUUID();
-      this.db.prepare("INSERT INTO jobs(id, request_key, input, state, updated_at) VALUES (?, ?, ?, 'queued', ?)").run(id, requestKey, encoded, new Date().toISOString());
+      this.jobs = undefined; this.db.prepare("INSERT INTO jobs(id, request_key, input, state, updated_at) VALUES (?, ?, ?, 'queued', ?)").run(id, requestKey, encoded, new Date().toISOString());
       this.appendEvent('job.changed', this.readState().revision, id);
       return this.getJob(id)!;
     });
@@ -1095,7 +1142,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       if (job.state !== expected) throw new Error(`Job state conflict: expected ${expected}, current ${job.state}`);
       if (!transitions[job.state].includes(next)) throw new Error(`Invalid job transition: ${job.state} → ${next}`);
       if (job.state === 'outcome-unknown' && next === 'queued' && patch.correlation?.reconciledAbsent !== true) throw new Error('Reconcile uncertain external outcomes before retrying');
-      this.db.prepare('UPDATE jobs SET state = ?, attempts = ?, correlation = ?, result = ?, error = ?, updated_at = ? WHERE id = ?').run(
+      this.jobs = undefined; this.db.prepare('UPDATE jobs SET state = ?, attempts = ?, correlation = ?, result = ?, error = ?, updated_at = ? WHERE id = ?').run(
         next, job.attempts + Number(next === 'running' && expected !== 'running'), canonical({ ...job.correlation, ...patch.correlation }),
         patch.result === undefined ? (job.result === undefined ? null : JSON.stringify(job.result)) : JSON.stringify(patch.result),
         patch.error ?? (['queued', 'running', 'succeeded'].includes(next) ? null : job.error ?? null), new Date().toISOString(), id);
@@ -1108,7 +1155,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     return this.transaction(() => {
       const interrupted = this.listJobs().filter(job => job.state === 'running');
       for (const job of interrupted) {
-        this.db.prepare("UPDATE jobs SET state = 'outcome-unknown', updated_at = ? WHERE id = ?").run(new Date().toISOString(), job.id);
+        this.jobs = undefined; this.db.prepare("UPDATE jobs SET state = 'outcome-unknown', updated_at = ? WHERE id = ?").run(new Date().toISOString(), job.id);
         this.appendEvent('job.changed', this.readState().revision, job.id);
       }
       return interrupted.map(job => this.getJob(job.id)!);

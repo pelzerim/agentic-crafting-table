@@ -39,6 +39,16 @@ export const rolloutValidationInput = z.discriminatedUnion('operation', [
 /** Operations only a person starts; agents list, read options and report through their own tool. */
 export const humanRolloutValidationOperations = ['trigger', 'ask', 'show', 'hide'];
 /** An agent that stays idle this long without a final report has not reported. */
+/** The attention.set a validation's outcome needs on its rollout node, or nothing. An event the node already
+ * records is settled, also once its alert was acknowledged and the source is gone: raising it again would be refused
+ * as a replay and asked for again on the next pass, without end. */
+export function validationAttentionCommand(node: { id: string; attentionSources?: Record<string, string>; attentionEvents?: Record<string, string> }, source: string,
+  wanted: { reason: 'validation' | 'error' | null; note?: string; eventId?: string }): WorkspaceCommand | undefined {
+  const reason = node.attentionSources?.[source] ?? null;
+  const settled = wanted.reason === null ? reason === null : node.attentionEvents?.[source] === wanted.eventId;
+  if (settled) return undefined;
+  return { type: 'attention.set', id: node.id, source, reason: wanted.reason, ...(wanted.reason ? { note: wanted.note, eventId: wanted.eventId } : {}) };
+}
 export const NO_REPORT_AFTER_MS = 2 * 60_000;
 /** A validation that hears nothing from its agent this long has not reported, whatever the agent seems to do: agents report progress at least every 2 minutes. */
 export const NO_REPORT_DEADLINE_MS = 15 * 60_000;
@@ -495,9 +505,8 @@ export class RolloutValidations {
       }
       const views = annotateValidations(this.store.rolloutValidations({ rolloutResourceId: resource.id }), observation?.run);
       for (const [agentNodeId, wanted] of validationAttention(views)) {
-        const source = `validation:${agentNodeId}`, reason = node.attentionSources?.[source] ?? null;
-        if (wanted.reason === null ? reason !== null : reason !== wanted.reason || node.attentionEvents?.[source] !== wanted.eventId)
-          commands.push({ type: 'attention.set', id: node.id, source, reason: wanted.reason, ...(wanted.reason ? { note: wanted.note, eventId: wanted.eventId } : {}) });
+        const command = validationAttentionCommand(node, `validation:${agentNodeId}`, wanted);
+        if (command) commands.push(command);
       }
       repaint.push(node.id);
     }

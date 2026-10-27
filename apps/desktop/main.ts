@@ -26,6 +26,8 @@ import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { WorkspaceConnection } from '../../packages/workspace-service/connection.ts';
+import type { ConnectionEvent } from '../../packages/workspace-service/connection.ts';
+import type { FrameParse } from '../../packages/workspace-service/local-rpc.ts';
 import { serializeError } from '../../packages/workspace-service/protocol.ts';
 import { envelopeSchema, viewSchema } from '../../packages/core/control.ts';
 import { savedSessionsSchema, creationOptionsSchema } from '../../packages/session-runtime/saved-sessions.ts';
@@ -199,6 +201,7 @@ async function main() {
   };
   app.on('will-quit', () => keepAwake.apply(false));
   const workspace = new WorkspaceConnection(app.getPath('userData'), process.execPath, join(app.getAppPath(), 'dist', 'workspace-service.cjs'), true);
+  void workspace.setLayer('map');
   const rendererErrorSchema = z.object({ kind: z.enum(['uncaught', 'caught', 'recoverable']), message: z.string().max(2000), stack: z.string().max(8000).optional() });
   let rendererLog: RotatingLog | undefined;
   app.on('will-quit', () => rendererLog?.close());
@@ -267,7 +270,20 @@ async function main() {
   });
   const startupId = randomUUID();
   workspace.on('status', value => { if (value === 'connected') void workspace.call<SettingsSnapshot>('settings.read').then(applySettings).catch(() => {}); });
-  workspace.on('snapshot', (value: WorkspaceSnapshot) => { notifications.snapshot(value); broadcast('workspace:snapshot', value); });
+  workspace.on('snapshot', (value: WorkspaceSnapshot, parse?: FrameParse) => {
+    const started = performance.now();
+    notifications.snapshot(value); broadcast('workspace:snapshot', value);
+    workspace.recordSnapshotDelivery(parse, performance.now() - started);
+  });
+  let appLog: RotatingLog | undefined;
+  app.on('will-quit', () => appLog?.close());
+  workspace.on('connection-event', (event: ConnectionEvent) => {
+    try {
+      appLog ??= new RotatingLog(join(app.getPath('userData'), 'app.log'));
+      appLog.write(`${event.at} workspace connection ${event.status}${event.reason ? `: ${event.reason}` : ''}\n`);
+    } catch (error) { console.error('App diagnostics could not be written', (error as Error).message); }
+  });
+  ipcMain.handle('app:connection-events', event => { assertCaller(event); return workspace.connectionEvents(); });
   workspace.on('status', value => broadcast('workspace:status', value));
   workspace.on('status', value => { if (value === 'connected' && !spike) void workspace.call('lifecycle.recover', { startupId }).catch(error => broadcast('workspace:status', error.message)); });
   app.on('will-quit', () => workspace.close());
@@ -279,7 +295,8 @@ async function main() {
       // The renderer cannot choose a socket, credential, admin method or actor.
       let result: unknown;
       switch (method) {
-        case 'read': case 'settings.read': case 'directories.recent': case 'plugins': case 'capabilities': case 'lifecycle.status': case 'connections.status': case 'diagnostics.report': result = await workspace.call(method); break;
+        case 'read': case 'settings.read': case 'directories.recent': case 'plugins': case 'capabilities': case 'lifecycle.status': case 'connections.status': case 'diagnostics.report': case 'diagnostics.health': result = await workspace.call(method); break;
+        case 'subscribe': result = await workspace.setLayer(z.object({ layer: z.enum(['map', 'below']) }).strict().parse(args).layer); break;
         case 'github.inbox.read': result = await workspace.call(method, z.object({ refresh: z.boolean().default(false), opened: z.boolean().default(false) }).strict().parse(args ?? {})); break;
         case 'github.inbox.show': result = await workspace.call(method, z.object({ connectionId: z.string().min(1).max(200), key: z.string().min(1).max(400), position: z.object({ x: z.number().finite(), y: z.number().finite() }) }).strict().parse(args)); break;
         case 'github.inbox.hide': result = await workspace.call(method, z.object({ key: z.string().min(1).max(400) }).strict().parse(args)); break;

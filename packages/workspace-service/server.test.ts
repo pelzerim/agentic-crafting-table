@@ -10,6 +10,7 @@ import { connectWorkspace } from './client.ts';
 import type { WorkspaceSnapshot } from './protocol.ts';
 import type { SettingsSnapshot } from '../core/settings.ts';
 import { selectProviderAccount } from '../core/connections.ts';
+import { stateSchema } from '../core/control.ts';
 
 const envelope = { commandId: 'one', expectedRevision: 0, actor: { kind: 'user', id: 'test' }, commands: [{ type: 'project.create', id: 'p', title: 'Project 🪴', position: { x: 1, y: 2 } }] };
 
@@ -39,6 +40,48 @@ test('authenticated clients share committed snapshots, reject bad writes, and re
     assert.equal(resumed.resetRequired, true); assert.equal(resumed.cursor, 1);
     assert.equal(resumed.state.nodes[0].title, 'Project 🪴');
   } finally { a.close(); b.close(); await service.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('a subscriber on the map layer receives the map without the 600 items below; below, a read and an old subscriber get everything', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-layers-'));
+  const service = await startWorkspaceService(directory);
+  const writer = await connectWorkspace(directory), map = await connectWorkspace(directory), legacy = await connectWorkspace(directory);
+  try {
+    const AT = '2026-10-27T08:00:00.000Z', stored = Array.from({ length: 600 }, (_, index) => `stored-${index}`);
+    await service.store.update(state => stateSchema.parse({ ...state,
+      nodes: [{ id: 'live', title: 'Live', position: { x: 0, y: 0 } }, { id: 'old', title: 'Old', position: { x: 3000, y: 0 }, belowAt: AT },
+        { id: 'card', title: 'Card', resourceId: 'card-r', projectId: 'live', position: { x: 0, y: 0 } },
+        ...stored.map((id, index) => ({ id, title: `Stored note ${index} with a summary long enough to weigh something`, resourceId: `${id}-r`, projectId: 'old', position: { x: 3000 + index, y: 0 }, summary: 'Kept below for later reference' }))],
+      resources: [{ id: 'card-r', pluginId: 'workspace.note', schemaVersion: 1, title: 'Card', data: { text: 'On the map' } },
+        ...stored.map(id => ({ id: `${id}-r`, pluginId: 'workspace.note', schemaVersion: 1, title: id, data: { text: 'A note that has been sent below the map with some text in it.' } }))],
+      links: stored.slice(1).map((id, index) => ({ id: `chain-${index}`, sourceId: stored[index], targetId: id, kind: 'reference', label: '' })) }));
+    const received = { map: [] as WorkspaceSnapshot[], legacy: [] as WorkspaceSnapshot[] };
+    map.on('snapshot', snapshot => received.map.push(snapshot)); legacy.on('snapshot', snapshot => received.legacy.push(snapshot));
+    const first = await map.subscribe(0, 'map');
+    assert.deepEqual(first.state.nodes.map(node => node.id), ['live', 'old', 'card']);
+    assert.deepEqual(first.state.resources.map(resource => resource.id), ['card-r']);
+    assert.deepEqual(first.state.links, []);
+    assert.deepEqual(first.layers, { below: { items: 600, projects: ['old'] } });
+    const whole = await legacy.subscribe();
+    assert.equal(whole.state.nodes.length, 603); assert.equal(whole.layers, undefined);
+    assert.equal((await map.call<WorkspaceSnapshot>('read')).state.nodes.length, 603);
+    const arrived = Promise.all([once(map, 'snapshot'), once(legacy, 'snapshot')]);
+    await writer.call('apply', { ...envelope, commands: [{ type: 'node.move', id: 'card', position: { x: 40, y: 0 } }] });
+    await arrived;
+    const bytes = (snapshot: WorkspaceSnapshot) => Buffer.byteLength(JSON.stringify({ event: 'snapshot', snapshot }) + '\n');
+    const before = bytes(received.legacy.at(-1)!), after = bytes(received.map.at(-1)!);
+    t.diagnostic(`snapshot frame with 600 items below: whole ${before} bytes, map layer ${after} bytes`);
+    assert.ok(after * 20 < before, `${after} vs ${before}`);
+    assert.equal(received.map.at(-1)!.state.nodes.find(node => node.id === 'card')!.position.x, 40);
+    // Travel: subscribing again answers with that layer at once, and later broadcasts follow it.
+    const down = await map.subscribe(received.map.at(-1)!.cursor, 'below');
+    assert.equal(down.state.nodes.length, 603); assert.equal(received.map.at(-1), down);
+    const next = once(map, 'snapshot');
+    await writer.call('apply', { ...envelope, commandId: 'two', expectedRevision: 1, commands: [{ type: 'node.move', id: 'card', position: { x: 80, y: 0 } }] });
+    assert.equal((await next)[0].state.nodes.length, 603);
+    const up = await map.subscribe(down.cursor, 'map');
+    assert.equal(up.state.nodes.length, 3); assert.equal(received.map.at(-1), up);
+  } finally { writer.close(); map.close(); legacy.close(); await service.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
 test('a socket without the private token cannot read or mutate the workspace', async () => {

@@ -5,6 +5,9 @@ import { addAbortListener, EventEmitter } from 'node:events';
 import { chmodSync, rmSync } from 'node:fs';
 import { CONNECTION_LOST, MAX_FRAME_BYTES, REQUEST_TIMEOUT, replyTimeout, serializeError } from './protocol.ts';
 
+/** How long a received notification took to parse, and its length in characters. */
+export interface FrameParse { parseMs: number; length: number }
+
 export class LocalRpcClient extends EventEmitter {
   private socket: Socket;
   private secret: string;
@@ -20,8 +23,8 @@ export class LocalRpcClient extends EventEmitter {
       while ((newline = buffer.indexOf('\n')) !== -1) {
         const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
         try {
-          const response = JSON.parse(line);
-          if (typeof response.event === 'string') { this.emit('notification', response); continue; }
+          const started = performance.now(), response = JSON.parse(line);
+          if (typeof response.event === 'string') { this.emit('notification', response, { parseMs: performance.now() - started, length: line.length } satisfies FrameParse); continue; }
           const pending = this.pending.get(response.id);
           if (!pending) continue;
           clearTimeout(pending.timer); this.pending.delete(response.id);
@@ -64,32 +67,85 @@ export async function connectSocket(path: string, signal?: AbortSignal) {
   return socket;
 }
 
+export interface FrameDrop { at: number; queuedBytes: number; frameBytes: number; label: string }
+/** Told about every frame a server writes, replaces or drops; `peer` is the writer's number. */
+export interface FrameObserver {
+  written?(peer: number, label: string, bytes: number): void;
+  coalesced?(peer: number, label: string): void;
+  dropped?(peer: number, drop: FrameDrop): void;
+}
+export interface EncodedFrame { data: string; bytes: number }
+export const encodeFrame = (value: unknown): EncodedFrame => { const data = JSON.stringify(value) + '\n'; return { data, bytes: Buffer.byteLength(data) }; };
+
+let writers = 0;
+/** Writes newline-delimited frames to one client. A replaceable frame (a snapshot) waits while the
+ * socket still has unsent data, a newer one replaces it, and the one left is written on 'drain'.
+ * A frame that would take the backlog over MAX_FRAME_BYTES drops the client. */
+export class FrameWriter {
+  readonly peer = ++writers;
+  private socket: Socket;
+  private observer?: FrameObserver;
+  private waiting?: { frame: EncodedFrame; label: string };
+  constructor(socket: Socket, observer?: FrameObserver) {
+    this.socket = socket; this.observer = observer;
+    socket.on('drain', () => {
+      const waiting = this.waiting; this.waiting = undefined;
+      if (waiting) this.write(waiting.frame, waiting.label);
+    });
+  }
+  send(value: unknown, label: string, options?: { replaceable?: boolean; flushed?: () => void }) {
+    if (this.socket.destroyed) return;
+    this.sendEncoded(encodeFrame(value), label, options);
+  }
+  sendEncoded(frame: EncodedFrame, label: string, options: { replaceable?: boolean; flushed?: () => void } = {}) {
+    if (this.socket.destroyed) return;
+    if (options.replaceable && (this.socket.writableNeedDrain || this.waiting)) {
+      if (this.waiting) this.observer?.coalesced?.(this.peer, this.waiting.label);
+      this.waiting = { frame, label }; return;
+    }
+    this.write(frame, label, options.flushed);
+  }
+  private write(frame: EncodedFrame, label: string, flushed?: () => void) {
+    if (this.socket.destroyed) return;
+    const queuedBytes = this.socket.writableLength;
+    if (frame.bytes + queuedBytes > MAX_FRAME_BYTES) {
+      console.error(`Local client dropped: ${queuedBytes} bytes queued, ${frame.bytes} bytes frame, ${label}`);
+      this.observer?.dropped?.(this.peer, { at: Date.now(), queuedBytes, frameBytes: frame.bytes, label });
+      this.socket.destroy(); return;
+    }
+    this.socket.write(frame.data, flushed);
+    this.observer?.written?.(this.peer, label, frame.bytes);
+  }
+}
+
 export interface RpcPeer { notify(event: string, data: unknown): void; onClose(listener: () => void): void }
+export interface LocalServerOptions {
+  observer?: FrameObserver;
+  /** Runs each request's handler, so a caller can tell which method was running and for how long. */
+  operation?<T>(method: string, run: () => Promise<T>): Promise<T>;
+}
 /** Callers must acquire process ownership before listening/removing a stale socket. */
-export async function serveLocal(path: string, secret: string, handle: (method: string, args: unknown, peer: RpcPeer) => unknown | Promise<unknown>) {
+export async function serveLocal(path: string, secret: string, handle: (method: string, args: unknown, peer: RpcPeer) => unknown | Promise<unknown>, options: LocalServerOptions = {}) {
   const sockets = new Set<Socket>();
   const server = createServer(socket => {
     sockets.add(socket); socket.setEncoding('utf8'); socket.setTimeout(5000, () => socket.destroy());
     socket.on('close', () => sockets.delete(socket)); socket.on('error', () => {});
-    const send = (value: unknown) => {
-      const data = JSON.stringify(value) + '\n';
-      if (socket.destroyed) return;
-      if (Buffer.byteLength(data) + socket.writableLength > MAX_FRAME_BYTES) { socket.destroy(); return; }
-      socket.write(data);
-    };
-    const peer: RpcPeer = { notify: (event, data) => send({ event, data }), onClose: listener => socket.once('close', listener) };
+    const writer = new FrameWriter(socket, options.observer);
+    const peer: RpcPeer = { notify: (event, data) => writer.send({ event, data }, event, { replaceable: event === 'snapshot' }), onClose: listener => socket.once('close', listener) };
     const request = async (line: string) => {
-      let id = '';
+      let id = '', method = 'request';
       try {
         const value = JSON.parse(line);
         if (typeof value.id !== 'string' || value.id.length > 128) throw new Error('Invalid request ID'); id = value.id;
         if (typeof value.token !== 'string' || !/^[a-f0-9]{64}$/.test(value.token) || !timingSafeEqual(Buffer.from(value.token), Buffer.from(secret))) {
-          send({ id, error: { code: 'UNAUTHORIZED', message: 'Local service authentication failed' } }); socket.end(); return;
+          writer.send({ id, error: { code: 'UNAUTHORIZED', message: 'Local service authentication failed' } }, method); socket.end(); return;
         }
         socket.setTimeout(0);
         if (typeof value.method !== 'string') throw new Error('Invalid method');
-        send({ id, result: await handle(value.method, value.args ?? {}, peer) });
-      } catch (error) { send({ id, error: serializeError(error) }); }
+        method = value.method;
+        const run = async () => handle(value.method, value.args ?? {}, peer);
+        writer.send({ id, result: await (options.operation ? options.operation(method, run) : run()) }, method);
+      } catch (error) { writer.send({ id, error: serializeError(error) }, method); }
     };
     let buffer = '';
     socket.on('data', (data: string) => {

@@ -93,6 +93,33 @@ test('muting from the project menu covers the project and silences its counts, b
   await expect(list).toContainText('Nothing needs me.');
 });
 
+test('a covered card is an empty stub that a change never renders; peeking renders it in full', async ({ visual: { page } }) => {
+  await apply(page, [...docs, { type: 'project.mute', id: 'billing', muted: true }]);
+  await expect(cover(page)).toHaveCount(1);
+  const covered = page.locator('.react-flow__node.muted-member:not(.muted-peek)');
+  await expect(covered).toHaveCount(4);
+  await expect(covered.locator('[data-covered]')).toHaveCount(4);
+  await expect(covered.locator('.map-card, .card-label, .card-summary, .card-heading, .attention-indicator, .working-mark')).toHaveCount(0);
+  // A commit renders the changed card and the project plates; a covered card adds nothing to that.
+  const renders = async (id: string, summary: string) => {
+    await page.evaluate(() => window.craftingPerformance.reset());
+    await apply(page, [{ type: 'node.update', id, summary }]);
+    await expect.poll(async () => (await read(page)).nodes.find(node => node.id === id)!.summary).toBe(summary);
+    await page.waitForTimeout(300);
+    return (await page.evaluate(() => window.craftingPerformance.snapshot())).metrics['map.card-render']?.count ?? 0;
+  };
+  const shown = await renders('quickstart', 'Shown and changed');
+  await expect(page.getByRole('article', { name: 'Quickstart rewrite', exact: true })).toContainText('Shown and changed');
+  expect(await renders('pr', 'Covered and changed')).toBe(shown - 1);
+  await page.getByRole('button', { name: 'Needs me: 1' }).click();
+  const list = page.getByRole('dialog', { name: 'Needs me', exact: true });
+  await list.getByRole('button', { name: 'Muted · 2' }).click();
+  await list.getByRole('button', { name: 'Go to Plan switcher on map', exact: true }).click();
+  await expect(cover(page)).toHaveAttribute('data-peek', 'true');
+  await expect(card(page)).toBeVisible(); await expect(card(page).locator('.card-label')).toBeVisible();
+  await expect(page.locator('.react-flow__node.muted-peek [data-covered]')).toHaveCount(0);
+});
+
 test('a passing pointer never opens a muted project; a dwell reveals the real cards and leaving covers them again', async ({ visual: { page } }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference', colorScheme: 'dark' });
   await apply(page, [{ type: 'project.mute', id: 'billing', muted: true }]);

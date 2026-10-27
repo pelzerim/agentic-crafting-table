@@ -24,6 +24,8 @@ export const PIXEL_GLYPHS = {
     unlink: ['.XXX....', 'X...X...', 'X..X....', '.XX..X..', '..X..XX.', '....X..X', '...X...X', '....XXX.'],
     archive: ['XXXXXXXX', 'X......X', 'XXXXXXXX', '.X....X.', '.X.XX.X.', '.X....X.', '.X....X.', '.XXXXXX.'],
     'chevron-left': ['....XX..', '...XX...', '..XX....', '.XX.....', '.XX.....', '..XX....', '...XX...', '....XX..'],
+    /** A pinned plot's sign. */
+    pin: ['..XXXX..', '..XXXX..', '..XXXX..', '.XXXXXX.', 'XXXXXXXX', '...XX...', '...XX...', '...XX...'],
     sprout: ['XX....XX', 'X.X..X.X', '.XX..XX.', '...XX...', '...XX...', '...XX...', '..XXXX..', '........'],
     plus: ['...XX...', '...XX...', '...XX...', 'XXXXXXXX', 'XXXXXXXX', '...XX...', '...XX...', '...XX...'],
     /** A tilted four-point spark: offset arms keep it from reading as a plus at 9 px. */
@@ -76,6 +78,8 @@ export const PIXEL_GLYPHS = {
     'git-merge': ['............', '.XXX........', '.X.X........', '.XXX........', '..XX........', '..X.X.......', '..X..X...XXX', '..X...XXXX.X', '.XXX.....XXX', '.X.X........', '.XXX........', '............'],
     folder: ['............', '............', '.XXXX.......', '.X...X......', '.X....XXXXX.', '.X........X.', '.X........X.', '.X........X.', '.X........X.', '.XXXXXXXXXX.', '............', '............'],
     sparkles: ['............', '.........X..', '........XXX.', '....X....X..', '....X.......', '...XXX......', '.XXXXXXX....', '...XXX......', '....X....X..', '....X...XXX.', '.........X..', '............'],
+    /** Move to plot: a plot is a garden patch. */
+    sprout: ['............', '.XXX....XXX.', '.X..X..X..X.', '.X..X..X..X.', '..XX.XX.XX..', '.....XX.....', '.....XX.....', '.....XX.....', '.....XX.....', '..XXXXXXXX..', '............', '............'],
     grid: ['............', '.XXXX..XXXX.', '.X..X..X..X.', '.X..X..X..X.', '.XXXX..XXXX.', '............', '............', '.XXXX..XXXX.', '.X..X..X..X.', '.X..X..X..X.', '.XXXX..XXXX.', '............'],
     server: ['.XXXXXXXXXX.', '.X........X.', '.X.X..XXX.X.', '.X........X.', '.XXXXXXXXXX.', '............', '.XXXXXXXXXX.', '.X........X.', '.X.X..XXX.X.', '.X........X.', '.XXXXXXXXXX.', '............'],
     link: ['............', '............', '............', '.XXX....XXX.', 'X...X..X...X', 'X...XXXX...X', 'X...XXXX...X', 'X...X..X...X', '.XXX....XXX.', '............', '............', '............'],

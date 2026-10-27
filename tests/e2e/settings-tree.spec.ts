@@ -162,7 +162,7 @@ test('Data & diagnostics shows sessions, recordings, log limits and support as s
   await region.getByRole('button', { name: 'Show measurements', exact: true }).click();
   await expect(region.getByRole('table')).toContainText('Measurement');
   await expect(region.getByRole('button', { name: 'Download performance report', exact: true })).toBeVisible();
-  await capture(page, 'settings-data.png');
+  await capture(page, 'settings-data.png', [region.getByRole('table')]);
 });
 
 test('at the narrowest window the tree narrows, leaving Items collapses it and rows stack', async ({ visual: { app, page } }) => {

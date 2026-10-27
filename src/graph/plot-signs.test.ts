@@ -38,4 +38,6 @@ test('sign size is constant on screen, so it grows in world units as the map zoo
   const near = plotSignSize('Billing plan switch', 1), mid = plotSignSize('Billing plan switch', .5);
   assert.equal(near.height, 20); assert.equal(mid.height, 40); assert.equal(mid.width, near.width * 2);
   assert.ok(plotSignSize('Image cache leak investigation', 1).width <= plotSignSize('x'.repeat(24), 1).width, 'long names are cut at 24 characters');
+  assert.equal(plotSignSize('Billing plan switch', 1, true).width, near.width + 14, 'a pinned sign holds an 8 px pin and its gap');
+  assert.equal(plotSignSize('Billing plan switch', .5, true).width, mid.width + 28);
 });

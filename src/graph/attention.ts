@@ -78,6 +78,15 @@ function signals(node: AttentionNode, seen = false) {
   const all = [{ reason: node.attention, note: node.attentionNote }, ...Object.entries(node.attentionSources ?? {}).map(([source, reason]) => ({ reason, note: node.attentionNotes?.[source] }))];
   return all.filter((signal): signal is { reason: AttentionReason; note: string | undefined } => isReason(signal.reason));
 }
+/** Reasons that keep waiting on the person after their alert was seen: a question, a review, an approval gate, a failure to fix. */
+export const WAITING_REASONS: readonly AttentionReason[] = ['input', 'review', 'error', 'checks-failing', 'validation'];
+/** What still waits on the person whether or not the alert was seen, with its tier and detail; nothing when only notices remain. */
+export function nodeWaitingAttention(node: AttentionNode): { tier: AttentionTier; detail: string; since?: string } | undefined {
+  const waiting = signals(node, true).filter(signal => WAITING_REASONS.includes(signal.reason)), tier = attentionTier(waiting.map(signal => signal.reason));
+  if (!tier) return undefined;
+  const order = Object.keys(attentionReasons) as AttentionReason[], first = waiting.sort((a, b) => order.indexOf(a.reason) - order.indexOf(b.reason))[0];
+  return { tier, detail: first.note ?? attentionReasons[first.reason], ...(node.attentionAt ? { since: node.attentionAt } : {}) };
+}
 export function nodeAttentionReasons(node: AttentionNode): AttentionReason[] {
   const values = new Set(signals(node).map(signal => signal.reason));
   return (Object.keys(attentionReasons) as AttentionReason[]).filter(reason => values.has(reason));

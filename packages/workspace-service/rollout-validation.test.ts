@@ -9,7 +9,7 @@ import { WorkspaceControl } from '../core/control.ts';
 import type { WorkspaceCommand } from '../core/control.ts';
 import type { ResourceCoordinator } from './resources.ts';
 import type { SessionCoordinator } from './sessions.ts';
-import { connectedAgents, RolloutValidations } from './rollout-validation.ts';
+import { connectedAgents, RolloutValidations, validationAttentionCommand } from './rollout-validation.ts';
 import { discoveredLinkId } from './resources.ts';
 import { rolloutDiscoveryKey } from '../provider-runtime/github-status.ts';
 import type { RolloutObservation } from '../provider-runtime/github-rollout.ts';
@@ -797,4 +797,19 @@ test('a phased request sent again with its id answers as the first time, even af
     assert.deepEqual(await click(), first);
     assert.equal(f.inputs.length, 2, 'sent once');
   } finally { f.close(); }
+});
+
+test('an attention event already recorded on the node is settled, whether or not its alert was acknowledged', () => {
+  const wanted = { reason: 'validation' as const, note: 'Validation found concerns', eventId: 'event-1:concerns' };
+  const source = 'validation:agent';
+  const fresh = { attentionSources: {}, attentionEvents: {} };
+  assert.deepEqual(validationAttentionCommand({ id: 'n', ...fresh }, source, wanted), { type: 'attention.set', id: 'n', source, reason: 'validation', note: wanted.note, eventId: wanted.eventId });
+  const alerted = { attentionSources: { [source]: 'validation' }, attentionEvents: { [source]: wanted.eventId } };
+  assert.equal(validationAttentionCommand({ id: 'n', ...alerted }, source, wanted), undefined);
+  const acknowledged = { attentionSources: {}, attentionEvents: { [source]: wanted.eventId } };
+  assert.equal(validationAttentionCommand({ id: 'n', ...acknowledged }, source, wanted), undefined, 'an acknowledged alert is not raised again for the same event');
+  const newer = { attentionSources: {}, attentionEvents: { [source]: 'event-0:concerns' } };
+  assert.deepEqual((validationAttentionCommand({ id: 'n', ...newer }, source, wanted) as { eventId?: string } | undefined)?.eventId, wanted.eventId, 'a new event is raised');
+  assert.deepEqual(validationAttentionCommand({ id: 'n', ...alerted }, source, { reason: null }), { type: 'attention.set', id: 'n', source, reason: null }, 'a resolved validation clears its source');
+  assert.equal(validationAttentionCommand({ id: 'n', ...acknowledged }, source, { reason: null }), undefined, 'nothing to clear once the source is gone');
 });

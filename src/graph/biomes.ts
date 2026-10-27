@@ -1,4 +1,4 @@
-import { PROJECT_COLORS } from './project-colors.ts';
+import { BIOME_PROJECT_COLORS } from './project-colors.ts';
 import { NEIGHBORHOOD_SHADES } from './neighborhood-fill.ts';
 import type { NeighborhoodCells, NeighborhoodTexture } from './neighborhood-fill.ts';
 
@@ -7,7 +7,7 @@ export interface BiomeSurface { fillStyle: string; fillRect(x: number, y: number
 export interface BiomeSprite { readonly rows: readonly string[]; readonly pal: Readonly<Record<string, string>> }
 export interface Biome {
   /** The colour preset this biome belongs to. */
-  readonly id: typeof PROJECT_COLORS[number]['id']; readonly name: string; readonly base: string;
+  readonly id: typeof BIOME_PROJECT_COLORS[number]['id']; readonly name: string; readonly base: string;
   /** The one colour the ground is pulled toward, and the fill when detail is too small to draw. */
   readonly flat: string;
   /** Paints world cell (`i`, `j`) as `BIOME_UNITS` square units from (`x`, `y`). */

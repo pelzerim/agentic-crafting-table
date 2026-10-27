@@ -10,6 +10,7 @@ import type { SupportReport } from './support-report.ts';
 import { supportReport } from './support-report.ts';
 import { emptyState } from '../core/control.ts';
 import type { SessionRecord } from '../session-runtime/protocol.ts';
+import type { ServiceHealthReport } from '../workspace-service/service-health.ts';
 
 test('support aggregation excludes native session identities, errors and terminal paths', () => {
   const session: SessionRecord = { id: 'PRIVATE_SESSION', requestId: 'PRIVATE_REQUEST', nodeId: 'PRIVATE_NODE', workspaceId: 'PRIVATE_WORKSPACE', cwd: '/PRIVATE_CWD', state: 'failed', error: 'PRIVATE_TERMINAL', cols: 80, rows: 24, createdAt: 'PRIVATE_CREATED', updatedAt: 'PRIVATE_UPDATED', native: { provider: 'codex', nativeSessionId: 'PRIVATE_NATIVE', status: 'error', observedAt: 'PRIVATE_OBSERVATION' } };
@@ -39,5 +40,30 @@ test('support RPC contains only allowlisted counts/versions and settings validat
     client.close(); await service.close(); service = await startWorkspaceService(directory, undefined, undefined, {}); client = await connectWorkspace(directory);
     assert.deepEqual(service.store.readSettings().value.diagnostics, value.diagnostics);
     assert.deepEqual((await client.call<SupportReport>('diagnostics.report')).workspace, report.workspace);
+  } finally { client.close(); await service.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('diagnostics.health counts the snapshots each commit broadcasts and the operations that ran, and the support report carries it', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-health-'));
+  const service = await startWorkspaceService(directory, undefined, undefined, {}), client = await connectWorkspace(directory);
+  try {
+    await client.subscribe();
+    for (let n = 0; n < 3; n++) {
+      await client.call('apply', { commandId: `PRIVATE_COMMAND_${n}`, expectedRevision: (await service.control.read()).revision, actor: { kind: 'user', id: 'PRIVATE_ACTOR' },
+        commands: [{ type: 'project.create', id: `PRIVATE_ID_${n}`, title: `PRIVATE_TITLE_${n}`, workingDirectory: '/PRIVATE_PATH', position: { x: n * 400, y: 0 } }] });
+    }
+    const health = await client.call<ServiceHealthReport>('diagnostics.health');
+    assert.ok(health.broadcasts.snapshots >= 3, `snapshots ${health.broadcasts.snapshots}`);
+    assert.ok(health.broadcasts.largestFrameBytes > 0);
+    assert.equal(health.broadcasts.subscribers.length, 1);
+    assert.equal(health.operationCounts.apply.count, 3);
+    assert.ok(health.operationCounts.broadcast.count >= 3);
+    assert.equal(health.drops.count, 0);
+    assert.ok(health.memory && health.memory.rssBytes > 0);
+    assert.doesNotMatch(JSON.stringify(health), /PRIVATE_/);
+    const report = await client.call<SupportReport>('diagnostics.report');
+    assert.equal(report.health?.broadcasts.subscribers.length, 1);
+    assert.ok((report.health?.operationCounts.apply.count ?? 0) >= 3);
+    assert.doesNotMatch(JSON.stringify(report), /PRIVATE_/);
   } finally { client.close(); await service.close(); await rm(directory, { recursive: true, force: true }); }
 });

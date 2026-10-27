@@ -4,14 +4,14 @@ import type { Point } from './neighborhood.ts';
 /** Top and bottom edge × left, centre and right, in reading order. */
 export const PLOT_SIGN_SPOTS = ['top-left', 'top-centre', 'top-right', 'bottom-left', 'bottom-centre', 'bottom-right'] as const;
 export const PLOT_NAME_LENGTH = 24;
-const SIGN = { height: 20, chrome: 30, glyph: 6.6, inset: 8 } as const;
+const SIGN = { height: 20, chrome: 30, glyph: 6.6, inset: 8, pin: 14 } as const;
 
 export interface PlotSignInput { id: string; bounds: { left: number; top: number; right: number; bottom: number }; width: number; height: number }
 export interface PlotSignSpot { x: number; y: number; spot: number }
 
-/** World size of a sign whose text is a constant 11 px on screen. */
-export function plotSignSize(name: string, zoom: number) {
-  return { width: (SIGN.chrome + SIGN.glyph * Math.min(name.length, PLOT_NAME_LENGTH)) / zoom, height: SIGN.height / zoom };
+/** World size of a sign whose text is a constant 11 px on screen; a pinned plot's sign also holds its pin. */
+export function plotSignSize(name: string, zoom: number, pinned = false) {
+  return { width: (SIGN.chrome + (pinned ? SIGN.pin : 0) + SIGN.glyph * Math.min(name.length, PLOT_NAME_LENGTH)) / zoom, height: SIGN.height / zoom };
 }
 
 /** Where `spot` puts a sign on these bounds; -1 is the inner top-left fallback. */

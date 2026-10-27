@@ -8,6 +8,7 @@ import { providerConnectionsSchema } from './connections.ts';
 import { DEFAULT_QUICK_ITEMS, MAX_QUICK_ITEMS } from './item-picker.ts';
 import { DEFAULT_LOG_POLICY, logPolicySchema } from './log-policy.ts';
 import { DEFAULT_NEIGHBORHOOD_APPEARANCE, NEIGHBORHOOD_STYLES, NEIGHBORHOOD_TEXTURES } from '../../src/graph/neighborhood-fill.ts';
+import { HEX_COLOR_PATTERN, RECENT_COLORS_MAX } from '../../src/graph/colors.ts';
 import { DASHBOARD_SECTION_KEYS, DASHBOARD_ZOOM_RANGE, DEFAULT_DASHBOARD_SECTIONS, DEFAULT_MAP_DASHBOARDS } from '../../src/graph/project-dashboard.ts';
 
 export const neighborhoodAppearanceSchema = z.object({
@@ -162,6 +163,9 @@ export const settingsSchema = z.object({
     /** One or two sentences per project for the project column (MAP-22); off means the counts line. */
     projectSummaries: z.boolean().default(true),
   }).default({ enabled: false, model: 'haiku', intervalSeconds: 60, requestsPerHour: 12, requestsPerDay: 500, agentTitles: true, plotNames: true, attachTitles: true, standupDigests: true, standupRequestsPerReport: 150, projectSummaries: true }),
+  /** Your colours: the custom colours a person chose last in any colour picker, newest first. */
+  recentColors: z.array(z.string().regex(HEX_COLOR_PATTERN)).max(64)
+    .transform(colors => [...new Set(colors.map(color => color.toLowerCase()))].slice(0, RECENT_COLORS_MAX)).default([]),
   /** A daily look at the app's and installed packs' release tags (UPDATE-01). Nothing is downloaded or installed by it. */
   updates: z.object({ check: z.boolean().default(true) }).default({ check: true }),
 });

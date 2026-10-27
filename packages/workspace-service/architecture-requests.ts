@@ -138,10 +138,8 @@ export class ArchitectureRequests {
         if (existing) { this.store.transitionJob(job.id, 'running', 'succeeded', { result: { nodeId: existing.id, resourceId: existing.resourceId!, reused: true } satisfies LaunchedRun }); return; }
         const source = state.nodes.find(node => node.id === nodeId);
         if (!source || isArchived(source, state.nodes)) throw new Error('Open an available pull request before explaining its architecture.');
-        const sourceDirectory = request.sourceDirectory ?? join(this.directory, 'comparisons', request.sourceRequestId), checkout = join(sourceDirectory, 'repository');
-        let available = false;
-        try { available = statSync(checkout).isDirectory(); } catch { /* Reported below. */ }
-        if (!available) throw new Error('The captured PR source is no longer available. Start Explain architecture again.');
+        const sourceDirectory = this.sourceDirectory(request), checkout = join(sourceDirectory, 'repository');
+        if (!this.checkoutExists(request)) throw new Error('The captured PR source is no longer available. Start Explain architecture again.');
         const promptFile = join(sourceDirectory, `architecture-${requestId}.md`);
         mkdirSync(sourceDirectory, { recursive: true, mode: 0o700 });
         writeFileSync(promptFile, request.launch.request.initialPrompt, { mode: 0o600 });
@@ -212,8 +210,9 @@ export class ArchitectureRequests {
       }
       const key = canonical({ resourceId: frozen.resource.id, projectId: frozen.projectId, pluginId: frozen.resource.pluginId,
         connectionId: frozen.source.connectionId, account: frozen.source.account, comparison: frozen.source.comparison });
+      // A preparation whose checkout was pruned is captured again.
       const previous = this.store.listJobs().find(candidate => candidate.id !== job.id && candidate.input.action === 'architecture.prepare'
-        && candidate.state === 'succeeded' && candidate.correlation.comparisonKey === key);
+        && candidate.state === 'succeeded' && candidate.correlation.comparisonKey === key && this.checkoutExists(candidate.result as PreparedRequest));
       let result: PreparedRequest;
       if (previous) result = { ...previous.result as PreparedRequest, reused: true };
       else {
@@ -240,6 +239,10 @@ export class ArchitectureRequests {
       this.store.transitionJob(job.id, 'running', this.controller.signal.aborted ? 'outcome-unknown' : 'failed', { error: message });
       throw new Error(message, { cause: error });
     }
+  }
+  private sourceDirectory(request: PreparedRequest) { return request.sourceDirectory ?? join(this.directory, 'comparisons', request.sourceRequestId); }
+  private checkoutExists(request: PreparedRequest) {
+    try { return statSync(join(this.sourceDirectory(request), 'repository')).isDirectory(); } catch { return false; }
   }
   private assertOpen() { if (this.controller.signal.aborted) throw new Error('The workspace is closing. Reopen it before preparing architecture.'); }
   async recover() {

@@ -9,16 +9,19 @@ export interface PlotBox { id: string; projectId: string; x: number; y: number; 
 /** Any link between two items; its kind does not matter. */
 export interface PlotLink { sourceId: string; targetId: string }
 export interface Plot { id: string; projectId: string; memberIds: string[] }
+/** The members a person pinned in a plot of `projectId`. */
+export interface PlotPin { plotId: string; projectId: string; memberIds: readonly string[] }
 /** A plot's color slot, in assignment order. The ids are stored; what each slot shows depends on the
  * project's neighborhood color (`plotPalette`). */
 export const PLOT_COLORS = ['rose', 'sky', 'citron', 'orchid', 'clay', 'slate'] as const;
 export type PlotColor = typeof PLOT_COLORS[number];
 export const isPlotColor = (value: unknown): value is PlotColor => PLOT_COLORS.includes(value as PlotColor);
 /** What the map, dashboards and MCP read. `source` says who owns the name: the local fallback, the title helper or the user.
- * `color` is the assigned color, `chosenColor` a person's override. */
-export interface PlotView extends Plot { name: string; source: 'local' | 'generated' | 'user'; hidden: boolean; color: PlotColor; chosenColor?: PlotColor }
-/** The color a plot shows. */
-export const plotColor = (plot: Pick<PlotView, 'color' | 'chosenColor'>) => plot.chosenColor ?? plot.color;
+ * `color` is the assigned slot, `chosenColor` a person's override: a slot or a custom `#rrggbb`. `pinnedMemberIds` are the
+ * members a person pinned in it; a plot with any is a pinned plot. */
+export interface PlotView extends Plot { name: string; source: 'local' | 'generated' | 'user'; hidden: boolean; color: PlotColor; chosenColor?: PlotColor | string; pinnedMemberIds: string[] }
+/** The color a plot shows: a slot, or a custom `#rrggbb`. */
+export const plotColor = (plot: Pick<PlotView, 'color' | 'chosenColor'>): PlotColor | string => plot.chosenColor ?? plot.color;
 /** `revision` changes when names or hiding change without a workspace revision. */
 export interface PlotSnapshot { list: PlotView[]; hiddenProjects: string[]; revision: number }
 
@@ -65,29 +68,50 @@ export function plotPatches(boxes: readonly PlotBox[]) {
   return clusters(boxes, () => PLOT_BRIDGE).sort(bySize);
 }
 
-interface PlotGroup { ids: string[]; linked: boolean }
+interface PlotGroup { ids: string[]; linked: boolean; pinned?: string }
 
-/** One pass over a project. `together` says which plot each member is in already.
- * Units are proximity clusters; a cluster past the caps is a pile and each of its
- * items is a unit of its own. Links join units, except between two plots. */
-function projectGroups(members: readonly PlotBox[], links: readonly PlotLink[], together: ReadonlyMap<string, string>): PlotGroup[] {
+/** One pass over a project. `together` says which plot each member is in already, `pinnedIn` which
+ * plot a person pinned it in. Units are proximity clusters; a cluster past the caps is a pile and
+ * each of its items is a unit of its own. A pinned plot's members are one unit wherever they sit,
+ * and an unpinned unit within reach of one joins the nearest. Links join units, except between two plots. */
+function projectGroups(members: readonly PlotBox[], links: readonly PlotLink[], together: ReadonlyMap<string, string>, pinnedIn: ReadonlyMap<string, string>): PlotGroup[] {
   const limit = Math.min(PLOT_MAX_ITEMS, members.length * PLOT_MAX_SHARE);
   const capped = (cluster: PlotBox[], split: (cluster: PlotBox[]) => PlotBox[][]) => cluster.length > limit ? split(cluster) : [cluster];
+  const reach = (a: PlotBox, b: PlotBox) => together.has(a.id) && together.get(a.id) === together.get(b.id) ? PLOT_LEAVE : PLOT_JOIN;
   // The leave gap only holds a plot together: where it would push a cluster past the caps, the join gap decides.
-  const units = clusters(members, (a, b) => together.has(a.id) && together.get(a.id) === together.get(b.id) ? PLOT_LEAVE : PLOT_JOIN)
+  const free = clusters(members.filter(box => !pinnedIn.has(box.id)), reach)
     .flatMap(held => capped(held, () => clusters(held, () => PLOT_JOIN).flatMap(joined => capped(joined, () => joined.map(box => [box])))));
+  const pinnedUnits = new Map<string, PlotBox[]>();
+  for (const box of members) { const plot = pinnedIn.get(box.id); if (plot !== undefined) pinnedUnits.set(plot, [...pinnedUnits.get(plot) ?? [], box]); }
+  const pinned = [...pinnedUnits.keys()].sort(), held = pinned.map(plot => pinnedUnits.get(plot)!), rest: PlotBox[][] = [];
+  for (const unit of free) {
+    let nearest: { index: number; gap: number } | undefined;
+    held.forEach((core, index) => {
+      let gap = Infinity;
+      for (const one of unit) for (const other of core) { const between = plotGap(one, other); if (between <= reach(one, other)) gap = Math.min(gap, between); }
+      if (gap < (nearest?.gap ?? Infinity)) nearest = { index, gap };
+    });
+    if (nearest) held[nearest.index] = [...held[nearest.index], ...unit]; else rest.push(unit);
+  }
+  const units = [...held.map(unit => [...unit].sort((a, b) => a.id.localeCompare(b.id))), ...rest];
   const unitOf = new Map<string, number>();
   units.forEach((unit, i) => { for (const box of unit) unitOf.set(box.id, i); });
   // Plots that now share a proximity cluster are one territory. With no plots yet, clusters of PLOT_MIN_ITEMS or more are.
+  // A pinned plot is a territory of its own that never merges with another pinned one; the plot its
+  // members were in is part of it.
   const merged = new Map<string, string>(), same = (key: string): string => merged.has(key) ? same(merged.get(key)!) : key;
-  const first = !members.some(box => together.has(box.id));
+  const pinnedLabels = pinned.map(plot => `pinned ${plot}`), isPinned = new Set(pinnedLabels), heldBy = new Map<string, string>();
+  held.forEach((unit, i) => { for (const box of unit) { const key = together.get(box.id); if (key !== undefined && !heldBy.has(key)) heldBy.set(key, pinnedLabels[i]); } });
+  const first = !rest.some(unit => unit.some(box => together.has(box.id)));
   const label = units.map((unit, i) => {
+    if (i < pinned.length) return pinnedLabels[i];
     if (first) return unit.length >= PLOT_MIN_ITEMS ? `cluster ${i}` : undefined;
-    const keys = [...new Set(unit.flatMap(box => together.has(box.id) ? [same(together.get(box.id)!)] : []))].sort();
-    for (const key of keys.slice(1)) merged.set(key, keys[0]);
-    return keys[0];
+    const keys = [...new Set(unit.flatMap(box => { const key = together.get(box.id); return key === undefined ? [] : [same(heldBy.get(key) ?? key)]; }))].sort();
+    const root = keys.find(key => isPinned.has(key)) ?? keys[0];
+    for (const key of keys) if (key !== root && !isPinned.has(key)) merged.set(key, root);
+    return root;
   });
-  const territory = label.map(key => key === undefined ? undefined : same(key));
+  const territory = label.map((key, i) => key === undefined || i < pinned.length ? key : same(key));
   const parent = units.map((_, i) => i), find = (i: number): number => parent[i] === i ? i : (parent[i] = find(parent[i]));
   const linked = units.map(() => false), beside = new Map<number, Set<number>>(), reaches = new Map<number, Set<number>>();
   const note = (map: Map<number, Set<number>>, from: number, to: number) => { map.set(from, (map.get(from) ?? new Set()).add(to)); };
@@ -132,12 +156,14 @@ function projectGroups(members: readonly PlotBox[], links: readonly PlotLink[], 
   units.forEach((unit, i) => {
     const group = groups.get(find(i)) ?? { ids: [], linked: false };
     group.ids.push(...unit.map(box => box.id)); group.linked ||= linked[i]; groups.set(find(i), group);
+    if (i < pinned.length) group.pinned = pinned[i];
   });
-  const valid = [...groups.values()].filter(group => group.ids.length >= (group.linked ? PLOT_MIN_LINKED : PLOT_MIN_ITEMS));
+  const kept = (group: PlotGroup) => group.linked || group.pinned !== undefined;
+  const valid = [...groups.values()].filter(group => group.pinned !== undefined || group.ids.length >= (group.linked ? PLOT_MIN_LINKED : PLOT_MIN_ITEMS));
   for (const group of valid) group.ids.sort();
   valid.sort((a, b) => b.ids.length - a.ids.length || a.ids[0].localeCompare(b.ids[0]));
-  let places = PLOT_MAX_PER_PROJECT - valid.filter(group => group.linked).length;
-  return valid.filter(group => group.linked || places-- > 0);
+  let places = PLOT_MAX_PER_PROJECT - valid.filter(kept).length;
+  return valid.filter(group => kept(group) || places-- > 0);
 }
 
 /** Per project: proximity clusters (members of one `previous` plot stay together up to
@@ -146,31 +172,40 @@ function projectGroups(members: readonly PlotBox[], links: readonly PlotLink[], 
  * exception is a link between two plots that exist already (`previous`, or on a first
  * detection two clusters of PLOT_MIN_ITEMS or more): it never joins them. The result is
  * settled: passed back as `previous` it comes out unchanged. A result keeps the id of
- * the previous plot it shares at least half its members with. */
-export function detectPlots(boxes: readonly PlotBox[], previous: readonly Plot[], newId: () => string, links: readonly PlotLink[] = []): Plot[] {
+ * the previous plot it shares at least half its members with.
+ *
+ * `pinned` is the membership a person chose. A pinned plot holds its pinned members of its
+ * own project that are on the map, wherever they sit, and keeps its id; its pinned members
+ * act as one linked group that is never cut, never merged into another plot and kept before
+ * the other plots of the project. An id in `pinned` is never given to another group. An item
+ * pinned in two plots stays in the first by id. */
+export function detectPlots(boxes: readonly PlotBox[], previous: readonly Plot[], newId: () => string, links: readonly PlotLink[] = [], pinned: readonly PlotPin[] = []): Plot[] {
   const byProject = new Map<string, PlotBox[]>(), projectOf = new Map(boxes.map(box => [box.id, box.projectId])), linksOf = new Map<string, PlotLink[]>();
   for (const box of boxes) { const group = byProject.get(box.projectId) ?? []; group.push(box); byProject.set(box.projectId, group); }
   for (const link of links) {
     const projectId = projectOf.get(link.sourceId);
     if (projectId !== undefined && projectId === projectOf.get(link.targetId)) linksOf.set(projectId, [...linksOf.get(projectId) ?? [], link]);
   }
+  const pins = [...pinned].sort((a, b) => a.plotId.localeCompare(b.plotId)), reserved = new Set(pins.map(pin => pin.plotId));
   const result: Plot[] = [];
   for (const [projectId, members] of [...byProject].sort(([a], [b]) => a.localeCompare(b))) {
     const earlier = previous.filter(plot => plot.projectId === projectId), between = linksOf.get(projectId) ?? [];
+    const pinnedIn = new Map<string, string>();
+    for (const pin of pins) if (pin.projectId === projectId) for (const id of pin.memberIds) if (projectOf.get(id) === projectId && !pinnedIn.has(id)) pinnedIn.set(id, pin.plotId);
     const key = (list: readonly PlotGroup[]) => list.map(group => group.ids.join(',')).join(';');
-    let settled = projectGroups(members, between, new Map(earlier.flatMap(plot => plot.memberIds.map(id => [id, plot.id]))));
+    let settled = projectGroups(members, between, new Map(earlier.flatMap(plot => plot.memberIds.map(id => [id, plot.id]))), pinnedIn);
     for (let pass = 0; pass < PLOT_SETTLE_PASSES; pass++) {
-      const next = projectGroups(members, between, new Map(settled.flatMap((group, i) => group.ids.map(id => [id, String(i)]))));
+      const next = projectGroups(members, between, new Map(settled.flatMap((group, i) => group.ids.map(id => [id, String(i)]))), pinnedIn);
       const done = key(next) === key(settled);
       settled = next;
       if (done) break;
     }
-    const groups = settled.map(group => group.ids);
-    const pairs = groups.flatMap((ids, group) => earlier.map(plot => ({ group, plot, score: jaccard(ids, plot.memberIds) })))
+    const groups = settled.map(group => group.ids), open = earlier.filter(plot => !reserved.has(plot.id));
+    const pairs = groups.flatMap((ids, group) => settled[group].pinned === undefined ? open.map(plot => ({ group, plot, score: jaccard(ids, plot.memberIds) })) : [])
       .filter(pair => pair.score >= PLOT_SAME).sort((a, b) => b.score - a.score || a.plot.id.localeCompare(b.plot.id));
     const matched = new Map<number, string>(), used = new Set<string>();
     for (const pair of pairs) if (!matched.has(pair.group) && !used.has(pair.plot.id)) { matched.set(pair.group, pair.plot.id); used.add(pair.plot.id); }
-    groups.forEach((ids, group) => result.push({ id: matched.get(group) ?? newId(), projectId, memberIds: ids }));
+    groups.forEach((ids, group) => result.push({ id: settled[group].pinned ?? matched.get(group) ?? newId(), projectId, memberIds: ids }));
   }
   return result;
 }

@@ -2,6 +2,29 @@
 
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one.
 
+## 0.6.0 — 2026-10-27
+
+### Map
+- **Move to plot**: right-click an item or a selection for **Move to plot ▸** with the project's plots and **New plot**. The chosen items are pinned in that plot: they stay its members wherever they sit, neighbours may still join and leave, and one pinned member keeps the plot alive. A pinned plot's sign carries a pin glyph; **Remove from plot** unpins. Items from several projects, or an item in no project, get **Items in one project only**.
+- **One colour picker** for a project's neighbourhood colour, a plot's colour and a note's paper: pixel swatches, **Your colours** (the last eight custom colours you chose anywhere) and **Custom colour…**, which opens a hue/shade pad and a hex field in the app instead of the system dialog. Twenty neighbourhood presets (Emerald, Moss, Ice, Quartz, Birch, Sand, Clay, Copper, Coral and Obsidian join the ten biomes), ten note papers (moss, ice, sky, lilac, rose, peach, sand, fog and slate beside mint; a dark paper takes light ink), and a plot or paper may be any `#rrggbb`.
+- **Project column**: a project row says each fact once. The rows are what waits on you (asking, my turn, with the reason and age), the lines the summary model wrote, and one meta line with open to-dos and working agents; colour is spent only on what waits, and the folded icon shows a count only for asking or my turn. Needs me rows are grouped by plot when two or more plots have them.
+
+### Pull requests
+- A pull request's **Merge**, **State** and **Show / Ship** menus open at once from their last answer and refresh in the background; an outdated pick fails on its own and the menu reads live next time.
+
+### Rollouts
+- An acknowledged validation alert is no longer raised again on every rollout pass, which pinned the local service and left the app **Reconnecting** on quit.
+
+### Local service
+- **Local service disconnected** no longer comes and goes on large workspaces: when the window is slow to take a snapshot only the newest one waits, and the service never drops the window for a backlog of older ones.
+- Settings → Data & diagnostics → Support → **Service health**: timer lag, the slowest operations, snapshots and bytes per window, drops and memory per minute, with a download for a support report.
+- Review checkouts are removed once their review is finished (about 750 MB each; a disk had run full on 46 of them). Reports and the git cache stay, and a review opened again rebuilds its checkout from the cache.
+- Listing jobs no longer decodes every saved job on every poll.
+
+### Speed
+- The window receives only the map's items: Undermap items, their links and records stay in the local service until you go below, so a board with hundreds of items below no longer decodes and compares them on every change (one fixture's snapshot went from 309 KB to under 1 KB).
+- Items under a muted cover are not rendered until you peek, and the pull requests of a muted project are read at the slowest polling step; unmuting reads them at once.
+
 ## 0.5.0 — 2026-10-26
 
 ### Map

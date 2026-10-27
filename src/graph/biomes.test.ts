@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { BIOMES, BIOME_UNITS, GROWTH_CHANCE, TEXTURE_FLATTEN, biomeDetailVisible, biomeFor, biomeGrowth, biomeHash, paintBiome, paintGround, withGrowth } from './biomes.ts';
 import type { BiomeSurface } from './biomes.ts';
-import { PROJECT_COLORS, projectColor } from './project-colors.ts';
+import { BIOME_PROJECT_COLORS, PROJECT_COLORS, projectColor } from './project-colors.ts';
 import { NEIGHBORHOOD_SHADES, NEIGHBORHOOD_TEXTURES, neighborhoodCells } from './neighborhood-fill.ts';
 import type { NeighborhoodCells } from './neighborhood-fill.ts';
 
@@ -13,11 +13,14 @@ const square = (x0: number, y0: number, size: number) => [{ x: x0, y: y0 }, { x:
 const pixel = (bitmap: { data: Uint8ClampedArray; width: number }, x: number, y: number) => [...bitmap.data.slice((y * bitmap.width + x) * 4, (y * bitmap.width + x) * 4 + 4)];
 const key = (growth: ReturnType<typeof biomeGrowth>) => growth.map(g => `${g.column},${g.row},${g.sprite}`);
 
-test('each colour preset is a biome and a custom colour is none', () => {
+test('the first ten colour presets are biomes; the others and a custom colour are none', () => {
   assert.deepEqual(PROJECT_COLORS.map(preset => [preset.id, biomeFor(preset.color)?.name]), [
     ['grass', 'Grassland'], ['oak', 'Woodland'], ['stone', 'Mountain'], ['diamond', 'Tundra'], ['lapis', 'Ocean'],
-    ['amethyst', 'Geode'], ['redstone', 'Badlands'], ['gold', 'Desert'], ['prismarine', 'Swamp'], ['netherrack', 'Nether']]);
-  assert.deepEqual(BIOMES.map(biome => biome.base), PROJECT_COLORS.map(preset => preset.color));
+    ['amethyst', 'Geode'], ['redstone', 'Badlands'], ['gold', 'Desert'], ['prismarine', 'Swamp'], ['netherrack', 'Nether'],
+    ['emerald', undefined], ['moss', undefined], ['ice', undefined], ['quartz', undefined], ['birch', undefined],
+    ['sand', undefined], ['clay', undefined], ['copper', undefined], ['coral', undefined], ['obsidian', undefined]]);
+  assert.deepEqual(BIOMES.map(biome => biome.base), BIOME_PROJECT_COLORS.map(preset => preset.color));
+  assert.equal(new Set(PROJECT_COLORS.map(preset => preset.color)).size, PROJECT_COLORS.length, 'every preset has its own colour');
   assert.equal(biomeFor('#6FD6CF')?.id, 'diamond');
   assert.equal(biomeFor(projectColor(undefined))?.id, 'grass');
   for (const custom of ['#123456', '#91b78c', 'var(--act-mute-hull)', '', undefined]) assert.equal(biomeFor(custom), undefined);

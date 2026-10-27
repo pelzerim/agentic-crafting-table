@@ -1,4 +1,5 @@
 import type { ChoiceConfirm, ChoiceSource, JsonObject, ResourceChoices, ResourceViewServices } from './types.ts';
+import { canonical } from '../../packages/core/control.ts';
 type Services = Pick<ResourceViewServices, 'runAction'>;
 const bounded = (value: unknown, max: number, optional = false) => optional && value === undefined || typeof value === 'string' && Boolean(value.trim()) && value.length <= max;
 function validConfirm(confirm: ChoiceConfirm | undefined, context: JsonObject) {
@@ -8,8 +9,24 @@ function validConfirm(confirm: ChoiceConfirm | undefined, context: JsonObject) {
   return text === undefined || Boolean(text) && typeof text === 'object' && typeof text.field === 'string' && /^[a-z][A-Za-z0-9]{0,39}$/.test(text.field) && !['value', 'requestId', ...Object.keys(context)].includes(text.field)
     && bounded(text.label, 80) && bounded(text.placeholder, 200, true) && Number.isSafeInteger(text.maxLength) && text.maxLength >= 1 && text.maxLength <= 60_000;
 }
-export async function loadResourceChoices(services: Services, actionId: string, runtime?: string): Promise<ResourceChoices> {
-  const value = await (runtime ? services.runAction(runtime, { operation: actionId }) : services.runAction('resource.action', { actionId, input: {} })) as unknown as ResourceChoices;
+/** A saved answer (`cachedAt`) resolves at once; the live one is then read in the background and reaches
+ * `onRefresh` only when it differs. A failed refresh keeps the saved menu: applying an outdated choice fails. */
+export async function loadResourceChoices(services: Services, actionId: string, runtime?: string, onRefresh?: (choices: ResourceChoices) => void): Promise<ResourceChoices> {
+  const value = validChoices(await (runtime ? services.runAction(runtime, { operation: actionId }) : services.runAction('resource.action', { actionId, input: { cached: true } })));
+  if (!runtime && value.cachedAt !== undefined) {
+    const saved = canonical(withoutCachedAt(value));
+    void services.runAction('resource.action', { actionId, input: { refresh: true } }).then(validChoices).then(live => {
+      const fresh = withoutCachedAt(live);
+      if (canonical(fresh) !== saved) onRefresh?.(fresh);
+    }).catch(() => {});
+  }
+  return value;
+}
+function withoutCachedAt(choices: ResourceChoices): ResourceChoices {
+  const live = { ...choices }; delete live.cachedAt; return live;
+}
+function validChoices(answer: unknown): ResourceChoices {
+  const value = answer as ResourceChoices;
   if (!value || typeof value.current !== 'string' || !value.context || typeof value.context !== 'object' || Array.isArray(value.context) || !Array.isArray(value.options) || !value.options.length || value.options.length > 250 || value.options.some(option => !option || typeof option.id !== 'string' || !option.id || typeof option.label !== 'string' || !option.label.trim())) throw new Error('Status options are unavailable. Try opening the menu again.');
   if (new Set(value.options.map(option => option.id)).size !== value.options.length || value.current && !value.options.some(option => option.id === value.current) || value.prompt !== undefined && (typeof value.prompt !== 'string' || value.prompt.length > 500)
     || value.options.some(option => !validConfirm(option.confirm, value.context))) throw new Error('Status options are inconsistent. Reopen the menu.');
@@ -54,11 +71,16 @@ export function openResourceChoices(trigger: HTMLButtonElement, services: Servic
   document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', key, true); document.addEventListener('scroll', scroll, true); document.defaultView?.addEventListener('resize', place);
   menu.oncontextmenu = event => { event.preventDefault(); event.stopPropagation(); close(true); };
   place();
-  void loadResourceChoices(services, actions.load, actions.runtime).then(loaded => {
+  // The choices on screen; a refresh with the same entries replaces them here only, so a confirmation stays open.
+  let onScreen: ResourceChoices | undefined;
+  const narrow = (loaded: ResourceChoices) => labels.only ? { ...loaded, options: loaded.options.filter(option => option.id === labels.only) } : loaded;
+  const visible = (choices: ResourceChoices) => canonical({ current: choices.current, prompt: choices.prompt, options: choices.options });
+  const show = (loaded: ResourceChoices) => {
     if (disposed) return;
-    const choices = labels.only ? { ...loaded, options: loaded.options.filter(option => option.id === labels.only) } : loaded;
+    const choices = narrow(loaded);
     if (!choices.options.length) throw new Error('This action is unavailable right now. Refresh and try again.');
-    menu.replaceChildren();
+    onScreen = choices;
+    menu.replaceChildren(); delete menu.dataset.irreversible;
     const cancel = document.createElement('button'); cancel.type = 'button'; cancel.setAttribute('role', 'menuitem'); cancel.textContent = 'Cancel'; cancel.setAttribute('aria-label', 'Cancel'); cancel.className = 'resource-choice-cancel';
     cancel.onclick = () => close(true);
     if (actions.irreversible) { menu.dataset.irreversible = ''; menu.append(cancel); }
@@ -66,7 +88,7 @@ export function openResourceChoices(trigger: HTMLButtonElement, services: Servic
     if (choices.prompt && !direct) { const prompt = document.createElement('p'); prompt.className = 'resource-choice-prompt'; prompt.textContent = choices.prompt; menu.append(prompt); }
     const apply = (option: ResourceChoices['options'][number], text?: string) => {
       if (busy || disposed) return;
-      const input = choiceInput(choices, option.id, text);
+      const input = choiceInput(onScreen ?? choices, option.id, text);
       if (choose) { close(true); choose(input); return; }
       busy = true; trigger.disabled = true; report(labels.pending); close(true);
       void (actions.runtime ? services.runAction(actions.runtime, { operation: actions.apply, ...input }) : services.runAction('resource.action', { actionId: actions.apply, input }))
@@ -105,11 +127,18 @@ export function openResourceChoices(trigger: HTMLButtonElement, services: Servic
     if (direct) { cancel.remove(); confirm(options.keys().next().value!, choices.options[0]); return; }
     if (!choices.current && !actions.irreversible) menu.append(cancel);
     place(); (actions.irreversible ? cancel : menu.querySelector<HTMLButtonElement>('button:not(:disabled)'))?.focus();
-  }).catch(error => {
+  };
+  const failed = (error: Error) => {
     if (disposed) return;
     // The menu keeps its role so Escape closes only the menu, not the view behind it.
     const alert = document.createElement('p'); alert.setAttribute('role', 'alert'); alert.textContent = error.message ?? String(error); menu.replaceChildren(alert); place();
     if (labels.reportLoad) report(alert.textContent);
-  });
+  };
+  const refreshed = (live: ResourceChoices) => {
+    if (disposed || busy || !onScreen) return;
+    if (visible(narrow(live)) === visible(onScreen)) { onScreen = narrow(live); return; }
+    try { show(live); } catch (error) { failed(error as Error); }
+  };
+  void loadResourceChoices(services, actions.load, actions.runtime, refreshed).then(show).catch(failed);
   return close;
 }

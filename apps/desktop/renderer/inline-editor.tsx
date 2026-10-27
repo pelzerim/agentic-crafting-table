@@ -23,6 +23,8 @@ import { useMovablePanel } from './use-movable-panel.ts';
 import { useBubbleMotion } from './bubble-motion.ts';
 import type { BubbleBounds } from './bubble-motion.ts';
 import { DEFAULT_PROJECT_COLOR, PROJECT_COLORS, projectColor } from '../../../src/graph/project-colors.ts';
+import { ColorPicker } from './ui/color-picker.tsx';
+import { useRecentColors } from './recent-colors.ts';
 import { PixelGlyph } from './ui/pixel-glyph.tsx';
 import { DirectoryField, useDirectoryChoices } from './ui/directory-field.tsx';
 import type { DirectoryChoices } from './ui/directory-field.tsx';
@@ -46,8 +48,16 @@ export function SelectField({ pluginId, name, field, values, change, searchable 
     options={options.map(option => ({ value: option, label: labels[option] ?? field.optionLabels?.[option] ?? option }))} change={value => change(name, value)} />{error && <small role="alert">{error}</small>}</>;
   return <><select aria-label={field.label} required={field.required} disabled={loading} value={String(values[name] ?? '')} onChange={event => change(name, event.target.value)}><option value="">{loading ? 'Loading…' : 'Choose…'}</option>{options.map(option => <option key={option} value={option}>{labels[option] ?? field.optionLabels?.[option] ?? option}</option>)}</select>{error && <small role="alert">{error}</small>}</>;
 }
+/** A colour field (a select that takes custom colours) is the shared colour picker, its options drawn in their menu swatches. */
+function ColorField({ field, value, change }: { field: ResourceField; value: string | undefined; change(value: string): void }) {
+  const { recent, remember } = useRecentColors();
+  const presets = (field.options ?? []).map(option => ({ id: option, label: field.optionLabels?.[option] ?? option, color: field.menu?.swatches?.[option] ?? 'var(--act-control)' }));
+  return <ColorPicker label={field.label} presets={presets} value={value ?? field.menu?.fallback} recent={recent} onRecent={remember} onChange={next => change('custom' in next ? next.custom : next.id)} />;
+}
 function Fields({ fields, values, change, pluginId, focusField, directories, projectDirectory, error }: { focusField?: string; fields: ResourceFields; values: JsonObject; change(key: string, value: string | number | boolean): void; pluginId?: string; directories: DirectoryChoices; projectDirectory?: string; error(message: string): void }) {
-  return Object.entries(fields).filter(([, field]) => field.form !== false).map(([key, field]) => <label key={key}>{field.label}
+  return Object.entries(fields).filter(([, field]) => field.form !== false).map(([key, field]) => field.kind === 'select' && field.customColor
+    ? <div key={key} className="field-color"><span aria-hidden="true">{field.label}</span><ColorField field={field} value={typeof values[key] === 'string' ? values[key] as string : undefined} change={value => change(key, value)} /></div>
+    : <label key={key}>{field.label}
     {field.kind === 'directory' ? <DirectoryField label={field.label} required={field.required} value={String(values[key] ?? '')} change={value => change(key, value)} choices={directories} project={field.fromProject ? projectDirectory : undefined} error={error} />
       : field.kind === 'select' ? <SelectField pluginId={pluginId} name={key} field={field} values={values} change={change} />
       : field.multiline ? <textarea autoFocus={focusField === key} aria-label={field.label} required={field.required} value={String(values[key] ?? '')} onChange={event => change(key, event.target.value)} rows={Math.max(2, Math.min(16, field.rows ?? 3))} />
@@ -224,12 +234,9 @@ export function InlineEditor({ editor, state, plugins, quickIds, capabilities, s
 
 
 function ProjectColorPicker({ value, change }: { value: string; change(color: string): void }) {
-  const preset = PROJECT_COLORS.find(option => option.color === value);
+  const preset = PROJECT_COLORS.find(option => option.color === value), { recent, remember } = useRecentColors();
   return <fieldset className="project-color-picker"><legend>Neighborhood color <small>{preset?.label ?? value}</small></legend>
-    <div role="radiogroup" aria-label="Neighborhood color">
-      {PROJECT_COLORS.map(option => <button key={option.id} type="button" role="radio" aria-checked={option.color === value} aria-label={option.label} title={option.label}
-        className="project-color-swatch" style={{ background: option.color }} onClick={() => change(option.color)} />)}
-      <label className="project-color-custom" title="Custom color"><input type="color" aria-label="Custom neighborhood color" value={value} onChange={event => change(event.target.value.toLowerCase())} /></label>
-    </div>
+    <ColorPicker label="Neighborhood color" presets={PROJECT_COLORS} value={value} recent={recent} onRecent={remember}
+      onChange={next => change('custom' in next ? next.custom : PROJECT_COLORS.find(option => option.id === next.id)!.color)} />
   </fieldset>;
 }
