@@ -41,3 +41,20 @@ export interface UpdateSubject { current: string; latest?: string; available: bo
 export interface PluginUpdate extends UpdateSubject { id: string; name: string; source: string }
 /** What the window shows: the app and every git-installed pack, each against its newest tag. */
 export interface UpdateStatus { app: UpdateSubject; plugins: PluginUpdate[]; checking: boolean }
+
+/** Where `npm run install:local` puts the app, relative to the checkout it was built from. */
+export const INSTALLED_BUNDLE = 'release/mac-arm64/Agentic Crafting Table.app';
+export const CHECKOUT_PACKAGE_NAME = 'agent-crafting-table';
+/** The checkout an installed app runs from, from its executable path; undefined for any other location. */
+export function checkoutOfExecutable(executable: string): string | undefined {
+  const marker = `/${INSTALLED_BUNDLE}/Contents/MacOS/`, index = executable.lastIndexOf(marker);
+  return index > 0 && !executable.slice(index + marker.length).includes('/') ? executable.slice(0, index) : undefined;
+}
+/** A failed Update and restart, written by `scripts/update-restart.mjs` for the next launch to show. */
+export const updateFailureSchema = z.object({ at: z.number(), tag: z.string().max(100).optional(), message: z.string().max(4000) });
+export type UpdateFailure = z.infer<typeof updateFailureSchema>;
+/** Settings → About: Update and restart when a newer release can be built from this checkout; a failed run stays until a later check succeeds. */
+export function appUpdateRow({ app, checkout, failure }: { app?: UpdateSubject; checkout: boolean; failure?: UpdateFailure }): { action: 'restart' | 'check'; failure?: UpdateFailure } {
+  const cleared = Boolean(failure && app?.checkedAt !== undefined && app.checkedAt > failure.at && !app.error);
+  return { action: checkout && app?.available && app.latest ? 'restart' : 'check', failure: cleared ? undefined : failure };
+}

@@ -1,6 +1,8 @@
 import { expect } from '@playwright/test';
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
+import { access, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { test } from './visual-fixture.ts';
 
 /** A stand-in for the GitHub tags API; the port is fixed before launch so the app can be pointed at it. */
@@ -31,7 +33,7 @@ test('a newer release tag shows in Settings → General and as a notice; dismiss
   await dialog.getByRole('button', { name: 'Close settings' }).click();
 
   await expect(notice).toBeVisible();
-  await expect(notice).toContainText('Run npm run update in your checkout');
+  await expect(notice).toContainText('Update from Settings → General');
   await notice.getByRole('button', { name: 'How to update' }).click();
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('treeitem', { name: 'General', exact: true })).toHaveAttribute('aria-selected', 'true');
@@ -55,6 +57,19 @@ test('a newer release tag shows in Settings → General and as a notice; dismiss
   await expect(status).toHaveText(/v10\.0\.0 available$/);
   await dialog.getByRole('button', { name: 'Close settings' }).click();
   await expect(page.getByRole('status', { name: 'Agentic Crafting Table v10.0.0 is available' })).toBeVisible();
+});
+
+test('a failed Update and restart shows in Settings → General until a later check succeeds, which deletes its note', async ({ visual: { app, page } }) => {
+  const file = join(await app.evaluate(({ app }) => app.getPath('userData')), 'update-failure.json');
+  await writeFile(file, JSON.stringify({ at: Date.now(), tag: 'v9.9.0', message: 'The checkout has local changes; commit, stash or discard them first' }));
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  await dialog.getByRole('treeitem', { name: 'General', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toHaveText('Update to v9.9.0 failed: The checkout has local changes; commit, stash or discard them first');
+  await dialog.getByRole('button', { name: 'Check now' }).click();
+  await expect(dialog.locator('.settings-update-status')).toHaveText(/ available$/);
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+  await expect.poll(() => access(file).then(() => true, () => false)).toBe(false);
 });
 
 test('an unreachable tag source is reported in Settings and raises no notice', async ({ visual: { page } }) => {

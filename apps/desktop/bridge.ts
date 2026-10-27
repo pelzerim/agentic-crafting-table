@@ -2,6 +2,9 @@ export interface AppInfo {
   name: string;
   version: string;
   packaged: boolean;
+  /** Installed from its own checkout, so Settings can offer Update and restart. */
+  updateRestart?: boolean;
+  updateFailure?: import('../../packages/core/updates.ts').UpdateFailure;
 }
 
 export interface DesktopBridge {
@@ -55,6 +58,8 @@ export interface DesktopBridge {
   standupOpen(request: import('../../packages/core/standup.ts').StandupRequest): Promise<import('../../packages/core/standup.ts').StandupStatus>;
   updatesStatus(): Promise<import('../../packages/core/updates.ts').UpdateStatus>;
   updatesCheck(): Promise<import('../../packages/core/updates.ts').UpdateStatus>;
+  /** Quits through the normal close path, then updates from the checkout and reopens the app. */
+  updatesRestart(): Promise<void>;
   standupStatus(): Promise<import('../../packages/core/standup.ts').StandupStatus>;
   attentionHistory(offset?: number, limit?: number): Promise<{ entries: import('../../packages/workspace-service/sqlite-store.ts').AttentionHistoryEntry[]; more: boolean }>;
   /** Saves the whole reminder list in order; each call returns the reminders as the next snapshot carries them. */

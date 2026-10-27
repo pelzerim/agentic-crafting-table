@@ -20,6 +20,9 @@ Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newes
 - The Projects panel **stays open while an item is open**, and **M** toggles it there too. An item row opens that item in place of the open one; a project or plot row closes it and flies there.
 - **Pin the Projects panel** to keep it open beside Needs me, To-dos, Reminders, the GitHub inbox and the Controls card, across Esc and relaunch. M closes it and unpins.
 
+### Updates
+- **Update and restart**: when a newer release is out and the app runs from its checkout, Settings → General → About offers it in place of Check now. The app quits as usual, builds and installs the newest release, and reopens; a failed update is shown there on the next launch.
+
 ## 0.6.0 — 2026-10-27
 
 ### Map

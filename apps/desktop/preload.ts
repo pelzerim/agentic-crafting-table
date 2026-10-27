@@ -62,6 +62,7 @@ const bridge: DesktopBridge = {
   standupStatus: () => invoke('standup.status', {}),
   updatesStatus: () => invoke('updates.status'),
   updatesCheck: () => invoke('updates.check'),
+  updatesRestart: () => invoke('updates.restart'),
   remindersSave: list => invoke('reminders.save', { list }),
   remindersDone: id => invoke('reminders.done', { id }),
   remindersSnooze: (id, minutes) => invoke('reminders.snooze', { id, minutes }),

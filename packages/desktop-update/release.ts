@@ -20,3 +20,14 @@ export function planUpdate({ status, tags, head, tagsAtHead }: { status: string;
   if (current === tag || tagsAtHead.includes(tag)) return { unchanged: tag };
   return { tag, current: current ?? head.slice(0, 8), steps: [`git checkout --detach ${tag}`, 'npm ci', 'npm run package', 'npm run install:local'] };
 }
+
+/** Printed by the login shell after its own start-up output, so a chatty profile cannot be mistaken for the answer. */
+export const LAUNCHER_MARKER = '__ACT_UPDATE_LAUNCHER__';
+export const LAUNCHER_SCRIPT = `printf '\\n%s\\n%s\\n%s' '${LAUNCHER_MARKER}' "$(command -v node)" "$PATH"`;
+/** The absolute node and PATH the login shell reported, or undefined when it has no node. */
+export function parseLauncher(stdout: string): { node: string; path: string } | undefined {
+  const index = stdout.lastIndexOf(`\n${LAUNCHER_MARKER}\n`);
+  if (index < 0) return undefined;
+  const [node = '', path = ''] = stdout.slice(index + LAUNCHER_MARKER.length + 2).split('\n');
+  return node.startsWith('/') && path ? { node, path } : undefined;
+}
