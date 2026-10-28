@@ -2,7 +2,7 @@
 
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one.
 
-## Unreleased
+## 0.7.0 — 2026-10-28
 
 ### Needs me
 - **Close and mark seen**: an open item in Needs me has a close X with a check beside Mark seen. It marks the item seen and closes it; **⌘E** does the same, also from inside a terminal.
