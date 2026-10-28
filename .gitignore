@@ -34,3 +34,5 @@ __pycache__/
 
 # Example plugin releases are packed in their own repositories
 examples/plugins/*/act-plugin.integrity.json
+
+.omc/
