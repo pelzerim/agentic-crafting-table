@@ -2,6 +2,14 @@
 
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one.
 
+## 0.9.0 — 2026-10-28
+
+### Rollouts
+- The phase track groups a rollout without stage rules by stage: parallel jobs whose ids interleave no longer become a phase each. Build jobs of every stage (`staging-build`, `prod-build`) count as build, `dev` is a stage, and `phase-N` labels split a stage into its phases, so a run of 24 jobs reads build → dev → staging → production · phase-1.
+
+### Plugins
+- A plugin pack may preset the **working animal** (sheep or raccoon) for the workspaces it is installed in: once, and only while the setting still has its default, so a choice made in Settings → Map stays. Plugin API 1.3.0.
+
 ## 0.8.0 — 2026-10-28
 
 ### Rollouts

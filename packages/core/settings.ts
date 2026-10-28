@@ -80,6 +80,15 @@ export const workingMarkSchema = z.object({
   animal: z.enum(WORKING_ANIMALS).default('sheep'), helpers: z.enum(WORKING_HELPERS).default('kits'),
 }).default({ animal: 'sheep', helpers: 'kits' });
 export type WorkingMarkSettings = z.infer<typeof workingMarkSchema>;
+/** App settings a plugin package may preset, as the target package `app`: appearance only, never behaviour, connections or paths. */
+export const APP_PRESET_TARGET = 'app';
+export const APP_PRESET_SETTINGS: Record<string, z.ZodType> = { workingMark: workingMarkSchema };
+/** Throws when a preset for the app sets a setting outside APP_PRESET_SETTINGS or a value its schema refuses. */
+export function checkAppSettingsPreset(preset: { id: string; values: Record<string, unknown> }) {
+  const refused = Object.keys(preset.values).filter(key => !(key in APP_PRESET_SETTINGS));
+  if (refused.length) throw new Error(`Preset ${preset.id} sets app settings it may not: ${refused.join(', ')}`);
+  for (const [key, value] of Object.entries(preset.values)) if (!APP_PRESET_SETTINGS[key].safeParse(value).success) throw new Error(`Preset ${preset.id} sets an invalid ${key}`);
+}
 /** Project dashboards replace a neighbourhood's items below this zoom (MAP-23). */
 export const mapDashboardsSchema = z.object({
   enabled: z.boolean().default(DEFAULT_MAP_DASHBOARDS.enabled),

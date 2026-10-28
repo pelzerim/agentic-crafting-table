@@ -348,3 +348,19 @@ test('a plain rollout is current at its held gate, else its running phase, else 
   assert.deepEqual(phaseTrack(undefined, rollout({ jobs: [job(1, 'build'), job(2, 'deploy-web / ship', 'in_progress', null)] })).phases, []);
   assert.equal(phaseTrack(undefined, plainExample({ autoValidate: true })).autoValidate, true);
 });
+
+test('a plain rollout whose parallel jobs interleave groups them by stage: per-stage builds are build, dev is a stage, a labelled gated phase is named', () => {
+  const runners = rollout({ gates: [gate(7, 'app-production')], run: { id: 101, attempt: 1, status: 'waiting', conclusion: null, headSha: 'c'.repeat(40) }, jobs: [
+    job(1, 'staging-build / build-worker-arm / Build app:worker-arm'), job(2, 'prod-build / build-tooling / Build app:tooling'), job(3, 'runtime-version'),
+    job(4, 'prod-build / build-worker-amd / Build app:worker-amd'), job(5, 'staging-build / build-tooling / Build app:tooling'), job(6, 'get-regions / config'), job(7, 'dev-build'),
+    job(8, 'promote-staging / get-regions / config'), job(9, 'Dev - ${{ matrix.zone.region }} ${{ matrix.zone.cluster }}'), job(10, 'promote-dev'), job(11, 'promote-staging / check-promoted'),
+    job(12, 'promote-staging / promote ${{ inputs.env }} ${{ matrix.region }}'), job(13, 'prod-build / manifest-worker / create-manifest'), job(14, 'staging-build / manifest-worker / create-manifest'),
+    job(15, 'staging-agentic-validate / agentic validation'), job(16, 'Staging - region-1 AWS / deploy'), job(17, 'Staging - region-2 SELF_HOSTED / deploy'),
+    job(18, 'promote-prod / get-regions / config'), job(19, 'promote-prod / check-promoted'), job(20, 'prod-agentic-validate-phase-1 / agentic validation', 'waiting', null),
+    job(21, 'Prod - region-3 AWS / deploy', 'waiting', null), job(22, 'promote-prod / promote ${{ inputs.env }} ${{ matrix.region }}')] });
+  const track = phaseTrack(undefined, runners);
+  assert.deepEqual(track.phases.map(phase => [phase.name, phase.jobs.total, phase.gate?.state ?? '']), [['build', 9, ''], ['dev', 2, ''], ['staging', 6, ''], ['production · phase-1', 5, 'you']]);
+  assert.deepEqual([track.current, track.currentGate], [3, true]);
+  const unnamed = rollout({ gates: [gate(7, 'live')], jobs: [job(1, 'plan'), job(2, 'apply-staging / apply'), job(3, 'apply-phase-1 / apply', 'waiting', null), job(4, 'apply-phase-2 / apply', 'queued', null)] });
+  assert.deepEqual(phaseTrack(undefined, unnamed).phases.map(phase => phase.name), ['build', 'staging', 'phase-1', 'phase-2'], 'a phase named only by its label is not named twice');
+});

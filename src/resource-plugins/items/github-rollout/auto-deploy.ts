@@ -309,7 +309,7 @@ const jobKey = (name: string) => name.split(' / ')[0].replace(/\s*\([^)]*\)\s*$/
 const heldIds = (key: string) => (/@([\d,]+)$/.exec(key)?.[1] ?? '').split(',').filter(Boolean).map(Number);
 const CHECK_OF: Record<Answer, PhaseCheckState> = { passed: 'passed', pending: 'running', concerns: 'concerns', failed: 'failed', inconclusive: 'failed', 'no-report': 'failed', missing: 'failed' };
 
-interface Grouped { stage: string; keys: string[]; jobs: RolloutJob[]; setup?: true; gated?: boolean }
+interface Grouped { stage: string; keys: string[]; jobs: RolloutJob[]; setup?: true; gated?: boolean; label?: string }
 /** The rollout's phases in order: build and setup jobs before the first deployment as one phase that needs no check, then one phase per
  * environment, a new one at every gate (so an environment that gates several phases has one phase each). With a stage rule, its stages
  * in order, including those not reached yet. Without gates or a rule, the whole run is one phase, as it is validated once at the end. */
@@ -324,6 +324,7 @@ function groupPhases(record: AutoDeployRecord | undefined, rollout: RolloutFacts
   const jobs = [...rollout.jobs].sort((a, b) => a.id - b.id);
   if (!rollout.rule && !gateEnvironments.length && !known.size) return jobs.length ? [{ stage: 'whole run', keys: [], jobs }] : [];
   const deploying = (stage: string) => DEPLOY_STAGES.has(stage) || environments.some(name => stageOf(name, environments) === stage);
+  if (!rollout.rule) return inferredPhases(jobs, environments, gateEnvironments, job => rollout.gates.length > 0 && job.status === 'waiting' || known.has(job.id), deploying);
   const groups: Grouped[] = [];
   if (rollout.rule) for (const name of ruleEnvironments) groups.push({ stage: stageOf(name, environments), keys: [], jobs: [], gated: gatedStages.has(stageOf(name, environments)) });
   for (const job of jobs) {
@@ -343,6 +344,36 @@ function groupPhases(record: AutoDeployRecord | undefined, rollout: RolloutFacts
     groups.push({ stage, keys: [key], jobs: [job], gated });
   }
   return groups;
+}
+
+const BUILD_STEP = /(^|[^a-z])(build|lint|manifest|version|regions|setup|plan)([^a-z]|$)/, DEV_STAGE = /(^|[^a-z])(dev|development)([^a-z]|$)/;
+const phaseLabel = (name: string) => /phase[-_ ]?\d+/i.exec(name)?.[0].toLowerCase();
+/** Phases of a rollout without a stage rule. Parallel jobs interleave their ids, so jobs are grouped by stage wherever they fall:
+ * a job whose first name part is a build step (`staging-build`, `runtime-version`) is build, `dev` is a stage, and a stage splits
+ * by `phase-N` labels, with unlabelled jobs joining the labelled phase nearest by id. Jobs before the first deployment that name
+ * no deploying stage are build too. Stages are ordered by their last job, since a stage's preparation can start early. */
+function inferredPhases(jobs: readonly RolloutJob[], environments: readonly string[], gateEnvironments: readonly string[], held: (job: RolloutJob) => boolean, deploying: (stage: string) => boolean): Grouped[] {
+  const gatedStages = new Set(gateEnvironments.map(name => stageOf(name)));
+  const named = (name: string) => { const top = name.split(' / ')[0].toLowerCase(); return BUILD_STEP.test(top) ? 'build' : DEV_STAGE.test(top) ? 'dev' : stageOf(name, environments); };
+  const deploys = (stage: string) => stage === 'dev' || stage !== 'build' && deploying(stage);
+  const firstDeploy = jobs.find(job => deploys(named(job.name)))?.id ?? Infinity;
+  const placed = jobs.map(job => { const stage = named(job.name); return { job, stage: stage === 'build' || job.id < firstDeploy && !deploys(stage) ? 'build' : stage || 'jobs', label: phaseLabel(job.name) }; });
+  const groups: Grouped[] = [];
+  const groupFor = (stage: string, label?: string) => groups.find(group => group.stage === stage && group.label === label)
+    ?? (groups.push({ stage, keys: [], jobs: [], ...(label ? { label } : {}), ...(stage === 'build' ? { setup: true as const } : {}) }), groups.at(-1)!);
+  for (const entry of placed) if (entry.label) groupFor(entry.stage, entry.label).jobs.push(entry.job);
+  const distance = (group: Grouped, job: RolloutJob) => Math.min(...group.jobs.map(other => Math.abs(other.id - job.id)));
+  for (const entry of placed) {
+    if (entry.label) continue;
+    const nearest = groups.filter(group => group.stage === entry.stage && group.label).sort((a, b) => distance(a, entry.job) - distance(b, entry.job))[0];
+    (nearest ?? groupFor(entry.stage)).jobs.push(entry.job);
+  }
+  for (const group of groups) {
+    group.jobs.sort((a, b) => a.id - b.id);
+    group.keys = [...new Set(group.jobs.map(job => jobKey(job.name)))];
+    if (!group.setup) group.gated = group.jobs.some(held) || gatedStages.has(group.stage);
+  }
+  return groups.sort((a, b) => Number(Boolean(b.setup)) - Number(Boolean(a.setup)) || a.jobs.at(-1)!.id - b.jobs.at(-1)!.id);
 }
 
 const startedAt = (job: RolloutJob) => Date.parse(job.started_at ?? '');
@@ -394,7 +425,7 @@ export function phaseTrack(record: AutoDeployRecord | undefined, rollout: Rollou
     const state = group.jobs.length && done === group.jobs.length ? 'done' : group.jobs.some(job => job.status === 'in_progress' || job.status === 'completed') ? 'running' : 'waiting';
     const ends = group.jobs.map(job => Date.parse(job.completed_at ?? '')).filter(Number.isFinite);
     const label = group.keys.map(key => /phase[-_ ]?\d+/i.exec(key)?.[0]).find(Boolean) ?? group.keys[0];
-    const name = group.setup ? 'build' : repeated(group.stage) && label ? `${group.stage} · ${label}` : group.stage || group.keys[0] || 'jobs';
+    const name = group.setup ? 'build' : group.label ? group.stage.includes(group.label) ? group.label : `${group.stage} · ${group.label}` : repeated(group.stage) && label ? `${group.stage} · ${label}` : group.stage || group.keys[0] || 'jobs';
     const phase: TrackPhase = { name, state, ...(state === 'done' && ends.length ? { at: Math.max(...ends) } : {}), jobs: { done, total: group.jobs.length }, jobIds: [...ids].sort((a, b) => a - b) };
     if (group.setup) return { ...phase, noCheck: true };
     if (plain) {

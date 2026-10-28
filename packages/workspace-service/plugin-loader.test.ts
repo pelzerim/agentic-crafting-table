@@ -88,7 +88,7 @@ test('a throwing or hanging activation turns only that package off, with a reaso
 
 test('an incompatible API range or changed file after install is refused at load', () => fixture(async directory => {
   const failures = (await loadBuilds([{ id: 'sample', commit: 'dev', dev: true, root: variant(directory, 'future', 'export default { activate() {} };', { apiRange: '^2.0.0' }) }], { service: true })).failures;
-  assert.match(failures[0].reason, /needs plugin API \^2\.0\.0; this app provides 1\.2\.0/);
+  assert.match(failures[0].reason, /needs plugin API \^2\.0\.0; this app provides 1\.3\.0/);
   const repository = await samplePluginRepository(directory);
   const installed = await approve(directory, async plugins => plugins.install({ id: 'sample', commit: (await plugins.prepare({ url: repository.url, ref: 'v1.0.0' })).commit })) as { current: { commit: string } };
   writeFileSync(join(directory, 'plugins/store/sample', installed.current.commit, 'dist/definitions.mjs'), 'export default { definitions: [] };');
@@ -138,9 +138,9 @@ test('a package settings preset applies at startup to settings saved before pack
 }));
 
 /** The sample package with one settings preset for the built-in /review settings. */
-function presetVariant(directory: string, values: Record<string, unknown>, name = 'preset') {
+function presetVariant(directory: string, values: Record<string, unknown>, name = 'preset', packageId = 'github.review-run') {
   const folder = variant(directory, name, 'export default { activate() {} };', { contributes: { ...JSON.parse(readFileSync(join(sample, 'act-plugin.json'), 'utf8')).contributes, settingsPresets: ['sample.review-workflow'] } });
-  const definitions = readFileSync(join(folder, 'dist/definitions.mjs'), 'utf8').replace('agentGuide:', `settingsPresets: [{ id: 'sample.review-workflow', packageId: 'github.review-run', values: ${JSON.stringify(values)} }],\n  agentGuide:`);
+  const definitions = readFileSync(join(folder, 'dist/definitions.mjs'), 'utf8').replace('agentGuide:', `settingsPresets: [{ id: 'sample.review-workflow', packageId: '${packageId}', values: ${JSON.stringify(values)} }],\n  agentGuide:`);
   writeFileSync(join(folder, 'dist/definitions.mjs'), definitions);
   return folder;
 }
@@ -160,6 +160,15 @@ test('a package settings preset applies when the package first loads in a fresh 
   await approve(directory, async plugins => plugins.remove('sample'));
   service = await startWorkspaceService(directory, undefined, undefined, options);
   try { assert.deepEqual(service.store.readSettings().value.plugins['github.review-run'], values, 'removing the package leaves the applied values'); } finally { await service.close(); }
+}));
+
+test('a package preset for the app sets the working animal when the package first loads', () => fixture(async directory => {
+  let service = await startWorkspaceService(directory, undefined, undefined, options);
+  assert.equal(service.store.readSettings().value.workingMark.animal, 'sheep');
+  await service.close();
+  await approve(directory, async plugins => { await plugins.prepareFolder(presetVariant(directory, { workingMark: { animal: 'raccoon', helpers: 'kits' } }, 'app-preset', 'app')); return plugins.install({ id: 'sample', commit: 'dev' }); });
+  service = await startWorkspaceService(directory, undefined, undefined, options);
+  try { assert.deepEqual(service.store.readSettings().value.workingMark, { animal: 'raccoon', helpers: 'kits' }); } finally { await service.close(); }
 }));
 
 test('the breaker pauses a package after repeated failures, ignores cancellations and recovers after a success', async () => {

@@ -1,6 +1,6 @@
 # Plugin SDK
 
-The frozen contract between Agentic Crafting Table and plugin packages, plugin API `1.2.0`.
+The frozen contract between Agentic Crafting Table and plugin packages, plugin API `1.3.0`.
 Start with the [authoring guide](../../docs/plugins/authoring.md) and the
 [example plugin](../../examples/plugins/reading-list); this page is the API map.
 
@@ -34,7 +34,9 @@ export default { activate(host: RendererHost) { host.views(typeId, { mountDetail
 ## Compatibility
 
 `apiRange` in `act-plugin.json` is a caret range checked with `apiSatisfies`. 1.1 added settings
-presets; packages built for `^1.0.0` still load. `sdk.test.ts` pins the exported surface, so a
+presets; 1.3 lets a preset target the app itself (`packageId: 'app'`) for appearance settings, today only
+`workingMark`, applied once per workspace while the setting still has its default. Packages built for
+`^1.0.0` still load. `sdk.test.ts` pins the exported surface, so a
 breaking change to this package fails the app's tests.
 
 ## Commands

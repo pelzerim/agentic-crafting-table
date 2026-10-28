@@ -1192,7 +1192,8 @@ tufts alone on a card too small for one) with reduced motion and in Undermap.
 **Working animal:**
 Settings → Map → Working chooses the animal for every card's mark: **Sheep** (default) or
 **Raccoon** (`workingMark.animal`). A change applies to every card at once, without a reload,
-and is part of the settings MCP reads and writes. The raccoon is 9×4 pixels in three tones,
+and is part of the settings MCP reads and writes. A plugin package may preset it (target `app`,
+plugin API 1.3): once per workspace, only while it is still the default. The raccoon is 9×4 pixels in three tones,
 its grey fur (legs included), a dark band over the eyes with dark tail rings, and pale ear
 tips and muzzle; light note papers draw it dark like the sheep. Each pose keeps the sheep's
 beat, place and words: it forages the tufts with the same bite and regrowth, its swathe two

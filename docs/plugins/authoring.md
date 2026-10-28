@@ -116,7 +116,7 @@ act-plugin-acme/
     "settingsPages": ["acme.item"],              // item types whose settings page shows your section
     "actionContributions": { "github.pull-request": ["acme.tag"] },   // actions on another package's type
     "agentGuide": ["acme.guide"],                // step 10
-    "settingsPresets": ["acme.defaults"],        // values for another package's settings (API 1.1, 1.2)
+    "settingsPresets": ["acme.defaults"],        // values for another package's settings (API 1.1, 1.2) or the app's (1.3)
     "css": ["dist/renderer.css"]                 // step 13
   },
   "legacyIds": []                    // ids outside the namespace that were saved before this package existed
@@ -411,6 +411,12 @@ update), to settings that are unset or still at their defaults; a value the pers
 and a preset id never applies twice, so change the id to ship new values. A preset for a package that
 is not loaded yet waits until it is. Removing your package leaves the applied values in place.
 
+**App presets (API 1.3).** A preset with `packageId: 'app'` sets app settings instead, limited to
+appearance: today `workingMark` (`{ animal: 'sheep' | 'raccoon', helpers: 'kits' | 'same' }`, the
+animal that walks a working agent's card). It follows the same rules: once per workspace, only while
+the setting has its default, and a person's later choice in Settings stays. Any other app setting is
+refused when the package loads.
+
 **Account types.** For items that read with a person's account, register a connection provider
 and declare it in `contributes.accountTypes`:
 
@@ -693,10 +699,11 @@ a new fetch of a tag and a new approval; **Roll back** returns to one of the thr
 
 ## Step 20. Stay compatible
 
-- `apiRange` is a caret range of the host plugin API (`PLUGIN_API`, currently `1.2.0`):
+- `apiRange` is a caret range of the host plugin API (`PLUGIN_API`, currently `1.3.0`):
   `^1.0.0` loads on any 1.x host; `^1.1.0` needs 1.1 or later (settings presets); `^1.2.0` needs a host
-  that applies presets to every workspace, not only to ones with older settings. Use the lowest
-  minor whose features you use.
+  that applies presets to every workspace, not only to ones with older settings; `^1.3.0` needs a host
+  that accepts presets for the app itself (`packageId: 'app'`, appearance settings such as
+  `workingMark`). Use the lowest minor whose features you use.
 - On a host whose major API differs, the package does not load and its items stay on the map as
   placeholders with their data. They come back when a compatible build is installed.
 - Never rename item type ids, field keys, operation ids or tool names after a release. If you

@@ -13,7 +13,7 @@ const manifest = (overrides: Record<string, unknown> = {}) => ({
 const widget = defineResourcePlugin({ id: 'acme.widget', apiVersion: 1, schemaVersion: 1, name: 'Widget', icon: 'box', preferredView: 'inspector', fields: { name: { label: 'Name', kind: 'text', required: true } } });
 
 test('the exported SDK surface is pinned for API 1', () => {
-  assert.equal(PLUGIN_API, '1.2.0');
+  assert.equal(PLUGIN_API, '1.3.0');
   assert.deepEqual(Object.keys(sdk).sort(), ['PLUGIN_API', 'PLUGIN_DEFINITION_API_VERSION', 'apiSatisfies', 'defineResourcePlugin', 'fieldDefaults', 'fieldsSchema', 'indicatorsSchema', 'ownsIdentifier', 'parsePluginManifest', 'pluginManifestSchema', 'validateFields', 'webLinkUrl']);
   assert.deepEqual(Object.keys(views).sort(), ['PIXEL_GLYPHS', 'choiceInput', 'emptyState', 'formatWhen', 'freshnessCopy', 'freshnessStamp', 'glyphPath', 'loadResourceChoices', 'mountProviderRead', 'mountViewHeader', 'openResourceChoices', 'pixelGlyphElement', 'renderMarkdown', 'sessionChip', 'skeleton', 'staleNotice', 'statusChip', 'timeElement', 'whenDate', 'workflowReviewChip']);
 });
@@ -21,7 +21,7 @@ test('the exported SDK surface is pinned for API 1', () => {
 test('manifests parse with defaults and reject unsafe or incompatible packages', () => {
   const parsed = parsePluginManifest(manifest({ contributes: { itemTypes: ['acme.widget'] } }));
   assert.deepEqual(parsed.contributes.runtimeOperations, []); assert.deepEqual(parsed.legacyIds, []);
-  assert.throws(() => parsePluginManifest(manifest({ apiRange: '^2.0.0' })), /needs plugin API \^2\.0\.0; this app provides 1\.2\.0/);
+  assert.throws(() => parsePluginManifest(manifest({ apiRange: '^2.0.0' })), /needs plugin API \^2\.0\.0; this app provides 1\.3\.0/);
   assert.throws(() => parsePluginManifest(manifest({ apiRange: '>=1' })), /caret API range/);
   assert.throws(() => parsePluginManifest(manifest({ entries: { definitions: '../outside.mjs' } })), /relative path/);
   assert.throws(() => parsePluginManifest(manifest({ entries: { definitions: '/abs.mjs' } })), /relative path/);

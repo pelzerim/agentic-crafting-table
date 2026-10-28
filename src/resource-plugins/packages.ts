@@ -3,6 +3,7 @@ import type { PluginManifest } from '../../packages/plugin-sdk/manifest.ts';
 import type { AgentGuideSnippet, McpToolContribution, PluginDefinitionsModule, PluginPackage, RuntimeOperationDeclaration, SettingsPreset } from '../../packages/plugin-sdk/host.ts';
 import { ResourcePluginRegistry } from './registry.ts';
 import { fieldDefaults } from './define.ts';
+import { APP_PRESET_TARGET, checkAppSettingsPreset } from '../../packages/core/settings.ts';
 
 const difference = (left: readonly string[], right: readonly string[]) => left.filter(id => !right.includes(id));
 function sameIds(pluginId: string, kind: string, declared: readonly string[], registered: readonly string[]) {
@@ -64,9 +65,11 @@ export class PluginPackageRegistry {
   settingsPresets(): (SettingsPreset & { owner: string })[] {
     return this.list().flatMap(entry => (entry.module.settingsPresets ?? []).map(preset => ({ ...preset, owner: entry.manifest.id })));
   }
-  /** Whether a preset can apply now: false while its target package is not registered (it waits for it);
+  /** Whether a preset can apply now: a preset for the app (target `app`) when its settings are allowed; else false while its target
+   * package is not registered (it waits for it);
    * throws when the target has no settings, or does not declare or refuses the preset's values. */
   checkSettingsPreset(preset: SettingsPreset & { owner: string }): boolean {
+    if (preset.packageId === APP_PRESET_TARGET) { checkAppSettingsPreset(preset); return true; }
     const target = this.packages.get(preset.packageId);
     if (!target) return false;
     const fields = target.module.settings?.fields;

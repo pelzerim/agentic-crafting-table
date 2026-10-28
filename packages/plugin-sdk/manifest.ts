@@ -1,7 +1,7 @@
 import * as z from 'zod/v4';
 
 /** The host plugin API. A package declares the range it was built against in `apiRange`. */
-export const PLUGIN_API = '1.2.0';
+export const PLUGIN_API = '1.3.0';
 /** Schema version of a single item definition (`ResourcePluginDefinition.apiVersion`). */
 export const PLUGIN_DEFINITION_API_VERSION = 1;
 

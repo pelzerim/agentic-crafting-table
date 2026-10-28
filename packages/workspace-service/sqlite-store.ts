@@ -1,4 +1,4 @@
-import { settingsSchema, settingsWriteSchema } from '../core/settings.ts';
+import { checkAppSettingsPreset, settingsSchema, settingsWriteSchema } from '../core/settings.ts';
 import { DEFAULT_MAP_DASHBOARDS, FORMER_DASHBOARD_ZOOM } from '../../src/graph/project-dashboard.ts';
 import { validateMapSettings } from '../core/item-map-sizes.ts';
 import { createResourcePluginRegistry } from '../../src/resource-plugins/builtins.ts';
@@ -753,6 +753,21 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       this.mergePluginDefaults(row, preset.packageId, preset.values, defaults);
       this.db.prepare('INSERT INTO provider_observations(scope, revision, body) VALUES (?, ?, ?) ON CONFLICT(scope) DO UPDATE SET revision = excluded.revision, body = excluded.body')
         .run(scope, recorded.revision + 1, JSON.stringify({ applied: true }));
+      return true;
+    });
+  }
+  /** Once per workspace, a package's preset for app settings: each takes the preset's value only while it still has its default. */
+  applyAppSettingsPreset(preset: { id: string; values: Record<string, unknown> }): boolean {
+    checkAppSettingsPreset(preset);
+    const scope = `settings-preset:${preset.id}`;
+    return this.transaction(() => {
+      if (this.observation(scope).revision) return false;
+      const row = this.db.prepare('SELECT revision, body FROM app_settings WHERE id = 1').get(), defaults = settingsSchema.parse({}) as Record<string, unknown>;
+      const body = row ? decode<Record<string, unknown>>(row.body as string) : { ...defaults };
+      const untouched = Object.fromEntries(Object.entries(preset.values).filter(([key]) => canonical(body[key] ?? defaults[key]) === canonical(defaults[key])));
+      const value = settingsSchema.parse({ ...body, ...untouched });
+      this.db.prepare('INSERT INTO app_settings(id, revision, body) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET revision = excluded.revision, body = excluded.body').run(Number(row?.revision ?? 0) + 1, JSON.stringify(value));
+      this.db.prepare('INSERT INTO provider_observations(scope, revision, body) VALUES (?, 1, ?)').run(scope, JSON.stringify({ applied: true }));
       return true;
     });
   }

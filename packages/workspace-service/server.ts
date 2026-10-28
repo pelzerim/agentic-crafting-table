@@ -13,6 +13,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { WorkspaceControl } from '../core/control.ts';
 import type { CommandResult, WorkspaceState } from '../core/control.ts';
 import { revisionGuard } from '../core/revision-policy.ts';
+import { APP_PRESET_TARGET } from '../core/settings.ts';
 import { applyAtHead } from './apply-at-head.ts';
 import { SqliteStore } from './sqlite-store.ts';
 import { prepareWorkspace } from './paths.ts';
@@ -91,12 +92,12 @@ import { UpdateChecker, tagsSource } from './updates.ts';
 import type { UpdateCheckerOptions } from './updates.ts';
 import { STANDUP_ENABLED } from '../core/standup.ts';
 
-/** Each package's settings presets, once per workspace, when the package loads; a preset whose target
+/** Each package's settings presets, once per workspace, when the package loads (a preset for the app sets allowed app settings); a preset whose target
  * package is not loaded waits for a later start, and one its target refuses is skipped and logged. */
 function applySettingsPresets(store: SqliteStore, registry: ResourcePluginRegistry) {
   const packages = createPluginPackageRegistry();
   for (const preset of packages.settingsPresets()) {
-    try { if (packages.checkSettingsPreset(preset)) store.applySettingsPreset(preset, registry.pluginSettings()[preset.packageId]); }
+    try { if (packages.checkSettingsPreset(preset)) preset.packageId === APP_PRESET_TARGET ? store.applyAppSettingsPreset(preset) : store.applySettingsPreset(preset, registry.pluginSettings()[preset.packageId]); }
     catch (error) { console.error(`Settings preset ${preset.id} of ${preset.owner} was not applied: ${(error as Error).message}`); }
   }
 }
