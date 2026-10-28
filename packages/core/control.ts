@@ -1,5 +1,5 @@
 import { TODO_CONTEXT_LIMIT, checklistContext, checklistContextFields, groupWorkspaceTodos, mapTodoContext, mapTodoContextFields, mapTodoNode, todoEntries, todoList } from '../../src/graph/todos.ts';
-import { indicatorsSchema } from '../../src/resource-plugins/indicators.ts';
+import { cardPipsSchema, indicatorsSchema } from '../../src/resource-plugins/indicators.ts';
 import { mapDimensionsSchema, resolveMapSize } from './item-map-sizes.ts';
 import type { MapLayout } from '../../src/graph/snap.ts';
 import { snapPosition } from '../../src/graph/snap.ts';
@@ -62,6 +62,8 @@ const node = z.object({
   attentionAt: z.iso.datetime().optional(),
   attentionEvents: z.record(id, id).optional(),
   indicators: indicatorsSchema.optional(),
+  /** Card pips the item's type presentation draws, with their count line. */
+  pips: cardPipsSchema.optional(),
   activityAt: z.iso.datetime().optional(),
   helpers: z.number().int().positive().max(999).optional(),
   waiting: z.literal(true).optional(),
@@ -151,7 +153,7 @@ const otherCommands = [
   z.object({ type: z.literal('attention.set'), id, source: id, reason: attentionReason.nullable(), note: attentionNoteInput.optional(), eventId: id.optional() }),
   z.object({ type: z.literal('attention.acknowledge'), id, versions: z.record(id, z.number().int().nonnegative()) }),
   z.object({ type: z.literal('attention.restore'), id, versions: z.record(id, z.number().int().nonnegative()) }),
-  z.object({ type: z.literal('node.update'), id, indicators: indicatorsSchema.optional(), title: title.optional(), summary: z.string().max(4000).optional(), lastLine: z.string().min(1).max(200).nullable().optional(), workingDirectory: z.string().max(4096).optional(), color: projectColorSchema.optional(), activity: activity.optional(), attention: attention.optional(), attentionNote: attentionNoteInput.optional(),
+  z.object({ type: z.literal('node.update'), id, indicators: indicatorsSchema.optional(), pips: cardPipsSchema.nullable().optional(), title: title.optional(), summary: z.string().max(4000).optional(), lastLine: z.string().min(1).max(200).nullable().optional(), workingDirectory: z.string().max(4096).optional(), color: projectColorSchema.optional(), activity: activity.optional(), attention: attention.optional(), attentionNote: attentionNoteInput.optional(),
     helpers: z.number().int().min(0).max(999).optional().describe('How many helpers (subagents, teammates) the item has busy right now; 0 clears it. Kept only while the item is working.'),
     waiting: z.boolean().optional().describe('The item itself only waits on its busy helpers. Kept only while it is working and has helpers.'),
     pose: z.enum([...POSES, 'none']).optional().describe('What the item itself is doing or held by; none clears it. Kept only while its activity and attention allow it.'),
@@ -277,11 +279,12 @@ const HUMAN_ONLY_COMMANDS: ReadonlySet<string> = new Set<WorkspaceCommand['type'
 export function agentCommandRefusal(command: WorkspaceCommand): string | undefined {
   return HUMAN_ONLY_COMMANDS.has(command.type) || (command.type === 'item.add' || command.type === 'item.create') && command.hidden ? humanOnlyMessage : undefined;
 }
+export const MAXIMUM_COMMANDS_PER_ENVELOPE = 100;
 export const envelopeSchema = z.object({
   commandId: id,
   expectedRevision: z.number().int().nonnegative(),
   actor: z.object({ kind: z.enum(['user', 'agent', 'provider', 'system']), id }),
-  commands: z.array(commandSchema).min(1).max(100),
+  commands: z.array(commandSchema).min(1).max(MAXIMUM_COMMANDS_PER_ENVELOPE),
 });
 export type CommandEnvelope = z.infer<typeof envelopeSchema>;
 /** `alreadyOnMap` is present when an agent's item command resolved to a node its project already showed. */
@@ -548,7 +551,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           const created = node.parse({ id: command.id, title: record.title, resourceId: record.id, projectId: context.projectId, position: command.position ?? { x: 0, y: 0 }, acceptsContext: resolved.plugin.acceptsContext === true,
             ...(command.hidden && !shown ? { hiddenAt: new Date().toISOString(), hideLabel: command.hidden.label } : {}),
             ...(observed ? { activity: observed.activity, attention: observed.attention, attentionNote: observed.attentionNote, attentionSources: observed.attentionSources, attentionNotes: observed.attentionNotes, attentionVersion: observed.attentionVersion,
-              attentionSeenVersion: observed.attentionSeenVersion, attentionAt: observed.attentionAt, attentionEvents: observed.attentionEvents, indicators: observed.indicators, summary: observed.summary, activityAt: observed.activityAt } : {}) });
+              attentionSeenVersion: observed.attentionSeenVersion, attentionAt: observed.attentionAt, attentionEvents: observed.attentionEvents, indicators: observed.indicators, pips: observed.pips, summary: observed.summary, activityAt: observed.activityAt } : {}) });
           if (!shown) place(created, anchors ? itemPlacement(state.nodes, footprint, context, footprint(created), command.position) : command.position, command.position);
           for (const entry of command.links ?? []) {
             const wanted = itemLinkRecord(shown?.id ?? command.id, entry), taken = state.links.find(saved => saved.id === wanted.id);
@@ -590,7 +593,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           state.resources = state.resources.map(r => r.id === record.id ? converted : r);
           for (const alias of state.nodes.filter(node => node.resourceId === record.id)) {
             // The old type's observations do not describe the new one; its first read supplies them.
-            alias.summary = ''; alias.activity = 'unknown'; delete alias.indicators;
+            alias.summary = ''; alias.activity = 'unknown'; delete alias.indicators; delete alias.pips;
             alias.acceptsContext = plugin.acceptsContext === true;
             if (alias.mapSize && !plugin.mapSizes?.sizes[alias.mapSize]) delete alias.mapSize;
             if (!plugin.todoSupport) { delete alias.inTodoList; delete alias.todoLabel; }
@@ -628,6 +631,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           const target = find(command.id);
           if (command.workingDirectory !== undefined && target.resourceId) throw new Error('Working directory defaults belong to projects; existing session directories are immutable');
           if (command.lastLine === null) delete target.lastLine; else if (command.lastLine !== undefined) target.lastLine = command.lastLine;
+          if (command.pips === null) delete target.pips; else if (command.pips !== undefined) target.pips = command.pips;
           if (command.color !== undefined && target.resourceId) throw new Error('Neighborhood colors belong to projects');
           if (command.color !== undefined) target.color = command.color.toLowerCase();
           if (command.attention && command.attention !== 'none' && command.attention !== target.attention) { target.attentionVersion = (target.attentionVersion ?? 0) + 1; target.attentionAt = new Date().toISOString(); }

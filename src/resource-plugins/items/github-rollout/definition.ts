@@ -1,5 +1,6 @@
 import { defineResourcePlugin } from '../../define.ts';
 import type { JsonObject } from '../../types.ts';
+import { AUTO_DEPLOY_OPERATION } from './auto-deploy.ts';
 
 export function rolloutInput(input: string): JsonObject | undefined {
   try {
@@ -23,11 +24,12 @@ export const githubRollout = defineResourcePlugin({
   mapSizes: { defaultSize: 'medium', sizes: {
     small: { width: 200, height: 60, summaryLines: 0, description: 'Workflow title and rollout state.' },
     medium: { width: 200, height: 84, summaryLines: 1, description: 'Workflow title, rollout state and job progress.' },
-    large: { width: 280, height: 132, summaryLines: 2, fields: ['repo', 'branch'], fieldLines: 1, description: 'Status, progress, repository and branch filter.' },
+    large: { width: 280, height: 132, summaryLines: 2, fields: ['repo', 'branch'], fieldLines: 1, presentationPips: true, description: 'Status, progress, phases, repository and branch filter.' },
   } },
   manualAcknowledge: true,
   webLink: { label: 'Open on GitHub', template: ['https://github.com/{owner}/{repo}/actions/runs/{runId}', 'https://github.com/{owner}/{repo}/actions/workflows/{workflow}?query=branch%3A{branch}', 'https://github.com/{owner}/{repo}/actions/workflows/{workflow}'] },
   contextMenu: [{ id: 'validate', label: 'Trigger validation', children: [], choices: { load: 'options', apply: 'trigger', runtime: 'rollout.validation', loadingLabel: 'Finding connected agents…' } },
+    { id: 'autoDeploy', label: 'Auto deploy from here…', children: [], choices: { load: 'options', apply: 'set', runtime: AUTO_DEPLOY_OPERATION, loadingLabel: 'Checking auto deploy…' } },
     { id: 'approve', label: 'Approve', children: [], choices: { load: 'rollout.approval.options', apply: 'rollout.approve', loadingLabel: 'Checking approvals…', irreversible: true } }], connectionProvider: 'github', context: { fields: ['owner', 'repo', 'runId', 'workflow', 'branch'] },
   providerIdentity: data => `${String(data.owner).toLowerCase()}/${String(data.repo).toLowerCase()}/${data.runId ? `run/${data.runId}` : `workflow/${data.workflow}/branch/${data.branch ?? ''}`}`,
   matchInput(input) { const data = rolloutInput(input); return data ? { title: `${data.owner}/${data.repo} rollout`, data } : undefined; },

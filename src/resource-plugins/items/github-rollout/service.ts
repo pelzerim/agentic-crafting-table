@@ -3,20 +3,23 @@ import { GitHubRolloutClient } from '../../../../packages/provider-runtime/githu
 import { githubCredentials, githubRolloutApprovalTransport } from '../../../../packages/provider-runtime/github-transport.ts';
 import { RolloutValidations } from '../../../../packages/workspace-service/rollout-validation.ts';
 import type { PresentationHooks, ServiceModule } from '../../../../packages/plugin-sdk/host.ts';
-import { rolloutIndicators } from './presentation.ts';
+import { rolloutCardPips, rolloutIndicators } from './presentation.ts';
 import { githubRollout } from './definition.ts';
 import { stageRulesSetting } from './stages.ts';
+import type { StageRule } from './stages.ts';
 import { AutoDeploys, autoDeployArmed } from '../../../../packages/workspace-service/auto-deploy.ts';
 import { AUTO_DEPLOY_OPERATION } from './auto-deploy.ts';
 
-/** Validation verdicts and recorded events drawn on the rollout's map card. */
-export const rolloutPresentation: PresentationHooks = {
+/** Validation verdicts and recorded events drawn on the rollout's map card, and its phase pips read with these stage rules. */
+export const rolloutPresentationWith = (stageRules: () => readonly StageRule[]): PresentationHooks => ({
   indicators: (resource, snapshot, store) => rolloutIndicators(snapshot, store.rolloutValidations({ rolloutResourceId: resource.id }), store.rolloutEvents(resource.id), Date.now()),
-};
+  pips: (resource, snapshot, store) => rolloutCardPips(snapshot, store.rolloutValidations({ rolloutResourceId: resource.id }), store.rolloutEvents(resource.id), stageRules()),
+});
+export const rolloutPresentation = rolloutPresentationWith(() => []);
 
 const service: ServiceModule = {
   activate(host) {
-    host.presentation(githubRollout.id, rolloutPresentation);
+    host.presentation(githubRollout.id, rolloutPresentationWith(() => stageRulesSetting(host.settings().stageRules)));
     host.onWorkspace(workspace => {
       const validations = new RolloutValidations(workspace.store, workspace.control, workspace.resources, workspace.terminals, workspace.broadcast, { allowed: workspace.allowed, starter: workspace.agents, stageRules: () => stageRulesSetting(host.settings().stageRules), deploying: id => autoDeployArmed(workspace.storage, id) });
       host.runtimeOperation('rollout.validation', context => context.execute(() => validations.run(context.nodeId, context.arguments)));

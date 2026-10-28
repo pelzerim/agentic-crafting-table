@@ -9,13 +9,17 @@ import { renderMarkdown } from '../../markdown-view.ts';
 import { formatWhen } from '../../format-when.ts';
 import { PIXEL_GLYPHS, pixelGlyphElement } from '../../pixel-glyphs.ts';
 import { mountViewHeader, staleNotice } from '../../view-header.ts';
-import { AUTO_DEPLOY_OPERATION } from './auto-deploy.ts';
-import { approvalAttempt, approvalOutcome, approvalUnconfirmed, rolloutActions, rolloutEmptyHint, rolloutTone, validationAgents } from './presentation.ts';
+import { AUTO_DEPLOY_OPERATION, takeoverRefusal } from './auto-deploy.ts';
+import type { AutoDeployEvent, PhaseTrack } from './auto-deploy.ts';
+import { approvalAttempt, approvalOutcome, approvalUnconfirmed, gateJoin, gateNote, phaseCell, pipState, rolloutActions, rolloutEmptyHint, rolloutTone, trackCount, trackFold, validationAgents, withAutoDeploy } from './presentation.ts';
 import type { ApprovalAttempt, ApprovalOutcome, RolloutActionId, ValidationAgents } from './presentation.ts';
 
 type Observation = RolloutObservation & { state: string; approvable?: boolean };
 interface ListData { validations: ValidationView[]; events: RolloutEvent[] }
 type Filter = 'all' | 'validations' | 'jobs' | 'problems';
+interface AutoDeployStatus { state: string; line?: string; pullNodeId?: string; pullNumber?: number; track?: PhaseTrack; next?: string; events?: AutoDeployEvent[] }
+/** A lane the person scrolled stays where they left it this long before it follows the current phase again. */
+const LANE_HOLD_MS = 10_000;
 
 const GRIDS: Record<string, readonly string[]> = PIXEL_GLYPHS[8];
 const VERDICT_GLYPH: Record<string, [string, string]> = { passed: ['check', 'Passed'], concerns: ['bang', 'Concerns'], failed: ['cross', 'Failed'], inconclusive: ['question', 'Inconclusive'],
@@ -111,23 +115,44 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
   const reuseNote = el('div', 'rv-reuse'); reuseNote.setAttribute('role', 'status'); reuseNote.hidden = true;
   const timeline = el('div', 'rv-timeline', el('div', 'rv-toolbar', filters), reuseNote, feed);
   const body = el('div', 'rv-body', rail, timeline, tip), ladder = el('section', 'rv-queue'); ladder.setAttribute('aria-label', 'Rollout queue'); ladder.hidden = true;
-  const deployText = el('span'), deployPull = button('Open pull request', 'rv-auto-deploy-open'), deployLine = el('p', 'rv-auto-deploy', deployText, deployPull);
-  deployLine.setAttribute('role', 'status'); deployLine.hidden = true;
-  root.append(head, deployLine, error, body, ladder); container.append(root);
-  /** The pull request whose auto deploy follows this rollout, and its step. */
+  const track = el('section', 'rv-track'); track.setAttribute('aria-label', 'Phases'); track.hidden = true;
+  root.append(head, track, error, body, ladder); container.append(root);
+  /** The auto deploy following this rollout: its step, phase track and what it did. Absent, or after Stop, there is none. */
+  let autoDeploy: AutoDeployStatus | undefined;
+  /** The phase track the status returned: auto deploy's while an armed or halted record follows the rollout, else the rollout's own. */
+  let phases: PhaseTrack | undefined;
   async function readAutoDeploy() {
-    const value = await services.runAction(AUTO_DEPLOY_OPERATION, { operation: 'status' }).catch(() => undefined) as { state?: string; line?: string; pullNodeId?: string; pullTitle?: string } | undefined;
+    const value = await services.runAction(AUTO_DEPLOY_OPERATION, { operation: 'status' }).catch(() => undefined) as AutoDeployStatus | undefined;
     if (disposed) return;
-    deployLine.hidden = !value?.line || value.state === 'stopped';
-    deployLine.dataset.state = value?.state ?? 'off';
-    deployText.textContent = value?.line ? `Under auto deploy from ${value.pullTitle ?? 'its pull request'} · ${value.line.replace(/^Auto deploy · /, '')}` : '';
-    deployPull.onclick = () => { if (value?.pullNodeId) services.openResource(value.pullNodeId); };
+    autoDeploy = value?.state && value.state !== 'off' && value.state !== 'stopped' ? value : undefined;
+    phases = value?.track;
+    renderTrack();
   }
   const header = mountViewHeader(document, services, root, { chip: status, menu: 'Actions', onRefresh: () => { void refreshAll(true); } });
-  header.actions.append(...Object.values(controls)); header.update({ meta: [repository] });
+  const deployEntry = button('Auto deploy from here…'); deployEntry.dataset.menuGroup = 'auto-deploy'; deployEntry.setAttribute('aria-haspopup', 'menu'); deployEntry.setAttribute('aria-expanded', 'false'); deployEntry.disabled = true;
+  deployEntry.onclick = () => { if (autoDeploy?.state === 'armed') void stopAutoDeploy(); else openAutoDeploy(deployEntry); };
+  header.actions.append(...Object.values(controls), deployEntry); header.update({ meta: [repository] });
+  /** Asks in place, with what happens to the phases that already ran, then arms auto deploy on this rollout. */
+  const openAutoDeploy = (trigger: HTMLButtonElement) => {
+    if (!active || disposed) return;
+    if (trigger.getAttribute('aria-expanded') === 'true') { closeMenu?.(); return; }
+    closeMenu?.();
+    closeMenu = openResourceChoices(trigger, services, { load: 'options', apply: 'set', runtime: AUTO_DEPLOY_OPERATION }, () => refreshAll(true), report,
+      { menu: 'Auto deploy', loading: 'Checking auto deploy…', pending: 'Starting auto deploy…', only: 'arm', reportLoad: true });
+  };
+  const stopAutoDeploy = async () => {
+    try { await services.runAction(AUTO_DEPLOY_OPERATION, { operation: 'set', value: 'stop', from: 'here', sourceResourceId: resource.id, requestId: crypto.randomUUID() }); report(''); }
+    catch (failure) { report((failure as Error).message); }
+    await refreshAll(true);
+  };
 
   let active = false, disposed = false, generation = 0, loading = false, rendered = '', snapshot: ResourceSnapshot | undefined, list: ListData | undefined;
   let filter: Filter = 'all', jobFilter: string | undefined, attempt: number | undefined, picked: number | undefined;
+  /** A phase of the track the rail and the timeline are filtered to, in place of a job filter: its name and its jobs. */
+  let phaseFilter: { name: string; jobIds: number[] } | undefined;
+  /** What the phase filter matches in the timeline: its jobs by name, and the stages of their environments. */
+  let phaseScope: { names: Set<string>; stages: Set<string>; environments: string[] } | undefined;
+  const filterJob = (name: string | undefined) => { jobFilter = name; phaseFilter = undefined; };
   const expanded = new Map<string, boolean>(), shown = new Set<string>();
   let timer: ReturnType<typeof setTimeout> | undefined, listTimer: ReturnType<typeof setInterval> | undefined;
   let closeMenu: (() => void) | undefined;
@@ -141,7 +166,7 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
   /** Validation requests answered by a chat validation already covering the stage show it; one that was sent clears that. */
   const validating: Pick<ResourceViewServices, 'runAction'> = { runAction: async (action, input) => {
     const result = await services.runAction(action, input) as { attached?: unknown; sent?: unknown; validationId?: unknown } | undefined;
-    if (action === validation.runtime && result?.attached === true && typeof result.validationId === 'string') { attached = result.validationId; reveal = true; jobFilter = undefined; filter = 'all'; }
+    if (action === validation.runtime && result?.attached === true && typeof result.validationId === 'string') { attached = result.validationId; reveal = true; filterJob(undefined); filter = 'all'; }
     else if (action === validation.runtime && result?.sent === true) attached = undefined;
     return result as Awaited<ReturnType<ResourceViewServices['runAction']>>;
   } };
@@ -210,7 +235,7 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
     approve.scrollIntoView({ block: 'nearest' }); approve.focus();
   };
   status.onclick = () => { if (!status.disabled) showApproval(); };
-  root.addEventListener('keydown', event => { if (event.key === 'Escape' && jobFilter) { event.preventDefault(); event.stopPropagation(); jobFilter = undefined; render(true); } });
+  root.addEventListener('keydown', event => { if (event.key === 'Escape' && (jobFilter || phaseFilter)) { event.preventDefault(); event.stopPropagation(); filterJob(undefined); render(true); } });
 
   /** The rail starts folded; opening it is saved in this item's view state. A narrow view folds it without saving, until it is opened at that width. */
   let railSaved = services.viewState?.().jobsRail !== 'open', narrow = false, openedNarrow = false;
@@ -285,14 +310,18 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
       control.disabled = !!reason || action.id === 'validate' && starting; control.toggleAttribute('data-primary', action.primary);
       if (reason) control.title = reason; else control.removeAttribute('title');
     }
-    const key = JSON.stringify([value, list, filter, jobFilter, picked, [...expanded], [...shown], Math.floor(now / 60_000), snapshot.indicators?.[0]?.label, list?.validations.map(view => liveness(view, now).quiet), attached]);
+    const armed = autoDeploy?.state === 'armed', refusal = armed ? undefined : takeoverRefusal({ run: value.run ? { id: value.run.id, attempt: value.run.run_attempt, status: value.run.status, conclusion: value.run.conclusion, headSha: value.run.head_sha } : undefined });
+    deployEntry.textContent = armed ? 'Stop auto deploy' : 'Auto deploy from here…'; if (armed) deployEntry.removeAttribute('aria-haspopup'); else deployEntry.setAttribute('aria-haspopup', 'menu');
+    deployEntry.disabled = Boolean(refusal);
+    if (refusal) deployEntry.title = refusal; else deployEntry.removeAttribute('title');
+    const key = JSON.stringify([value, list, filter, jobFilter, phaseFilter, picked, [...expanded], [...shown], Math.floor(now / 60_000), snapshot.indicators?.[0]?.label, list?.validations.map(view => liveness(view, now).quiet), attached, autoDeploy]);
     // An open menu closes when anything behind it scrolls or is replaced; update once it closes.
     if (key === rendered && !force || !force && [root, header.element].some(part => part.querySelector('[aria-haspopup=menu][aria-expanded=true]'))) return;
     rendered = key;
     // The map closes the view on Escape unless the view owns it; keep it until this keypress is over.
-    if (jobFilter) root.dataset.ownsEscape = ''; else setTimeout(() => { if (!jobFilter) delete root.dataset.ownsEscape; });
+    if (jobFilter || phaseFilter) root.dataset.ownsEscape = ''; else setTimeout(() => { if (!jobFilter && !phaseFilter) delete root.dataset.ownsEscape; });
     const views = list?.validations ?? [], events = list?.events ?? [], run = value.run;
-    const groups = rolloutTimeline(value, events, views), currentGroup = groups.find(group => group.current);
+    const groups = withAutoDeploy(rolloutTimeline(value, events, views), autoDeploy?.events ?? []), currentGroup = groups.find(group => group.current);
     const glyph = ({ passed: 'check', failed: 'cross', cancelled: 'cross', approval: 'bang', waiting: 'hourglass', unknown: 'bang', 'no-runs': 'pending', skipped: 'dash' } as Record<string, string>)[value.state] ?? 'spinner';
     const queue = value.state === 'queued' && value.queue?.ahead.length ? value.queue : undefined, stuck = queue?.ahead.some(entry => entry.stuck);
     status.replaceChildren(pixel(stuck ? 'bang' : glyph), stuck ? 'Queued · blocker stuck' : snapshot.indicators?.[0]?.label ?? snapshot.label); status.dataset.state = stuck ? 'queued-stuck' : value.state; status.dataset.tone = rolloutTone(status.dataset.state); status.disabled = !approvable;
@@ -301,6 +330,9 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
     header.update({ meta: [repository, value.followsLatest ? `following ${value.branch ?? 'latest run'}` : 'pinned run', run && `run #${run.run_number}`, run && `attempt ${run.run_attempt}`, run && run.head_sha.slice(0, 7), value.jobs.length > 0 && `${jobsDone}/${value.jobs.length} jobs`],
       link: { url: value.url, provider: 'GitHub' } });
     const environments = [...new Set([...value.gates.map(gate => gate.environment.name), ...events.filter(event => event.environment).map(event => event.environment)])];
+    const phaseJobs = phaseFilter ? value.jobs.filter(job => phaseFilter!.jobIds.includes(job.id)) : [];
+    phaseScope = phaseFilter ? { names: new Set(phaseJobs.map(job => job.name)), stages: new Set(phaseJobs.map(job => stageOf(job.name, environments)).filter(Boolean)), environments } : undefined;
+    renderTrack();
     renderVerdict(views, run, groups, environments);
     const runGroups = groups.filter(group => group.runId === run?.id).sort((a, b) => a.attempt - b.attempt);
     if (!runGroups.some(group => group.attempt === picked)) picked = undefined;
@@ -313,6 +345,102 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
     renderFeed(value, groups, environments, currentGroup, now, views.length);
     if (reveal && attached) { reveal = false; feed.querySelector(`.rv-card[aria-label^="${CSS.escape(attached)} · "]`)?.scrollIntoView({ block: 'nearest' }); }
     if (focused) root.querySelector<HTMLElement>(`[data-focus-key="${CSS.escape(focused)}"]`)?.focus();
+  }
+
+  /** The line for the gate waiting now when auto deploy will approve it; undefined when a person does. */
+  function autoGateNote() {
+    const phases = autoDeploy?.state === 'armed' ? autoDeploy.track?.phases ?? [] : [], index = phases.findIndex(phase => phase.gate && phase.gate.state !== 'approved');
+    return index < 0 ? undefined : gateNote(phases[index].gate!, phases[index - 1]);
+  }
+
+  /** When the person last scrolled the lane; until LANE_HOLD_MS later it is not moved back to the current phase. */
+  let laneTouched = 0, trackShown = '';
+  /** Filters the rail and the timeline to a phase; picking the phase already filtered clears it, unless `keep`. */
+  const pickPhase = (phase: { name: string; jobIds: number[] }, keep = false) => {
+    phaseFilter = !keep && phaseFilter?.name === phase.name ? undefined : { name: phase.name, jobIds: [...phase.jobIds] };
+    jobFilter = undefined; render(true);
+  };
+  /** The phase track under the frame bar: a pip per phase and the lane of phase cells. While an armed or halted auto deploy follows
+   * the rollout, its step line on top and its own track under the verdict; otherwise the rollout's own track above the verdict. */
+  function renderTrack() {
+    const value = autoDeploy && (autoDeploy.state === 'armed' || autoDeploy.state === 'halted') ? autoDeploy : undefined;
+    const current = value ? value.track : phases?.plain && phases.phases.length > 1 ? phases : undefined;
+    const shown = JSON.stringify([value?.state, value?.line, value?.next, value?.pullNodeId, current, phaseFilter?.name]);
+    if (shown === trackShown) return;
+    trackShown = shown;
+    track.hidden = !current?.phases.length;
+    if (!current?.phases.length) { track.replaceChildren(); return; }
+    const plain = !value, state = !value ? 'off' : value.state === 'halted' ? 'halted' : 'armed', list = current.phases;
+    track.dataset.state = state;
+    track.setAttribute('aria-label', plain ? 'Phases' : 'Auto deploy');
+    const parts: HTMLElement[] = [];
+    if (value) {
+      const step = (value.line ?? '').replace(/^Auto deploy · /, ''), then = value.next && state === 'armed' ? value.next : '';
+      const now = el('span', 'rv-track-now', el('span', 'rv-track-auto', pixel(state === 'halted' ? 'bang' : 'auto'), el('b', '', 'Auto deploy')), ` · ${step}`, then && el('span', 'rv-faint', ` · Then: ${then}`));
+      const top = el('div', 'rv-track-top', now);
+      if (state === 'armed') { const stop = button('Stop', 'rv-track-button'); stop.onclick = () => { void stopAutoDeploy(); }; top.append(stop); }
+      if (state === 'halted') { const again = button('Auto deploy again…', 'rv-track-button'); again.setAttribute('aria-haspopup', 'menu'); again.setAttribute('aria-expanded', 'false'); again.onclick = () => openAutoDeploy(again); top.append(again); }
+      if (value.pullNodeId) { const open = button(`Open #${value.pullNumber ?? ''}`.replace(/ #$/, ' pull request'), 'rv-track-button'); open.onclick = () => services.openResource(value.pullNodeId!); top.append(open); }
+      parts.push(top);
+    }
+    const atPhase = current.currentGate ? undefined : current.current, joinClock = plain ? clock : undefined;
+    const pips = el('div', 'rv-track-pips'); pips.setAttribute('role', 'group'); pips.setAttribute('aria-label', 'Phases');
+    list.forEach((phase, index) => {
+      if (phase.gate) { const bar = el('i', 'rv-track-gate'); bar.dataset.s = gateJoin(phase.gate, list[index - 1]).state; bar.title = `${phase.name} gate`; pips.append(bar); }
+      const pip = button('', 'rv-track-pip', `${phase.name}: ${pipState(phase)}`); pip.dataset.s = pipState(phase); pip.title = phase.name;
+      if (index === atPhase) pip.dataset.now = '';
+      pip.dataset.trackKey = `pip:${index}`;
+      pip.setAttribute('aria-pressed', String(phaseFilter?.name === phase.name));
+      pip.onclick = () => { laneTouched = Date.now(); pickPhase(phase, true); centre(index, true); };
+      pips.append(pip);
+    });
+    pips.append(el('span', 'rv-track-count', trackCount(current)));
+    const lane = el('div', 'rv-lane'), fold = trackFold(current), start = fold?.count ?? 0;
+    if (fold) { const cell = el('div', 'rv-cell rv-track-fold', el('span', 'rv-cell-name', el('span', '', `${fold.count} phases`), pixel('check')), el('span', 'rv-cell-line', fold.span), el('span', 'rv-cell-check', fold.checks)); cell.dataset.last = String(start - 1); lane.append(cell); }
+    for (let index = start; index < list.length; index++) {
+      const phase = list[index], after = list[index + 1]?.gate?.state;
+      const cellText = phaseCell(phase, clock, plain ? { autoValidate: current.autoValidate === true, gateWaits: after === 'you' || after === 'other' } : undefined);
+      if (lane.childElementCount) {
+        if (phase.gate) {
+          const join = gateJoin(phase.gate, list[index - 1], joinClock), node = el('div', 'rv-join', el('span', '', pixel(join.glyph), join.who), el('span', '', join.what));
+          node.dataset.s = join.state; if (current.currentGate && current.current === index) node.dataset.now = '';
+          lane.append(node);
+        } else lane.append(el('div', 'rv-join', el('span', '', '→')));
+      }
+      const glyph = phase.state === 'done' ? 'check' : phase.state === 'running' ? 'spinner' : 'pending';
+      const tone = cellText.tone, mark = tone === 'passed' ? 'check' : tone === 'running' ? 'spinner' : tone === 'concerns' || tone === 'failed' || tone === 'missing' ? 'bang' : 'dash';
+      const cell = el('div', 'rv-cell', el('span', 'rv-cell-name', el('span', '', phase.name), pixel(glyph)), el('span', 'rv-cell-line rv-cell-when', cellText.deployed),
+        el('span', 'rv-cell-check', ...(phase.noCheck ? [] : [pixel(mark)]), cellText.check));
+      cell.dataset.i = String(index); cell.dataset.s = phase.state; (cell.lastElementChild as HTMLElement).dataset.v = tone; cell.title = phase.name;
+      cell.dataset.trackKey = `phase:${index}`; cell.setAttribute('role', 'button'); cell.tabIndex = 0; cell.setAttribute('aria-pressed', String(phaseFilter?.name === phase.name));
+      cell.onclick = () => pickPhase(phase);
+      cell.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); pickPhase(phase); } };
+      if (index === atPhase) cell.dataset.now = state === 'halted' ? 'halted' : 'now';
+      lane.append(cell);
+    }
+    const previous = track.querySelector<HTMLElement>('.rv-lane')?.scrollLeft ?? 0;
+    const focused = document.activeElement instanceof HTMLElement && track.contains(document.activeElement) ? document.activeElement.closest<HTMLElement>('[data-track-key]')?.dataset.trackKey : undefined;
+    for (const kind of ['wheel', 'pointerdown', 'keydown'] as const) lane.addEventListener(kind, () => { laneTouched = Date.now(); }, { passive: true });
+    lane.addEventListener('scroll', () => edges(lane), { passive: true });
+    track.replaceChildren(...parts, pips, lane);
+    lane.scrollLeft = previous;
+    if (focused !== undefined) track.querySelector<HTMLElement>(`[data-track-key="${focused}"]`)?.focus({ preventScroll: true });
+    if (Date.now() - laneTouched > LANE_HOLD_MS && current.current !== undefined) centre(current.current, false);
+    edges(lane);
+  }
+  /** Scrolls the lane sideways so the phase's cell (or the folded cell holding it) sits in the middle; never scrolls the view. */
+  function centre(index: number, smooth: boolean) {
+    const lane = track.querySelector<HTMLElement>('.rv-lane'); if (!lane) return;
+    const cells = [...lane.querySelectorAll<HTMLElement>('.rv-cell')], cell = cells.find(entry => entry.dataset.i === String(index)) ?? cells.find(entry => entry.dataset.last !== undefined && index <= Number(entry.dataset.last));
+    if (!cell) return;
+    const left = cell.offsetLeft - (lane.clientWidth - cell.offsetWidth) / 2, reduce = document.defaultView?.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    lane.scrollTo({ left: Math.max(0, left), behavior: smooth && !reduce ? 'smooth' : 'auto' });
+    edges(lane);
+  }
+  /** Fades the lane's edge only on a side with more to scroll to. */
+  function edges(lane: HTMLElement) {
+    const max = lane.scrollWidth - lane.clientWidth;
+    lane.dataset.edge = max <= 1 ? 'none' : lane.scrollLeft <= 1 ? 'start' : lane.scrollLeft >= max - 1 ? 'end' : 'both';
   }
 
   /** Says which chat validation answered the request, with Re-run to ask for a second one anyway. */
@@ -429,7 +557,10 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
       const name = stageOf(gate.environment, environments); if (!stages.some(stage => stage.name === name)) stages.push({ name, jobs: [] });
     }
     const pendingGate = (name: string) => current && value.gates.some(entry => stageOf(entry.environment.name, environments) === name);
-    for (const stage of activeFirst(stages, pendingGate)) {
+    const inPhase = (job: SnapshotJob) => !phaseFilter || phaseFilter.jobIds.includes(job.id);
+    for (const whole of activeFirst(stages, pendingGate)) {
+      const stage = { ...whole, jobs: whole.jobs.filter(inPhase) };
+      if (phaseFilter && !stage.jobs.length) continue;
       if (stages.length > 1 || stage.name) {
         const header = el('li', 'rv-stage', el('span', '', stage.name || 'jobs'), el('span', 'rv-stage-count', `${stage.jobs.filter(job => job.status === 'completed').length}/${stage.jobs.length}`));
         header.setAttribute('role', 'presentation'); rows.push(header);
@@ -438,10 +569,13 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
         const approved = events.find(event => event.runId === gate.runId && event.attempt === gate.attempt && event.kind === 'gate-approved' && event.environment === gate.environment);
         const open = current ? value.gates.find(entry => entry.environment.name === gate.environment) : undefined, pending = !!open, mine = !!open?.reviewers.length;
         const row = el('li', 'rv-gate'); row.setAttribute('role', 'presentation'); row.dataset.state = approved ? 'done' : mine ? 'gate' : pending ? 'held' : 'queued';
-        const line = el('div', 'rv-row', el('span', 'rv-glyph', pixel(approved ? 'check' : 'gate')), el('span', 'rv-name', `${gate.environment} · ${approved ? `approved ${clock(approved.observedAt)}` : 'approval gate'}`),
+        const byAuto = approved && autoDeploy?.events?.some(entry => entry.kind === 'approve' && entry.text.split(/,\s*|\s/).includes(gate.environment));
+        const line = el('div', 'rv-row', el('span', 'rv-glyph', pixel(approved ? 'check' : 'gate')), el('span', 'rv-name', `${gate.environment} · ${approved ? `approved ${clock(approved.observedAt)}${byAuto ? ' by auto deploy' : ''}` : 'approval gate'}`),
           el('span', 'rv-time', approved ? duration(approved.observedAt - gate.observedAt) : pending ? duration(now - gate.observedAt) : ''));
         row.append(line);
-        if (pending) {
+        const automatic = pending ? autoGateNote() : undefined;
+        if (automatic) { row.dataset.state = 'auto'; row.append(el('div', 'rv-gate-note', el('span', 'rv-auto-mark', pixel('auto')), el('span', '', automatic))); }
+        else if (pending) {
           const note = el('div', 'rv-gate-note', el('span', '', mine ? 'Waiting for your approval' : 'Waiting on protection rules'));
           if (approvable) { const approve = button('Approve ▾', 'rv-approve'); approve.dataset.irreversible = ''; approve.setAttribute('aria-haspopup', 'menu'); approve.setAttribute('aria-expanded', 'false'); approve.onclick = () => menu(approve, 'approve'); note.append(approve); }
           row.append(note);
@@ -455,34 +589,37 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
         const stamps = el('span', 'rv-stamps', ...(coverage.get(job.name) ?? []).slice(-2).map(stampFor));
         const pick = button(el('span', 'rv-row', el('span', 'rv-glyph', pixel(JOB_GLYPH[state])), el('span', 'rv-name', job.name), stamps, el('span', 'rv-time', elapsed)), 'rv-job-button', `${job.name}: ${state}${elapsed ? `, ${elapsed}` : ''}`);
         pick.title = job.name; pick.dataset.focusKey = `job:${job.name}`; pick.setAttribute('aria-pressed', String(jobFilter === job.name));
-        pick.onclick = () => { jobFilter = jobFilter === job.name ? undefined : job.name; render(true); };
+        pick.onclick = () => { filterJob(jobFilter === job.name ? undefined : job.name); render(true); };
         const glyph = button(pixel(JOB_GLYPH[state]), 'rv-strip-job', `${job.name}: ${state}`); glyph.dataset.state = state; glyph.dataset.name = job.name; glyph.dataset.focusKey = `strip:${job.name}`;
         glyph.setAttribute('aria-pressed', String(jobFilter === job.name)); glyph.onclick = pick.onclick; glyphs.push(glyph);
         const row = el('li', 'rv-job', pick); row.dataset.state = state; if (jobFilter === job.name) row.classList.add('selected');
-        if (state === 'waiting' && approvable) { const approve = button('Approve…', 'rv-approve rv-job-approve'); approve.title = `Approve the deployment ${job.name} is waiting for`; approve.dataset.irreversible = ''; approve.setAttribute('aria-haspopup', 'menu'); approve.setAttribute('aria-expanded', 'false'); approve.onclick = () => menu(approve, 'approve'); row.append(approve); }
+        if (state === 'waiting' && approvable && !autoGateNote()) { const approve = button('Approve…', 'rv-approve rv-job-approve'); approve.title = `Approve the deployment ${job.name} is waiting for`; approve.dataset.irreversible = ''; approve.setAttribute('aria-haspopup', 'menu'); approve.setAttribute('aria-expanded', 'false'); approve.onclick = () => menu(approve, 'approve'); row.append(approve); }
         rows.push(row);
       }
     }
     if (!jobs.length) { const empty = el('li', 'rv-empty', run ? 'Waiting for jobs to be scheduled.' : 'No runs yet. This item will follow the next run.'); empty.setAttribute('role', 'presentation'); rows.push(empty); }
     const scroll = jobsList.parentElement!.scrollTop; jobsList.replaceChildren(...rows); jobsList.parentElement!.scrollTop = scroll;
     const stripScroll = strip.scrollTop; strip.replaceChildren(...glyphs); strip.scrollTop = stripScroll;
-    railFoot.textContent = jobFilter ? 'Esc clears the job filter' : !current ? `#${attempt} was replaced by #${run?.run_attempt}`
+    railFoot.textContent = phaseFilter ? 'Esc clears the phase filter' : jobFilter ? 'Esc clears the job filter' : !current ? `#${attempt} was replaced by #${run?.run_attempt}`
       : run?.status === 'completed' && ends.length ? `Finished ${clock(Math.max(...ends))} · no further polling` : starts.length ? `Started ${clock(Math.min(...starts))} · ${duration(now - Math.min(...starts))} so far` : '';
   }
 
   const matches = (entry: TimelineEntry) => {
+    if (phaseScope) return entry.kind === 'job' ? phaseScope.names.has(entry.job.name) : entry.kind === 'validation' ? entry.covered.some(name => phaseScope!.names.has(name))
+      : entry.kind === 'gate' ? phaseScope.stages.has(stageOf(entry.environment, phaseScope.environments)) : false;
     if (jobFilter) return entry.kind === 'job' ? entry.job.name === jobFilter : entry.kind === 'validation' ? entry.covered.includes(jobFilter) : false;
-    if (filter === 'validations') return entry.kind === 'validation';
+    if (filter === 'validations') return entry.kind === 'validation' || entry.kind === 'auto';
     if (filter === 'jobs') return entry.kind === 'job' || entry.kind === 'gate' || entry.kind === 'run' || entry.kind === 'attempt' || entry.kind === 'queued';
-    if (filter === 'problems') return entry.kind === 'job' ? entry.what === 'finished' && failedJob(entry.job) : entry.kind === 'validation' ? entry.validation.verdict === 'failed' || entry.validation.verdict === 'concerns' || entry.validation.state === 'no-report' : entry.kind === 'run' && entry.conclusion !== 'success';
+    if (filter === 'problems') return entry.kind === 'job' ? entry.what === 'finished' && failedJob(entry.job) : entry.kind === 'validation' ? entry.validation.verdict === 'failed' || entry.validation.verdict === 'concerns' || entry.validation.state === 'no-report' : entry.kind === 'auto' ? entry.what === 'halted' : entry.kind === 'run' && entry.conclusion !== 'success';
     return true;
   };
   function renderFeed(value: Observation, groups: TimelineGroup[], environments: string[], currentGroup: TimelineGroup | undefined, now: number, validations: number) {
     const all = groups.flatMap(group => group.entries), count = (kind: Filter) => { const saved = filter; filter = kind; const result = all.filter(matches).length; filter = saved; return result; };
-    if (jobFilter) {
-      const clear = button(pixelGlyphElement(document, 'close'), 'rv-chip-clear', 'Clear job filter'); clear.onclick = () => { jobFilter = undefined; render(true); };
+    if (jobFilter || phaseFilter) {
+      const what = phaseFilter ? 'phase' : 'job', clear = button(pixelGlyphElement(document, 'close'), 'rv-chip-clear', `Clear ${what} filter`); clear.onclick = () => { filterJob(undefined); render(true); };
       const visible = all.filter(matches).length, attemptsCovered = groups.filter(group => group.entries.some(matches)).length;
-      filters.replaceChildren(el('span', 'rv-chip rv-job-chip', pixel('job'), jobFilter, clear), el('span', 'rv-faint', `${visible} of ${all.length} events${attemptsCovered > 1 ? ` · ${attemptsCovered === 2 ? 'both' : attemptsCovered} attempts` : ''}`));
+      const chip = el('span', 'rv-chip rv-job-chip', pixel(phaseFilter ? 'gate' : 'job'), phaseFilter?.name ?? jobFilter!, clear); chip.dataset.filter = what;
+      filters.replaceChildren(chip, el('span', 'rv-faint', `${visible} of ${all.length} events${attemptsCovered > 1 ? ` · ${attemptsCovered === 2 ? 'both' : attemptsCovered} attempts` : ''}`));
     } else filters.replaceChildren(...(['all', 'validations', 'jobs', 'problems'] as Filter[]).map(kind => {
       const chip = button(el('span', '', kind[0].toUpperCase() + kind.slice(1), el('span', 'rv-count', String(count(kind)))), 'rv-chip'); chip.setAttribute('aria-pressed', String(filter === kind)); chip.dataset.focusKey = `filter:${kind}`;
       chip.onclick = () => { filter = kind; render(true); }; return chip;
@@ -491,9 +628,9 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
     for (const group of groups) {
       const entries = group.entries.filter(matches);
       if (!group.current) {
-        if (!entries.length && (jobFilter || filter !== 'all')) continue;
+        if (!entries.length && (jobFilter || phaseFilter || filter !== 'all')) continue;
         children.push(el('div', 'rv-divider', el('span', '', group.label)));
-        const open = shown.has(`${group.runId}:${group.attempt}`) || !!jobFilter || filter !== 'all';
+        const open = shown.has(`${group.runId}:${group.attempt}`) || !!jobFilter || !!phaseFilter || filter !== 'all';
         if (!open) {
           const show = button('Show', 'rv-link'); show.onclick = () => { shown.add(`${group.runId}:${group.attempt}`); render(true); };
           children.push(el('p', 'rv-more', pixel('hourglass'), `${group.summary} · `, show)); continue;
@@ -502,13 +639,13 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
       for (const entry of entries) children.push(renderEntry(entry, group, value, currentGroup, environments, now));
     }
     if (!children.length) {
-      const hint = jobFilter ? undefined : rolloutEmptyHint({ jobs: value.jobs.length, validations });
-      children.push(el('p', 'rv-empty-feed', jobFilter ? 'Nothing recorded for this job yet.' : value.run ? 'Nothing happened on this run yet.' : 'No runs yet.', hint && el('span', 'rv-empty-hint', hint)));
+      const hint = jobFilter || phaseFilter ? undefined : rolloutEmptyHint({ jobs: value.jobs.length, validations });
+      children.push(el('p', 'rv-empty-feed', phaseFilter ? 'Nothing recorded for this phase yet.' : jobFilter ? 'Nothing recorded for this job yet.' : value.run ? 'Nothing happened on this run yet.' : 'No runs yet.', hint && el('span', 'rv-empty-hint', hint)));
     }
     const scroll = feed.scrollTop; feed.replaceChildren(...children); feed.scrollTop = scroll;
   }
 
-  const jobRef = (name: string) => { const ref = button(name, 'rv-jobref'); ref.onclick = () => { jobFilter = name; render(true); }; return ref; };
+  const jobRef = (name: string) => { const ref = button(name, 'rv-jobref'); ref.onclick = () => { filterJob(name); render(true); }; return ref; };
   function event(at: number, glyph: string, tone: string, approx: boolean, dim: boolean, ...content: (Node | string)[]) {
     const stamp = el('span', 'rv-time', `${approx ? '~' : ''}${formatWhen(at, 'time')}`); stamp.title = formatWhen(at, 'full');
     const row = el('div', `rv-event${dim ? ' old' : ''}`, stamp, el('span', 'rv-glyph', pixel(glyph)), el('span', 'rv-text', ...content));
@@ -542,6 +679,10 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
     if (entry.kind === 'run') {
       const ok = entry.conclusion === 'success';
       return event(entry.at, ok ? 'check' : 'cross', ok ? 'ok' : 'bad', false, old, el('b', '', ok ? 'Run passed' : `Run ${entry.conclusion === 'cancelled' ? 'cancelled' : 'failed'}`), ` · ${entry.done}/${entry.total} jobs${entry.duration !== undefined ? ` · ${duration(entry.duration)}` : ''}`);
+    }
+    if (entry.kind === 'auto') {
+      const halted = entry.what === 'halted', row = event(entry.at, halted ? 'bang' : entry.what === 'done' ? 'check' : 'auto', halted ? 'amber' : 'blue', false, old, el('b', 'rv-auto-who', 'Auto deploy'), ` ${entry.text}`);
+      row.classList.add('rv-auto'); return row;
     }
     return renderCard(entry.validation, entry.covered, group, environments, now, currentGroup);
   }

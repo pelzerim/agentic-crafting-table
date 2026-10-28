@@ -2,6 +2,7 @@ import type { RolloutJob } from '../../../../packages/provider-runtime/github-ro
 import type { HeadChecks, PullLifecycle, PullMergeMethod, PullMergeReadiness } from '../../../../packages/provider-runtime/github.ts';
 import type { ValidationState, Verdict } from './validation.ts';
 import { environmentStates } from './stages.ts';
+import { stageOf } from './validation.ts';
 import type { StageRule } from './stages.ts';
 
 /** Auto deploy: armed by a person on a pull request, the service tags it [ship], merges it once GitHub would, follows the
@@ -23,26 +24,41 @@ export type AutoDeployStep = 'tagging' | 'waiting-checks' | 'fixing-ci' | 'mergi
 export type HaltCode = 'closed' | 'draft' | 'changes-requested' | 'review-required' | 'conflicts' | 'behind' | 'blocked' | 'ci-failing' | 'fix-stalled' | 'declined' | 'outcome-unknown'
   | 'no-rollout' | 'deploy-failed' | 'validation-failed' | 'validation-concerns' | 'validation-inconclusive' | 'no-verdict' | 'agent-unavailable' | 'error';
 
-/** A write is recorded `sending` before it goes out and `sent` once GitHub confirmed it; a `sending` one found later is never sent again. */
-export interface AutoDeployWrite { key: string; kind: 'tag' | 'merge' | 'approve' | 'fix'; requestId: string; at: number; state: 'sending' | 'sent' }
-/** One validation of a phase: `agent` is the trigger value it was asked with, so asking again after a restart is the same journaled request. */
-export interface AutoDeployCheck { key: string; rolloutNodeId: string; label: string; requestId: string; agent?: string; validationId?: string; requestedAt: number; jobs?: number[] }
+/** A write is recorded `sending` before it goes out and `sent` once GitHub confirmed it; a `sending` one found later is never sent again.
+ * `label` names what an approval opened, for the rollout's timeline. */
+export interface AutoDeployWrite { key: string; kind: 'tag' | 'merge' | 'approve' | 'fix'; requestId: string; at: number; state: 'sending' | 'sent'; label?: string }
+/** One validation of a phase: `agent` is the trigger value it was asked with, so asking again after a restart is the same journaled request.
+ * A check seeded when a running rollout was taken over either names a passing validation that already covered its jobs (`seeded`) or
+ * counts what deployed before arming as accepted without a validation (`accepted`). */
+export interface AutoDeployCheck { key: string; rolloutNodeId: string; label: string; requestId: string; agent?: string; validationId?: string; requestedAt: number; jobs?: number[]; seeded?: true; accepted?: true }
 export interface AutoDeployFix { head: string; at: number; agentNodeId?: string }
+/** How a takeover treats the phases that deployed before it was armed: validate those no passing validation covers, or accept them. */
+export type CatchUp = 'validate' | 'accept';
+/** Auto deploy armed on a rollout that was already running: the rollouts it follows, and which validations counted when it was armed. */
+export interface AutoDeployTakeover { at: number; catchUp: CatchUp; rolloutNodeIds: string[]; counts?: string[] }
+/** Keyed by the pull request (`pullResourceId`), or, for a rollout no pull request on the map discovered, by the rollout (`rolloutResourceId`). */
 export interface AutoDeployRecord {
-  version: 1; id: string; pullResourceId: string; pullNodeId: string; armedAt: number; updatedAt: number;
+  version: 1; id: string; pullResourceId?: string; pullNodeId?: string; rolloutResourceId?: string; rolloutNodeId?: string; armedAt: number; updatedAt: number;
   state: AutoDeployState; step: AutoDeployStep; detail?: string;
-  base?: string; mergedAt?: number; blockedSince?: number;
+  base?: string; mergedAt?: number; blockedSince?: number; takeover?: AutoDeployTakeover;
   writes: AutoDeployWrite[]; fixes: AutoDeployFix[]; checks: AutoDeployCheck[];
   halt?: { code: HaltCode; reason: string; at: number };
 }
+/** The storage key of a record: its pull request's resource, else its rollout's. */
+export const recordKey = (record: Pick<AutoDeployRecord, 'id' | 'pullResourceId' | 'rolloutResourceId'>) => record.pullResourceId ?? record.rolloutResourceId ?? record.id;
 
 export interface PullFacts extends Pick<PullMergeReadiness, 'head' | 'base' | 'title' | 'reviewDecision' | 'queued' | 'queueEnabled' | 'pullRequestId'> {
   lifecycle: PullLifecycle; tag: string; mergeStateStatus: PullMergeReadiness['mergeStateStatus']; checks: HeadChecks; failing: string[]; method: PullMergeMethod | null;
 }
-export interface RolloutValidationFact { label: string; state: ValidationState; verdict?: Verdict; resolvedBy?: string }
+/** A validation of the rollout: its run attempt and the jobs it was scoped to, when known, say what a passing one covers. */
+/** `environments` and `requestedAt` say what one scoped to environments, or to the whole run, is about. */
+export interface RolloutValidationFact { label: string; state: ValidationState; verdict?: Verdict; resolvedBy?: string; jobs?: number[]; environments?: string[]; runId?: number; attempt?: number; stale?: boolean; requestedAt?: number; finishedAt?: number }
+/** `gateEnvironments` are the environments that held this attempt at a gate so far, waiting or approved; `gateApprovals` when each
+ * environment's gate was approved, as far as it is known; `autoValidate`, a pull request's Auto validate covers the rollout. */
 export interface RolloutFacts {
-  nodeId: string; title: string; run?: { id: number; attempt: number; status: string; conclusion: string | null; headSha: string };
-  jobs: RolloutJob[]; gates: { id: number; name: string; approvable: boolean }[]; rule?: StageRule; validations: RolloutValidationFact[];
+  nodeId: string; title: string; run?: { id: number; attempt: number; status: string; conclusion: string | null; headSha: string; number?: number };
+  jobs: RolloutJob[]; gates: { id: number; name: string; approvable: boolean }[]; rule?: StageRule; validations: RolloutValidationFact[]; gateEnvironments?: string[];
+  gateApprovals?: { environment: string; at: number }[]; autoValidate?: boolean;
 }
 export interface AutoDeployFacts { now: number; tagging: boolean; pull?: PullFacts; rollouts: RolloutFacts[] }
 
@@ -57,8 +73,56 @@ export type AutoDeployDecision =
   | { kind: 'stop'; reason: string }
   | { kind: 'done' };
 
-export function armRecord(input: { id: string; pullResourceId: string; pullNodeId: string; now: number }): AutoDeployRecord {
-  return { version: 1, id: input.id, pullResourceId: input.pullResourceId, pullNodeId: input.pullNodeId, armedAt: input.now, updatedAt: input.now, state: 'armed', step: 'waiting-checks', writes: [], fixes: [], checks: [] };
+type ArmInput = { id: string; now: number; takeover?: Omit<AutoDeployTakeover, 'at' | 'counts'> } & ({ pullResourceId: string; pullNodeId: string } | { rolloutResourceId: string; rolloutNodeId: string; takeover: Omit<AutoDeployTakeover, 'at' | 'counts'> });
+/** A new record. On a pull request it starts before the merge; a takeover of running rollouts starts after it, following those rollouts. */
+export function armRecord(input: ArmInput): AutoDeployRecord {
+  const owner = 'pullResourceId' in input ? { pullResourceId: input.pullResourceId, pullNodeId: input.pullNodeId } : { rolloutResourceId: input.rolloutResourceId, rolloutNodeId: input.rolloutNodeId };
+  const base = { version: 1 as const, id: input.id, ...owner, armedAt: input.now, updatedAt: input.now, state: 'armed' as const };
+  if (!input.takeover) return { ...base, step: 'waiting-checks', writes: [], fixes: [], checks: [] };
+  return { ...base, step: 'deploying', mergedAt: input.now, takeover: { at: input.now, catchUp: input.takeover.catchUp, rolloutNodeIds: [...input.takeover.rolloutNodeIds] }, writes: [], fixes: [], checks: [] };
+}
+
+/** Why a running rollout cannot be taken over, or undefined when it can. */
+export function takeoverRefusal(rollout: Pick<RolloutFacts, 'run'>): string | undefined {
+  const run = rollout.run;
+  if (!run) return 'Waiting for the deploy run.';
+  if (run.status !== 'completed') return undefined;
+  return run.conclusion === 'success' ? 'Already deployed.' : 'The run failed. Re-run it on GitHub first.';
+}
+
+/** The checks a takeover starts with. Every passing, current validation of the attempt that was scoped to jobs counts for those jobs.
+ * `validate`: a phase already due that they cover in full counts as passed; every other due phase is validated by `decide` before a
+ * gate is approved. `accept`: whatever else deployed before arming counts as accepted, and every phase already due as passed. */
+export function seedCatchUp(record: AutoDeployRecord, rollouts: readonly RolloutFacts[], now: number): AutoDeployRecord {
+  const next: AutoDeployRecord = { ...record, checks: [...record.checks] }, counts: string[] = [];
+  const has = (key: string) => next.checks.some(entry => entry.key === key);
+  for (const rollout of rollouts) {
+    const run = rollout.run;
+    if (!run) continue;
+    const prefix = `${rollout.nodeId}:${run.id}:${run.attempt}`;
+    const seed = (key: string, label: string, extra: Partial<AutoDeployCheck>) => { if (!has(key)) next.checks.push({ key, rolloutNodeId: rollout.nodeId, label, requestId: `${record.id}:seed:${key}`, requestedAt: now, ...extra }); };
+    const due = points(rollout).filter(point => point.dueAt <= now);
+    const completed = new Set(rollout.jobs.filter(job => job.status === 'completed' && ran(job)).map(job => job.id));
+    for (const validation of rollout.validations) {
+      if (validation.state !== 'final' || validation.verdict !== 'passed' || validation.stale || validation.resolvedBy || validation.runId !== run.id || validation.attempt !== run.attempt) continue;
+      const jobs = (validation.jobs ?? []).filter(id => completed.has(id)).sort((a, b) => a - b);
+      if (!jobs.length) continue;
+      seed(`${prefix}:seed:${validation.label}`, validation.label, { validationId: validation.label, jobs, seeded: true });
+      counts.push(validation.label);
+    }
+    if (record.takeover?.catchUp === 'accept') {
+      const jobs = uncovered(next, rollout);
+      if (jobs.length) seed(`${prefix}:accepted`, 'accepted when armed', { accepted: true, jobs });
+      for (const point of due) seed(`${prefix}:${point.key}`, point.label, { accepted: true, jobs: [] });
+      continue;
+    }
+    const counted = next.checks.filter(entry => entry.rolloutNodeId === rollout.nodeId && entry.seeded).at(-1);
+    for (const point of due) {
+      if (!counted || uncovered(next, rollout).length) break;
+      seed(`${prefix}:${point.key}`, point.label, { validationId: counted.validationId!, jobs: [], seeded: true });
+    }
+  }
+  return counts.length && next.takeover ? { ...next, takeover: { ...next.takeover, counts } } : next;
 }
 
 const wait = (step: AutoDeployStep, detail?: string): AutoDeployDecision => ({ kind: 'wait', step, ...(detail ? { detail } : {}) });
@@ -154,6 +218,7 @@ function points(rollout: RolloutFacts): Point[] {
 
 type Answer = Verdict | 'pending' | 'no-report' | 'missing';
 function answer(check: AutoDeployCheck, validations: readonly RolloutValidationFact[]): Answer {
+  if (check.accepted) return 'passed';
   if (!check.validationId) return 'pending';
   let current = validations.find(entry => entry.label === check.validationId);
   for (let hops = 0; current?.resolvedBy && hops < 20; hops++) current = validations.find(entry => entry.label === current!.resolvedBy) ?? current;
@@ -222,4 +287,192 @@ export function statusLine(record: Pick<AutoDeployRecord, 'step' | 'detail' | 'h
     approving: detail ? `approving ${detail}` : 'approving', 'waiting-gate': `${detail || 'a gate'} waits for another approver`, done: 'done', halted: `halted: ${record.halt?.reason ?? 'stopped on a doubt'}`, stopped: 'stopped',
   };
   return `Auto deploy · ${text[record.step]}`;
+}
+
+export type PhaseCheckState = 'passed' | 'running' | 'concerns' | 'failed' | 'accepted' | 'none';
+export type PhaseGateState = 'approved' | 'approving' | 'auto' | 'you' | 'other' | 'later';
+/** One phase of a rollout: whether it deployed, which validation covers it (`seeded`: one that counted when auto deploy was
+ * armed) and, for a gated phase, who opens its gate (`after`: the validation of the phase before it that the approval waits for;
+ * `at`: when a gate of a rollout without auto deploy was approved). `jobIds` are the phase's jobs. */
+export interface TrackPhase {
+  name: string; state: 'done' | 'running' | 'waiting'; at?: number; jobs: { done: number; total: number }; jobIds: number[];
+  check?: { id?: string; state: PhaseCheckState; seeded?: true }; noCheck?: true;
+  gate?: { state: PhaseGateState; by?: 'you' | 'auto deploy'; after?: string; at?: number };
+}
+/** `current` is the phase auto deploy works on, or without it the one the rollout is at; `currentGate` says it is that phase's gate.
+ * `plain`: read from the rollout alone, with no auto deploy record; `autoValidate`: a pull request's Auto validate covers the rollout. */
+export interface PhaseTrack { phases: TrackPhase[]; current?: number; currentGate?: true; plain?: true; autoValidate?: true }
+
+const DEPLOY_STAGES = new Set(['staging', 'canary', 'preview', 'production']);
+/** A job's name without the reusable-workflow part and matrix values: the workflow job it belongs to. */
+const jobKey = (name: string) => name.split(' / ')[0].replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+const heldIds = (key: string) => (/@([\d,]+)$/.exec(key)?.[1] ?? '').split(',').filter(Boolean).map(Number);
+const CHECK_OF: Record<Answer, PhaseCheckState> = { passed: 'passed', pending: 'running', concerns: 'concerns', failed: 'failed', inconclusive: 'failed', 'no-report': 'failed', missing: 'failed' };
+
+interface Grouped { stage: string; keys: string[]; jobs: RolloutJob[]; setup?: true; gated?: boolean }
+/** The rollout's phases in order: build and setup jobs before the first deployment as one phase that needs no check, then one phase per
+ * environment, a new one at every gate (so an environment that gates several phases has one phase each). With a stage rule, its stages
+ * in order, including those not reached yet. Without gates or a rule, the whole run is one phase, as it is validated once at the end. */
+function trackEnvironments(rollout: RolloutFacts) {
+  const gateEnvironments = [...new Set([...rollout.gates.map(gate => gate.name), ...(rollout.gateEnvironments ?? [])])];
+  const ruleEnvironments = [...new Set(rollout.rule?.stages.map(stage => stage.environment) ?? [])];
+  return { gateEnvironments, ruleEnvironments, environments: [...ruleEnvironments, ...gateEnvironments] };
+}
+function groupPhases(record: AutoDeployRecord | undefined, rollout: RolloutFacts): Grouped[] {
+  const { gateEnvironments, ruleEnvironments, environments } = trackEnvironments(rollout), gatedStages = new Set(gateEnvironments.map(name => stageOf(name, environments)));
+  const known = new Set([...(record?.writes ?? []).filter(write => write.kind === 'approve').flatMap(write => heldIds(write.key)), ...(record?.checks ?? []).filter(entry => entry.rolloutNodeId === rollout.nodeId).flatMap(entry => heldIds(entry.key))]);
+  const jobs = [...rollout.jobs].sort((a, b) => a.id - b.id);
+  if (!rollout.rule && !gateEnvironments.length && !known.size) return jobs.length ? [{ stage: 'whole run', keys: [], jobs }] : [];
+  const deploying = (stage: string) => DEPLOY_STAGES.has(stage) || environments.some(name => stageOf(name, environments) === stage);
+  const groups: Grouped[] = [];
+  if (rollout.rule) for (const name of ruleEnvironments) groups.push({ stage: stageOf(name, environments), keys: [], jobs: [], gated: gatedStages.has(stageOf(name, environments)) });
+  for (const job of jobs) {
+    const stage = stageOf(job.name, environments), key = jobKey(job.name);
+    const gated = rollout.gates.length > 0 && job.status === 'waiting' || known.has(job.id) || gatedStages.has(stage);
+    const started = groups.some(group => !group.setup && group.jobs.length);
+    if (!started && !gated && !(rollout.rule ? groups.some(group => group.stage === stage) : deploying(stage))) {
+      const setup = groups.find(group => group.setup) ?? (groups.unshift({ stage: 'build', keys: [], jobs: [], setup: true }), groups[0]);
+      setup.jobs.push(job); continue;
+    }
+    if (rollout.rule) {
+      const own = groups.find(group => !group.setup && group.stage === stage) ?? [...groups].reverse().find(group => !group.setup && group.jobs.length);
+      if (own) { own.jobs.push(job); if (!own.keys.includes(key)) own.keys.push(key); continue; }
+    }
+    const last = groups.at(-1);
+    if (last && !last.setup && last.stage === stage && (!gated || last.keys.includes(key))) { last.jobs.push(job); if (!last.keys.includes(key)) last.keys.push(key); continue; }
+    groups.push({ stage, keys: [key], jobs: [job], gated });
+  }
+  return groups;
+}
+
+const startedAt = (job: RolloutJob) => Date.parse(job.started_at ?? '');
+const hadRun = (job: RolloutJob) => job.status === 'completed' || job.status === 'in_progress';
+
+/** Without a record, a phase's check is the newest validation of the current attempt that covers it: scoped to its jobs, to its
+ * environment, or to the whole run, which covers the last phase that had run when it was requested. A request a later final
+ * validation resolved no longer counts. */
+function plainChecks(groups: readonly Grouped[], rollout: RolloutFacts, validations: readonly RolloutValidationFact[]): (RolloutValidationFact | undefined)[] {
+  const run = rollout.run, { environments } = trackEnvironments(rollout);
+  const current = validations.filter(entry => run && entry.runId === run.id && entry.attempt === run.attempt && !entry.stale && !(entry.state !== 'final' && entry.resolvedBy));
+  const lastRun = (before: number | undefined) => groups.map((group, index) => ({ group, index }))
+    .filter(({ group }) => !group.setup && group.jobs.some(job => hadRun(job) && (before === undefined || startedAt(job) <= before))).at(-1)?.index;
+  const covers = (entry: RolloutValidationFact, group: Grouped, index: number) => {
+    if (entry.jobs?.length) return group.jobs.some(job => entry.jobs!.includes(job.id));
+    if (entry.environments?.length) {
+      const stages = new Set(entry.environments.map(name => stageOf(name, environments)));
+      return stages.has(group.stage) || group.jobs.some(job => stages.has(stageOf(job.name, environments)));
+    }
+    return lastRun(entry.requestedAt) === index;
+  };
+  return groups.map((group, index) => group.setup ? undefined : current.filter(entry => covers(entry, group, index)).at(-1));
+}
+const plainAnswer = (entry: RolloutValidationFact): Answer => entry.state === 'final' ? entry.verdict ?? 'inconclusive' : entry.state === 'no-report' ? 'no-report' : 'pending';
+
+/** When each gate a person approved was opened: an approval of its environment reported no later than the phase started, each used
+ * once and in order, else the phase's first job starting. */
+function approvalTimes(groups: readonly Grouped[], rollout: RolloutFacts) {
+  const { environments } = trackEnvironments(rollout), used = new Set<number>(), approvals = [...rollout.gateApprovals ?? []].sort((a, b) => a.at - b.at);
+  return groups.map(group => {
+    const starts = group.jobs.map(startedAt).filter(Number.isFinite), start = starts.length ? Math.min(...starts) : undefined;
+    const found = approvals.findIndex((entry, index) => !used.has(index) && stageOf(entry.environment, environments) === group.stage && (start === undefined || entry.at <= start));
+    if (found >= 0) { used.add(found); return approvals[found].at; }
+    return start;
+  });
+}
+
+/** The phase track of a rollout: from the auto deploy record following it and the rollout as last read, or without a record from the
+ * rollout alone (its validations and its gates on GitHub). Without a record a rollout of one phase has no track. */
+export function phaseTrack(record: AutoDeployRecord | undefined, rollout: RolloutFacts, validations: readonly RolloutValidationFact[] = rollout.validations): PhaseTrack {
+  const groups = groupPhases(record, rollout), run = rollout.run, armed = record?.state === 'armed';
+  if (!record && groups.length < 2) return { phases: [], plain: true };
+  const prefix = run ? `${rollout.nodeId}:${run.id}:${run.attempt}:` : undefined;
+  const checks = (record?.checks ?? []).filter(entry => entry.rolloutNodeId === rollout.nodeId && prefix !== undefined && entry.key.startsWith(prefix));
+  const plain = record ? undefined : plainChecks(groups, rollout, validations);
+  const repeated = (stage: string) => groups.filter(group => group.stage === stage).length > 1;
+  const phases = groups.map((group, index): TrackPhase => {
+    const done = group.jobs.filter(job => job.status === 'completed').length, ids = new Set(group.jobs.map(job => job.id));
+    const state = group.jobs.length && done === group.jobs.length ? 'done' : group.jobs.some(job => job.status === 'in_progress' || job.status === 'completed') ? 'running' : 'waiting';
+    const ends = group.jobs.map(job => Date.parse(job.completed_at ?? '')).filter(Number.isFinite);
+    const label = group.keys.map(key => /phase[-_ ]?\d+/i.exec(key)?.[0]).find(Boolean) ?? group.keys[0];
+    const name = group.setup ? 'build' : repeated(group.stage) && label ? `${group.stage} · ${label}` : group.stage || group.keys[0] || 'jobs';
+    const phase: TrackPhase = { name, state, ...(state === 'done' && ends.length ? { at: Math.max(...ends) } : {}), jobs: { done, total: group.jobs.length }, jobIds: [...ids].sort((a, b) => a - b) };
+    if (group.setup) return { ...phase, noCheck: true };
+    if (plain) {
+      const found = plain[index];
+      phase.check = found ? { id: found.label, state: CHECK_OF[plainAnswer(found)] } : { state: 'none' };
+      return phase;
+    }
+    const covering = checks.filter(entry => (entry.jobs ?? []).some(id => ids.has(id))).at(-1);
+    phase.check = !covering ? { state: 'none' } : covering.accepted ? { state: 'accepted' }
+      : { ...(covering.validationId ? { id: covering.validationId } : {}), state: CHECK_OF[answer(covering, validations)], ...(covering.seeded ? { seeded: true as const } : {}) };
+    return phase;
+  });
+  const approvedAt = record ? [] : approvalTimes(groups, rollout);
+  groups.forEach((group, index) => {
+    if (!group.gated) return;
+    const phase = phases[index], held = rollout.gates.length > 0 && group.jobs.some(job => job.status === 'waiting');
+    const after = phases[index - 1]?.check?.id;
+    if (held) {
+      const state: PhaseGateState = !rollout.gates.some(gate => gate.approvable) ? 'other' : !armed ? 'you' : record!.step === 'approving' ? 'approving' : 'auto';
+      phase.gate = { state, ...(after && (state === 'auto' || state === 'approving') ? { after } : {}) };
+    } else if (phase.state !== 'waiting') {
+      const ids = new Set(group.jobs.map(job => job.id)), mine = record?.writes.some(write => write.kind === 'approve' && write.state === 'sent' && heldIds(write.key).some(id => ids.has(id)));
+      phase.gate = { state: 'approved', ...(mine ? { by: 'auto deploy' as const } : {}), ...(approvedAt[index] !== undefined ? { at: approvedAt[index] } : {}) };
+    } else phase.gate = !record ? { state: 'later' } : { state: armed ? 'auto' : 'you', ...(armed && after ? { after } : {}) };
+  });
+  const track: PhaseTrack = { phases };
+  const held = phases.findIndex(phase => phase.gate && phase.gate.state !== 'approved' && groups[phases.indexOf(phase)].jobs.some(job => job.status === 'waiting'));
+  if (!record) {
+    track.plain = true;
+    if (rollout.autoValidate) track.autoValidate = true;
+    const running = phases.findIndex(phase => phase.state === 'running'), validating = phases.map(phase => phase.check?.state).lastIndexOf('running');
+    const open = phases.findIndex(phase => phase.state !== 'done');
+    if (held >= 0 && rollout.gates.length) { track.current = held; track.currentGate = true; }
+    else if (running >= 0) track.current = running;
+    else if (validating >= 0) track.current = validating;
+    else if (run?.status !== 'completed' && open >= 0) track.current = open;
+    return track;
+  }
+  if (record.state !== 'armed' && record.state !== 'halted' || !phases.length) return track;
+  const firstOpen = phases.findIndex(phase => phase.state !== 'done'), fallback = firstOpen < 0 ? phases.length - 1 : firstOpen;
+  const atGate = () => { track.current = held; track.currentGate = true; };
+  if (record.state === 'halted') {
+    const doubt = phases.findIndex(phase => phase.check?.state === 'concerns' || phase.check?.state === 'failed');
+    if (doubt >= 0) track.current = doubt; else if (held >= 0) atGate(); else track.current = fallback;
+    return track;
+  }
+  const running = phases.findIndex(phase => phase.state === 'running'), lastDone = phases.map(phase => phase.state).lastIndexOf('done');
+  const validating = phases.map(phase => phase.check?.state).lastIndexOf('running');
+  if (record.step === 'validating' && validating >= 0) track.current = validating;
+  else if ((record.step === 'approving' || record.step === 'waiting-gate') && held >= 0) atGate();
+  else if (record.step === 'deploying' && running >= 0) track.current = running;
+  else if (record.step === 'deploying' && held >= 0) atGate();
+  else if (record.step === 'delayed' && lastDone >= 0) track.current = lastDone;
+  else track.current = fallback;
+  return track;
+}
+
+/** What auto deploy does after the current phase: “approve production”, “validate staging”, “deploy phase-2” or “done”. */
+export function trackNext(track: PhaseTrack): string {
+  if (track.current === undefined) return '';
+  const phases = track.phases, index = track.current, phase = phases[index];
+  if (track.currentGate) return `deploy ${phase.name}`;
+  if (phase.state !== 'done' && !phase.noCheck) return `validate ${phase.name}`;
+  const next = phases[index + 1];
+  if (!next) return 'done';
+  return next.gate && next.gate.state !== 'approved' ? `approve ${next.name}` : `deploy ${next.name}`;
+}
+
+export interface AutoDeployEvent { at: number; kind: 'armed' | 'validate' | 'approve' | 'halted' | 'done' | 'stopped'; text: string }
+/** What auto deploy did, oldest first, for the rollout's timeline: armed, each validation it asked for, each approval it sent, and how it ended. */
+export function autoDeployEvents(record: AutoDeployRecord): AutoDeployEvent[] {
+  const takeover = record.takeover, counts = takeover?.counts ?? [];
+  const caughtUp = takeover?.catchUp === 'accept' ? ' · what already deployed counts as accepted' : counts.length ? ` · ${counts.join(', ')} ${counts.length === 1 ? 'counts' : 'count'}` : '';
+  const events: AutoDeployEvent[] = [{ at: record.armedAt, kind: 'armed', text: `armed by you${takeover ? ' from here' : ''}${caughtUp}` }];
+  for (const check of record.checks) if (!check.seeded && !check.accepted) events.push({ at: check.requestedAt, kind: 'validate', text: `asked Claude to validate ${check.label}${check.validationId ? ` · ${check.validationId}` : ''}` });
+  for (const write of record.writes) if (write.kind === 'approve' && write.state === 'sent') events.push({ at: write.at, kind: 'approve', text: `approved ${write.label ?? 'the gate'}` });
+  if (record.state === 'halted') events.push({ at: record.halt?.at ?? record.updatedAt, kind: 'halted', text: `halted: ${record.halt?.reason ?? 'stopped on a doubt'}` });
+  if (record.state === 'done') events.push({ at: record.updatedAt, kind: 'done', text: 'done' });
+  if (record.state === 'stopped') events.push({ at: record.updatedAt, kind: 'stopped', text: `stopped${record.detail ? `: ${record.detail}` : ''}` });
+  return events.map((event, index) => ({ event, index })).sort((a, b) => a.event.at - b.event.at || a.index - b.index).map(entry => entry.event);
 }

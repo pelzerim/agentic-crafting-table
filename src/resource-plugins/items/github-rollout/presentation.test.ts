@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { approvalAttempt, approvalOutcome, approvalUnconfirmed, rolloutActions, rolloutEmptyHint, rolloutIndicators, rolloutTone, validationAgents } from './presentation.ts';
+import { approvalAttempt, approvalOutcome, approvalUnconfirmed, cardPips, gateJoin, rolloutCardPips, gateNote, phaseCell, pipState, rolloutActions, rolloutEmptyHint, rolloutIndicators, rolloutTone, trackCount, trackFold, validationAgents, withAutoDeploy } from './presentation.ts';
+import type { PhaseTrack, TrackPhase } from './auto-deploy.ts';
 import { CONNECTION_LOST, OUTCOME_UNKNOWN, REQUEST_TIMEOUT } from '../../../../packages/workspace-service/protocol.ts';
 import { NEW_VALIDATION_AGENT } from './validation.ts';
 import type { Validation, RolloutEvent } from './validation.ts';
@@ -139,4 +140,85 @@ test('an unconfirmed approval went through once a fresh read shows none of its g
   assert.equal(approvalOutcome(tried, undefined), 'unread');
   const none = seen([]); (none.detail as any).run = undefined;
   assert.equal(approvalOutcome(tried, none), 'moved');
+});
+
+const phase = (over: Partial<TrackPhase> = {}): TrackPhase => ({ name: 'staging', state: 'done', at: at(12), jobs: { done: 2, total: 2 }, jobIds: [], check: { state: 'none' }, ...over });
+const stamp = (value: number) => new Date(value).toISOString().slice(11, 16);
+
+test('a phase cell says what deployed and which validation covers it', () => {
+  assert.deepEqual(phaseCell(phase({ name: 'build', noCheck: true, check: undefined }), stamp), { deployed: 'built 13:12', check: 'no check needed', tone: 'none' });
+  assert.deepEqual(phaseCell(phase({ check: { id: 'V1', state: 'passed', seeded: true } }), stamp), { deployed: 'deployed 13:12', check: 'V1 passed · counts', tone: 'passed' });
+  assert.deepEqual(phaseCell(phase({ check: { id: 'V2', state: 'running' } }), stamp).check, 'V2 validating');
+  assert.deepEqual(phaseCell(phase({ check: { id: 'V2', state: 'concerns' } }), stamp).check, 'V2 concerns');
+  assert.deepEqual(phaseCell(phase({ check: { state: 'accepted' } }), stamp).check, 'accepted when armed');
+  assert.deepEqual(phaseCell(phase(), stamp).check, 'validate next');
+  assert.deepEqual(phaseCell(phase({ state: 'running', at: undefined, jobs: { done: 1, total: 2 } }), stamp), { deployed: 'deploying · 1 of 2', check: 'validate later', tone: 'none' });
+  assert.equal(phaseCell(phase({ state: 'waiting', at: undefined, jobs: { done: 0, total: 2 } }), stamp).deployed, 'not started');
+});
+
+test('a gate join and the rail say who opens the gate', () => {
+  const passed = phase({ check: { id: 'V3', state: 'passed' } }), validating = phase({ check: { id: 'V3', state: 'running' } });
+  assert.deepEqual(gateJoin({ state: 'approved', by: 'auto deploy' }, passed), { state: 'done', glyph: 'check', who: 'auto', what: 'approved' });
+  assert.deepEqual(gateJoin({ state: 'approved' }, passed), { state: 'done', glyph: 'check', who: 'you', what: 'approved' });
+  assert.deepEqual(gateJoin({ state: 'auto', after: 'V3' }, validating), { state: 'auto', glyph: 'gate', who: 'auto', what: 'after V3' });
+  assert.deepEqual(gateJoin({ state: 'approving' }, passed), { state: 'auto', glyph: 'gate', who: 'auto', what: 'approving' });
+  assert.deepEqual(gateJoin({ state: 'you' }, passed), { state: 'you', glyph: 'gate', who: 'you', what: 'waiting' });
+  assert.deepEqual(gateJoin({ state: 'other' }, passed), { state: 'other', glyph: 'gate', who: 'other', what: 'waits for another approver' });
+  assert.equal(gateNote({ state: 'auto', after: 'V3' }, validating), 'Auto deploy approves after V3 passes');
+  assert.equal(gateNote({ state: 'auto', after: 'V3' }, passed), 'Auto deploy approves now');
+  assert.equal(gateNote({ state: 'approving' }, passed), 'Auto deploy approves now');
+  assert.equal(gateNote({ state: 'you' }, passed), undefined);
+});
+
+test('the pips, the count and the fold summarise the track', () => {
+  const track: PhaseTrack = { current: 4, phases: [phase({ name: 'build', noCheck: true, check: undefined }), phase({ name: 'staging', check: { id: 'V1', state: 'passed' } }), phase({ name: 'canary', check: { id: 'V2', state: 'passed' }, gate: { state: 'approved', by: 'auto deploy' } }),
+    phase({ name: 'phase-1', check: { state: 'accepted' }, gate: { state: 'approved' } }), phase({ name: 'phase-2', state: 'running', at: undefined, jobs: { done: 1, total: 2 }, gate: { state: 'approved', by: 'auto deploy' } }),
+    phase({ name: 'phase-3', state: 'waiting', at: undefined, jobs: { done: 0, total: 2 }, gate: { state: 'auto' } })] };
+  assert.deepEqual(track.phases.map(pipState), ['passed', 'passed', 'passed', 'deployed', 'running', 'waiting']);
+  assert.equal(trackCount(track), '4 of 6 deployed · 2 validated');
+  assert.deepEqual(trackFold(track), { count: 3, span: 'build → canary', checks: 'V1, V2 passed' });
+  assert.equal(trackFold({ ...track, current: 1 }), undefined, 'one phase does not fold');
+  assert.equal(pipState(phase({ check: { id: 'V2', state: 'concerns' } })), 'concerns');
+});
+
+test('without auto deploy a cell says whether the phase was validated, and a gate join who approves it and when', () => {
+  assert.deepEqual(phaseCell(phase({ check: { id: 'V2', state: 'passed' } }), stamp, {}), { deployed: 'deployed 13:12', check: 'V2 passed', tone: 'passed' });
+  assert.deepEqual(phaseCell(phase(), stamp, {}), { deployed: 'deployed 13:12', check: 'not validated', tone: 'none' });
+  assert.deepEqual(phaseCell(phase(), stamp, { gateWaits: true }), { deployed: 'deployed 13:12', check: 'not validated', tone: 'missing' }, 'amber while the gate after it waits');
+  const later = phase({ state: 'waiting', at: undefined, jobs: { done: 0, total: 2 } });
+  assert.equal(phaseCell(later, stamp, {}).check, 'no validation yet');
+  assert.equal(phaseCell(later, stamp, { autoValidate: true }).check, 'Auto validate later');
+  assert.equal(phaseCell(phase({ name: 'build', noCheck: true, check: undefined }), stamp, {}).check, 'no check needed');
+  assert.deepEqual(gateJoin({ state: 'later' }, later), { state: 'later', glyph: 'gate', who: 'you', what: 'later' });
+  assert.deepEqual(gateJoin({ state: 'approved', at: at(21) }, phase(), stamp), { state: 'done', glyph: 'check', who: 'approved', what: '13:21' });
+  assert.deepEqual(gateJoin({ state: 'approved' }, phase(), stamp), { state: 'done', glyph: 'check', who: 'approved', what: 'on GitHub' });
+});
+
+test('the map card gets one pip per phase, a bar before each gate and the count, only for two or more phases', () => {
+  const track: PhaseTrack = { current: 2, currentGate: true, plain: true, phases: [phase({ name: 'build', noCheck: true, check: undefined }), phase({ name: 'staging', check: { id: 'V1', state: 'passed' } }),
+    phase({ name: 'production', state: 'waiting', at: undefined, jobs: { done: 0, total: 2 }, gate: { state: 'you' } }), phase({ name: 'phase-2', state: 'waiting', at: undefined, jobs: { done: 0, total: 1 }, gate: { state: 'later' } })] };
+  assert.deepEqual(cardPips(track), { pips: [{ tone: 'passed', style: 'phase' }, { tone: 'passed', style: 'phase' }, { tone: 'you', style: 'gate' }, { tone: 'waiting', style: 'phase' }, { tone: 'later', style: 'gate' }, { tone: 'waiting', style: 'phase' }],
+    label: '2 of 4 deployed · 1 validated' });
+  assert.equal(cardPips({ ...track, currentGate: undefined })?.pips[3].style, 'now', 'the phase it is at is outlined');
+  assert.equal(cardPips({ phases: track.phases.slice(0, 1) }), undefined);
+});
+
+test('the card presentation reads the pips from the rollout as last read, its validations and gate events', () => {
+  const held = snapshot(1, [job(1, 'build', 'completed', 'success', 1, 4), job(2, 'deploy-staging / ship', 'completed', 'success', 5, 9), job(3, 'deploy-production / ship', 'waiting', null)], 'approval', 'Waiting approval', 'waiting');
+  (held.detail as any).gates = [{ environment: { id: 7, name: 'production' }, wait_timer: 0, current_user_can_approve: true, reviewers: [{ type: 'User' }] }];
+  const staging = validation({ scope: { runId: 41, attempt: 1, headSha: 'a'.repeat(40), environments: ['staging'] }, verdict: 'passed' });
+  assert.deepEqual(rolloutCardPips(held, [staging], [], []), { pips: [{ tone: 'passed', style: 'phase' }, { tone: 'passed', style: 'phase' }, { tone: 'you', style: 'gate' }, { tone: 'waiting', style: 'phase' }], label: '2 of 3 deployed · 1 validated' });
+  assert.equal(rolloutCardPips(snapshot(1, [job(1, 'build', 'completed', 'success', 1, 4), job(2, 'deploy / web', 'in_progress', null, 5)], 'ongoing', 'Ongoing'), [], [], []), undefined, 'one phase has no pips');
+  const reached: RolloutEvent = { runId: 41, attempt: 1, kind: 'gate-waiting', jobId: 0, environment: 'production', body: {}, observedAt: at(10) };
+  const deploying = snapshot(1, [job(1, 'build', 'completed', 'success', 1, 4), job(2, 'deploy-staging / ship', 'completed', 'success', 5, 9), job(3, 'deploy-production / ship', 'in_progress', null, 12)], 'ongoing', 'Ongoing');
+  assert.deepEqual(rolloutCardPips(deploying, [], [reached], [])?.pips.map(pip => `${pip.style}:${pip.tone}`), ['phase:passed', 'phase:deployed', 'gate:done', 'now:running'], 'a gate seen earlier in the attempt still splits the phases');
+});
+
+test('auto deploy events join the current attempt in the timeline, newest first', () => {
+  const groups = [{ runId: 1, attempt: 2, current: true, label: '', summary: '', jobs: [], entries: [{ key: 'run', kind: 'run' as const, conclusion: 'success', done: 1, total: 1, at: 30, rank: 5 }, { key: 'x', kind: 'queued' as const, blockers: [], at: 10, rank: 0 }] },
+    { runId: 1, attempt: 1, current: false, label: '', summary: '', jobs: [], entries: [] }];
+  const joined = withAutoDeploy(groups, [{ at: 20, kind: 'armed', text: 'armed by you from here' }, { at: 25, kind: 'halted', text: 'halted: V2 found concerns.' }]);
+  assert.deepEqual(joined[0].entries.map(entry => entry.key), ['run', 'auto:1:halted', 'auto:0:armed', 'x']);
+  assert.deepEqual(joined[1].entries, []);
+  assert.equal(withAutoDeploy(groups, []), groups);
 });

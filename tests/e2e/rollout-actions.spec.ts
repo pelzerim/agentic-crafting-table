@@ -63,7 +63,7 @@ test('the rollout view has one Actions menu: Approve and validate, Approve, Vali
     // A gate waits: Approve and validate leads, and the button takes the accent, whatever the connected agent does.
     await expect(actions.button).toHaveAttribute('data-primary', '');
     await actions.open();
-    await expect(actions.menu.getByRole('menuitem')).toHaveText(['Approve and validate', 'Approve', 'Validate', 'Validate with…']);
+    await expect(actions.menu.getByRole('menuitem')).toHaveText(['Approve and validate', 'Approve', 'Validate', 'Validate with…', 'Auto deploy from here…']);
     await expect(actions.item('Approve and validate')).toHaveAttribute('data-primary', '');
     for (const name of ['Approve and validate', 'Approve', 'Validate', 'Validate with…']) await expect(actions.item(name)).toBeEnabled();
     await page.keyboard.press('Escape'); await expect(actions.button).toBeFocused();

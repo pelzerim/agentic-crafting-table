@@ -16,6 +16,8 @@ export interface MapSizePreset {
   iconOnly?: boolean;
   /** Dotted data path to at most 24 `{ tone, style }` pips drawn above the summary. */
   pips?: string;
+  /** Draws the card pips the type's presentation sets on the node (`ServiceHost.presentation` `pips`), with their count line. */
+  presentationPips?: boolean;
   /** Height follows the wrapped text of `field` between `min` and `max` lines; a stored
    * height never overrides it. `footerField` reserves one more line while present. */
   growLines?: { field: string; min: number; max: number; footerField?: string };
@@ -391,9 +393,12 @@ export interface ResourceMenuGroup {
 export interface ChoiceSource { load: string; apply: string; loadingLabel?: string; runtime?: string; irreversible?: boolean; pickConfirms?: boolean }
 /** Map nodes/links to highlight while an option is hovered. */
 export interface ChoiceHighlight { nodes: string[]; links: string[] }
+/** One answer of a confirmation's pick: its `plan` lines and `foot` say what confirming with it will do. */
+export interface ChoicePickOption { id: string; label: string; note?: string; plan?: { name: string; text: string; tone?: 'do' | 'risk' }[]; foot?: string }
 /** Picking the option asks again in place: `prompt`, then `note`, an optional free-text
- * field sent as `input[text.field]` when not blank, Back and an `action` button. */
-export interface ChoiceConfirm { prompt: string; note?: string; action: string; text?: { field: string; label: string; placeholder?: string; maxLength: number } }
+ * field sent as `input[text.field]` when not blank, an optional `pick` of one answer (the first
+ * checked) sent as `input[pick.field]`, Back and an `action` button. */
+export interface ChoiceConfirm { prompt: string; note?: string; action: string; text?: { field: string; label: string; placeholder?: string; maxLength: number }; pick?: { field: string; label: string; options: ChoicePickOption[] } }
 export interface ResourceChoices {
   /** Empty when no option is currently selected (a confirmation, not a status). */
   current: string; context: JsonObject;

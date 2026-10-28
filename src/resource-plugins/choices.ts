@@ -2,12 +2,19 @@ import type { ChoiceConfirm, ChoiceSource, JsonObject, ResourceChoices, Resource
 import { canonical } from '../../packages/core/control.ts';
 type Services = Pick<ResourceViewServices, 'runAction'>;
 const bounded = (value: unknown, max: number, optional = false) => optional && value === undefined || typeof value === 'string' && Boolean(value.trim()) && value.length <= max;
+const freeField = (field: unknown, context: JsonObject, taken: readonly unknown[] = []) => typeof field === 'string' && /^[a-z][A-Za-z0-9]{0,39}$/.test(field) && !['value', 'requestId', ...Object.keys(context), ...taken].includes(field);
+function validPick(pick: ChoiceConfirm['pick'], context: JsonObject, taken: unknown) {
+  if (pick === undefined) return true;
+  if (!pick || typeof pick !== 'object' || !freeField(pick.field, context, [taken]) || !bounded(pick.label, 80) || !Array.isArray(pick.options) || !pick.options.length || pick.options.length > 6) return false;
+  return new Set(pick.options.map(option => option?.id)).size === pick.options.length && pick.options.every(option => option && bounded(option.id, 40) && bounded(option.label, 80) && bounded(option.note, 300, true) && bounded(option.foot, 300, true)
+    && (option.plan === undefined || Array.isArray(option.plan) && option.plan.length <= 20 && option.plan.every(row => row && bounded(row.name, 120) && bounded(row.text, 300) && (row.tone === undefined || row.tone === 'do' || row.tone === 'risk'))));
+}
 function validConfirm(confirm: ChoiceConfirm | undefined, context: JsonObject) {
   if (confirm === undefined) return true;
   if (!confirm || typeof confirm !== 'object' || !bounded(confirm.prompt, 500) || !bounded(confirm.action, 60) || !bounded(confirm.note, 300, true)) return false;
   const text = confirm.text;
-  return text === undefined || Boolean(text) && typeof text === 'object' && typeof text.field === 'string' && /^[a-z][A-Za-z0-9]{0,39}$/.test(text.field) && !['value', 'requestId', ...Object.keys(context)].includes(text.field)
-    && bounded(text.label, 80) && bounded(text.placeholder, 200, true) && Number.isSafeInteger(text.maxLength) && text.maxLength >= 1 && text.maxLength <= 60_000;
+  return (text === undefined || Boolean(text) && typeof text === 'object' && freeField(text.field, context)
+    && bounded(text.label, 80) && bounded(text.placeholder, 200, true) && Number.isSafeInteger(text.maxLength) && text.maxLength >= 1 && text.maxLength <= 60_000) && validPick(confirm.pick, context, text?.field);
 }
 /** A saved answer (`cachedAt`) resolves at once; the live one is then read in the background and reaches
  * `onRefresh` only when it differs. A failed refresh keeps the saved menu: applying an outdated choice fails. */
@@ -32,13 +39,36 @@ function validChoices(answer: unknown): ResourceChoices {
     || value.options.some(option => !validConfirm(option.confirm, value.context))) throw new Error('Status options are inconsistent. Reopen the menu.');
   return value;
 }
-/** `text` is what the person typed into the option's confirmation field, if it has one. */
-export function choiceInput(choices: ResourceChoices, value: string, text?: string): JsonObject {
+/** `text` is what the person typed into the option's confirmation field, if it has one; `picked`, the answer of its pick (the first by default). */
+export function choiceInput(choices: ResourceChoices, value: string, text?: string, picked?: string): JsonObject {
   const option = choices.options.find(option => option.id === value && !option.disabled);
   if (!option) throw new Error('This choice is unavailable. Reopen the menu.');
-  const field = option.confirm?.text;
+  const field = option.confirm?.text, pick = option.confirm?.pick, answer = picked ?? pick?.options[0]?.id;
   if (field && text && text.length > field.maxLength) throw new Error(`${field.label} can be at most ${field.maxLength.toLocaleString('en-US')} characters.`);
-  return { ...choices.context, value, ...(field && text?.trim() ? { [field.field]: text } : {}), requestId: crypto.randomUUID() };
+  if (pick && !pick.options.some(entry => entry.id === answer)) throw new Error('This choice is unavailable. Reopen the menu.');
+  return { ...choices.context, value, ...(field && text?.trim() ? { [field.field]: text } : {}), ...(pick ? { [pick.field]: answer! } : {}), requestId: crypto.randomUUID() };
+}
+
+/** A confirmation's pick as radio buttons, the picked answer's note, plan and foot under them. Calls `changed` with each new answer. */
+export function renderChoicePick(document: Document, pick: NonNullable<ChoiceConfirm['pick']>, changed: (id: string) => void) {
+  const group = document.createElement('div'), plan = document.createElement('dl'), foot = document.createElement('p'), name = `choice-pick-${crypto.randomUUID()}`;
+  group.className = 'resource-choice-pick'; group.setAttribute('role', 'radiogroup'); group.setAttribute('aria-label', pick.label);
+  plan.className = 'resource-choice-plan'; foot.className = 'resource-choice-foot';
+  const show = (id: string) => {
+    const option = pick.options.find(entry => entry.id === id) ?? pick.options[0];
+    plan.replaceChildren(...(option.plan ?? []).flatMap(row => { const term = document.createElement('dt'), detail = document.createElement('dd'); term.textContent = row.name; detail.textContent = row.text; if (row.tone) detail.dataset.tone = row.tone; return [term, detail]; }));
+    plan.hidden = !option.plan?.length; foot.textContent = option.foot ?? ''; foot.hidden = !option.foot;
+  };
+  pick.options.forEach((option, index) => {
+    const label = document.createElement('label'), input = document.createElement('input'), title = document.createElement('span');
+    input.type = 'radio'; input.name = name; input.value = option.id; input.checked = index === 0; title.textContent = option.label;
+    input.onchange = () => { if (input.checked) { show(option.id); changed(option.id); } };
+    label.append(input, title);
+    if (option.note) { const note = document.createElement('small'); note.textContent = option.note; label.append(note); }
+    group.append(label);
+  });
+  show(pick.options[0].id);
+  return [group, plan, foot] as const;
 }
 
 /** Small anchored menu for plugin views. Local choices use the same service
@@ -86,9 +116,9 @@ export function openResourceChoices(trigger: HTMLButtonElement, services: Servic
     if (actions.irreversible) { menu.dataset.irreversible = ''; menu.append(cancel); }
     const direct = choices.options.length === 1 && labels.only && choices.options[0].confirm && !choices.options[0].disabled;
     if (choices.prompt && !direct) { const prompt = document.createElement('p'); prompt.className = 'resource-choice-prompt'; prompt.textContent = choices.prompt; menu.append(prompt); }
-    const apply = (option: ResourceChoices['options'][number], text?: string) => {
+    const apply = (option: ResourceChoices['options'][number], text?: string, picked?: string) => {
       if (busy || disposed) return;
-      const input = choiceInput(onScreen ?? choices, option.id, text);
+      const input = choiceInput(onScreen ?? choices, option.id, text, picked);
       if (choose) { close(true); choose(input); return; }
       busy = true; trigger.disabled = true; report(labels.pending); close(true);
       void (actions.runtime ? services.runAction(actions.runtime, { operation: actions.apply, ...input }) : services.runAction('resource.action', { actionId: actions.apply, input }))
@@ -112,9 +142,11 @@ export function openResourceChoices(trigger: HTMLButtonElement, services: Servic
         field = document.createElement('textarea'); field.rows = 3; field.maxLength = own.text.maxLength; if (own.text.placeholder) field.placeholder = own.text.placeholder;
         fieldLabel.append(field);
       }
+      let picked = own?.pick?.options[0]?.id;
+      const pick = own?.pick ? renderChoicePick(document, own.pick, id => { picked = id; place(); }) : [];
       const restore = () => { if (direct) { close(true); return; } box.replaceWith(button); for (const [other, disabled] of options) other.disabled = disabled; button.focus(); };
-      back.onclick = restore; go.onclick = () => apply(option, field?.value);
-      box.append(text, ...(fieldLabel ? [fieldLabel] : []), back, go); for (const other of options.keys()) other.disabled = true;
+      back.onclick = restore; go.onclick = () => apply(option, field?.value, picked);
+      box.append(text, ...pick, ...(fieldLabel ? [fieldLabel] : []), back, go); for (const other of options.keys()) other.disabled = true;
       button.replaceWith(box); place(); (field ?? back).focus();
     };
     for (const option of choices.options) {

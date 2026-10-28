@@ -2,6 +2,17 @@
 
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one.
 
+## 0.8.0 — 2026-10-28
+
+### Rollouts
+- **Auto deploy from here**: a rollout that is already running can be handed to Auto deploy from its Actions ▾ or its right-click menu on the map, and a merged pull request offers **Auto deploy its rollout** while a rollout of its merge still runs. The confirm asks what happens to the phases that already deployed: **Validate what shipped first** (the default; a passing validation that already covers a phase counts) or **Start from the next phase**, with a plan per phase. A rollout of a push with no pull request on the map can be taken over too.
+- **Phase track**: every rollout of two or more phases shows a row of pips (“4 of 8 deployed · 3 validated”) and a lane of phase cells under the verdict line: what deployed, which validation covers it, and who opens each gate (you, Auto deploy after a pass, or approved). The lane scrolls sideways with the current phase centred, folds the deployed and validated phases into one cell, and leaves your own scrolling alone for 10 seconds. Under Auto deploy it carries Auto deploy's step, what comes next and **Stop**.
+- Clicking a phase filters the jobs rail and the timeline to it; click again or press Esc to clear.
+- A gate Auto deploy will open says **Auto deploy approves after V2 passes** instead of waiting for you, and Auto deploy's own steps (what it asked to validate, what it approved, why it stopped) appear in the timeline.
+
+### Map
+- The large rollout card shows its phase pips and count.
+
 ## 0.7.0 — 2026-10-28
 
 ### Needs me

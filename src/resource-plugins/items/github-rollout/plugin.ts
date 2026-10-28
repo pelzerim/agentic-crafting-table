@@ -19,7 +19,7 @@ const plugin: PluginDefinitionsModule = {
     validate: values => { parseStageRules(typeof values.stageRules === 'string' ? values.stageRules : ''); } },
   runtimeOperations: [{ id: 'rollout.validation', description: 'List, trigger or report validations of a rollout by connected agents.',
     agentPolicy: { operations: { report: { redirect: 'Report rollout validations with workspace_report_validation.' }, options: 'allow', list: 'allow' }, otherwise: 'humanOnly' } },
-  { id: AUTO_DEPLOY_OPERATION, description: 'Read the auto deploy of a pull request (or of the pull request a rollout deploys): its step, or why it halted. Only a person starts or stops it.',
+  { id: AUTO_DEPLOY_OPERATION, description: 'Read the auto deploy of a pull request or of a rollout it follows: its step, why it halted, and on a rollout its phase track and what it did. Only a person starts or stops it.',
     agentPolicy: { operations: { status: 'allow', options: 'allow' }, otherwise: 'humanOnly' } }],
   mcpTools: [{
     name: 'workspace_report_validation',

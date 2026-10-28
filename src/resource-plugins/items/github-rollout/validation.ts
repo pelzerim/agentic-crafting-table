@@ -231,7 +231,8 @@ export type TimelineEntry = { key: string; at: number; rank: number; jobName?: s
   | { kind: 'attempt'; attempt: number; stale: ValidationView[] }
   | { kind: 'run'; conclusion: string; done: number; total: number; duration?: number }
   | { kind: 'queued'; blockers: string[]; waited?: number }
-  | { kind: 'validation'; validation: ValidationView; covered: string[] });
+  | { kind: 'validation'; validation: ValidationView; covered: string[] }
+  | { kind: 'auto'; what: 'armed' | 'validate' | 'approve' | 'halted' | 'done' | 'stopped'; text: string });
 export interface TimelineGroup { runId: number; attempt: number; current: boolean; label: string; summary: string; jobs: SnapshotJob[]; entries: TimelineEntry[]; conclusion?: string }
 
 /** Job names a validation is about: its narrowed jobs, the jobs its checks read, or

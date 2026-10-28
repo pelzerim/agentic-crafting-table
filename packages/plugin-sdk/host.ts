@@ -5,6 +5,7 @@ import type {
   ResourcePluginViews, ResourceRecord, ResourceSnapshot, ResourceViewServices,
 } from '../../src/resource-plugins/types.ts';
 import type { PluginManifest } from './manifest.ts';
+import type { CardPips } from '../../src/resource-plugins/indicators.ts';
 import type { WorkspaceControl, WorkspaceState } from '../core/control.ts';
 import type { ConnectionAdapter, ProviderConnections } from '../provider-runtime/connections.ts';
 import type { SqliteStore } from '../workspace-service/sqlite-store.ts';
@@ -81,6 +82,8 @@ export interface ActionContribution {
 /** Local overlays computed from a saved snapshot; never a provider read. */
 export interface PresentationHooks {
   indicators?(resource: ResourceRecord, snapshot: ResourceSnapshot, store: SqliteStore): ResourceSnapshot['indicators'];
+  /** Pips for the item's map card, drawn at the sizes whose preset sets `presentationPips`; undefined clears them. */
+  pips?(resource: ResourceRecord, snapshot: ResourceSnapshot, store: SqliteStore): CardPips | undefined;
   /** Raises or clears Needs me under `source`, independent of the provider's own attention. */
   attention?(resource: ResourceRecord, snapshot: ResourceSnapshot, store: SqliteStore): { source: string; reason: AttentionReason | null; note?: string; eventId?: string } | undefined;
   /** The person opened the item's provider page from the app (its web link). Record local

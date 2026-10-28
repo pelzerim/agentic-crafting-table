@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { ResourceCoordinator } from './resources.ts';
 import { SqliteStore } from './sqlite-store.ts';
-import { WorkspaceControl } from '../core/control.ts';
+import { WorkspaceControl, canonical } from '../core/control.ts';
 import type { WorkspaceCommand } from '../core/control.ts';
 import { attentionItems, attentionReceipt } from '../../src/graph/attention.ts';
 import { rolloutFixture } from '../../tests/fixtures/rollout.ts';
@@ -51,5 +51,47 @@ test('rollouts attach/deduplicate through shared commands, poll while closed, ac
     await apply([{ type: 'node.archive', id: 'rollout' }]); const before = providers.paths.length; await tick(); assert.equal(providers.paths.length, before);
     await apply([{ type: 'node.restore', id: 'rollout' }]); await tick(); assert.ok(providers.paths.length > before);
     providers.accounts[0].enabled = false; const stopped = providers.paths.length; await tick(); assert.equal(providers.paths.length, stopped);
+  } finally { await resources.close(); store.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('a rollout of two or more phases gets card pips from its presentation; one of a single phase has none', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'craft-rollout-pips-')), store = new SqliteStore(join(directory, 'workspace.sqlite')), control = new WorkspaceControl(store), providers = rolloutFixture();
+  let now = Date.now();
+  const resources = new ResourceCoordinator(store, control, providers.host(control.registry), providers.connections, async () => {}, () => now);
+  const tick = async () => { now += 61_000; await resources.poll(); };
+  const pips = async () => (await control.read()).nodes[0].pips;
+  try {
+    await control.dispatch({ commandId: randomUUID(), expectedRevision: 0, actor: { kind: 'user', id: 'fixture' }, commands: [{ type: 'item.add', id: 'rollout', resourceId: 'resource', pluginId: 'github.rollout', title: 'Release', data: { owner: 'fixture', repo: 'web', runId: 101 }, position: { x: 0, y: 0 } }] });
+    await tick();
+    assert.equal(await pips(), undefined);
+    providers.gates = [{ environment: { id: 1, name: 'production' }, wait_timer: 0, current_user_can_approve: true, reviewers: [{ type: 'User' }] }];
+    providers.run = { ...providers.run, status: 'waiting' };
+    providers.jobs = providers.jobs.map(job => job.name.startsWith('deploy-production') ? { ...job, status: 'waiting' } : job);
+    await tick();
+    assert.deepEqual(await pips(), { pips: [{ tone: 'deployed', style: 'phase' }, { tone: 'you', style: 'gate' }, { tone: 'waiting', style: 'phase' }], label: '1 of 2 deployed · 0 validated' });
+  } finally { await resources.close(); store.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('repainting more than one command batch of card pips updates every card', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'craft-rollout-pips-many-')), store = new SqliteStore(join(directory, 'workspace.sqlite')), control = new WorkspaceControl(store), providers = rolloutFixture();
+  let now = Date.now();
+  const resources = new ResourceCoordinator(store, control, providers.host(control.registry), providers.connections, async () => {}, () => now);
+  const ids = Array.from({ length: 120 }, (_, index) => `rollout-${index}`);
+  const apply = async (commands: WorkspaceCommand[]) => control.dispatch({ commandId: randomUUID(), expectedRevision: (await control.read()).revision, actor: { kind: 'user', id: 'fixture' }, commands });
+  try {
+    providers.gates = [{ environment: { id: 1, name: 'production' }, wait_timer: 0, current_user_can_approve: true, reviewers: [{ type: 'User' }] }];
+    providers.run = { ...providers.run, status: 'waiting' };
+    providers.jobs = providers.jobs.map(job => job.name.startsWith('deploy-production') ? { ...job, status: 'waiting' } : job);
+    const data = { owner: 'fixture', repo: 'web', runId: 101 };
+    await apply([{ type: 'item.add', id: ids[0], resourceId: `resource-${ids[0]}`, pluginId: 'github.rollout', title: 'Release', data, position: { x: 0, y: 0 } }]);
+    const snapshot = await resources.read(ids[0]);
+    for (let start = 1; start < ids.length; start += 60)
+      await apply(ids.slice(start, start + 60).map((id, index) => ({ type: 'item.add', id, resourceId: `resource-${id}`, pluginId: 'github.rollout', title: 'Release', data, position: { x: (start + index) * 400, y: 0 } })));
+    for (const resource of (await control.read()).resources.slice(1))
+      store.cacheResource(resource.id, 'snapshot', createHash('sha256').update(canonical({ plugin: resource.pluginId, schema: resource.schemaVersion, connection: resource.connectionId, data: resource.data })).digest('hex'), snapshot, now);
+    for (let start = 0; start < ids.length; start += 60) await apply(ids.slice(start, start + 60).map(id => ({ type: 'node.update', id, pips: null })));
+    assert.ok((await control.read()).nodes.every(node => node.pips === undefined));
+    await resources.refreshPresentation();
+    assert.deepEqual((await control.read()).nodes.filter(node => !node.pips).map(node => node.id), []);
   } finally { await resources.close(); store.close(); rmSync(directory, { recursive: true, force: true }); }
 });

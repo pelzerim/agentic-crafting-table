@@ -39,11 +39,74 @@
 .rv .rv-verdict{margin:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--act-fs-body);color:var(--rv-dim);min-height:22px}
 .rv .rv-verdict b{color:var(--rv-ink);font-weight:600}
 .rv .rv-faint{color:var(--rv-faint)}.rv .rv-amber{color:var(--rv-amber)}.rv .rv-bad{color:var(--rv-bad)}
-.rv .rv-auto-deploy{flex:none;display:flex;align-items:center;gap:10px;margin:0;padding:6px 16px;font-size:var(--act-fs-ui);color:var(--rv-blue);background:var(--rv-blue-bg);border-bottom:1px solid var(--rv-blue-line)}
-.rv .rv-auto-deploy[data-state=halted]{color:var(--rv-amber);background:var(--rv-amber-bg);border-bottom-color:var(--rv-amber-line)}
-.rv .rv-auto-deploy[data-state=done]{color:var(--rv-mint);background:var(--rv-mint-bg)}
-.rv .rv-auto-deploy>span{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
-.rv .rv-auto-deploy-open{flex:none;font:inherit;color:inherit;background:none;border:1px solid currentColor;border-radius:4px;padding:2px 8px;cursor:pointer}
+/* Phase track: the auto deploy that follows this rollout. A step line, a pip per phase, then a lane of fixed-width phase cells
+   that scrolls sideways and keeps the current phase in the middle. */
+.rv .rv-track{flex:none;display:grid;gap:8px;min-width:0;padding:10px 16px;background:var(--rv-sunken);border-bottom:1px solid var(--rv-line)}
+.rv .rv-track-top{display:flex;align-items:center;gap:10px;min-width:0;font-size:var(--act-fs-ui)}
+.rv .rv-track-now{flex:1;min-width:0;color:var(--rv-dim);overflow-wrap:anywhere}
+.rv .rv-track-auto{display:inline-flex;align-items:center;gap:5px;color:var(--rv-blue)}.rv .rv-track-auto b{font-weight:650}
+.rv .rv-track[data-state=halted] :is(.rv-track-now,.rv-track-auto){color:var(--rv-amber)}
+.rv .rv-track[data-state=done] .rv-track-auto{color:var(--rv-mint)}
+.rv .rv-track-button{flex:none;height:22px;padding:0 8px;font-size:var(--act-fs-ui);color:var(--rv-ink);background:var(--rv-raised);border:1px solid var(--rv-line-strong);clip-path:var(--rv-px3);cursor:pointer;white-space:nowrap}
+.rv .rv-track-button:hover{background:var(--rv-hover)}
+.rv .rv-track-pips{display:flex;align-items:center;gap:3px;flex-wrap:wrap}
+.rv .rv-track-pip{width:22px;height:10px;margin:0;padding:0;background:transparent;border:1px solid var(--rv-line-strong);clip-path:none;box-shadow:none;cursor:pointer}
+.rv .rv-track-pip[data-s=passed]{background:var(--rv-mint);border-color:var(--rv-mint)}
+.rv .rv-track-pip[data-s=deployed]{background:var(--rv-surface);border-color:var(--rv-mint)}
+.rv .rv-track-pip[data-s=running]{background:var(--rv-blue);border-color:var(--rv-blue)}
+.rv .rv-track-pip[data-s=concerns]{background:var(--rv-amber);border-color:var(--rv-amber)}
+.rv .rv-track-pip[data-now]{outline:1px solid var(--rv-ink);outline-offset:1px}
+.rv .rv-track-pip:focus-visible{outline:2px solid var(--act-focus);outline-offset:1px}
+.rv .rv-track-gate{display:block;width:4px;height:10px;background:var(--rv-line-strong)}
+.rv .rv-track-gate[data-s=done]{background:var(--rv-mint)}.rv .rv-track-gate[data-s=auto]{background:var(--rv-blue)}.rv .rv-track-gate[data-s=you]{background:var(--rv-amber)}
+.rv .rv-track-count{margin-left:8px;font-size:var(--act-fs-meta);font-variant-numeric:tabular-nums;color:var(--rv-faint)}
+.rv .rv-lane{position:relative;display:flex;align-items:stretch;min-width:0;padding-bottom:4px;overflow:auto hidden;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:thin;
+  -webkit-mask-image:linear-gradient(90deg,transparent,var(--rv-ink) 18px,var(--rv-ink) calc(100% - 18px),transparent);mask-image:linear-gradient(90deg,transparent,var(--rv-ink) 18px,var(--rv-ink) calc(100% - 18px),transparent)}
+.rv .rv-lane[data-edge=start]{-webkit-mask-image:linear-gradient(90deg,var(--rv-ink) calc(100% - 18px),transparent);mask-image:linear-gradient(90deg,var(--rv-ink) calc(100% - 18px),transparent)}
+.rv .rv-lane[data-edge=end]{-webkit-mask-image:linear-gradient(90deg,transparent,var(--rv-ink) 18px);mask-image:linear-gradient(90deg,transparent,var(--rv-ink) 18px)}
+.rv .rv-lane[data-edge=none]{-webkit-mask-image:none;mask-image:none}
+.rv .rv-cell{flex:0 0 138px;min-width:0;display:grid;gap:3px;padding:6px 8px;font-size:var(--act-fs-ui);background:var(--rv-surface);border:1px solid var(--rv-line);scroll-snap-align:center}
+.rv .rv-cell-name{display:flex;justify-content:space-between;align-items:center;gap:6px;min-width:0;font-weight:650;color:var(--rv-ink)}
+.rv .rv-cell-name>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rv .rv-cell[data-s=done] .rv-cell-name .rv-px{color:var(--rv-mint)}.rv .rv-cell[data-s=running] .rv-cell-name .rv-px{color:var(--rv-blue)}.rv .rv-cell[data-s=waiting] .rv-cell-name .rv-px{color:var(--rv-faint)}
+.rv .rv-cell-line{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--rv-dim)}
+.rv .rv-cell-check{display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;white-space:nowrap;color:var(--rv-faint)}
+.rv .rv-cell-check[data-v=passed]{color:var(--rv-mint)}.rv .rv-cell-check[data-v=running]{color:var(--rv-blue)}.rv .rv-cell-check[data-v=concerns]{color:var(--rv-amber)}.rv .rv-cell-check[data-v=failed]{color:var(--rv-bad)}.rv .rv-cell-check[data-v=accepted]{color:var(--rv-dim)}
+.rv .rv-cell[data-now]{border-color:var(--rv-blue);box-shadow:inset 0 0 0 1px var(--rv-blue)}
+.rv .rv-cell[data-now=halted]{border-color:var(--rv-amber);box-shadow:inset 0 0 0 1px var(--rv-amber)}
+.rv .rv-cell.rv-track-fold{flex-basis:120px;background:var(--rv-mint-bg);border-color:var(--rv-mint)}
+.rv .rv-track-fold :is(.rv-cell-name,.rv-cell-check){color:var(--rv-mint)}
+.rv .rv-join{position:relative;flex:0 0 62px;display:grid;place-items:center;align-content:center;gap:2px;font-size:var(--act-fs-caps);text-align:center;white-space:nowrap;color:var(--rv-faint)}
+.rv .rv-join::before{content:"";position:absolute;left:0;right:0;top:50%;border-top:1px solid var(--rv-line)}
+.rv .rv-join>span{position:relative;display:inline-flex;align-items:center;gap:3px;padding:0 3px;background:var(--rv-sunken)}
+.rv .rv-join .rv-px{width:10px;height:10px}
+.rv .rv-join[data-s=done]{color:var(--rv-mint)}.rv .rv-join[data-s=auto]{color:var(--rv-blue)}.rv .rv-join[data-s=you]{color:var(--rv-amber)}
+.rv .rv-join[data-s=auto]::before{border-top:1px dashed var(--rv-blue)}.rv .rv-join[data-s=you]::before{border-top-color:var(--rv-amber-line)}
+.rv .rv-join[data-now]{font-weight:650}
+/* The rollout's own track, without auto deploy: gates a person approves later, phases deployed without a validation, a cell click filters. */
+.rv .rv-track-gate[data-s=later]{background:var(--rv-line-strong)}
+.rv .rv-join[data-s=later]{color:var(--rv-faint)}.rv .rv-join[data-s=later]::before{border-top:1px dashed var(--rv-line)}
+.rv .rv-cell-check[data-v=missing]{color:var(--rv-amber)}
+.rv .rv-cell[role=button]{cursor:pointer}
+.rv .rv-cell[aria-pressed=true]{background:var(--rv-raised);border-color:var(--rv-line-strong)}
+.rv .rv-cell:focus-visible{outline:2px solid var(--act-focus);outline-offset:-2px}
+/* Phase pips on the rollout's map card: a pip per phase, a bar before each gate, then the count. */
+.card-pips:has(.card-pips-count){flex-wrap:wrap;align-items:center;row-gap:2px;margin-top:6px}
+.card-pips i:is([data-style=phase],[data-style=now]){width:12px;height:8px;background:transparent;box-shadow:inset 0 0 0 1px var(--act-line-strong)}
+.card-pips i:is([data-style=phase],[data-style=now])[data-tone=passed]{background:var(--act-accent);box-shadow:none}
+.card-pips i:is([data-style=phase],[data-style=now])[data-tone=deployed]{box-shadow:inset 0 0 0 1px var(--act-accent)}
+.card-pips i:is([data-style=phase],[data-style=now])[data-tone=running]{background:var(--act-info);box-shadow:none}
+.card-pips i:is([data-style=phase],[data-style=now])[data-tone=concerns]{background:var(--act-pending);box-shadow:none}
+.card-pips i[data-style=now]{outline:1px solid var(--act-ink);outline-offset:1px}
+.card-pips i[data-style=gate]{width:3px;height:8px;background:var(--act-line-strong)}
+.card-pips i[data-style=gate][data-tone=done]{background:var(--act-accent)}.card-pips i[data-style=gate][data-tone=auto]{background:var(--act-info)}.card-pips i[data-style=gate][data-tone=you]{background:var(--act-pending)}
+.card-pips-count{margin-left:4px;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--act-fs-meta);font-variant-numeric:tabular-nums;color:var(--act-ink-faint)}
+.rv .rv-gate[data-state=auto]{background:color-mix(in srgb,var(--rv-blue-bg) 75%,transparent);box-shadow:inset 3px 0 var(--rv-blue)}
+.rv .rv-gate[data-state=auto] :is(.rv-glyph,.rv-gate-note){color:var(--rv-blue)}.rv .rv-gate[data-state=auto] .rv-gate-note{justify-content:flex-start}
+.rv .rv-auto-mark{display:inline-grid;place-items:center;flex:none}
+.rv .rv-event.rv-auto{background:linear-gradient(90deg,var(--rv-blue-bg),transparent 70%)}
+.rv .rv-event.rv-auto[data-tone=amber]{background:linear-gradient(90deg,var(--rv-amber-bg),transparent 70%)}
+.rv .rv-text .rv-auto-who{color:var(--rv-blue)}.rv .rv-event.rv-auto[data-tone=amber] .rv-auto-who{color:var(--rv-amber)}
 .rv .rollout-error{flex:none;margin:0;padding:6px 16px;font-size:var(--act-fs-ui);color:var(--rv-amber);background:var(--rv-amber-bg);border-bottom:1px solid var(--rv-amber-line)}
 
 /* Verdict badges, check glyphs, pips, stamps. */

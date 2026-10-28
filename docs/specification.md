@@ -3483,8 +3483,9 @@ deploy**, asks again in place: “Auto deploy #42 “Batch exports”?” with w
 (“Tags it [ship], merges it into main once ready (an agent fixes failing CI, twice at
 most), validates every rollout phase and approves the next one only after a pass. Any
 doubt halts.”; without Show/Ship turned on it starts “Merges it …” and the title is left
-alone), Back and **Start auto deploy**. A merged or closed pull request offers the entry
-disabled with the reason. Arming is the person's standing consent for the service to
+alone), Back and **Start auto deploy**. A closed pull request offers the entry disabled with
+the reason; a merged one does too (“Already merged.”) unless a rollout its merge discovered is
+on the map and still running (see “From here” below). Arming is the person's standing consent for the service to
 write and to spend agent tokens for this one pull request; it is human-only, while agents
 may read its status (`github.rollout.autoDeploy`, operations `status` and `options`).
 Arming an armed pull request keeps the running one. While armed the menu instead offers
@@ -3493,7 +3494,8 @@ sent is not undone.”).
 
 The service, not the renderer, then works through the steps, once per pass (15 seconds,
 and after workspace changes), and records each in a persisted record (the rollout
-package's plugin storage, collection `auto-deploy`, keyed by the pull request's resource,
+package's plugin storage, collection `auto-deploy`, keyed by the pull request's resource (or,
+for a rollout armed from here with no pull request on the map, by the rollout's resource),
 so aliases share it and it survives restarts; no table or migration):
 
 1. **Tag.** With Show/Ship on and the title not tagged [ship], one PR-SHOW-SHIP write
@@ -3570,11 +3572,109 @@ Stop): “Auto deploy · waiting for checks”, “· fixing CI (1/2)”, “· 
 queue”, “· waiting for the deploy run”, “· deploying live”, “· waiting out live · 7 min”,
 “· validating preview”, “· approving live”, “· live waits for another approver”, “· done”
 or “· halted: <reason>” (amber), with **Stop** while armed; the Actions entry reads “Auto
-deploy · on”. A rollout the record follows shows “Under auto deploy from <pull request> ·
-<step>” above its timeline with **Open pull request**. Auto validate (below) is unchanged
-and may validate the same rollout; auto deploy follows its own requests. Live GitHub
-writes and real agent sessions under auto deploy require human supervision; tests use
-fixtures only.
+deploy · on”. A rollout the record follows shows the phase track (below) under its frame
+bar. Auto validate (below) is unchanged and may validate the same rollout; auto deploy
+follows its own requests. Live GitHub writes and real agent sessions under auto deploy
+require human supervision; tests use fixtures only.
+
+**From here.** A rollout that is already running can be handed to auto deploy: the rollout
+view's Actions ▾ (after Validate with…, behind a rule) and the rollout card's right-click
+menu offer **Auto deploy from here…**, and a merged pull request's Auto deploy entry offers
+**Auto deploy its rollout** (“run #1842”) or **Auto deploy its N rollouts** while a rollout its
+merge discovered is on the map and running. Each asks in place, “Auto deploy run #1842 from
+here?”, with two choices, the first checked: **Validate what shipped first** (“Phases with no
+passing validation are validated before the next gate.”) and **Start from the next phase**
+(“What already deployed counts as accepted; only phases that finish from now on are
+validated.”). Under them the plan for the checked one, one line per phase that ran or waits at
+its gate (“preview · V1 passed at 14:09 · counts”, “staging · deployed 14:12 · validate now”
+or “· counts as accepted, not validated” in amber, “production · approve after staging
+passes, then validate once deployed” or “· approve now, then validate once deployed”), and a
+foot line (“One validation (staging) before production. Validates production after it
+deploys. Any doubt halts.”). The entry is disabled with a reason on a run that finished
+(“Already deployed.”), failed or was cancelled (“The run failed. Re-run it on GitHub
+first.”) or has not started (“Waiting for the deploy run.”); while a record follows the
+rollout it reads **Stop auto deploy** (the menu says “Under auto deploy from #418 · <step>”).
+`set` takes `from: 'here'` and `catchUp: 'validate' | 'accept'` (default `validate`); arming is
+human-only as before. When a pull request on the map discovered the rollout the record is that
+pull request's, armed after its merge (`mergedAt` is the arm time) with `takeover { at,
+catchUp, rolloutNodeIds, counts }`: it follows only the named rollouts and never tags or
+merges. Otherwise (a push or dispatch) the record is keyed by the rollout's resource
+(`rolloutResourceId`, `rolloutNodeId`, no pull request fields), Needs me goes on the rollout and
+the view has no Open pull request. Records stay `version: 1`; the new fields are optional, so
+records saved before read unchanged. At arm time every passing, current validation of the
+attempt scoped to jobs (same run attempt, not stale, not resolved) counts for those jobs;
+with `validate` a phase already due that they cover in full counts as passed and every other
+due phase is validated before any gate is approved, scoped to what no counted validation
+covered; with `accept` whatever else deployed is recorded as accepted (“accepted when armed”)
+and every phase already due as passed. Phases that finish later are validated as usual. Gates
+a person approved before arming stay approved; nothing is approved twice.
+
+**Phase track.** While an armed or halted record follows a rollout the rollout view shows a
+band in the sunken blue under the verdict line (once it is done or stopped, the rollout's own track
+below takes its place). Its top line: the auto glyph, **Auto deploy** · the
+step (the status line without its prefix) · “Then: approve canary” (or validate <phase>, deploy
+<phase>, done) in faint, **Stop** while armed, **Auto deploy again…** after a halt (the same
+confirm) and **Open #418** when a pull request owns the record; amber when halted. Then one 22 × 10 px pip per phase (filled mint: deployed and validated, or nothing to
+check; mint outline: deployed only; blue: deploying or validating; amber: concerns), a 4 px
+bar before each gated phase (mint approved, blue auto deploy, amber you), the current one
+outlined, and “3 of 8 deployed · 1 validated”; a pip click scrolls the lane to its phase.
+The lane: phase cells 138 px wide (name and state glyph; “deployed 14:12”, “deploying · 1 of
+2” or “not started”; a check line “V1 passed · counts”, “V2 validating”, “V2 concerns”,
+“accepted when armed”, “validate next”, “validate later” or “no check needed”), joined by →
+or a 62 px gate join (“✓ you / approved”, “✓ auto / approved”, “▦ auto / after V3”, “▦ auto /
+approving”, “▦ you / waiting”, “▦ other / waits for another approver”). Two or more deployed
+and validated phases before the current one fold into one mint cell (“2 phases ✓ / build →
+preview / V1 passed”). The lane scrolls sideways only (scroll snap, an edge fade only on a side
+with more), keeps the current phase centred on each update unless the person scrolled it in
+the last 10 seconds, and keeps the cell width in narrow views. Phases come from the record and
+the rollout (`phaseTrack`, `AUTO_DEPLOY_OPERATION status` on a rollout returns `track`, `next`
+and `events`): with a stage rule its stages in order; otherwise the build and setup jobs before
+the first deployment as one phase that needs no check, then one phase per environment (by job
+name) with a new phase at every gate, so an environment that gates several phases has one
+phase each (“production · phase-2”); a rollout without gates or rule is one phase, “whole
+run”. A gate is known as a gate once it held the attempt (current gates, gate events, the
+record's approvals); a later phase of an environment never seen at a gate shows a plain join
+until it reaches one. In the jobs rail a gate auto deploy will approve reads “Auto deploy
+approves after V3 passes” or “Auto deploy approves now” (blue, auto glyph) with no Approve
+button, and a gate it approved “approved 14:38 by auto deploy”. The timeline gets auto
+deploy's own entries from the record (armed, with what counted or that what deployed counts as
+accepted; each validation requested; each approval sent; halted with its reason; done;
+stopped), with the auto glyph on a faint blue wash (amber when halted), counted under All and
+Validations (a halt under Problems too).
+
+**Phase track on every rollout.** A rollout with two or more phases shows the track whether or not auto
+deploy follows it; one with a single phase (no stage rule and no gate) shows none. Without an armed or
+halted record (none, Stop, or done) the track has no top line, sits under the verdict line, where
+Auto deploy's track sits, and reads the rollout alone: `AUTO_DEPLOY_OPERATION status` on a
+rollout returns `track` with `plain: true` (and `autoValidate: true` when a pull request on the map
+that discovered it keeps Auto validate on). A phase's check is the newest validation of the current
+run attempt that is not stale and covers the phase (scoped to its jobs, to its environment via the
+stage of the name, or to the whole run, which covers the last phase that had run when it was
+requested); a request a later final validation resolved does not count, so a newer passing re-check
+replaces concerns. Gates: held and approvable “▦ you / waiting” (amber), held and not approvable
+“▦ other / waits for another approver”, ran “✓ approved / 14:21” (mint; the time of the app's
+recorded approval of that environment, used once per phase in order, else the first job of the phase
+starting; “on GitHub” without either), not reached “▦ you / later” (faint, dashed line; its pip bar
+in the line colour). Check lines: “V2 passed”, “V3 validating”, “V2 concerns”, “V2 failed”, “no check
+needed”; a deployed phase with none reads “not validated”, amber while the gate after it waits; a
+phase not reached reads “Auto validate later” when Auto validate covers the rollout, else “no
+validation yet”. Current: the held gate, else the running phase, else the phase being validated,
+else (run finished) none, and the fold covers what passed. Under an armed or halted record nothing
+changes: its step line on top, the track under the verdict line. A click (or Enter/Space) on a phase
+cell, under auto deploy too, filters the jobs rail and the timeline to that phase in place of a job
+filter (a toolbar chip names it, “Esc clears the phase filter”); the timeline keeps the phase's job
+entries, validations covering one of its jobs and gate entries of its environment. Clicking the cell
+again, Esc or a job click clears it; a pip click filters to its phase and scrolls the lane to it.
+
+**Phase pips on the map card.** At large card size (map size presets may set `presentationPips`;
+the rollout's large one does) the card draws one row under its title: a 12 × 8 px pip per phase
+(same states and colours as the track's, the phase the rollout is at outlined), a 3 px bar before each
+gated phase and the count (“3 of 6 deployed · 1 validated”, wrapping under the pips when it does not
+fit; the row's accessible name). No lane, no labels, not clickable. The rollout's presentation
+computes them from the rollout as last read, its validations and gate events with the stage rules
+(`PresentationHooks.pips`, saved on the node as `pips { pips: { tone, style }[], label }` with
+`node.update`, `null` clears); the renderer does no grouping. The card's pips never read auto
+deploy's record.
 
 **PR-REVIEW-LOOP — Review until clean.** **Review loop** in the PR view's Actions ▾ (after
 Review) and in the PR's right-click menu (after Trigger review) arms one review loop for the

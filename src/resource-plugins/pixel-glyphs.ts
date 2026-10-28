@@ -66,6 +66,7 @@ export const PIXEL_GLYPHS = {
     logs: ['XXXXXX..', '........', 'XXXXXXXX', '........', 'XXXX....', '........', 'XXXXXXX.', '........'],
     play: ['.X......', '.XX.....', '.XXX....', '.XXXX...', '.XXX....', '.XX.....', '.X......', '........'],
     gate: ['X......X', 'XXXXXXXX', 'X.X..X.X', 'X.X..X.X', 'XXXXXXXX', 'X......X', 'X......X', 'X......X'],
+    auto: ['........', 'X...X...', 'XX..XX..', 'XXX.XXX.', 'XX..XX..', 'X...X...', '........', '........'],
     job: ['XXXXXXXX', 'X......X', 'X.XXXX.X', 'X......X', 'X.XXX..X', 'X......X', 'XXXXXXXX', '........'],
     retry: ['...XXXX.', '..X....X', '.X......', 'XXX.....', '.X......', '..X....X', '...XXXX.', '........'],
   },

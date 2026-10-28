@@ -33,11 +33,22 @@ export function CanvasMenu({ screen, avoid, actions, act, close, loadChoices, on
   const irreversible = Boolean(group?.choices?.irreversible && loaded?.id === group.id);
   // The loaded question is the confirmation when the type says a pick answers it.
   const asks = irreversible && !(group?.choices?.pickConfirms && loaded?.children.some(child => child.id === 'plugin:choice-prompt'));
-  const [confirming, setConfirming] = useState<MenuActionId>(), [confirmText, setConfirmText] = useState('');
+  const [confirming, setConfirming] = useState<MenuActionId>(), [confirmText, setConfirmText] = useState(''), [confirmPick, setConfirmPick] = useState<string>();
   const { recent, remember } = useRecentColors();
   const children = group?.choices ? loaded?.id === group.id ? [...(irreversible ? [{ id: 'plugin:cancel' as const, label: 'Cancel' }] : []), ...loaded.children] : [{ id: 'plugin:loading' as const, label: group.choices.loadingLabel ?? 'Loading statuses…', disabled: true }] : group?.children;
   useEffect(() => setConfirming(undefined), [submenu]);
-  useLayoutEffect(() => { setConfirmText(''); if (confirming) child.current?.querySelector<HTMLElement>('[data-confirm-text], [data-confirm-back]')?.focus(); }, [confirming]);
+  useLayoutEffect(() => { setConfirmText(''); setConfirmPick(undefined); if (confirming) child.current?.querySelector<HTMLElement>('[data-confirm-text], [data-confirm-back]')?.focus(); }, [confirming]);
+  /** A confirmation's pick: one radio per answer, the first checked, then the picked answer's plan and foot. */
+  const pickOf = (pick: NonNullable<NonNullable<MenuAction['confirm']>['pick']>) => {
+    const picked = pick.options.find(option => option.id === confirmPick) ?? pick.options[0];
+    return <>
+      <div className="resource-choice-pick" role="radiogroup" aria-label={pick.label}>
+        {pick.options.map(option => <label key={option.id}><input type="radio" name="canvas-menu-pick" value={option.id} checked={option.id === picked.id} onChange={() => setConfirmPick(option.id)} /><span>{option.label}</span>{option.note && <small>{option.note}</small>}</label>)}
+      </div>
+      {picked.plan?.length ? <dl className="resource-choice-plan">{picked.plan.map(row => <div key={row.name} style={{ display: 'contents' }}><dt>{row.name}</dt><dd data-tone={row.tone}>{row.text}</dd></div>)}</dl> : null}
+      {picked.foot && <p className="resource-choice-foot">{picked.foot}</p>}
+    </>;
+  };
   const confirmSubject = (action: MenuAction) => { const options = loaded?.children.filter(option => option.mutation) ?? [], prompt = loaded?.children.find(option => option.id === 'plugin:choice-prompt'); return options.length === 1 && prompt ? prompt.label : `${action.label}?`; };
   useEffect(() => {
     if (!group?.choices || !loadChoices) return;
@@ -113,10 +124,12 @@ export function CanvasMenu({ screen, avoid, actions, act, close, loadChoices, on
       <p><b>{action.confirm?.prompt ?? confirmSubject(action)}</b>{action.confirm ? action.confirm.note ? ` ${action.confirm.note}` : '' : ' This can’t be undone from here.'}</p>
       {action.confirm?.text && <label className="resource-choice-text">{action.confirm.text.label}
         <textarea data-confirm-text rows={3} maxLength={action.confirm.text.maxLength} placeholder={action.confirm.text.placeholder} value={confirmText} onChange={event => setConfirmText(event.target.value)} /></label>}
+      {action.confirm?.pick && pickOf(action.confirm.pick)}
       <button role="menuitem" tabIndex={-1} data-confirm-back onClick={() => { setConfirming(undefined); requestAnimationFrame(() => child.current?.querySelector<HTMLButtonElement>(`[data-action="${CSS.escape(action.id)}"]`)?.focus()); }}>Back</button>
       <button role="menuitem" tabIndex={-1} className="canvas-menu-go" onClick={() => {
-        const field = action.confirm?.text?.field;
-        act(field && confirmText.trim() && action.mutation ? { ...action, mutation: { ...action.mutation, input: { ...action.mutation.input, [field]: confirmText } } } : action);
+        const field = action.confirm?.text?.field, pick = action.confirm?.pick;
+        const extra = { ...(field && confirmText.trim() ? { [field]: confirmText } : {}), ...(pick && confirmPick ? { [pick.field]: confirmPick } : {}) };
+        act(Object.keys(extra).length && action.mutation ? { ...action, mutation: { ...action.mutation, input: { ...action.mutation.input, ...extra } } } : action);
       }}>{action.confirm?.action ?? 'Confirm'}</button>
     </div> : <button data-action={action.id} role={action.checked === undefined ? "menuitem" : "menuitemradio"} aria-label={action.checked === undefined ? undefined : action.label} aria-checked={action.checked} disabled={action.disabled && !action.highlight || Boolean(nested && confirming && confirming !== action.id)} aria-disabled={action.disabled && action.highlight ? true : undefined} tabIndex={-1} title={action.description} data-destructive={action.destructive || undefined} data-remote={action.remote || undefined}
       aria-haspopup={action.children ? 'menu' : undefined} aria-expanded={action.children ? submenu === action.id : undefined}

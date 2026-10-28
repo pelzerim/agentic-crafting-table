@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { armRecord, decide, observe, settle, statusLine, FIX_ATTEMPTS, FIX_DEADLINE_MS, ROLLOUT_DEADLINE_MS, VALIDATION_DEADLINE_MS, BLOCKED_GRACE_MS } from './auto-deploy.ts';
-import type { AutoDeployDecision, AutoDeployFacts, AutoDeployRecord, PullFacts, RolloutFacts } from './auto-deploy.ts';
+import { armRecord, autoDeployEvents, decide, observe, phaseTrack, recordKey, seedCatchUp, settle, statusLine, takeoverRefusal, trackNext, FIX_ATTEMPTS, FIX_DEADLINE_MS, ROLLOUT_DEADLINE_MS, VALIDATION_DEADLINE_MS, BLOCKED_GRACE_MS } from './auto-deploy.ts';
+import type { AutoDeployDecision, AutoDeployFacts, AutoDeployRecord, PhaseTrack, PullFacts, RolloutFacts } from './auto-deploy.ts';
 import { parseStageRules } from './stages.ts';
 import type { RolloutJob } from '../../../../packages/provider-runtime/github-rollout.ts';
 
@@ -198,4 +198,153 @@ test('settle records the step each decision leads to; halts and done end the rec
   assert.equal(statusLine(stopped), 'Auto deploy · stopped');
   assert.deepEqual(decide(stopped, facts()), { kind: 'wait', step: 'stopped' });
   assert.deepEqual(decide(done, facts()), { kind: 'wait', step: 'done' });
+});
+
+const takeoverRollout = (over: Partial<RolloutFacts> = {}) => rollout({ gates: [gate(7, 'production')], jobs: [job(1, 'build'), job(2, 'deploy-preview / ship'), job(3, 'deploy-staging / ship'), job(4, 'deploy-prod (eu-west)', 'waiting', null)],
+  validations: [{ label: 'V1', state: 'final', verdict: 'passed', jobs: [1, 2], runId: 101, attempt: 1 }], ...over });
+
+test('a takeover record is armed after the merge: keyed by the pull request when one discovered the rollout, else by the rollout', () => {
+  const pulled = armRecord({ id: 'arm-2', pullResourceId: 'pr-r', pullNodeId: 'pr', now: T0, takeover: { catchUp: 'validate', rolloutNodeIds: ['rollout'] } });
+  assert.deepEqual(pulled, { version: 1, id: 'arm-2', pullResourceId: 'pr-r', pullNodeId: 'pr', armedAt: T0, updatedAt: T0, state: 'armed', step: 'deploying', mergedAt: T0,
+    takeover: { at: T0, catchUp: 'validate', rolloutNodeIds: ['rollout'] }, writes: [], fixes: [], checks: [] });
+  assert.equal(recordKey(pulled), 'pr-r');
+  const own = armRecord({ id: 'arm-3', rolloutResourceId: 'rollout-r', rolloutNodeId: 'rollout', now: T0, takeover: { catchUp: 'accept', rolloutNodeIds: ['rollout'] } });
+  assert.equal('pullResourceId' in own, false); assert.equal('pullNodeId' in own, false);
+  assert.deepEqual([own.rolloutResourceId, own.rolloutNodeId, own.mergedAt, recordKey(own)], ['rollout-r', 'rollout', T0, 'rollout-r']);
+  assert.equal(statusLine(own), 'Auto deploy · deploying');
+});
+
+test('a record saved before takeovers existed still reads and decides', () => {
+  const old = JSON.parse(JSON.stringify({ version: 1, id: 'arm-1', pullResourceId: 'pr-r', pullNodeId: 'pr', armedAt: T0, updatedAt: T0, state: 'armed', step: 'validating', detail: 'before live', mergedAt: T0,
+    writes: [{ key: 'merge', kind: 'merge', requestId: 'm', at: T0, state: 'sent' }], fixes: [], checks: [{ key: 'rollout:101:1:gate:7', rolloutNodeId: 'rollout', label: 'before live', requestId: 'r', validationId: 'V1', requestedAt: T0, jobs: [1] }] })) as AutoDeployRecord;
+  assert.equal(recordKey(old), 'pr-r');
+  const waiting = rollout({ gates: [gate(7, 'live')], validations: [{ label: 'V1', state: 'final', verdict: 'passed' }] });
+  assert.equal(decide(old, facts({ rollouts: [waiting] })).kind, 'approve');
+  assert.deepEqual(autoDeployEvents(old).map(event => event.kind), ['armed', 'validate']);
+});
+
+test('a takeover is refused on a run that finished, failed or has not started', () => {
+  assert.equal(takeoverRefusal(rollout({ run: undefined })), 'Waiting for the deploy run.');
+  assert.equal(takeoverRefusal(rollout({ run: { id: 101, attempt: 1, status: 'completed', conclusion: 'success', headSha: head } })), 'Already deployed.');
+  assert.equal(takeoverRefusal(rollout({ run: { id: 101, attempt: 1, status: 'completed', conclusion: 'failure', headSha: head } })), 'The run failed. Re-run it on GitHub first.');
+  assert.equal(takeoverRefusal(rollout({ run: { id: 101, attempt: 1, status: 'completed', conclusion: 'cancelled', headSha: head } })), 'The run failed. Re-run it on GitHub first.');
+  assert.equal(takeoverRefusal(takeoverRollout()), undefined);
+});
+
+test('catching up by validating: a passing current validation counts for what it covered; the rest is validated before the waiting gate is approved', () => {
+  const record = armRecord({ id: 'arm-2', pullResourceId: 'pr-r', pullNodeId: 'pr', now: T0, takeover: { catchUp: 'validate', rolloutNodeIds: ['rollout'] } });
+  const stale = takeoverRollout({ validations: [{ label: 'V1', state: 'final', verdict: 'passed', jobs: [1, 2], runId: 101, attempt: 1, stale: true }, { label: 'V0', state: 'final', verdict: 'passed', jobs: [1, 2, 3], runId: 100, attempt: 1 }] });
+  assert.deepEqual(seedCatchUp(record, [stale], T0).checks, [], 'a stale validation or one of another run counts for nothing');
+  const seeded = seedCatchUp(record, [takeoverRollout()], T0);
+  assert.deepEqual(seeded.checks, [{ key: 'rollout:101:1:seed:V1', rolloutNodeId: 'rollout', label: 'V1', requestId: 'arm-2:seed:rollout:101:1:seed:V1', validationId: 'V1', requestedAt: T0, jobs: [1, 2], seeded: true }]);
+  assert.deepEqual(seeded.takeover?.counts, ['V1']);
+  const first = decide(seeded, facts({ pull: undefined, rollouts: [takeoverRollout()] }));
+  assert.deepEqual(first, { kind: 'validate', key: 'rollout:101:1:gate:7@4', rolloutNodeId: 'rollout', label: 'before production (deploy-prod (eu-west))', jobs: [3] }, 'only what V1 did not cover is validated');
+  const asked = { ...seeded, checks: [...seeded.checks, check('rollout:101:1:gate:7@4', 'V2', T0, [3])] };
+  const pending = takeoverRollout({ validations: [...takeoverRollout().validations, { label: 'V2', state: 'running' }] });
+  waits(decide(asked, facts({ pull: undefined, rollouts: [pending] })), 'validating', 'before production (deploy-prod (eu-west))');
+  const passed = takeoverRollout({ validations: [...takeoverRollout().validations, { label: 'V2', state: 'final', verdict: 'passed' }] });
+  assert.equal(decide(asked, facts({ pull: undefined, rollouts: [passed] })).kind, 'approve', 'the gate is approved only after the catch-up validation passed');
+  const covered = seedCatchUp(record, [takeoverRollout({ validations: [{ label: 'V1', state: 'final', verdict: 'passed', jobs: [1, 2, 3], runId: 101, attempt: 1 }] })], T0);
+  assert.deepEqual(covered.checks.map(entry => [entry.key, entry.validationId]), [['rollout:101:1:seed:V1', 'V1'], ['rollout:101:1:gate:7@4', 'V1']], 'a due phase the validation fully covers counts at once');
+  assert.equal(decide(covered, facts({ pull: undefined, rollouts: [takeoverRollout({ validations: [{ label: 'V1', state: 'final', verdict: 'passed' }] })] })).kind, 'approve');
+});
+
+test('catching up by accepting: what deployed counts as accepted, the waiting gate is approved at once, later phases are validated', () => {
+  const record = armRecord({ id: 'arm-3', rolloutResourceId: 'rollout-r', rolloutNodeId: 'rollout', now: T0, takeover: { catchUp: 'accept', rolloutNodeIds: ['rollout'] } });
+  const seeded = seedCatchUp(record, [takeoverRollout({ validations: [] })], T0);
+  assert.deepEqual(seeded.checks.map(entry => [entry.key, entry.accepted, entry.jobs]), [['rollout:101:1:accepted', true, [1, 2, 3]], ['rollout:101:1:gate:7@4', true, []]]);
+  assert.equal(decide(seeded, facts({ pull: undefined, rollouts: [takeoverRollout({ validations: [] })] })).kind, 'approve');
+  const finished = takeoverRollout({ run: { id: 101, attempt: 1, status: 'completed', conclusion: 'success', headSha: head }, gates: [], validations: [], jobs: [job(1, 'build'), job(2, 'deploy-preview / ship'), job(3, 'deploy-staging / ship'), job(4, 'deploy-prod (eu-west)')] });
+  assert.deepEqual(decide(seeded, facts({ pull: undefined, rollouts: [finished] })), { kind: 'validate', key: 'rollout:101:1:final', rolloutNodeId: 'rollout', label: 'whole run', jobs: [4] }, 'what deploys after arming is validated');
+  assert.deepEqual(autoDeployEvents(seeded)[0], { at: T0, kind: 'armed', text: 'armed by you from here · what already deployed counts as accepted' });
+});
+
+const shape = (track: PhaseTrack) => track.phases.map(phase => [phase.name, phase.state, phase.noCheck ? 'no check' : phase.check ? `${phase.check.id ?? ''} ${phase.check.state}${phase.check.seeded ? ' counts' : ''}`.trim() : '', phase.gate ? `${phase.gate.state}${phase.gate.by ? ` by ${phase.gate.by}` : ''}${phase.gate.after ? ` after ${phase.gate.after}` : ''}` : '']);
+const exampleJobs = () => [job(1, 'build'), job(2, 'test'), job(3, 'deploy-preview / ship'), job(4, 'smoke-preview'), job(5, 'deploy-staging / ship'), job(6, 'migrate-staging'), job(7, 'deploy-prod (eu-west)', 'waiting', null), job(8, 'deploy-prod (us-east)', 'waiting', null)];
+
+test('phase track of the example: build, preview, staging and a gated production; a passing validation counts, the catch-up validates staging', () => {
+  const record = { ...armRecord({ id: 'arm-2', pullResourceId: 'pr-r', pullNodeId: 'pr', now: T0, takeover: { catchUp: 'validate', rolloutNodeIds: ['rollout'] } }), step: 'validating' as const, detail: 'before production',
+    checks: [{ ...check('rollout:101:1:seed:V1', 'V1', T0, [1, 2, 3, 4]), seeded: true as const }, check('rollout:101:1:gate:7@7,8', 'V2', T0, [5, 6])] };
+  const example = rollout({ jobs: exampleJobs(), gates: [gate(7, 'production')], validations: [{ label: 'V1', state: 'final', verdict: 'passed' }, { label: 'V2', state: 'running' }] });
+  const track = phaseTrack(record, example);
+  assert.deepEqual(shape(track), [['build', 'done', 'no check', ''], ['preview', 'done', 'V1 passed counts', ''], ['staging', 'done', 'V2 running', ''], ['production', 'waiting', 'none', 'auto after V2']]);
+  assert.deepEqual([track.current, track.currentGate], [2, undefined]);
+  assert.deepEqual(track.phases.map(phase => phase.jobs), [{ done: 2, total: 2 }, { done: 2, total: 2 }, { done: 2, total: 2 }, { done: 0, total: 2 }]);
+  assert.equal(track.phases[2].at, Date.parse('2026-10-08T10:20:00Z'));
+  assert.equal(trackNext(track), 'approve production');
+  const [rule] = parseStageRules(JSON.stringify([{ id: 'web', workflow: '^web', stages: [{ key: 'preview', environment: 'preview' }, { key: 'staging', environment: 'staging' }, { key: 'production', environment: 'production' }] }]));
+  assert.deepEqual(phaseTrack(record, { ...example, rule }).phases.map(phase => phase.name), ['build', 'preview', 'staging', 'production'], 'a stage rule names the same phases, in its order');
+  const concerns = { ...record, state: 'halted' as const, step: 'halted' as const, halt: { code: 'validation-concerns' as const, reason: 'V2 found concerns.', at: T0 } };
+  const halted = phaseTrack(concerns, { ...example, validations: [{ label: 'V1', state: 'final', verdict: 'passed' }, { label: 'V2', state: 'final', verdict: 'concerns' }] });
+  assert.deepEqual(shape(halted).slice(2), [['staging', 'done', 'V2 concerns', ''], ['production', 'waiting', 'none', 'you']], 'after a halt the gate waits for you');
+  assert.equal(halted.current, 2);
+});
+
+test('phase track of a phased rollout: one phase per gate of the same environment, each approved on its own', () => {
+  const record = { ...armRecord({ id: 'arm-2', rolloutResourceId: 'rollout-r', rolloutNodeId: 'rollout', now: T0, takeover: { catchUp: 'validate', rolloutNodeIds: ['rollout'] } }), step: 'approving' as const,
+    checks: [check('rollout:101:1:gate:7@3', 'V1', T0, [1, 2]), check('rollout:101:1:gate:7@4', 'V2', T0, [3])],
+    writes: [{ key: 'approve:rollout:101:1:7@3', kind: 'approve' as const, requestId: 'a', at: T0, state: 'sent' as const, label: 'production' }] };
+  const phased = rollout({ gates: [gate(7, 'production')], gateEnvironments: ['production'], validations: [{ label: 'V1', state: 'final', verdict: 'passed' }, { label: 'V2', state: 'final', verdict: 'passed' }],
+    jobs: [job(1, 'plan'), job(2, 'apply-staging / apply'), job(3, 'apply-prod-phase-1 / apply (region-1)'), job(4, 'apply-prod-phase-2 / apply (region-2)', 'waiting', null), job(5, 'apply-prod-phase-3 / apply (region-3)', 'queued', null)] });
+  const track = phaseTrack(record, phased);
+  assert.deepEqual(shape(track), [['build', 'done', 'no check', ''], ['staging', 'done', 'V1 passed', ''], ['production · phase-1', 'done', 'V2 passed', 'approved by auto deploy'],
+    ['production · phase-2', 'waiting', 'none', 'approving after V2'], ['production · phase-3', 'waiting', 'none', 'auto']]);
+  assert.deepEqual([track.current, track.currentGate], [3, true]);
+  assert.equal(trackNext(track), 'deploy production · phase-2');
+});
+
+test('phase track of a rollout without gates is one phase; an accepted catch-up says so', () => {
+  const record = { ...armRecord({ id: 'arm-3', rolloutResourceId: 'rollout-r', rolloutNodeId: 'rollout', now: T0, takeover: { catchUp: 'accept', rolloutNodeIds: ['rollout'] } }), step: 'deploying' as const };
+  const single = phaseTrack(record, rollout({ jobs: [job(1, 'build'), job(2, 'deploy-web / ship', 'in_progress', null)] }));
+  assert.deepEqual(shape(single), [['whole run', 'running', 'none', '']]);
+  assert.deepEqual([single.current, trackNext(single)], [0, 'validate whole run']);
+  const accepted = seedCatchUp(record, [takeoverRollout({ validations: [] })], T0);
+  assert.deepEqual(shape(phaseTrack(accepted, takeoverRollout({ validations: [] }))), [['build', 'done', 'no check', ''], ['preview', 'done', 'accepted', ''], ['staging', 'done', 'accepted', ''], ['production', 'waiting', 'none', 'auto']]);
+  const done = phaseTrack({ ...record, state: 'done', step: 'done' }, rollout({ run: { id: 101, attempt: 1, status: 'completed', conclusion: 'success', headSha: head } }));
+  assert.deepEqual([done.current, trackNext(done)], [undefined, '']);
+  const old = { version: 1, id: 'arm-1', pullResourceId: 'pr-r', pullNodeId: 'pr', armedAt: T0, updatedAt: T0, state: 'armed', step: 'validating', mergedAt: T0, writes: [], fixes: [], checks: [] } as AutoDeployRecord;
+  assert.equal(phaseTrack(old, rollout({ gates: [gate(7, 'live')] })).phases.length, 1, 'a record saved before takeovers draws a track too');
+});
+
+const plainExample = (over: Partial<RolloutFacts> = {}) => rollout({ jobs: exampleJobs(), gates: [gate(7, 'production')], ...over });
+const passed = (label: string, scope: { jobs?: number[]; environments?: string[] }, over: Partial<RolloutFacts['validations'][number]> = {}) =>
+  ({ label, state: 'final' as const, verdict: 'passed' as const, runId: 101, attempt: 1, requestedAt: T0 + 30 * MIN, ...scope, ...over });
+
+test('a plain rollout reads each phase check from its own validations: by jobs, by environment, or the whole run', () => {
+  assert.deepEqual(shape(phaseTrack(undefined, plainExample({ validations: [passed('V1', { jobs: [3, 4] }), passed('V2', { environments: ['staging'] }, { verdict: 'concerns' })] }))),
+    [['build', 'done', 'no check', ''], ['preview', 'done', 'V1 passed', ''], ['staging', 'done', 'V2 concerns', ''], ['production', 'waiting', 'none', 'you']]);
+  const rechecked = phaseTrack(undefined, plainExample({ validations: [passed('V1', { environments: ['staging'] }, { verdict: 'concerns', resolvedBy: 'V2' }), passed('V2', { environments: ['staging'] })] }));
+  assert.equal(shape(rechecked)[2][2], 'V2 passed', 'a newer passing re-check replaces concerns');
+  const running = phaseTrack(undefined, plainExample({ validations: [passed('V1', { jobs: [5] }), { label: 'V2', state: 'running', runId: 101, attempt: 1, jobs: [5] }] }));
+  assert.equal(shape(running)[2][2], 'V2 running');
+  assert.equal(shape(phaseTrack(undefined, plainExample({ validations: [passed('V1', {})] })))[2][2], 'V1 passed', 'a whole-run validation covers the last phase that had run when it was requested');
+  assert.equal(shape(phaseTrack(undefined, plainExample({ validations: [passed('V1', {}, { requestedAt: T0 })] })))[2][2], 'none', 'nothing had run yet');
+  const ignored = phaseTrack(undefined, plainExample({ validations: [passed('V1', { jobs: [3, 4] }, { stale: true }), passed('V2', { jobs: [5] }, { attempt: 2 }), { label: 'V3', state: 'requested', runId: 101, attempt: 1, jobs: [5], resolvedBy: 'V4' }, passed('V4', { jobs: [1] })] }));
+  assert.deepEqual(shape(ignored).slice(1, 3).map(phase => phase[2]), ['none', 'none'], 'stale, other attempts and requests a later final resolved do not count');
+});
+
+test('a plain rollout reads its gates from GitHub: you or another approver while held, approved with its time once it ran, later before it is reached', () => {
+  assert.equal(phaseTrack(undefined, plainExample({ gates: [gate(7, 'production', false)] })).phases[3].gate?.state, 'other');
+  const phased = rollout({ gates: [gate(7, 'production')], gateEnvironments: ['production'], gateApprovals: [{ environment: 'production', at: T0 + 5 * MIN }],
+    jobs: [job(1, 'plan'), job(2, 'apply-staging / apply'), job(3, 'apply-prod-phase-1 / apply (region-1)'), job(4, 'apply-prod-phase-2 / apply (region-2)', 'waiting', null), job(5, 'apply-prod-phase-3 / apply (region-3)', 'queued', null)] });
+  const track = phaseTrack(undefined, phased);
+  assert.deepEqual(shape(track).map(phase => phase[3]), ['', '', 'approved', 'you', 'later']);
+  assert.equal(track.phases[2].gate?.at, T0 + 5 * MIN, 'the approval time GitHub reported');
+  const unseen = phaseTrack(undefined, { ...phased, gateApprovals: [] });
+  assert.equal(unseen.phases[2].gate?.at, Date.parse('2026-10-08T10:10:00Z'), 'else the first job of the phase starting');
+  assert.deepEqual(track.phases.map(phase => phase.jobIds), [[1], [2], [3], [4], [5]]);
+});
+
+test('a plain rollout is current at its held gate, else its running phase, else the phase being validated, else nowhere once finished; one phase draws no track', () => {
+  const held = phaseTrack(undefined, plainExample());
+  assert.deepEqual([held.current, held.currentGate, held.plain], [3, true, true]);
+  const deploying = phaseTrack(undefined, plainExample({ gates: [], gateEnvironments: ['production'], jobs: exampleJobs().map(entry => entry.id === 7 ? { ...entry, status: 'in_progress' } : entry) }));
+  assert.deepEqual([deploying.current, deploying.currentGate], [3, undefined]);
+  const finished = (validations: RolloutFacts['validations']) => phaseTrack(undefined, rollout({ run: { id: 101, attempt: 1, status: 'completed', conclusion: 'success', headSha: head }, gateEnvironments: ['production'], validations,
+    jobs: exampleJobs().map(entry => entry.status === 'waiting' ? job(entry.id, entry.name) : entry) }));
+  assert.equal(finished([{ label: 'V1', state: 'running', runId: 101, attempt: 1, jobs: [7, 8] }]).current, 3);
+  assert.equal(finished([]).current, undefined);
+  assert.deepEqual(phaseTrack(undefined, rollout({ jobs: [job(1, 'build'), job(2, 'deploy-web / ship', 'in_progress', null)] })).phases, []);
+  assert.equal(phaseTrack(undefined, plainExample({ autoValidate: true })).autoValidate, true);
 });

@@ -14,6 +14,20 @@ test('a confirmed option carries its optional text in its declared field, and on
   assert.throws(() => choiceInput(choices, 'close', 'x'.repeat(21)), /at most 20 characters/);
 });
 
+const takeover = { prompt: 'Auto deploy run #7 from here?', action: 'Start auto deploy', pick: { field: 'catchUp', label: 'Phases that already ran', options: [
+  { id: 'validate', label: 'Validate what shipped first', note: 'Validated before the next gate.', plan: [{ name: 'staging', text: 'deployed 14:12 · validate now', tone: 'do' as const }], foot: 'One validation (staging) before production.' },
+  { id: 'accept', label: 'Start from the next phase', plan: [{ name: 'staging', text: 'counts as accepted, not validated', tone: 'risk' as const }] }] } };
+const picking: ResourceChoices = { current: '', context: { sourceResourceId: 'rollout', from: 'here' }, options: [{ id: 'arm', label: 'Start auto deploy', confirm: takeover }] };
+
+test('a confirmation with a pick sends the picked option in its declared field, the first one unless another was picked', async () => {
+  assert.deepEqual({ ...choiceInput(picking, 'arm'), requestId: '' }, { sourceResourceId: 'rollout', from: 'here', value: 'arm', catchUp: 'validate', requestId: '' });
+  assert.equal(choiceInput(picking, 'arm', undefined, 'accept').catchUp, 'accept');
+  assert.throws(() => choiceInput(picking, 'arm', undefined, 'other'), /unavailable/);
+  assert.equal((await loadResourceChoices(services(picking), 'options', 'github.rollout.autoDeploy')).options[0].confirm?.pick?.options.length, 2);
+  for (const pick of [{ ...takeover.pick, field: 'value' }, { ...takeover.pick, field: 'from' }, { ...takeover.pick, options: [] }, { ...takeover.pick, options: [{ id: '', label: 'x' }] }, { ...takeover.pick, options: [{ id: 'a', label: 'x', plan: [{ name: 'p', text: 'y'.repeat(301) }] }] }])
+    await assert.rejects(loadResourceChoices(services({ ...picking, options: [{ id: 'arm', label: 'Start auto deploy', confirm: { ...takeover, pick } }] }), 'options', 'github.rollout.autoDeploy'), /inconsistent/, JSON.stringify(pick));
+});
+
 /** Answers each ask in turn with the given value, or throws when it is an Error; records the inputs. */
 function asked(...answers: unknown[]) {
   const inputs: unknown[] = [];

@@ -313,6 +313,19 @@ test('an agent\'s last line is saved on its node and cleared with null', async (
   assert.equal((await control.read()).nodes[0].lastLine, undefined);
 });
 
+test('card pips a presentation draws are saved on the node, refused when malformed and cleared with null', async () => {
+  const control = new WorkspaceControl(new MemoryStore());
+  await control.apply({ type: 'item.add', id: 'rollout', resourceId: 'rollout-r', pluginId: 'github.rollout', title: 'Rollout', position: { x: 0, y: 0 }, data: { owner: 'acme', repo: 'app', runId: 7 } }, 0);
+  const pips = { pips: [{ tone: 'passed', style: 'phase' }, { tone: 'you', style: 'gate' }, { tone: 'waiting', style: 'now' }], label: '1 of 2 deployed · 1 validated' };
+  await control.apply({ type: 'node.update', id: 'rollout', pips }, 1);
+  assert.deepEqual((await control.read()).nodes[0].pips, pips);
+  await control.apply({ type: 'node.update', id: 'rollout', summary: 'Waiting approval' }, 2);
+  assert.deepEqual((await control.read()).nodes[0].pips, pips, 'other updates leave them');
+  await assert.rejects(control.apply({ type: 'node.update', id: 'rollout', pips: { pips: [{ tone: 'Passed!', style: 'phase' }] } } as never, 3));
+  await control.apply({ type: 'node.update', id: 'rollout', pips: null }, 3);
+  assert.equal((await control.read()).nodes[0].pips, undefined);
+});
+
 test('a scene-only update is saved without a new revision, so it never makes a pending action stale', async () => {
   const control = new WorkspaceControl(new MemoryStore());
   const provider = { kind: 'provider' as const, id: 'session' };

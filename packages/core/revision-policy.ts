@@ -98,7 +98,7 @@ export function revisionRefusal(commands: readonly WorkspaceCommand[], context: 
 }
 
 /** Node fields that sessions and providers report on their own, many times a minute. A user's command does not act on them. */
-const SESSION_STATUS: ReadonlySet<string> = new Set([...SCENE_FIELDS, 'summary', 'lastLine', 'activity', 'activityAt', 'indicators',
+const SESSION_STATUS: ReadonlySet<string> = new Set([...SCENE_FIELDS, 'summary', 'lastLine', 'activity', 'activityAt', 'indicators', 'pips',
   'attention', 'attentionNote', 'attentionNotes', 'attentionSources', 'attentionVersion', 'attentionSeenVersion', 'attentionAt', 'attentionEvents']);
 
 /** The ids `commands` name (as `id`, `ids` or `…Id` at any depth); `map:<nodeId>` to-do ids name their node. */

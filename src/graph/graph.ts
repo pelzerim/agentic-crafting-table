@@ -1,4 +1,4 @@
-import type { ResourceIndicator } from '../resource-plugins/indicators.ts';
+import type { CardPips, ResourceIndicator } from '../resource-plugins/indicators.ts';
 import { assertNoBlockingCycle } from './blocking.ts';
 export const ITEM_SIZES = ['small', 'medium', 'large'] as const;
 export type ItemSize = typeof ITEM_SIZES[number];
@@ -62,6 +62,8 @@ export interface GraphNode {
   /** Last event per source prevents replayed completions from alerting again. */
   attentionEvents?: Record<string, string>;
   indicators?: ResourceIndicator[];
+  /** Card pips the item's type presentation draws, with their count line. */
+  pips?: CardPips;
   /** Last observed change of activity, attention or indicators. */
   activityAt?: string;
   /** How many helpers (subagents, teammates) a working item has busy right now; absent means none. Only a working item has it. */

@@ -1,11 +1,11 @@
 import * as z from 'zod/v4';
-import { resourceMapIndicators, hasResourceMapPresentation, presentationAttention } from './resource-presentation.ts';
+import { resourceMapIndicators, resourceMapPips, hasResourceMapPresentation, presentationAttention } from './resource-presentation.ts';
 import { isArchived, isOffMap } from '../../src/graph/archive.ts';
 import { isMuted, mutedProjectIds } from '../../src/graph/mute.ts';
 import { blockedBy, blockerList, blockerName } from '../../src/graph/blocking.ts';
 import { resourceReference } from '../../src/resource-plugins/views.ts';
 import { createHash, randomUUID } from 'node:crypto';
-import { canonical, CommandIdConflict } from '../core/control.ts';
+import { canonical, CommandIdConflict, MAXIMUM_COMMANDS_PER_ENVELOPE } from '../core/control.ts';
 import { attentionNote } from '../../src/graph/attention.ts';
 import type { WorkspaceControl, WorkspaceCommand, CommandEnvelope, WorkspaceState } from '../core/control.ts';
 import { creationConnections, creationNear, requestConnections } from '../core/resource-creation.ts';
@@ -42,6 +42,9 @@ const PENDING_SLOT = 'pending-write', PENDING_KEY = 'write', CHOICES_SLOT = 'cho
 const PENDING_CUE: ResourceIndicator = { id: 'pending', label: 'Confirming', icon: 'clock', tone: 'amber' };
 /** A person's change shown before the provider confirms it; `writing` while the write is in flight. */
 interface PendingWrite { requestId: string; actionId: string; nodeId: string; input: JsonObject; base: ResourceSnapshot; since: number; writing: boolean; optimism: ResourceOptimism }
+/** A repaint of more cards than one envelope holds is sent in batches, each against the newest revision. */
+const MAXIMUM_PRESENTATION_BATCHES = 50;
+
 export class ResourceCoordinator {
   private store: SqliteStore; private control: WorkspaceControl; private host: ResourcePluginHost; private connections: ProviderConnections;
   private changed: () => Promise<void>; private now: () => number;
@@ -230,7 +233,8 @@ export class ResourceCoordinator {
           commands.push(...creationConnections(requestConnections(request), nodeId).filter(command => !existing || !existingRelationship(state.nodes, state.links, command.link)));
           for (const id of new Set([nodeId, ...state.nodes.filter(node => matches.some(candidate => candidate.id === node.resourceId)).map(node => node.id)])) {
             const titled = state.nodes.find(node => node.id === id)?.generatedTitle !== undefined;
-            commands.push({ type: 'node.update', id, ...(titled ? {} : { title: resolved.snapshot.title }), activity: resolved.snapshot.activity, summary: resolved.snapshot.label, indicators: resourceMapIndicators(this.host, matches.find(candidate => state.nodes.find(node => node.id === id)?.resourceId === candidate.id) ?? matches[0] ?? resource, resolved.snapshot, this.store) });
+            const shown = matches.find(candidate => state.nodes.find(node => node.id === id)?.resourceId === candidate.id) ?? matches[0] ?? resource, pips = resourceMapPips(this.host, shown, resolved.snapshot, this.store);
+            commands.push({ type: 'node.update', id, ...(titled ? {} : { title: resolved.snapshot.title }), activity: resolved.snapshot.activity, summary: resolved.snapshot.label, indicators: resourceMapIndicators(this.host, shown, resolved.snapshot, this.store), ...(pips ? { pips } : {}) });
           }
           this.observeAttention(commands, state, nodeId, resource, resolved.snapshot);
           prepared = { nodeId, created: !existing, envelope: { commandId: request.requestId + ':attach', expectedRevision: state.revision, actor: { kind: 'user', id: 'resource-attachment' }, commands } };
@@ -414,10 +418,10 @@ export class ResourceCoordinator {
       if (caller && isArchived(state.nodes.find(node => node.id === nodeId)!, state.nodes)) return snapshot;
       const { matches, commands } = snapshot.resolution ? this.resolution(state, { ...resource, data: snapshot.resolution.data }, snapshot) : { matches: [resource], commands: [] as WorkspaceCommand[] };
       for (const node of state.nodes.filter(node => matches.some(record => record.id === node.resourceId))) {
-        const indicators = resourceMapIndicators(this.host, matches.find(record => record.id === node.resourceId)!, snapshot, this.store);
-        const title = node.generatedTitle === undefined ? snapshot.title : undefined;
-        if (title && node.title !== title || node.summary !== snapshot.label || node.activity !== (node.rework ? 'working' : snapshot.activity) || indicators && canonical(node.indicators) !== canonical(indicators))
-          commands.push({ type: 'node.update', id: node.id, ...(title ? { title } : {}), summary: snapshot.label, activity: snapshot.activity, indicators });
+        const shown = matches.find(record => record.id === node.resourceId)!, indicators = resourceMapIndicators(this.host, shown, snapshot, this.store), pips = resourceMapPips(this.host, shown, snapshot, this.store);
+        const title = node.generatedTitle === undefined ? snapshot.title : undefined, pipsChanged = pips !== undefined && canonical(node.pips ?? null) !== canonical(pips);
+        if (title && node.title !== title || node.summary !== snapshot.label || node.activity !== (node.rework ? 'working' : snapshot.activity) || indicators && canonical(node.indicators) !== canonical(indicators) || pipsChanged)
+          commands.push({ type: 'node.update', id: node.id, ...(title ? { title } : {}), summary: snapshot.label, activity: snapshot.activity, indicators, ...(pipsChanged ? { pips } : {}) });
       }
       // Provider completion mirrors onto Mark done only when it changes, so a local
       // check awaiting its provider write is not undone by an older observation.
@@ -469,24 +473,25 @@ export class ResourceCoordinator {
   }
   /** Repaint durable local state from cached content without fetching or acknowledging providers. */
   async refreshPresentation(nodeId?: string) {
-    for (let attempt = 0; ; attempt++) {
+    for (let attempt = 0, batches = 0; ; attempt++) {
       const state = await this.control.read(), resourceId = state.nodes.find(node => node.id === nodeId)?.resourceId;
       const commands: WorkspaceCommand[] = [];
       for (const resource of state.resources.filter(resource => hasResourceMapPresentation(this.host, resource) && (!nodeId || resource.id === resourceId))) {
         const cache = this.store.resourceCache(resource.id, 'snapshot', fingerprint(resource));
         if (!cache?.value) continue;
         this.observePresentationAttention(commands, state, resource, cache.value as ResourceSnapshot);
-        const indicators = resourceMapIndicators(this.host, resource, cache.value as ResourceSnapshot, this.store);
-        if (!indicators) continue;
+        const indicators = resourceMapIndicators(this.host, resource, cache.value as ResourceSnapshot, this.store), pips = resourceMapPips(this.host, resource, cache.value as ResourceSnapshot, this.store);
         for (const node of state.nodes.filter(node => node.resourceId === resource.id)) {
           // Keep the independent disconnected cue until a successful provider read.
           const paused = node.indicators?.find(cue => cue.id === 'connection');
-          const next = paused && !indicators.some(cue => cue.id === 'connection') ? [...indicators, paused] : indicators;
-          if (canonical(node.indicators) !== canonical(next)) commands.push({ type: 'node.update', id: node.id, indicators: next });
+          const next = indicators && paused && !indicators.some(cue => cue.id === 'connection') ? [...indicators, paused] : indicators;
+          const cues = next && canonical(node.indicators) !== canonical(next), pipsChanged = pips !== undefined && canonical(node.pips ?? null) !== canonical(pips);
+          if (cues || pipsChanged) commands.push({ type: 'node.update', id: node.id, ...(cues ? { indicators: next } : {}), ...(pipsChanged ? { pips } : {}) });
         }
       }
       if (!commands.length) return;
-      try { await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'system', id: 'resource-presentation' }, commands }); await this.changed(); return; }
+      const batch = commands.slice(0, MAXIMUM_COMMANDS_PER_ENVELOPE), more = commands.length > batch.length && ++batches < MAXIMUM_PRESENTATION_BATCHES;
+      try { await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'system', id: 'resource-presentation' }, commands: batch }); await this.changed(); if (!more) return; attempt = -1; }
       catch (error) { if ((error as { code?: string }).code !== 'REVISION_CONFLICT' || attempt >= 4) throw error; }
     }
   }

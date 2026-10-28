@@ -11,6 +11,14 @@ export const indicatorsSchema = z.array(z.object({
 })).max(4);
 export type ResourceIndicator = z.infer<typeof indicatorsSchema>[number];
 
+/** A row of small marks a type's presentation draws on its map card, with a count line after them. `tone` and `style` are the type's
+ * own words; its stylesheet colours them. Drawn at the map sizes whose preset sets `presentationPips`. */
+export const cardPipsSchema = z.object({
+  pips: z.array(z.object({ tone: z.string().regex(/^[a-z][a-z-]{0,23}$/), style: z.string().regex(/^[a-z][a-z-]{0,23}$/) })).min(1).max(24),
+  label: z.string().min(1).max(120).optional(),
+});
+export type CardPips = z.infer<typeof cardPipsSchema>;
+
 /** The one cue for comments waiting for the person, so every type shows them alike: the message
  * glyph in blue with the count leading its label (a narrow card keeps icon and number). `word`
  * is the type's own term for its local read state. `showLabel` keeps the count on a type whose
