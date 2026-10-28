@@ -9,7 +9,7 @@ import type { SessionRecord } from '../../packages/session-runtime/protocol.ts';
  * window button and Cmd+W only hide the window (`hideWindow`); sessions keep running. */
 export function installLifecycle(workspace: WorkspaceConnection, runtime: SupervisorConnection, hideWindow?: (window: BrowserWindow) => void) {
   let allowed = false, pending: Promise<void> | undefined;
-  const close = () => {
+  const close = (after?: () => Promise<void> | void) => {
     if (pending || allowed) return;
     pending = (async () => {
       try {
@@ -31,7 +31,7 @@ export function installLifecycle(workspace: WorkspaceConnection, runtime: Superv
           if (index === 0) workspace.close(); else runtime.close();
           await disconnected;
         }
-        allowed = true; workspace.close(); runtime.close(); app.quit();
+        allowed = true; workspace.close(); runtime.close(); await after?.(); app.quit();
       } catch (error) {
         await dialog.showMessageBox({ type: 'error', message: 'The app could not finish closing.', detail: (error as Error).message, buttons: ['Keep open'] });
         await workspace.call('lifecycle.recover').catch(() => {});
@@ -47,6 +47,8 @@ export function installLifecycle(workspace: WorkspaceConnection, runtime: Superv
         if (hideWindow) hideWindow(window); else close();
       });
     },
+    /** Quit as Cmd+Q does; `after` runs only once the quit is confirmed and both services have drained. */
+    quit(after?: () => Promise<void> | void) { close(after); },
     // Smoke-test cleanup has already explicitly drained both services.
     allowExit() { allowed = true; },
   };

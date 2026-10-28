@@ -25,6 +25,7 @@ test('the keyboard layer covers hotbar slots, Needs me, Undermap, Settings, zoom
   assert.equal(press('='), 'map.zoomIn'); assert.equal(press('-'), 'map.zoomOut'); assert.equal(press('0'), 'map.zoomReset');
   assert.equal(press('?', true), 'shortcuts.help');
   assert.equal(press('['), 'rollout.jobsRail'); assert.equal(shortcutKey('rollout.jobsRail'), '[');
+  assert.equal(matchWorkspaceShortcut({ ...key, key: 'e', metaKey: true }), 'view.closeSeen'); assert.equal(press('e'), undefined, 'plain E stays free'); assert.equal(shortcutKey('view.closeSeen'), '⌘E');
   assert.equal(press('N', true), undefined, 'Shift still changes letters');
   assert.equal(matchWorkspaceShortcut({ ...key, key: ',', metaKey: true }), undefined, 'Cmd+, stays with the app menu');
   assert.equal(press('m'), 'map.overview'); assert.equal(press('M', true), 'project.mute', 'Shift+M is its own gesture, not the overview');

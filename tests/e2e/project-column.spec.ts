@@ -156,17 +156,104 @@ test('unfolded, each project says what waits on me, once: its Needs me rows and 
     await expect(page.locator('.map-area')).toHaveAttribute('data-focus', '');
     await expect(needsMe(page, 4)).toBeVisible();
     await expect(panel).toBeVisible();
-    // The column and the Needs me sheet are never open together.
+    // The panel stays beside Needs me, and beside an item opened from it; Esc closes Needs me first.
+    const sheet = page.getByRole('dialog', { name: 'Needs me', exact: true });
     await page.keyboard.press('n');
-    await expect(page.getByRole('dialog', { name: 'Needs me', exact: true })).toBeVisible();
-    await expect(panel).toHaveCount(0);
-    await page.keyboard.press('Escape');
-    await page.keyboard.press('m');
+    await expect(sheet).toBeVisible();
     await expect(panel).toBeVisible();
-    await expect(page.getByRole('dialog', { name: 'Needs me', exact: true })).toHaveCount(0);
+    await sheet.getByRole('button', { name: 'Open Webhook agent', exact: true }).click();
+    await expect(page.locator('.map-area')).toHaveAttribute('data-focus', 'ask');
+    await expect(panel).toBeVisible();
+    await page.getByRole('button', { name: 'Back to project', exact: true }).click();
+    await expect(page.locator('.map-area')).toHaveAttribute('data-focus', '');
+    await page.keyboard.press('n');
+    await expect(sheet).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(sheet).toHaveCount(0);
+    await expect(panel).toBeVisible();
+    // From inside the panel, Esc folds the panel and leaves Needs me open.
+    await page.keyboard.press('n'); await expect(sheet).toBeVisible();
+    await panel.getByRole('checkbox', { name: 'Needs me' }).focus();
+    await page.keyboard.press('Escape'); await expect(panel).toHaveCount(0); await expect(sheet).toBeVisible();
+    await page.keyboard.press('Escape'); await expect(sheet).toHaveCount(0);
+    await page.keyboard.press('m'); await expect(panel).toBeVisible();
     await page.mouse.move(4, 4);
     await expect(panel).toHaveScreenshot('project-column-open.png', { mask: [panel.locator('small'), panel.locator('.project-column-status')] });
   });
+});
+
+test('the panel resizes from its corner, folds rows, filters by Needs me and type, stays open beside an open item and, pinned, beside Needs me', async () => {
+  await launch(async page => {
+    const panel = page.getByRole('region', { name: 'Projects', exact: true }), area = page.locator('.map-area');
+    await page.keyboard.press('m');
+    await expect(panel).toBeVisible();
+    // A click on the corner without a drag saves no size; a drag grows the panel up and left; the size and folds survive a reload.
+    await panel.getByRole('button', { name: 'Resize the projects panel' }).click();
+    expect((await page.evaluate(() => window.craftingTable.viewRead()))?.projectsPanel?.height).toBeUndefined();
+    const before = (await panel.boundingBox())!, grip = (await panel.getByRole('button', { name: 'Resize the projects panel' }).boundingBox())!;
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2); await page.mouse.down();
+    await page.mouse.move(grip.x + grip.width / 2 - 100, grip.y + grip.height / 2 - 60, { steps: 4 }); await page.mouse.up();
+    const after = (await panel.boundingBox())!;
+    expect(Math.round(after.width - before.width)).toBe(100); expect(Math.round(after.x + after.width)).toBe(Math.round(before.x + before.width));
+    const billing = panel.locator('[data-project-row="billing"]');
+    await billing.getByRole('button', { name: 'Fold Billing' }).click();
+    await expect(billing.getByRole('button', { name: 'Unfold Billing' })).toHaveAttribute('aria-expanded', 'false');
+    await expect(billing.locator('[data-need-row]')).toHaveCount(0);
+    await page.reload(); await expect(page.getByText('Desktop connected')).toBeVisible();
+    await page.keyboard.press('m');
+    expect(Math.round((await panel.boundingBox())!.width)).toBe(Math.round(after.width));
+    await expect(billing.locator('[data-need-row]')).toHaveCount(0);
+    await billing.getByRole('button', { name: 'Unfold Billing' }).click();
+    // Unticked, Needs me lists every item, what waits on me first; a type chip hides its items.
+    await panel.getByRole('checkbox', { name: 'Needs me' }).uncheck();
+    expect(await billing.locator('[data-item-row]').evaluateAll(rows => rows.map(row => row.getAttribute('data-item-row')))).toEqual(['refund', 'ask', 'fixer']);
+    await expect(billing.getByRole('button', { name: 'Refund fixer: Working. Open' })).toBeVisible();
+    await panel.getByRole('button', { name: 'Tickets', exact: true }).click();
+    await expect(panel.getByRole('button', { name: 'Tickets', exact: true })).toHaveAttribute('aria-pressed', 'false');
+    expect(await billing.locator('[data-item-row]').evaluateAll(rows => rows.map(row => row.getAttribute('data-item-row')))).toEqual(['ask', 'fixer']);
+    // An item row opens its item; the panel stays; another item row closes it and opens that one; M folds and unfolds it meanwhile.
+    await billing.getByRole('button', { name: 'Webhook agent: Asking me. Open' }).click();
+    await expect(area).toHaveAttribute('data-focus', 'ask');
+    await expect(panel).toBeVisible();
+    await panel.locator('[data-item-row="budget"] button').click();
+    await expect(area).toHaveAttribute('data-focus', 'budget');
+    await expect(panel).toBeVisible();
+    // With Needs me ticked, a Needs me row also opens its item in place of the open one.
+    await panel.getByRole('checkbox', { name: 'Needs me' }).check(); await panel.getByRole('button', { name: 'Tickets', exact: true }).click();
+    await billing.locator('[data-need="refund"]').click();
+    await expect(area).toHaveAttribute('data-focus', 'refund');
+    await panel.getByRole('button', { name: 'Keep the projects panel open' }).focus(); await page.keyboard.press('m');
+    await expect(panel).toHaveCount(0); await expect(area).toHaveAttribute('data-focus', 'refund');
+    await page.keyboard.press('m');
+    await expect(panel).toBeVisible();
+    // Pinned, Needs me and Esc leave it open and clickable; M folds it and unpins.
+    await panel.getByRole('button', { name: 'Keep the projects panel open' }).click();
+    await expect(panel.getByRole('button', { name: 'Keep the projects panel open' })).toHaveAttribute('aria-pressed', 'true');
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press('Escape');
+    await expect(area).toHaveAttribute('data-focus', '');
+    await page.keyboard.press('n');
+    await expect(page.getByRole('dialog', { name: 'Needs me', exact: true })).toBeVisible();
+    await expect(panel).toBeVisible();
+    await panel.getByRole('button', { name: 'Fold Edge runtime' }).click();
+    await expect(panel.getByRole('button', { name: 'Unfold Edge runtime' })).toBeVisible();
+    await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+    await expect(panel).toBeVisible();
+    await page.reload(); await expect(page.getByText('Desktop connected')).toBeVisible();
+    await expect(panel).toBeVisible();
+    await page.keyboard.press('m');
+    await expect(panel).toHaveCount(0);
+    await page.keyboard.press('m');
+    await expect(panel.getByRole('button', { name: 'Keep the projects panel open' })).toHaveAttribute('aria-pressed', 'false');
+  });
+});
+
+test('a saved width wider than the window is capped, so the panel and its corner grip stay inside the window', async () => {
+  await launch(async page => {
+    await page.setViewportSize({ width: 760, height: 800 });
+    await page.keyboard.press('m');
+    const panel = page.getByRole('region', { name: 'Projects', exact: true }), grip = (await panel.getByRole('button', { name: 'Resize the projects panel' }).boundingBox())!;
+    expect(grip.x).toBeGreaterThanOrEqual(0); expect((await panel.boundingBox())!.width).toBeLessThan(760);
+  }, { prepare: store => store.writeView('desktop', { camera: { x: 200, y: 120, zoom: .4 }, projectsPanel: { width: 900 } }) });
 });
 
 test('written Next and Status lines appear under the rows, marked as written by the summary model; off, they leave', async () => {

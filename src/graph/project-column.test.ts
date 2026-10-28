@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { COLUMN_ICON_LIMIT, columnBaseline, metaText, plotMapOrder, projectColumn, projectTag, projectTags, projectsNewSince } from './project-column.ts';
-import type { ProjectColumnSource } from './project-column.ts';
+import { COLUMN_ICON_LIMIT, columnBaseline, columnItems, metaText, plotMapOrder, projectColumn, projectTag, projectTags, projectsNewSince } from './project-column.ts';
+import type { ColumnKind, ProjectColumnSource } from './project-column.ts';
 import { projectDashboard } from './project-dashboard.ts';
 import type { GraphNode } from './graph.ts';
 import type { TodoEntry } from './todos.ts';
@@ -152,6 +152,23 @@ test('with Needs me rows in fewer than two plots there is one group without a he
   const oneSide = projectDashboard('shop', plotted.map(node => node.id === 's1' ? { ...node, attention: undefined } : node), { plots: shopPlots });
   const [single] = projectColumn([{ id: 'shop', title: 'Shop', color: '', board: oneSide }], NOW).active;
   assert.deepEqual(single.groups.map(group => [group.id, group.entries.map(entry => entry.id)]), [['', ['s2']]], 'two plots, but rows in only one: no headers');
+});
+
+test('with Needs me unticked the panel lists every drawn item by plot, Needs me first; type chips filter both modes', () => {
+  const nodes = [...plotted, item('s7', 'shop', { title: 'Hidden note', hiddenAt: ago(5) }), item('s8', 'shop', { title: 'A ticket', archivedAt: ago(5) })];
+  const kinds: Record<string, ColumnKind> = { s1: 'agents', s2: 'prs', s3: 'agents', s4: 'prs', s5: 'tickets', s6: 'other' };
+  const kindOf = (id: string) => kinds[id] ?? 'other', board = projectDashboard('shop', nodes, { plots: shopPlots });
+  const source = { id: 'shop', title: 'Shop', color: '', board, plotOrder: plotMapOrder(shopPlots, nodes), items: columnItems('shop', nodes, board, shopPlots, node => kindOf(node.id)) };
+  const rows = (filters: { needsMe?: boolean; off?: ColumnKind[] }) => projectColumn([source], NOW, { filters, kindOf }).active[0];
+  assert.equal(rows({}).items, undefined, 'Needs me ticked keeps the Needs me rows');
+  assert.deepEqual(rows({ off: ['prs'] }).groups.map(group => [group.id, group.entries.map(entry => entry.id)]), [['refunds', []], ['webhooks', ['s1']]], 'a type chip off hides its Needs me rows');
+  assert.deepEqual(rows({ off: ['prs'] }).needs.map(need => need.id), ['s1', 's2'], 'icons and what is new still count every row');
+  assert.deepEqual(rows({ needsMe: false }).items!.map(group => [group.id, group.plot, group.name, group.entries.map(entry => [entry.id, entry.state ?? ''])]), [
+    ['refunds', true, 'Refunds', [['s2', 'turn'], ['s3', 'working']]],
+    ['webhooks', true, 'Webhooks', [['s1', 'asking'], ['s6', '']]],
+    ['loose', false, 'Loose', [['s5', ''], ['s4', 'working']]],
+  ], 'hidden and archived items leave; Needs me first, then by title');
+  assert.deepEqual(rows({ needsMe: false, off: ['agents', 'other'] }).items!.map(group => [group.id, group.entries.map(entry => entry.id)]), [['refunds', ['s2']], ['loose', ['s5', 's4']]], 'a plot left empty by the chips leaves');
 });
 
 test('the meta line counts what a person still acts on: open to-dos (the first opens the list) and working agents; zeros and done to-dos leave', () => {

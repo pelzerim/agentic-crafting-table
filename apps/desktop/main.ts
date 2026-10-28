@@ -38,6 +38,8 @@ import { SupervisorConnection } from '../../packages/session-runtime/client.ts';
 import { SessionWake } from './session-wake.ts';
 import { managedSessionsSchema, sessionPageSchema, manageSessionSchema, inputSchema, readSessionSchema, resizeSchema, sessionIdSchema } from '../../packages/session-runtime/protocol.ts';
 import { installLifecycle } from './lifecycle.ts';
+import { clearUpdateFailure, readUpdateFailure, resolveLauncher, startUpdateRestart, updateCheckout } from './update-restart.ts';
+import type { UpdateStatus } from '../../packages/core/updates.ts';
 import { closeHidesWindow, createWindowPresence } from './window-presence.ts';
 import { readWindowState, resolveWindowState, trackWindowState } from './window-state.ts';
 import { recordingsSchema, deleteRecordingSchema } from '../../packages/session-runtime/protocol.ts';
@@ -117,9 +119,10 @@ async function main() {
   session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => callback(clipboardWrite(permission, details.requestingUrl ?? contents.getURL())));
   session.defaultSession.setPermissionCheckHandler((_contents, permission, requestingOrigin) => clipboardWrite(permission, `${requestingOrigin}/`));
   ipcMain.handle('app:focused', event => { assertCaller(event); return backgroundTest || Boolean(BrowserWindow.fromWebContents(event.sender)?.isFocused()); });
-  ipcMain.handle('app:info', event => {
+  ipcMain.handle('app:info', async event => {
     assertCaller(event);
-    return { name: 'Agentic Crafting Table', version: app.getVersion(), packaged: app.isPackaged };
+    const [checkout, updateFailure] = await Promise.all([updateCheckout(app.getPath('exe'), app.isPackaged), readUpdateFailure(app.getPath('userData'))]);
+    return { name: 'Agentic Crafting Table', version: app.getVersion(), packaged: app.isPackaged, updateRestart: Boolean(checkout), updateFailure };
   });
   ipcMain.handle('app:badge', (event, input: unknown) => {
     assertCaller(event);
@@ -306,8 +309,13 @@ async function main() {
         case 'reminders.snooze': result = await workspace.call(method, reminderSnoozeSchema.parse(args)); break;
         case 'standup.open': result = await workspace.call(method, standupRequestSchema.parse(args)); break;
         case 'standup.status': result = await workspace.call(method); break;
-        case 'updates.status': result = await workspace.call(method); break;
-        case 'updates.check': result = await workspace.call(method); break;
+        case 'updates.status': case 'updates.check': result = await workspace.call<UpdateStatus>(method); void clearUpdateFailure(app.getPath('userData'), result as UpdateStatus); break;
+        case 'updates.restart': {
+          const checkout = await updateCheckout(app.getPath('exe'), app.isPackaged);
+          if (!checkout || !lifecycle) throw new Error('This app was not installed from a checkout it can update.');
+          const [{ app: subject }, launcher] = await Promise.all([workspace.call<UpdateStatus>('updates.status'), resolveLauncher()]);
+          lifecycle.quit(() => startUpdateRestart(checkout, app.getPath('userData'), subject.latest, launcher)); result = null; break;
+        }
         case 'attention.history': result = await workspace.call(method, z.object({ offset: z.number().int().min(0).max(99).default(0), limit: z.number().int().min(1).max(100).default(10) }).strict().parse(args ?? {})); break;
         case 'plugins.discover': result = await workspace.call(method, pluginDiscoverySchema.parse(args)); break;
         case 'connections.refresh': result = await workspace.call(method, providerRefreshSchema.parse(args)); break;

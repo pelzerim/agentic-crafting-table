@@ -20,6 +20,8 @@ export const WORKSPACE_SHORTCUTS = [
   { id: 'map.zoomOut', label: 'Zoom out', key: '-', group: 'Map' },
   { id: 'map.zoomReset', label: 'Zoom to 100%', key: '0', group: 'Map' },
   { id: 'rollout.jobsRail', label: 'Fold the rollout jobs rail', key: '[', group: 'Views' },
+  { id: 'view.closeSeen', label: 'Close and mark seen', key: 'e', meta: true, display: '⌘E', group: 'Views' },
+  { id: 'terminal.find', label: 'Find in terminal', key: 'f', meta: true, display: '⌘F', group: 'Views' },
   { id: 'settings.open', label: 'Settings', key: ',', group: 'App' },
   { id: 'shortcuts.help', label: 'Controls', key: '?', group: 'App' },
   { id: 'sheet.close', label: 'Close sheet or menu', key: 'Escape', display: 'esc', group: 'Sheets' },
@@ -52,7 +54,10 @@ export function shortcutGroups() {
 }
 
 /** Panels that stay open beside the map and keep workspace keys working. */
-const OPEN_ALONGSIDE = '.attention-list,.rail-panel-sheet,.controls-card';
+export const OPEN_ALONGSIDE = '.attention-list,.rail-panel-sheet,.controls-card';
+
+/** Menus, editors, modal dialogs, drags and link previews keep the keyboard. */
+export const shortcutsPaused = () => Boolean(document.querySelector(`.inline-editor:not(${OPEN_ALONGSIDE}),.canvas-menu,.session-manager,[role="dialog"]:not(${OPEN_ALONGSIDE}),[data-dragging="true"],[data-map-dragging="true"],.connection-preview`));
 
 /** These are app-view shortcuts, never native/global keys. Inputs and modal/drag
  * scopes retain their keys; handlers can additionally return false to decline. */
@@ -64,7 +69,7 @@ export function useWorkspaceShortcuts(handlers: Partial<Record<ShortcutId, () =>
       if (!handler) return;
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],.terminal-surface,.xterm,[data-shortcuts="off"]')) return;
-      if (document.querySelector(`.inline-editor:not(${OPEN_ALONGSIDE}),.canvas-menu,.session-manager,[role="dialog"]:not(${OPEN_ALONGSIDE}),[data-dragging="true"],[data-map-dragging="true"],.connection-preview`)) return;
+      if (shortcutsPaused()) return;
       if (handler() === false) return;
       event.preventDefault(); event.stopPropagation();
     };

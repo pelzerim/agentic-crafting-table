@@ -2,6 +2,27 @@
 
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one.
 
+## Unreleased
+
+### Needs me
+- **Close and mark seen**: an open item in Needs me has a close X with a check beside Mark seen. It marks the item seen and closes it; **⌘E** does the same, also from inside a terminal.
+
+### Terminals
+- In a terminal, **⌘⌫** deletes to the start of the line and **⌘←** / **⌘→** move to its start and end, as in iTerm2 and Terminal.app.
+- **⌘C** copies in an agent session that captures the mouse, such as Claude Code, when the terminal has no selection of its own. Other terminal apps never receive it.
+- **⌘F** finds text in a terminal: matches highlight as you type, Enter and Shift+Enter step through them, Esc closes the bar.
+
+### Map
+- Shift-drag selects a rectangle of items while Needs me is held open beside the map.
+- **Resize the Projects panel** from its top-left corner; the size is kept.
+- **Fold** each project and plot in the Projects panel with its chevron; folds are kept.
+- **Filters** in the Projects panel: untick **Needs me** to list every item of each project by plot, and switch off **Agents**, **PRs**, **Rollouts**, **Tickets**, **Notes** or **Other** to hide that kind.
+- The Projects panel **stays open while an item is open** and beside Needs me, and **M** toggles it there too. An item row opens that item in place of the open one; a project or plot row closes it and flies there.
+- **Pin the Projects panel** to keep it open across Esc, row clicks and relaunch, beside To-dos, Reminders, the GitHub inbox and the Controls card. M closes it and unpins.
+
+### Updates
+- **Update and restart**: when a newer release is out and the app runs from its checkout, Settings → General → About offers it in place of Check now. The app quits as usual, builds and installs the newest release, and reopens; a failed update is shown there on the next launch.
+
 ## 0.6.0 — 2026-10-27
 
 ### Map

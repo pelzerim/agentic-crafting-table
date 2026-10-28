@@ -1,5 +1,6 @@
 import { attentionAge } from './attention.ts';
 import type { AttentionTier } from './attention.ts';
+import { isArchived, isDrawn } from './archive.ts';
 import { LOOSE_BLOCK } from './project-dashboard.ts';
 import type { DashboardBlock, DashboardRow, DashboardTiers, ProjectDashboard } from './project-dashboard.ts';
 import type { GraphNode } from './graph.ts';
@@ -16,7 +17,7 @@ export type ColumnMark = 'asking' | 'turn' | 'idle';
 /** The project's two summary lines, as the service delivers them. */
 export interface ProjectSummaryLines { next?: string; status?: string }
 /** `plotOrder` lists the project's plot ids in map order; plots it leaves out follow in dashboard order. */
-export interface ProjectColumnSource { id: string; title: string; color: string; muted?: boolean; board: ProjectDashboard; summary?: ProjectSummaryLines; plotOrder?: readonly string[] }
+export interface ProjectColumnSource { id: string; title: string; color: string; muted?: boolean; board: ProjectDashboard; summary?: ProjectSummaryLines; plotOrder?: readonly string[]; items?: readonly ProjectColumnItem[] }
 /** `key` is the item id with its attention version, so a raised-again row is a new row. */
 export interface ProjectColumnNeed { id: string; title: string; reason: string; tier: AttentionTier; age: string; key: string; /** The alert was seen, but the item still waits on the person. */ seen?: boolean }
 /** One plot's Needs me rows; a single group with an empty `id` and no header unless two or more plots have rows. */
@@ -24,9 +25,23 @@ export interface ProjectColumnGroup { id: string; plot: boolean; name: string; c
 /** What a person still acts on besides the rows: open to-dos (`first` opens the list there) and how many agents work. */
 export interface ProjectColumnMeta { todos: { open: number; first?: string }; working: number }
 /** `count` belongs to `mark`; `next` and `status` exist only when the summary model wrote them. */
+/** `items` replaces `groups` in the panel when Needs me is unticked. */
 export interface ProjectColumnRow { id: string; title: string; tag: string; color: string; mark: ColumnMark; count: number; tiers: DashboardTiers; working: number; todos: number; age: string; lastActivityAt?: string;
-  next?: string; status?: string; needs: ProjectColumnNeed[]; groups: ProjectColumnGroup[]; meta: ProjectColumnMeta; plots: string[] }
+  next?: string; status?: string; needs: ProjectColumnNeed[]; groups: ProjectColumnGroup[]; items?: ProjectColumnItemGroup[]; meta: ProjectColumnMeta; plots: string[] }
 export interface ProjectColumnModel { icons: ProjectColumnRow[]; more: number; active: ProjectColumnRow[]; quiet: ProjectColumnRow[] }
+
+/** The Projects panel's type chips (MAP-22); a plugin not named here is Other. */
+export const COLUMN_KINDS = ['agents', 'prs', 'rollouts', 'tickets', 'notes', 'other'] as const;
+export type ColumnKind = typeof COLUMN_KINDS[number];
+export const columnKindNames: Record<ColumnKind, string> = { agents: 'Agents', prs: 'PRs', rollouts: 'Rollouts', tickets: 'Tickets', notes: 'Notes', other: 'Other' };
+const KIND_OF = new Map<string, ColumnKind>([['agent.session', 'agents'], ['terminal.session', 'agents'], ['github.pull-request', 'prs'], ['code.review', 'prs'], ['github.review-run', 'prs'],
+  ['github.rollout', 'rollouts'], ['linear.ticket', 'tickets'], ['workspace.note', 'notes'], ['workspace.todo', 'notes']]);
+export const columnKind = (pluginId: string | undefined): ColumnKind => (pluginId && KIND_OF.get(pluginId)) || 'other';
+/** `needsMe: false` lists every item instead of what waits on the person; `off` hides those types either way. */
+export interface ColumnFilters { needsMe?: boolean; off?: readonly ColumnKind[] }
+/** One map item of a project, for the panel with Needs me unticked; `state` is its Needs me tier or `working`. */
+export interface ProjectColumnItem { id: string; title: string; kind: ColumnKind; plot?: string; state?: AttentionTier | 'working' }
+export interface ProjectColumnItemGroup { id: string; plot: boolean; name: string; color?: PlotColor | string; entries: ProjectColumnItem[] }
 
 /** The initials of a name of two or more words (at most three), else its first three letters; upper case. */
 export function projectTag(title: string) {
@@ -80,6 +95,36 @@ function groupsOf(board: ProjectDashboard, order: readonly string[], now: number
   return groups.filter(group => group.plot).length >= 2 ? groups : [whole];
 }
 
+/** Every drawn, unarchived item of a project once per resource, with its plot and the state the board gives it. */
+export function columnItems(projectId: string, nodes: readonly GraphNode[], board: ProjectDashboard, plots: readonly Pick<PlotView, 'id' | 'projectId' | 'memberIds'>[], kindOf: (node: GraphNode) => ColumnKind): ProjectColumnItem[] {
+  const byId = new Map(nodes.map(node => [node.id, node])), resource = (id: string) => byId.get(id)?.resourceId ?? id;
+  const states = new Map<string, AttentionTier | 'working'>();
+  for (const row of board.working) states.set(resource(row.id), 'working');
+  for (const row of [...board.waiting, ...board.needsYou]) states.set(resource(row.id), row.tier ?? 'turn');
+  const plotOf = new Map<string, string>();
+  for (const plot of plots) if (plot.projectId === projectId) for (const id of plot.memberIds) if (!plotOf.has(id)) plotOf.set(id, plot.id);
+  const seen = new Set<string>(), items: ProjectColumnItem[] = [];
+  for (const node of nodes) {
+    if (node.projectId !== projectId || !node.resourceId || seen.has(node.resourceId) || isArchived(node, nodes) || !isDrawn(node, nodes)) continue;
+    seen.add(node.resourceId);
+    const plot = plotOf.get(node.id), state = states.get(node.resourceId);
+    items.push({ id: node.id, title: node.title, kind: kindOf(node), ...(plot ? { plot } : {}), ...(state ? { state } : {}) });
+  }
+  return items;
+}
+
+const waitsOnMe = (item: ProjectColumnItem) => item.state !== undefined && item.state !== 'working';
+/** Items by plot in `order`, every plot with items under its own header, the rest loose; Needs me items first, then by title. */
+function itemGroups(items: readonly ProjectColumnItem[], board: ProjectDashboard, order: readonly string[]): ProjectColumnItemGroup[] {
+  const sorted = [...items].sort((a, b) => Number(waitsOnMe(b)) - Number(waitsOnMe(a)) || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
+  const place = (id: string) => { const index = order.indexOf(id); return index < 0 ? order.length : index; };
+  const plots = board.plots.map((plot, index) => ({ plot, index })).sort((a, b) => place(a.plot.id) - place(b.plot.id) || a.index - b.index).map(entry => entry.plot);
+  const known = new Set(plots.map(plot => plot.id));
+  const groups: ProjectColumnItemGroup[] = plots.map(plot => ({ id: plot.id, plot: true, name: plotName(plot.name), ...(plot.color ? { color: plot.color } : {}), entries: sorted.filter(item => item.plot === plot.id) }));
+  groups.push({ id: LOOSE_BLOCK, plot: false, name: 'Loose', entries: sorted.filter(item => !item.plot || !known.has(item.plot)) });
+  return groups.filter(group => group.entries.length);
+}
+
 const metaOf = (board: ProjectDashboard): ProjectColumnMeta => ({ todos: { open: board.todos.open.length, ...(board.todos.open.length ? { first: board.todos.open[0].id } : {}) }, working: board.working.length });
 
 /** “2 to-dos · 1 working”, zeros left out; empty when nothing is open and nothing works. */
@@ -87,8 +132,11 @@ export function metaText(meta: ProjectColumnMeta) {
   return [meta.todos.open ? `${meta.todos.open} ${meta.todos.open === 1 ? 'to-do' : 'to-dos'}` : '', meta.working ? `${meta.working} working` : ''].filter(Boolean).join(' · ');
 }
 
-/** The corner's project column (MAP-22): every project that is not muted, most urgent first. */
-export function projectColumn(sources: readonly ProjectColumnSource[], now: number): ProjectColumnModel {
+/** The corner's project column (MAP-22): every project that is not muted, most urgent first.
+ * `filters` shape only the panel's rows; icons, counts and what is new always see everything. */
+export function projectColumn(sources: readonly ProjectColumnSource[], now: number, view: { filters?: ColumnFilters; kindOf?(id: string): ColumnKind } = {}): ProjectColumnModel {
+  const off = new Set(view.filters?.off ?? []), shownKind = (kind: ColumnKind) => !off.has(kind);
+  const keep = (group: ProjectColumnGroup) => off.size && view.kindOf ? { ...group, entries: group.entries.filter(need => shownKind(view.kindOf!(need.id))) } : group;
   const rows: { row: ProjectColumnRow; at: string; quiet: boolean }[] = [];
   const shown = sources.filter(source => !source.muted && !source.board.muted), tags = projectTags(shown);
   for (const source of shown) {
@@ -100,7 +148,8 @@ export function projectColumn(sources: readonly ProjectColumnSource[], now: numb
     const row: ProjectColumnRow = { id: source.id, title: source.title, tag: tags.get(source.id)!, color: source.color, mark, count, tiers, working, todos: board.todos.open.length, age: attentionAge(board.lastActivityAt, now),
       ...(board.lastActivityAt ? { lastActivityAt: board.lastActivityAt } : {}),
       ...(next ? { next } : {}), ...(status ? { status } : {}),
-      needs: needRows(board.needsYou, board.waiting, now), groups: groupsOf(board, source.plotOrder ?? [], now), meta: metaOf(board),
+      needs: needRows(board.needsYou, board.waiting, now), groups: groupsOf(board, source.plotOrder ?? [], now).map(keep), meta: metaOf(board),
+      ...(view.filters?.needsMe === false && source.items ? { items: itemGroups(source.items.filter(item => shownKind(item.kind)), board, source.plotOrder ?? []) } : {}),
       plots: (board.blocks ? plotBlocks(board.blocks, source.plotOrder ?? []) : board.plots).map(plot => plotName(plot.name)) };
     const last = Date.parse(board.lastActivityAt ?? '');
     rows.push({ row, at: board.lastActivityAt ?? '', quiet: !board.needsYou.length && !working && !(now - last < QUIET_AFTER_MS) });

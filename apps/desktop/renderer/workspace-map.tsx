@@ -29,6 +29,7 @@ import { applyToLatest } from '../../../packages/core/revision-policy.ts';
 import type { OpenContext, SettingsSnapshot } from '../../../packages/core/settings.ts';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { WorkspaceCommand, WorkspaceState, ViewState } from '../../../packages/core/control.ts';
+import { viewSchema } from '../../../packages/core/control.ts';
 import type { WorkspaceSnapshot } from '../../../packages/workspace-service/protocol.ts';
 import { pluginSettingsValues, registryFromDescriptions } from '../../../src/resource-plugins/describe.client.ts';
 import { webLinkUrl } from '../../../src/resource-plugins/define.ts';
@@ -208,7 +209,9 @@ export function WorkspaceMap() {
   const [rail] = useState(() => new RailState());
   // Needs me is a rail tool; the map only needs to know whether its sheet shows.
   const attentionOpen = useSyncExternalStore(rail.subscribe, rail.snapshot).open === 'attention';
-  useEffect(() => { if (attentionOpen) setOverviewOpen(false); }, [attentionOpen]);
+  // Only the Atlas overview gives way to Needs me; the Projects panel stays beside it.
+  const atlasCorner = settings?.value.mapCorner === 'atlas';
+  useEffect(() => { if (attentionOpen && atlasCorner) setOverviewOpen(false); }, [attentionOpen, atlasCorner]);
   // A right click that reaches the map closes every rail sheet, Needs me included, pinned or not.
   // When it closes a kept sheet that is all it does; the next right click opens the map's menu.
   // A sheet that only peeks from a hover does not hold the menu back.
@@ -741,7 +744,8 @@ export function WorkspaceMap() {
   return <RailContext.Provider value={rail}><section ref={workspace} className="live-workspace" aria-label={below ? 'Undermap' : 'Project map'} data-layer={layer} data-travelling={travelling || undefined} data-chrome-docked={chromeDocked || undefined}>
     {snapshot && plugins && view && settings && <ProjectMap key={layer} layer={layer} neighborhoodColor={below ? undermapColor : undefined} registry={registry} nodes={badged.nodes} resources={layerResources} links={badged.links} badges={badged.onItems} onBadge={(noteId, anchor, menu) => { setConnectionDraft(undefined); setEditor({ ...anchor, nodeId: noteId, mode: menu ? 'menu' : 'edit' }); }}
       onMarkSeen={acknowledge} keep={keep} onKeep={restore} onChromeCover={setChromeDocked} onOpened={opened} onView={viewing} onMute={below ? undefined : setMuted}
-      mapCorner={settings.value.mapCorner} projectSummaries={projectSummaries} overview={overviewOpen} onOverview={open => { setOverviewOpen(open); if (open) { rail.unpin('attention'); rail.close('attention'); } }} undermapCount={layerGraph.belowCount} onTravel={to => { rail.clear(); void travel(to); }}
+      mapCorner={settings.value.mapCorner} projectSummaries={projectSummaries} overview={overviewOpen} onOverview={open => { setOverviewOpen(open); if (open && atlasCorner) { rail.unpin('attention'); rail.close('attention'); } }}
+      projectsPanel={view.projectsPanel} onProjectsPanel={patch => { const next = viewSchema.shape.projectsPanel.safeParse({ ...viewRef.current?.projectsPanel, ...patch }); if (next.success) saveView({ projectsPanel: next.data }); }} undermapCount={layerGraph.belowCount} onTravel={to => { rail.clear(); void travel(to); }}
       highlightedNodes={menuHighlight?.nodes ?? (below && foundBelow ? foundNodes : highlightedNodes)} highlightedLinks={menuHighlight?.links} menuFor={editor?.mode === 'menu' ? menuTargets : undefined} undermap={below ? undermapView : undefined}
       attentionCounting={counting} itemMapSizes={settings.value.itemMapSizes} itemViews={settings.value.itemViews} viewBounds={view.itemViewBounds} onViewBounds={saveViewBounds} neighborhoodPadding={settings.value.neighborhoodPadding} neighborhoodAppearance={neighborhoodAppearance} dashboards={settings.value.mapDashboards} workingMark={settings.value.workingMark} plots={plots} onPlot={(projectId, request) => window.craftingTable.runtimeRun({ action: 'plot', nodeId: projectId, arguments: request }).then(() => {}, error => { if (request.operation !== 'seen') setError(error.message); })} plotNaming={settings.value.summaries.plotNames} plotTargets={ids => snapshot ? moveTargets(snapshot.state, ids) : []} onMoveItems={moveToProject} onSendBelow={ids => moveLayer(ids, 'below')} hideImpliedLinks={settings.value.hideImpliedLinks} snap={settings.value.snapToGrid ? SNAP_PITCH : undefined} collisions={settings.value.mapCollisions} initialViewport={view.camera} onViewport={camera => { zoomRef.current = camera.zoom; saveView({ camera }); }} reveal={reveal} onRevealed={revealed => setReveal(current => current === revealed ? undefined : current)}
       onItemDrag={below ? undefined : (id, point) => todoOverlay.current?.drag(id, point)} onItemDrop={below ? undefined : (id, point) => todoOverlay.current?.drop(id, point) ?? false}

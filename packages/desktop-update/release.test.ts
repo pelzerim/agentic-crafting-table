@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { UpdateRefused, chooseReleaseTag, planUpdate } from './release.ts';
+import { LAUNCHER_MARKER, UpdateRefused, chooseReleaseTag, parseLauncher, planUpdate } from './release.ts';
 
 const tags = ['v0.1.0', 'v0.2.0', 'v0.10.0', 'nightly'];
 
@@ -24,4 +24,11 @@ test('local changes stop the update before anything is touched, naming the files
 
 test('a remote without release tags is refused in words', () => {
   assert.throws(() => chooseReleaseTag(['main', 'latest']), (error: Error) => error instanceof UpdateRefused && /No release tag/.test(error.message));
+});
+
+test('the login shell launcher is read after the marker, past any profile output, and a shell without node gives none', () => {
+  assert.deepEqual(parseLauncher(`Welcome!\n${LAUNCHER_MARKER}\nnot this\n\n${LAUNCHER_MARKER}\n/Users/me/.nvm/versions/node/v24.1.0/bin/node\n/usr/bin:/bin`), { node: '/Users/me/.nvm/versions/node/v24.1.0/bin/node', path: '/usr/bin:/bin' });
+  assert.equal(parseLauncher(`\n${LAUNCHER_MARKER}\n\n/usr/bin:/bin`), undefined);
+  assert.equal(parseLauncher(`\n${LAUNCHER_MARKER}\nnode: aliased to x\n/usr/bin`), undefined);
+  assert.equal(parseLauncher('zsh: command not found'), undefined);
 });

@@ -463,8 +463,22 @@ restates them. Last, a dimmed **meta** line with only what a person still acts o
 “N to-dos” (open ones; opens the to-do list at the project's first open to-do) and “N working”; zeros,
 done to-dos and pipeline totals are never shown. Working agents are never rows. Quiet projects (no
 Needs me, nothing working, no activity for 24 h) fold into one “N quiet projects ›” line that expands.
-Up and Down move through rows, Enter acts, Esc or M folds. The panel and the Needs me sheet are never
-open together. src/graph/project-column.ts builds the model from `projectDashboard()`; the column
+Up and Down move through rows, Enter acts, Esc or M folds. The panel stays open beside the Needs me
+sheet; with Needs me open, Esc closes Needs me first.
+The panel's header holds **filters** and a **pin**, and its top-left corner a **resize grip** (drag, or
+arrow keys; Home resets; 260 × 160 px at least, bounded by the window). Each project row and plot header
+has a fold chevron (“Fold <name>” / “Unfold <name>”). **Needs me** (ticked by default) shows the rows
+above; unticked, each project lists every item on the Map in it (no archived, Undermap or hidden-plot
+items; muted projects stay absent), grouped by plot in map order with a header per plot, then “Loose”;
+in each group items waiting on the person first, then by title; a row shows the item's icon, title and
+state (Asking me, My turn, Working). Type chips, all on by default, hide items and Needs me rows of their
+kind: **Agents** (agent and terminal sessions), **PRs** (pull requests, code reviews, review runs),
+**Rollouts**, **Tickets** (Linear), **Notes** (notes, to-dos), **Other**. The panel stays open while an
+item is open, and M toggles it then too; an item row opens its item (closing the open one), a project or
+plot row closes the open item and flies there. **Pinned** (“Keep the projects panel open”), it also stays
+open with Needs me, To-dos, Reminders, the GitHub inbox or the Controls card, moving left of an open rail
+panel, and Esc and row clicks leave it open; M closes it and unpins. Size, folds, filters and the pin are
+saved in `view.projectsPanel`. src/graph/project-column.ts builds the model from `projectDashboard()`; the column
 re-renders only when its model changes, never with the camera. On the
 Undermap the column is not shown (Needs me and Working pause there) and M does nothing; with
 `mapCorner: 'atlas'` the Atlas keeps its Undermap behaviour.
@@ -509,7 +523,8 @@ and Settings slots. **T** toggles the
 to-do list, **U** travels to Undermap and back, **/** focuses the Undermap's find field while below (MAP-18), **+ / − / 0** zoom in,
 out and to 100%, and **?** opens a Controls card that lists every
 key from the same registry (Escape closes it). Keys an item view handles while it has
-focus are listed there under Views: **[** folds or shows a rollout's jobs rail.
+focus are listed there under Views: **[** folds or shows a rollout's jobs rail, and **⌘E**
+does Close and mark seen (STATE-02) while the open item is in Needs me, also from inside a terminal.
 
 Pressing **M** (a workspace shortcut, ignored in text fields, terminals and dialogs)
 or the Atlas's expand corner unfolds it into the **map overview**: the same
@@ -1472,7 +1487,10 @@ same slot holds a pixel close X with the tier mark of that entry in its corner, 
 amber, named “Close and keep in Needs me”. It closes the item and puts back exactly the
 cycles the open acknowledged (`attention.restore` names their versions, as
 `attention.acknowledge` does); a newer cycle, a reason that has since cleared, or
-closing with the plain X ends the offer, and nothing else changes. Seen/Mark seen clears that
+closing with the plain X ends the offer, and nothing else changes. **Close and mark seen** sits
+immediately left of Mark seen whenever Mark seen shows: a pixel close X with a check in its corner, in
+the same amber, named “Close and mark seen” with the tooltip “Close and mark seen (⌘E)”. It sends
+the same acknowledgement as Mark seen, then closes the item; **⌘E** does the same. Seen/Mark seen clears that
 resource from the list across aliases, not its underlying input request, error,
 process or user-done status. Persist the read state across app restarts. A later
 completion or new attention event makes it unread again; unchanged polling and
@@ -1711,6 +1729,11 @@ navigation, Escape and outside-click dismissal.
 Omit redundant "Native Claude session" labels and stacked control bars. Fit every terminal row,
 including the last prompt line, within the available content area after resizing.
 Ctrl/Cmd +/− adjusts the focused terminal's font size only; Ctrl/Cmd 0 resets it.
+**⌘F** never reaches the process: it opens a find bar at the terminal's top right
+(or refocuses it, prefilled with a one-line selection). Typing highlights every match,
+case-insensitive, with a “2 of 5” or “No results” count; Enter or ⌘G steps forward,
+Shift+Enter or ⇧⌘G back, and Esc closes it, clears the highlights and returns focus to
+the terminal. A full-screen CLI can only be searched on its visible screen.
 Shift+Enter inserts a line break without submitting; ordinary Enter keeps the
 CLI’s submit behavior. Agent views send distinct Shift+Enter (CSI-u) for the
 native CLI to interpret. Plain terminals use a bracketed newline when supported,
@@ -3890,7 +3913,8 @@ sign-in): clicking opens a small panel with title, link, provenance and **Open i
 browser**, and the menu offers **Open on claude.ai**; both use the system browser.
 
 **MAP-SELECT — Multiple items.** Shift-click toggles items in a selection;
-Shift-left-drag on empty map selects a rectangle. Drag any selected item to move
+Shift-left-drag on empty map selects a rectangle, also while a rail panel such as
+Needs me or the Controls card stays open beside the map; a modal dialog blocks it. Drag any selected item to move
 all selected items with their relative positions intact. Project moves include
 members once; group movement retains membership. Escape or a plain background
 click clears selection. Shared right-click actions apply atomically to the
@@ -4345,6 +4369,20 @@ while the app runs or tracked files have local changes, fetches tags, checks out
 newest release (detached), then `npm ci`, `npm run package`, `npm run install:local`;
 `--dry-run` prints the plan. Builds without a release version (`dev`) are never offered
 an update.
+When a newer release is available and the app runs from the checkout it was installed into
+(`<checkout>/release/mac-arm64/Agentic Crafting Table.app`, with `.git` and this `package.json`),
+**Check now** becomes **Update and restart**, and the notice reads “Update from Settings → General”.
+It first asks the person's login shell for `node` and its PATH; without them it does not quit and
+says why in About. Then it quits through the normal close path (the warning about active sessions,
+Cancel leaves nothing running); only after both services have drained it starts
+`scripts/update-restart.mjs` from the checkout with that node, detached, logging to
+`logs/update-restart.log` in the app data folder; if it cannot start, the failure is noted and the
+app relaunches. The script waits until nothing runs from the installed or staged app (2 minutes at
+most), runs `npm run update` with its usual refusals, rebuilds and installs when an earlier run left
+the checkout on the release without installing it, and succeeds only when the installed app carries
+that version; then it opens the app. A failure is written to
+`update-failure.json` in the app data folder; Settings → About shows it as an alert until a later check
+succeeds, which deletes the file.
 
 **QUALITY-01:** The same validation controls UI, MCP and provider-originated writes.
 Persist before announcing success. No duplicated processes/comments on uncertain

@@ -598,6 +598,32 @@ test('Mark seen sits left of the close X, clears Needs me and hides, for agent a
   }
 });
 
+test('Close and mark seen sits left of Mark seen, clears Needs me and closes the item; ⌘E does the same from a terminal', async ({ visual: { page } }) => {
+  const needs = (count: number) => page.getByRole('button', { name: `Needs me: ${count}`, exact: true });
+  const closeSeen = page.getByRole('button', { name: 'Close and mark seen', exact: true }), seen = page.getByRole('button', { name: 'Mark seen', exact: true });
+  const map = page.locator('.map-area');
+  await expect(needs(2)).toBeVisible();
+  await page.getByRole('article', { name: 'Plan switcher', exact: true }).click();
+  await expect(map).toHaveAttribute('data-focus', 'pr');
+  await expect(closeSeen).toHaveAttribute('title', 'Close and mark seen (⌘E)');
+  const a = (await closeSeen.boundingBox())!, b = (await seen.boundingBox())!;
+  expect(a.x + a.width).toBeLessThanOrEqual(b.x + .5);
+  expect(Math.abs(a.y + a.height / 2 - (b.y + b.height / 2))).toBeLessThanOrEqual(1);
+  await needs(2).focus();
+  await page.keyboard.press('Meta+e');
+  await expect(map).toHaveAttribute('data-focus', 'pr'); await expect(closeSeen).toBeVisible();
+  await closeSeen.click();
+  await expect(map).not.toHaveAttribute('data-focus', /.+/); await expect(needs(1)).toBeVisible();
+  await page.getByRole('article', { name: 'Claude · implementation', exact: true }).click();
+  await expect(map).toHaveAttribute('data-focus', 'agent');
+  await page.locator('[data-expanded-item-id="agent"] .xterm-helper-textarea').focus();
+  await page.keyboard.press('Meta+e');
+  await expect(map).not.toHaveAttribute('data-focus', /.+/);
+  await expect(page.getByRole('button', { name: 'Needs me', exact: true })).toBeVisible();
+  const node = (await read(page)).nodes.find(node => node.id === 'agent')!;
+  expect(node.attentionSeenVersion).toBe(node.attentionVersion ?? 0);
+});
+
 test('Mark seen is absent when the open item is not in Needs me and returns with new attention', async ({ visual: { page } }) => {
   await page.getByRole('button', { name: 'Needs me: 2', exact: true }).click();
   await page.getByRole('button', { name: 'Dismiss Plan switcher from Needs me', exact: true }).click();
