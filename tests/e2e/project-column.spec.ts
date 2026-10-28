@@ -156,14 +156,27 @@ test('unfolded, each project says what waits on me, once: its Needs me rows and 
     await expect(page.locator('.map-area')).toHaveAttribute('data-focus', '');
     await expect(needsMe(page, 4)).toBeVisible();
     await expect(panel).toBeVisible();
-    // The column and the Needs me sheet are never open together.
+    // The panel stays beside Needs me, and beside an item opened from it; Esc closes Needs me first.
+    const sheet = page.getByRole('dialog', { name: 'Needs me', exact: true });
     await page.keyboard.press('n');
-    await expect(page.getByRole('dialog', { name: 'Needs me', exact: true })).toBeVisible();
-    await expect(panel).toHaveCount(0);
-    await page.keyboard.press('Escape');
-    await page.keyboard.press('m');
+    await expect(sheet).toBeVisible();
     await expect(panel).toBeVisible();
-    await expect(page.getByRole('dialog', { name: 'Needs me', exact: true })).toHaveCount(0);
+    await sheet.getByRole('button', { name: 'Open Webhook agent', exact: true }).click();
+    await expect(page.locator('.map-area')).toHaveAttribute('data-focus', 'ask');
+    await expect(panel).toBeVisible();
+    await page.getByRole('button', { name: 'Back to project', exact: true }).click();
+    await expect(page.locator('.map-area')).toHaveAttribute('data-focus', '');
+    await page.keyboard.press('n');
+    await expect(sheet).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(sheet).toHaveCount(0);
+    await expect(panel).toBeVisible();
+    // From inside the panel, Esc folds the panel and leaves Needs me open.
+    await page.keyboard.press('n'); await expect(sheet).toBeVisible();
+    await panel.getByRole('checkbox', { name: 'Needs me' }).focus();
+    await page.keyboard.press('Escape'); await expect(panel).toHaveCount(0); await expect(sheet).toBeVisible();
+    await page.keyboard.press('Escape'); await expect(sheet).toHaveCount(0);
+    await page.keyboard.press('m'); await expect(panel).toBeVisible();
     await page.mouse.move(4, 4);
     await expect(panel).toHaveScreenshot('project-column-open.png', { mask: [panel.locator('small'), panel.locator('.project-column-status')] });
   });

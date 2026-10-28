@@ -552,7 +552,8 @@ function MapCanvas(props: ProjectMapProps) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && dashboardGesture.current?.moved) { event.preventDefault(); event.stopImmediatePropagation(); dashboardDrag.cancel(); return; }
-      if (event.key === 'Escape' && overview && !pinned && (!focus || (event.target as HTMLElement).closest('.project-column-panel')) && !document.querySelector('[role="menu"],.inline-editor')) { event.preventDefault(); event.stopImmediatePropagation(); setOverview(false); return; }
+      const inPanel = (event.target as HTMLElement).closest('.project-column-panel');
+      if (event.key === 'Escape' && overview && !pinned && (!focus || inPanel) && !document.querySelector(inPanel ? '[role="menu"],.inline-editor' : '[role="menu"],.inline-editor,.attention-list')) { event.preventDefault(); event.stopImmediatePropagation(); setOverview(false); return; }
       if (event.key === 'Escape' && !focus && (selection.size || marqueeRef.current)) { event.preventDefault(); setSelection(new Set()); marqueeRef.current = undefined; setMarquee(undefined); return; }
       if (event.key === 'Escape' && !focus && props.undermap && !(event.target as HTMLElement).closest('input,textarea,select,[data-owns-escape]') && !document.querySelector('[role="menu"],.inline-editor,.attention-list') && props.undermap.collapse()) { event.preventDefault(); event.stopImmediatePropagation(); return; }
       if (event.key === 'Escape' && itemResize.preview) return;

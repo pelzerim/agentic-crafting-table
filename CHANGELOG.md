@@ -17,8 +17,8 @@ Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newes
 - **Resize the Projects panel** from its top-left corner; the size is kept.
 - **Fold** each project and plot in the Projects panel with its chevron; folds are kept.
 - **Filters** in the Projects panel: untick **Needs me** to list every item of each project by plot, and switch off **Agents**, **PRs**, **Rollouts**, **Tickets**, **Notes** or **Other** to hide that kind.
-- The Projects panel **stays open while an item is open**, and **M** toggles it there too. An item row opens that item in place of the open one; a project or plot row closes it and flies there.
-- **Pin the Projects panel** to keep it open beside Needs me, To-dos, Reminders, the GitHub inbox and the Controls card, across Esc and relaunch. M closes it and unpins.
+- The Projects panel **stays open while an item is open** and beside Needs me, and **M** toggles it there too. An item row opens that item in place of the open one; a project or plot row closes it and flies there.
+- **Pin the Projects panel** to keep it open across Esc, row clicks and relaunch, beside To-dos, Reminders, the GitHub inbox and the Controls card. M closes it and unpins.
 
 ### Updates
 - **Update and restart**: when a newer release is out and the app runs from its checkout, Settings → General → About offers it in place of Check now. The app quits as usual, builds and installs the newest release, and reopens; a failed update is shown there on the next launch.

@@ -463,8 +463,8 @@ restates them. Last, a dimmed **meta** line with only what a person still acts o
 “N to-dos” (open ones; opens the to-do list at the project's first open to-do) and “N working”; zeros,
 done to-dos and pipeline totals are never shown. Working agents are never rows. Quiet projects (no
 Needs me, nothing working, no activity for 24 h) fold into one “N quiet projects ›” line that expands.
-Up and Down move through rows, Enter acts, Esc or M folds. Unpinned, the panel and the Needs me sheet
-are never open together.
+Up and Down move through rows, Enter acts, Esc or M folds. The panel stays open beside the Needs me
+sheet; with Needs me open, Esc closes Needs me first.
 The panel's header holds **filters** and a **pin**, and its top-left corner a **resize grip** (drag, or
 arrow keys; Home resets; 260 × 160 px at least, bounded by the window). Each project row and plot header
 has a fold chevron (“Fold <name>” / “Unfold <name>”). **Needs me** (ticked by default) shows the rows
