@@ -5,10 +5,10 @@ import { summaryEvidence } from './activity-summary.ts';
 test('summary evidence strips terminal escapes and known credentials before truncating', () => {
   const evidence = summaryEvidence('\x1b[32mRunning tests\x1b[0m\n' + [
     'Authorization: Bearer private-value', 'api_key="private-key"', 'password=private-password',
-    'Bearer abcdefghijklmnop', 'ghp_abcdefghijklmnopqrstu', 'sk-ant-abcdefghijklmnopqrstuvwxyz',
-    'AKIA1234567890ABCDEF', 'eyJhbGciOiJIUzI1NiJ9.payload.signature',
+    'Bearer abcdefghijklmnop', 'ghp_abcdefghijklmnopqrstu', 'sk-ant-abcdefghijklmnopqrstuvwxyz', // public-safety: fake
+    'AKIA1234567890ABCDEF', 'eyJhbGciOiJIUzI1NiJ9.payload.signature', // public-safety: fake
     'https://login:credential@example.com/path', '/Users/someone/project/test.ts',
-    '-----BEGIN RSA PRIVATE KEY-----\n' + 'private'.repeat(1500) + '\n-----END RSA PRIVATE KEY-----',
+    '-----BEGIN RSA PRIVATE KEY-----\n' + 'private'.repeat(1500) + '\n-----END RSA PRIVATE KEY-----', // public-safety: fake
     'Tests passed for billing',
   ].join('\n'));
   assert.ok(evidence.includes('Running tests')); assert.ok(evidence.includes('Tests passed for billing'));

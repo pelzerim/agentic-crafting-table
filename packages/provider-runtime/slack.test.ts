@@ -37,7 +37,7 @@ test('Slack attribution falls back to exact user IDs for missing profile scope b
 
 test('Slack transport permits only fixed read methods, keeps tokens out of URLs and normalizes errors and cooldown', async () => {
   const requests: { url: string; init?: RequestInit }[] = []; let response = () => Response.json({ ok: true });
-  const transport = slackTransport('xoxp-fixture-private-token', async (url, init) => { requests.push({ url: String(url), init }); return response(); });
+  const transport = slackTransport('xoxp-fixture-private-token', async (url, init) => { requests.push({ url: String(url), init }); return response(); }); // public-safety: fake
   await transport.read('auth.test', {}, AbortSignal.timeout(1000)); assert.equal(requests[0].init?.method, 'POST'); assert.equal(requests[0].url, 'https://slack.com/api/auth.test');
   await transport.read('conversations.replies', { channel: 'C12345', ts: slackRoot, limit: '15', cursor: 'next+page=' }, AbortSignal.timeout(1000)); assert.equal(requests[1].init?.method, 'GET'); assert.equal(new URL(requests[1].url).searchParams.get('cursor'), 'next+page='); assert.ok(!requests[1].url.includes('private-token'));
   await assert.rejects(transport.read('chat.postMessage' as never, {}, AbortSignal.timeout(1000)), /Unsupported/); await assert.rejects(transport.read('auth.test', { token: 'extra' }, AbortSignal.timeout(1000)), /Unsupported/); assert.equal(requests.length, 2);
@@ -48,7 +48,7 @@ test('Slack transport permits only fixed read methods, keeps tokens out of URLs 
 import { slackConnection } from './slack-connection.ts';
 test('Slack connection discovery returns account metadata without exposing its token', async () => {
   const fixture = slackFixture();
-  const adapter = slackConnection(async signal => { signal.throwIfAborted(); return 'xoxp-private-fixture-token'; }, token => { assert.equal(token, 'xoxp-private-fixture-token'); return fixture.transport; });
+  const adapter = slackConnection(async signal => { signal.throwIfAborted(); return 'xoxp-private-fixture-token'; }, token => { assert.equal(token, 'xoxp-private-fixture-token'); return fixture.transport; }); // public-safety: fake
   const accounts = await adapter.accounts(AbortSignal.timeout(1000)); assert.equal(accounts[0].id, fixture.account.id); assert.equal(accounts[0].label, 'Fixture workspace · developer'); assert.ok(!JSON.stringify(accounts).includes('private-fixture-token')); assert.deepEqual(fixture.calls.map(call => call.method), ['auth.test']);
   await assert.rejects(adapter.accounts(AbortSignal.abort()), { name: 'AbortError' });
 });
