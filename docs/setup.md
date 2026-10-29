@@ -1,11 +1,12 @@
-# Setting up a Mac for Agentic Crafting Table
+# Setting up Agentic Crafting Table
 
 What has to be installed and signed in before the app is useful, with the exact
 commands. Written so a person or an agent can follow it top to bottom; every step
 ends with a check. If you would rather hand the whole thing to an agent, give it
 [the setup prompt](setup-prompt.md).
 
-Nothing here needs `sudo`. Sign-ins are interactive (a browser or a prompt) and
+The steps are for a Mac; [On Linux](#on-linux) lists what differs. On a Mac nothing
+needs `sudo`. Sign-ins are interactive (a browser or a prompt) and
 cannot be scripted; an agent should run them and hand control to the person when
 the tool asks.
 
@@ -166,12 +167,55 @@ security find-generic-password -s dev.agentcraftingtable.slack -a default >/dev/
 Then in the app: create a project with a working directory, start an **Agent
 session** (Claude), and open **Settings → Connections** to connect what you set up.
 
+## On Linux
+
+x64 and arm64 builds run from the same checkout; tested on Ubuntu 26.04 (GNOME on
+Wayland). Everything above applies, with these differences:
+
+| Instead of | On Linux |
+| --- | --- |
+| Xcode Command Line Tools, Homebrew | `sudo apt install build-essential python3 git libsecret-tools zsh`; `zsh` because, as on macOS, it is the shell used when `SHELL` is unset and the one `npm run test:runtime` starts |
+| `brew install nvm` | any Node version manager that reads `.nvmrc` ([nvm](https://github.com/nvm-sh/nvm), asdf, mise) |
+| `brew install gh` | the [GitHub CLI apt repository](https://github.com/cli/cli/blob/trunk/docs/install_linux.md) |
+| `brew install 4ier/tap/notion-cli` | a binary from the [notion-cli releases](https://github.com/4ier/notion-cli/releases) |
+| the macOS Keychain | the Secret Service keyring (GNOME Keyring, KWallet) through `secret-tool`, see below |
+
+**The Chromium sandbox.** Ubuntu 23.10 and later let only programs with an AppArmor
+profile create the user namespaces Electron's sandbox needs, so `npm run dev`, the
+tests and the packaged app abort with *The SUID sandbox helper binary was found, but
+is not configured correctly*. Once per checkout, write a profile that covers only this
+checkout's Electron and load it; this is the one step that needs `sudo`:
+
+```sh
+npm run sandbox:linux           # writes release/apparmor-profile and prints the two commands below
+sudo install -m 644 release/apparmor-profile /etc/apparmor.d/agentic-crafting-table
+sudo apparmor_parser -r /etc/apparmor.d/agentic-crafting-table
+```
+
+Do not start the app with `--no-sandbox` instead: it renders provider content.
+
+**The app.** `npm run package` stages `release/staged/linux-<arch>/Agentic Crafting Table`
+and `npm run install:local` installs `release/linux-<arch>/Agentic Crafting Table`. It also
+writes `~/.local/share/applications/agentic-crafting-table.desktop`, which puts the app in
+the launcher (pin it to the dock from there) and opens `act://` install links. `npm run update`
+works the same way.
+
+**Linear and Slack.** `secret-tool` asks for the value at a hidden `Password:` prompt:
+
+```sh
+secret-tool store --label 'Agentic Crafting Table Linear' service dev.agentcraftingtable.linear account default
+secret-tool store --label 'Agentic Crafting Table Slack' service dev.agentcraftingtable.slack account default
+```
+
+Check with `secret-tool lookup service dev.agentcraftingtable.linear account default >/dev/null && echo linear ok`;
+the redirect keeps the key off the screen.
+
 ## What the app never does
 
 - Store a token of its own: GitHub and Notion are read through their CLIs' stores,
-  Linear and Slack through the Keychain, and nothing reaches the renderer, the map
+  Linear and Slack through the Keychain (on Linux, the Secret Service keyring), and nothing reaches the renderer, the map
   database or the logs.
 - Write to a provider without you: reads are automatic; every write (a comment, a
   merge, a deploy approval, a Slack message) is a button you press, and Auto deploy
   halts on any doubt.
-- Need `sudo`, a system Node, or Docker.
+- Need a system Node or Docker, or `sudo` beyond the Linux packages and sandbox profile.

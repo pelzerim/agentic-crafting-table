@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { appUpdateRow, checkoutOfExecutable, compareVersions, newestTag, parseVersionTag, updateOffers } from './updates.ts';
+import { bundleLayout } from './bundle-layout.ts';
 
 test('release tags are v-prefixed dotted numbers; anything else is not a release', () => {
   assert.deepEqual(parseVersionTag('v1.2.3'), [1, 2, 3]);
@@ -33,9 +34,13 @@ test('an offer is made only for a newer release the person has not dismissed', (
 });
 
 test('Update and restart is offered only for an app installed in its own checkout with a newer release; a failed run shows until a later check succeeds', () => {
-  assert.equal(checkoutOfExecutable('/Users/me/act/release/mac-arm64/Agentic Crafting Table.app/Contents/MacOS/Agentic Crafting Table'), '/Users/me/act');
+  const mac = bundleLayout('darwin', 'arm64'), linux = bundleLayout('linux', 'x64');
+  assert.equal(checkoutOfExecutable('/Users/me/act/release/mac-arm64/Agentic Crafting Table.app/Contents/MacOS/Agentic Crafting Table', mac), '/Users/me/act');
   for (const path of ['/Applications/Agentic Crafting Table.app/Contents/MacOS/Agentic Crafting Table', '/Users/me/act/release/staged/mac-arm64/Agentic Crafting Table.app/Contents/MacOS/Agentic Crafting Table',
-    '/Users/me/act/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron', '/release/mac-arm64/Agentic Crafting Table.app/Contents/MacOS/Agentic Crafting Table']) assert.equal(checkoutOfExecutable(path), undefined, path);
+    '/Users/me/act/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron', '/release/mac-arm64/Agentic Crafting Table.app/Contents/MacOS/Agentic Crafting Table']) assert.equal(checkoutOfExecutable(path, mac), undefined, path);
+  assert.equal(checkoutOfExecutable('/home/me/act/release/linux-x64/Agentic Crafting Table/Contents/agentic-crafting-table', linux), '/home/me/act');
+  for (const path of ['/home/me/act/release/staged/linux-x64/Agentic Crafting Table/Contents/agentic-crafting-table', '/home/me/act/release/linux-x64/Agentic Crafting Table/Contents/chrome-sandbox',
+    '/home/me/act/node_modules/electron/dist/electron']) assert.equal(checkoutOfExecutable(path, linux), undefined, path);
   const newer = { current: '0.6.0', latest: 'v0.7.0', available: true, checkedAt: 100 };
   assert.equal(appUpdateRow({ app: newer, checkout: true }).action, 'restart');
   assert.equal(appUpdateRow({ app: newer, checkout: false }).action, 'check');

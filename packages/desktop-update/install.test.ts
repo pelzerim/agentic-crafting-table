@@ -5,10 +5,11 @@ import { fork, execFile } from 'node:child_process';
 import { once } from 'node:events';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { installBundle, recoverBundle } from './install.ts';
 import type { InstallPhase } from './install.ts';
+import { bundleLayout } from '../core/bundle-layout.ts';
 import { DatabaseSync } from 'node:sqlite';
 
 async function fixture() {
@@ -361,10 +362,10 @@ test('ordinary activation failure rolls back and a replaced staging directory is
 test('the real recovery-only installer command restores an interrupted app without a staged bundle', async () => {
   const paths = await fixture();
   try {
-    const source = join(paths.root, 'release/staged/mac-arm64/Agentic Crafting Table.app');
-    const destination = join(paths.root, 'release/mac-arm64/Agentic Crafting Table.app');
-    await mkdir(join(paths.root, 'release/staged/mac-arm64'), { recursive: true });
-    await mkdir(join(paths.root, 'release/mac-arm64'), { recursive: true });
+    const layout = bundleLayout(process.platform, process.arch);
+    const source = join(paths.root, layout.staged), destination = join(paths.root, layout.installed);
+    await mkdir(dirname(source), { recursive: true });
+    await mkdir(dirname(destination), { recursive: true });
     await rename(paths.source, source); await rename(paths.destination, destination);
     const inode = (await lstat(destination)).ino;
     const child = await pausedInstaller({ ...paths, source, destination }, 'backed-up'); await child.kill();

@@ -9,6 +9,7 @@
   "homepage": "https://github.com/pelzerim/agentic-crafting-table#readme",
   "type": "module",
   "main": "dist/main.cjs",
+  "desktopName": "agentic-crafting-table.desktop",
   "engines": {
     "node": "26.8.2",
     "npm": "11.19.1"
@@ -33,9 +34,10 @@
     "test:performance": "npm run build && playwright test tests/e2e/performance.spec.ts tests/e2e/terminal-stream.spec.ts tests/e2e/terminal-scroll.spec.ts tests/e2e/terminal-renderer.spec.ts tests/e2e/terminal-responsiveness.spec.ts tests/e2e/map-performance.spec.ts",
     "bench:terminal": "node scripts/terminal-benchmark.mjs",
     "test:startup": "npm run build && playwright test tests/e2e/map-performance.spec.ts --grep \"500 items\" --repeat-each=5 --output=test-results/startup",
-    "package": "npm run build && electron-builder --dir --mac --arm64",
+    "package": "npm run build && node scripts/package.mjs",
     "install:local": "node scripts/install-local.mjs",
     "update": "node scripts/update-local.mjs",
+    "sandbox:linux": "node scripts/linux-sandbox.mjs",
     "test:package": "node scripts/smoke-packaged.mjs",
     "check": "npm run typecheck && npm test && npm run build",
     "postinstall": "install-electron && electron-builder install-app-deps",
@@ -94,6 +96,17 @@
           "schemes": [
             "act"
           ]
+        }
+      ]
+    },
+    "linux": {
+      "target": "dir",
+      "executableName": "agentic-crafting-table",
+      "category": "Development",
+      "extraResources": [
+        {
+          "from": "apps/desktop/assets/app-icon.png",
+          "to": "app-icon.png"
         }
       ]
     }

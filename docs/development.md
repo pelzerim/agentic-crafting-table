@@ -68,12 +68,13 @@ npm run test:visual    # Compare the main views with reviewed screenshot baselin
 npm run test:runtime   # Real PTY, recovery, replay and slow-consumer tests
 npm run test:performance # Dense-map and real terminal performance gates
 npm run test:startup   # Five hidden 500-item cold starts with normal performance gates
-npm run package        # Build separately in release/staged/mac-arm64
+npm run package        # Build separately in release/staged/mac-arm64 (Linux: linux-<arch>)
 npm run test:package   # Packaged app + separate background PTY input/resize/exit
-npm run install:local  # After quitting: verify and install into release/mac-arm64
+npm run install:local  # After quitting: verify and install into release/mac-arm64 (Linux: linux-<arch>)
+npm run sandbox:linux  # Linux, once per checkout: the AppArmor profile Electron's sandbox needs
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`, macOS) runs `check`, `test:runtime`, `package` and
+GitHub Actions (`.github/workflows/ci.yml`, macOS and Ubuntu) runs `check`, `test:runtime`, `package` and
 `test:package` on every push.
 
 A release is a tag `vX.Y.Z` on the public repository: bump `version` in `package.json`,
@@ -128,6 +129,14 @@ the installed app's metadata. If the staged build is unavailable, quit the app
 and use `npm run install:local -- --recover-only`. It restores the known previous
 contents or retains a completed activation, preserving the Dock identity and
 workspace. Unknown files are left intact for manual recovery.
+
+On Linux, `npm run package` wraps electron-builder's unpacked directory as
+`release/staged/linux-<arch>/Agentic Crafting Table/Contents` and writes
+`Contents/bundle-info.json` (identifier and version, which macOS keeps in
+`Info.plist`), so the same installer swaps `Contents` in place. `install:local`
+then writes `~/.local/share/applications/agentic-crafting-table.desktop` and makes
+it the `act://` handler. Ubuntu 23.10 and later also need the AppArmor profile from
+`npm run sandbox:linux` before any Electron run, development or packaged.
 
 An unchanged verified build reports **Already up to date** and creates no additional
 copy or backup. Changed builds check available disk space before staging; a refusal

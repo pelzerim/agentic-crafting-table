@@ -19,3 +19,21 @@ jobs:
         env:
           CSC_FOR_PULL_REQUEST: "true"
       - run: npm run test:package
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # The runner restricts unprivileged user namespaces like desktop Ubuntu; CI lifts it instead of loading a profile.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      # The runtime tests start the macOS default shell, which Ubuntu runners lack.
+      - run: sudo apt-get install -y zsh
+      - run: npm run check
+      - run: xvfb-run -a npm run test:runtime
+      - run: npm run package
+      - run: xvfb-run -a npm run test:package

@@ -16,7 +16,8 @@ terminals, execution environments, and related information. A user can see where
 work stands, enter a real agent terminal, and follow its connections without
 leaving the mental model of a single map.
 
-The initial application is a local-first, single-user macOS desktop app. It owns
+The initial application is a local-first, single-user macOS desktop app that also
+runs on Linux. It owns
 local workspace data and connects to existing provider accounts. The public app is
 the base; item types and defaults specific to one team (for example an internal
 ticket tracker) ship as separately installed plugin packs (EXT-02).
@@ -1697,7 +1698,7 @@ accounts are explicit. How to connect shows numbered steps with copyable Termina
 commands: providers may declare optional structured `setupSteps`; otherwise the
 numbered lines of the plain `setupHint` (still exposed for compatibility) are
 used. Linear's steps walk through personal API key creation, the concealed macOS
-Keychain password prompt, Connect Linear/account selection and attaching an issue
+Keychain password prompt (on Linux, `secret-tool`'s), Connect Linear/account selection and attaching an issue
 through From URL, without collecting credentials in the renderer. Browser sign-in
 remains a separate capability.
 

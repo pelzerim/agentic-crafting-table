@@ -8,7 +8,7 @@ include reusable scaffolding; provider and session adapters below remain planned
 
 | Decision | Choice | Reason / consequence |
 | --- | --- | --- |
-| Desktop shell | Electron; macOS first | Real terminals, local credentials, browser surfaces and a consistent rendering engine. Keep Electron-specific APIs behind a narrow bridge. |
+| Desktop shell | Electron; macOS first, Linux supported | Real terminals, local credentials, browser surfaces and a consistent rendering engine. Keep Electron-specific APIs behind a narrow bridge. |
 | UI | React + TypeScript; React Flow as the initial graph engine | Reuse pointer/edge/viewport primitives; own semantic zoom, outlines, pixel bubbles and item expansion. Validate these interactions in an early spike before committing the complete port. |
 | Domain | Reuse the existing TypeScript graph, plugin and command modules | One set of rules for UI, agents and provider events. Avoid a second graph implementation. |
 | Persistence | SQLite behind the workspace service | Atomic commands, migrations, provider identities, durable jobs and restart recovery on one machine. No hosted database needed initially. |

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LinearClient, LinearWorkflowCache, LINEAR_QUERIES, LINEAR_STATE_MUTATION, LINEAR_TRIAGE_PRIORITIES, LINEAR_TRIAGE_STATE_TYPES, linearTransport } from './linear.ts';
-import { providerCredential } from './keychain.ts';
+import { credentialStore, providerCredential } from './keychain.ts';
 import { linearFixture, linearIssueId } from '../../tests/fixtures/linear.ts';
 const signal = () => AbortSignal.timeout(3000);
 
@@ -27,8 +27,10 @@ test('Linear transport accepts only fixed read queries, handles GraphQL partial 
 });
 test('Keychain reader passes no credentials as arguments and normalizes missing/invalid/aborted reads', async () => {
   const calls: string[][] = [];
-  const read = providerCredential('linear', async args => { calls.push(args); return 'private-fixture-token\n'; }); assert.equal(await read(signal()), 'private-fixture-token');
+  const read = providerCredential('linear', async args => { calls.push(args); return 'private-fixture-token\n'; }, credentialStore('darwin')); assert.equal(await read(signal()), 'private-fixture-token');
   assert.deepEqual(calls, [['find-generic-password', '-s', 'dev.agentcraftingtable.linear', '-a', 'default', '-w']]);
+  await providerCredential('slack', async args => { calls.push(args); return 'private-fixture-token'; }, credentialStore('linux'))(signal());
+  assert.deepEqual(calls.pop(), ['lookup', 'service', 'dev.agentcraftingtable.slack', 'account', 'default']);
   for (const value of ['bad\nvalue', 'short', '']) await assert.rejects(providerCredential('linear', async () => value)(signal()), /credentials are unavailable/);
   await assert.rejects(providerCredential('slack', async () => { throw new Error('PRIVATE TOKEN'); })(signal()), error => error instanceof Error && !error.message.includes('PRIVATE'));
   await assert.rejects(read(AbortSignal.abort()), { name: 'AbortError' }); assert.equal(calls.length, 1);

@@ -35,6 +35,10 @@ permission to update those issues; read-only keys can still browse. App-distribu
 OAuth onboarding and simultaneous credentials for multiple Linear accounts remain
 separate improvements; this initial personal-app setup does not claim them.
 
+On Linux the key lives in the Secret Service keyring instead, stored with
+`secret-tool store --label 'Agentic Crafting Table Linear' service dev.agentcraftingtable.linear account default`
+and read with `secret-tool lookup`; Settings shows the command for the running platform.
+
 The same guide is available in **Settings → Connections → Linear → How to
 connect**, with a Copy button for the Keychain command. After storing the key,
 choose **Connect Linear** and select the account; it connects immediately. Double-click the map, choose **From URL** and paste
