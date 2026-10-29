@@ -35,6 +35,12 @@ their pull request and author.
 ### Rollouts
 - A finished rollout's open view has a purple **Send to Undermap** X at its top right.
 
+### Map
+- **Move the map with an item open**: drag, scroll or pinch the board around an open item to look at what is next to it. The item stays where it is and keeps its own scrolling, and Back leaves the map where you moved it.
+- **Order the Projects panel**: drag a project row, or a plot header within its project, to where you want it; a line shows where it lands and Esc cancels. Alt+↑ and Alt+↓ move the focused row. The order is saved, new projects and plots appear on top, and the folded column's icons follow it.
+- **Where an item lives**: an open item names its project and plot above its title; click either to close the item and fly there. The trail at the top left now reads Project / Plot / Item.
+- **Projects panel type**: project rows are larger and bold, plot headers are small upper-case labels, and item rows sit indented in regular weight with their reasons and states smaller, so the panel reads as a tree.
+
 ## 0.9.0 — 2026-10-28
 
 ### Rollouts

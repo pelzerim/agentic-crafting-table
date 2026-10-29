@@ -124,8 +124,9 @@ export const viewSchema = z.object({
   inboxPanel: z.object({ width: z.number().min(260).max(900).optional(), height: z.number().min(160).max(1000).optional() }).optional(),
   attentionPanel: z.object({ width: z.number().min(260).max(900).optional(), height: z.number().min(160).max(1000).optional() }).optional(),
   remindersPanel: z.object({ width: z.number().min(260).max(900).optional(), height: z.number().min(160).max(1000).optional() }).optional(),
-  /** The Projects panel (MAP-22): its size, folded project and plot ids, row filters, and whether it stays open. */
+  /** The Projects panel (MAP-22): its size, folded project and plot ids, row filters, whether it stays open, and the order the person dragged projects and plots into. */
   projectsPanel: z.object({ width: z.number().min(260).max(900).optional(), height: z.number().min(160).max(1000).optional(), folded: z.array(id).max(500).optional(),
+    order: z.array(id).max(500).optional(), plotOrder: z.array(id).max(500).optional(),
     filters: z.object({ needsMe: z.boolean().optional(), off: z.array(z.enum(COLUMN_KINDS)).max(COLUMN_KINDS.length).optional() }).optional(), pinned: z.boolean().optional() }).optional(),
   /** Update offers the person closed, by subject (`app` or `plugin:<id>`) and the tag dismissed; a newer tag is offered again. */
   dismissedUpdates: z.record(z.string().regex(/^(app|plugin:[A-Za-z0-9._-]{1,80})$/), z.string().max(80)).optional(),

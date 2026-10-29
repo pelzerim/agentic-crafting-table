@@ -90,3 +90,29 @@ test('the entire expanded terminal menu bar moves the view except interactive co
   expect(await view.boundingBox()).toEqual(beforeButton);
   await view.getByRole('button', { name: 'Back to project' }).click(); await expect(view).toBeHidden();
 });
+
+test('with an item open the board pans and zooms around it; the item stays put and open, Back leaves the camera there, and wheel over the item never moves the map', async ({ visual: { page } }) => {
+  const camera = () => page.locator('.react-flow__viewport').evaluate(element => { const matrix = new DOMMatrix(getComputedStyle(element).transform); return { x: matrix.e, y: matrix.f, zoom: matrix.a }; });
+  await page.getByRole('article', { name: 'Claude · implementation', exact: true }).click();
+  const area = page.locator('.map-area'), view = page.locator('[data-item-view="agent"]');
+  await expect(area).toHaveAttribute('data-focus', 'agent');
+  const placed = (await view.boundingBox())!, start = await camera();
+  await page.mouse.move(placed.x + placed.width / 2, placed.y + placed.height / 2); await page.mouse.wheel(0, 400);
+  expect(await camera()).toEqual(start);
+  const below = { x: placed.x + placed.width / 2, y: placed.y + placed.height + 25 };
+  await page.mouse.move(below.x, below.y); await page.mouse.down(); await page.mouse.move(below.x - 200, below.y, { steps: 8 }); await page.mouse.up();
+  await expect.poll(async () => Math.round((await camera()).x - start.x)).toBe(-200);
+  await page.mouse.move(below.x, below.y); await page.mouse.wheel(0, -300);
+  await expect.poll(async () => (await camera()).zoom).toBeGreaterThan(start.zoom);
+  await expect(area).toHaveAttribute('data-focus', 'agent');
+  expect(await view.boundingBox()).toEqual(placed);
+  await expect(page.locator('[data-selected-id]')).toHaveCount(0);
+  const panned = await camera();
+  // Saved while the item is still open, so a reload keeps it.
+  await expect.poll(async () => (await page.evaluate(() => window.craftingTable.viewRead()))?.camera?.zoom).toBeCloseTo(panned.zoom, 2);
+  await view.getByRole('button', { name: 'Back to project', exact: true }).click();
+  await expect(area).toHaveAttribute('data-focus', '');
+  expect(await camera()).toEqual(panned);
+  await page.reload(); await expect(page.getByText('Desktop connected')).toBeVisible();
+  await expect.poll(camera).toEqual(panned);
+});
