@@ -37,7 +37,8 @@ file, say), ask a maintainer before allowing it; do not weaken the scan to get a
 
 ## Changes and releases
 
-Note every user-facing change in `CHANGELOG.md` under `## Unreleased` at the top.
+Note every user-facing change in `CHANGELOG.md` under `## Unreleased` at the top, ending each entry
+with your pull request and GitHub login, e.g. `(#12, @octocat)`.
 
 Any maintainer may cut a release once `main` is green:
 

@@ -1,12 +1,13 @@
 # Changelog
 
-Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one.
+Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
+their pull request and author.
 
 ## 0.10.0 — 2026-10-29
 
 ### Platform
-- **Linux** (x64 and arm64, tested on Ubuntu 26.04): `npm run dev`, `npm run package`, `npm run install:local` and `npm run update` work from the same checkout. The installer adds a desktop entry, so the app appears in the launcher and opens `act://` install links. `npm run sandbox:linux` writes the AppArmor profile that Ubuntu 23.10 and later require before Electron's sandbox can start; see [On Linux](docs/setup.md#on-linux).
-- Linear and Slack read their token from the Secret Service keyring on Linux (`secret-tool`), and Settings → Connections shows the matching `secret-tool store` command.
+- **Linux** (x64 and arm64, tested on Ubuntu 26.04): `npm run dev`, `npm run package`, `npm run install:local` and `npm run update` work from the same checkout. The installer adds a desktop entry, so the app appears in the launcher and opens `act://` install links. `npm run sandbox:linux` writes the AppArmor profile that Ubuntu 23.10 and later require before Electron's sandbox can start; see [On Linux](docs/setup.md#on-linux). (#2, @timohuovinen)
+- Linear and Slack read their token from the Secret Service keyring on Linux (`secret-tool`), and Settings → Connections shows the matching `secret-tool store` command. (#2, @timohuovinen)
 
 ### Agents
 - **Claude's recap**: when Claude Code writes a recap of a session while you are away, Needs me and the agent's large card show it instead of the last line, and project summaries take it into account. A new prompt clears it.
@@ -42,23 +43,23 @@ Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newes
 ## 0.7.0 — 2026-10-28
 
 ### Needs me
-- **Close and mark seen**: an open item in Needs me has a close X with a check beside Mark seen. It marks the item seen and closes it; **⌘E** does the same, also from inside a terminal.
+- **Close and mark seen**: an open item in Needs me has a close X with a check beside Mark seen. It marks the item seen and closes it; **⌘E** does the same, also from inside a terminal. (#1, @shiini2)
 
 ### Terminals
-- In a terminal, **⌘⌫** deletes to the start of the line and **⌘←** / **⌘→** move to its start and end, as in iTerm2 and Terminal.app.
-- **⌘C** copies in an agent session that captures the mouse, such as Claude Code, when the terminal has no selection of its own. Other terminal apps never receive it.
-- **⌘F** finds text in a terminal: matches highlight as you type, Enter and Shift+Enter step through them, Esc closes the bar.
+- In a terminal, **⌘⌫** deletes to the start of the line and **⌘←** / **⌘→** move to its start and end, as in iTerm2 and Terminal.app. (#1, @shiini2)
+- **⌘C** copies in an agent session that captures the mouse, such as Claude Code, when the terminal has no selection of its own. Other terminal apps never receive it. (#1, @shiini2)
+- **⌘F** finds text in a terminal: matches highlight as you type, Enter and Shift+Enter step through them, Esc closes the bar. (#1, @shiini2)
 
 ### Map
-- Shift-drag selects a rectangle of items while Needs me is held open beside the map.
-- **Resize the Projects panel** from its top-left corner; the size is kept.
-- **Fold** each project and plot in the Projects panel with its chevron; folds are kept.
-- **Filters** in the Projects panel: untick **Needs me** to list every item of each project by plot, and switch off **Agents**, **PRs**, **Rollouts**, **Tickets**, **Notes** or **Other** to hide that kind.
-- The Projects panel **stays open while an item is open** and beside Needs me, and **M** toggles it there too. An item row opens that item in place of the open one; a project or plot row closes it and flies there.
-- **Pin the Projects panel** to keep it open across Esc, row clicks and relaunch, beside To-dos, Reminders, the GitHub inbox and the Controls card. M closes it and unpins.
+- Shift-drag selects a rectangle of items while Needs me is held open beside the map. (#1, @shiini2)
+- **Resize the Projects panel** from its top-left corner; the size is kept. (#1, @shiini2)
+- **Fold** each project and plot in the Projects panel with its chevron; folds are kept. (#1, @shiini2)
+- **Filters** in the Projects panel: untick **Needs me** to list every item of each project by plot, and switch off **Agents**, **PRs**, **Rollouts**, **Tickets**, **Notes** or **Other** to hide that kind. (#1, @shiini2)
+- The Projects panel **stays open while an item is open** and beside Needs me, and **M** toggles it there too. An item row opens that item in place of the open one; a project or plot row closes it and flies there. (#1, @shiini2)
+- **Pin the Projects panel** to keep it open across Esc, row clicks and relaunch, beside To-dos, Reminders, the GitHub inbox and the Controls card. M closes it and unpins. (#1, @shiini2)
 
 ### Updates
-- **Update and restart**: when a newer release is out and the app runs from its checkout, Settings → General → About offers it in place of Check now. The app quits as usual, builds and installs the newest release, and reopens; a failed update is shown there on the next launch.
+- **Update and restart**: when a newer release is out and the app runs from its checkout, Settings → General → About offers it in place of Check now. The app quits as usual, builds and installs the newest release, and reopens; a failed update is shown there on the next launch. (#1, @shiini2)
 
 ## 0.6.0 — 2026-10-27
 
