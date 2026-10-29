@@ -356,6 +356,9 @@ function CardFace({ data }: { data: CardData }) {
       <div className="item-frame-slot" hidden={!expanded} />
       <div className="session-toolbar-slot" hidden={!expanded} />
       {expanded && data.needsMe && need && <span className="item-needs" data-tier={need.tier} title={attentionLabel(need.tier, need.detail)}><TierMark tier={need.tier} /><b>{attentionTierInfo[need.tier].name}</b><span> · {need.details[0]}</span></span>}
+      {expanded && <button type="button" className="nodrag item-locate" aria-label="Show on map" title="Show on map" onClick={event => { event.stopPropagation(); reveal(item.id); }}>
+        <PixelGlyph name="crosshair" className="" />
+      </button>}
       {expanded && data.undermapWhenComplete && item.activity === 'complete' && !item.belowAt && sendBelow && <button type="button" className="nodrag item-send-below" aria-label="Send to Undermap" title="Send to Undermap" onClick={event => { event.stopPropagation(); sendBelow([item.id]); back(); }}>
         <PixelGlyph name="close" size={12} className="" /><PixelGlyph name="undermap" className="item-send-below-mark" />
       </button>}

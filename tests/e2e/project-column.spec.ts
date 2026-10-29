@@ -431,7 +431,7 @@ test('project rows and plot headers drag into a saved order that survives a relo
   }, { state: asked });
 });
 
-test('an open item names its project and plot above its title; the plot closes the item and flies there, the project to the project', async () => {
+test('an open item names its project and plot above its title; the plot closes the item and flies there, the project to the project, Show on map to the item', async () => {
   await launch(async page => {
     await page.locator('.map-card[data-item-id="thumb-agent"]').click();
     const area = page.locator('.map-area'), place = page.getByRole('navigation', { name: 'Item location', exact: true });
@@ -448,6 +448,15 @@ test('an open item names its project and plot above its title; the plot closes t
     await place.getByRole('button', { name: 'Go to project Photos', exact: true }).click();
     await expect(area).toHaveAttribute('data-focus', '');
     await expect.poll(async () => { const point = await centre(page); return point.zoom < plotView.zoom && point.y > plotView.y; }).toBe(true);
+  }, { state: plotProject, prepare: store => store.writeView('desktop', { camera: { x: 80, y: 70, zoom: .8 } }) });
+  // Show on map closes the item and centres the map on its card.
+  await launch(async page => {
+    const area = page.locator('.map-area'), card = page.locator('.map-card[data-item-id="thumb-agent"]');
+    await card.click(); await expect(area).toHaveAttribute('data-focus', 'thumb-agent');
+    await page.getByRole('button', { name: 'Show on map', exact: true }).click();
+    await expect(area).toHaveAttribute('data-focus', '');
+    const map = (await area.boundingBox())!;
+    await expect.poll(async () => { const box = (await card.boundingBox())!; return Math.hypot(box.x + box.width / 2 - (map.x + map.width / 2), box.y + box.height / 2 - (map.y + map.height / 2)) < 40; }).toBe(true);
   }, { state: plotProject, prepare: store => store.writeView('desktop', { camera: { x: 80, y: 70, zoom: .8 } }) });
 });
 

@@ -1214,6 +1214,7 @@
 }
 
 .item-close svg,
+.item-locate svg,
 .item-seen svg,
 .item-seen-close svg,
 .item-keep svg,
@@ -1338,6 +1339,7 @@
 }
 
 .map-card .item-close,
+.map-card .item-locate,
 .map-card .item-seen,
 .map-card .item-seen-close,
 .map-card .item-keep,
@@ -1785,6 +1787,7 @@
     order: 2;
     flex: 1 0 100%;
   }
+  .expanded .item-locate,
   .expanded .item-seen,
   .expanded .item-seen-close,
   .expanded .item-keep,
