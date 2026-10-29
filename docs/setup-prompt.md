@@ -1,5 +1,7 @@
 # Prompt: set up Agentic Crafting Table on this Mac
 
+On Linux, follow [docs/setup.md](setup.md) and its **On Linux** section instead.
+
 Copy everything below the line into your coding agent (Claude Code, Codex or
 similar) in a terminal on the Mac you want to set up. It follows
 [docs/setup.md](setup.md) and stops for the parts only a person can do.

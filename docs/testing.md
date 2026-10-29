@@ -895,8 +895,8 @@ real-model analysis or an authenticated artifact viewer.
 | Scheduled or manually enabled integration run | Credentialed provider smoke tests and bounded agent evaluations; no default production targets |
 | Before release | Packaged macOS installation/launch, native module loading, update/migration, terminal/CLI checks, offline/reconnect, manual pointer/trackpad/accessibility pass |
 
-Use macOS runners for the supported desktop/PTY release path. Add other OS matrices
-only when those platforms become supported. Keep screenshots, Playwright traces,
+Use macOS runners for the supported desktop/PTY release path, and Ubuntu runners for
+Linux. Add other OS matrices only when those platforms become supported. Keep screenshots, Playwright traces,
 normalized service/session logs and test versions on failure; exclude secrets and
 real terminal history from routine CI artifacts.
 

@@ -5,12 +5,13 @@ import { access, readFile, realpath, unlink } from 'node:fs/promises';
 import { userInfo } from 'node:os';
 import { join } from 'node:path';
 import { LAUNCHER_SCRIPT, parseLauncher } from '../../packages/desktop-update/release.ts';
+import { bundleLayout } from '../../packages/core/bundle-layout.ts';
 import { CHECKOUT_PACKAGE_NAME, UPDATE_COMMAND, appUpdateRow, checkoutOfExecutable, updateFailureSchema } from '../../packages/core/updates.ts';
 import type { UpdateFailure, UpdateStatus } from '../../packages/core/updates.ts';
 
 /** Update and restart (UPDATE-01): the checkout this app was installed from, if it is one. */
 export async function updateCheckout(executable: string, packaged: boolean): Promise<string | undefined> {
-  const root = packaged ? checkoutOfExecutable(executable) : undefined;
+  const root = packaged ? checkoutOfExecutable(executable, bundleLayout(process.platform, process.arch)) : undefined;
   if (!root) return undefined;
   try {
     await access(join(root, '.git'));

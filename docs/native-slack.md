@@ -35,6 +35,8 @@ setup uses a generic password with service `dev.agentcraftingtable.slack`, accou
 security add-generic-password -U -s dev.agentcraftingtable.slack -a default -w
 ```
 
+On Linux use `secret-tool store --label 'Agentic Crafting Table Slack' service dev.agentcraftingtable.slack account default`.
+
 No credential has been read or written by the automated tests. Six local adapter
 fixtures cover account/workspace binding, timestamp fidelity, pagination, deleted
 messages, profile fallback, cancellation, method allowlisting and cooldown.

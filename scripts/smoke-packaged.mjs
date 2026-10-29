@@ -3,9 +3,11 @@ import { mkdtemp, readFile, rm, mkdir, writeFile } from 'node:fs/promises';
 import { spawn, execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { executableIn, linuxSandboxRestricted, stagedBundle } from './local-bundle.mjs';
 
+if (linuxSandboxRestricted()) throw new Error('This system lets only AppArmor-profiled programs start the Chromium sandbox. Run npm run sandbox:linux once, then retry.');
 const directory = await mkdtemp(join(tmpdir(), 'craft-package-smoke-'));
-const executable = resolve(process.env.ACT_PACKAGED_EXECUTABLE ?? 'release/staged/mac-arm64/Agentic Crafting Table.app/Contents/MacOS/Agentic Crafting Table');
+const executable = resolve(process.env.ACT_PACKAGED_EXECUTABLE ?? executableIn(stagedBundle));
 const report = join(directory, 'report.json');
 const nativeConfig = join(directory, 'claude-history'), nativeFolder = join(nativeConfig, 'projects', directory.replace(/[^a-zA-Z0-9]/g, '-'));
 await mkdir(nativeFolder, { recursive: true });

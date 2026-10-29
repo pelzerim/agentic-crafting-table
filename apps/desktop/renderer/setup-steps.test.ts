@@ -2,18 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { providerSetupSteps } from './setup-steps.ts';
 import { linearSetupHint, linearSetupSteps } from '../../../packages/provider-runtime/linear-connection.ts';
+import { credentialStore } from '../../../packages/provider-runtime/keychain.ts';
+const mac = credentialStore('darwin');
 
 test('declared setup steps win over the plain-text hint', () => {
-  assert.deepEqual(providerSetupSteps({ setupHint: linearSetupHint, setupSteps: linearSetupSteps }), linearSetupSteps);
+  assert.deepEqual(providerSetupSteps({ setupHint: linearSetupHint(mac), setupSteps: linearSetupSteps(mac) }), linearSetupSteps(mac));
 });
 
 test('legacy numbered hints become steps with their Terminal command attached', () => {
-  const steps = providerSetupSteps({ setupHint: linearSetupHint });
+  const steps = providerSetupSteps({ setupHint: linearSetupHint(mac) });
   assert.equal(steps.length, 4);
   assert.match(steps[0].text, /^In Linear, open Settings/);
   assert.equal(steps[1].command, 'security add-generic-password -U -s dev.agentcraftingtable.linear -a default -w');
   assert.match(steps[1].text, /Keep -w last/);
   assert.match(steps[3].text, /Browser-based sign-in is not available yet\.$/);
+  assert.equal(providerSetupSteps({ setupHint: linearSetupHint(credentialStore('linux')) })[1].command, "secret-tool store --label 'Agentic Crafting Table Linear' service dev.agentcraftingtable.linear account default");
 });
 
 test('a one-paragraph hint stays one step and `$` lines are commands', () => {

@@ -1,4 +1,5 @@
 import * as z from 'zod/v4';
+import type { BundleLayout } from './bundle-layout.ts';
 
 /** Updates (UPDATE-01): the app and installed plugin packs follow release tags `vX.Y.Z`. */
 export const APP_REPOSITORY = 'pelzerim/agentic-crafting-table';
@@ -42,13 +43,11 @@ export interface PluginUpdate extends UpdateSubject { id: string; name: string; 
 /** What the window shows: the app and every git-installed pack, each against its newest tag. */
 export interface UpdateStatus { app: UpdateSubject; plugins: PluginUpdate[]; checking: boolean }
 
-/** Where `npm run install:local` puts the app, relative to the checkout it was built from. */
-export const INSTALLED_BUNDLE = 'release/mac-arm64/Agentic Crafting Table.app';
 export const CHECKOUT_PACKAGE_NAME = 'agent-crafting-table';
 /** The checkout an installed app runs from, from its executable path; undefined for any other location. */
-export function checkoutOfExecutable(executable: string): string | undefined {
-  const marker = `/${INSTALLED_BUNDLE}/Contents/MacOS/`, index = executable.lastIndexOf(marker);
-  return index > 0 && !executable.slice(index + marker.length).includes('/') ? executable.slice(0, index) : undefined;
+export function checkoutOfExecutable(executable: string, layout: BundleLayout): string | undefined {
+  const marker = `/${layout.installed}/${layout.executable}`, index = executable.lastIndexOf(marker);
+  return index > 0 && index + marker.length === executable.length ? executable.slice(0, index) : undefined;
 }
 /** A failed Update and restart, written by `scripts/update-restart.mjs` for the next launch to show. */
 export const updateFailureSchema = z.object({ at: z.number(), tag: z.string().max(100).optional(), message: z.string().max(4000) });

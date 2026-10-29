@@ -2,6 +2,12 @@
 
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one.
 
+## Unreleased
+
+### Platform
+- **Linux** (x64 and arm64, tested on Ubuntu 26.04): `npm run dev`, `npm run package`, `npm run install:local` and `npm run update` work from the same checkout. The installer adds a desktop entry, so the app appears in the launcher and opens `act://` install links. `npm run sandbox:linux` writes the AppArmor profile that Ubuntu 23.10 and later require before Electron's sandbox can start; see [On Linux](docs/setup.md#on-linux).
+- Linear and Slack read their token from the Secret Service keyring on Linux (`secret-tool`), and Settings → Connections shows the matching `secret-tool store` command.
+
 ## 0.9.0 — 2026-10-28
 
 ### Rollouts
