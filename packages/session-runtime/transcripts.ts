@@ -1,4 +1,5 @@
 import { createReadStream, existsSync, readdirSync } from 'node:fs';
+import { readdir, stat } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -11,11 +12,22 @@ const HEAD = 3000, REPLY = 1200, PROMPT = 2000, TOOL_ERROR = 160;
 export interface DaySlice { prompts: number; replies: number; tools: Record<string, number>; lines: string[] }
 
 /** Only the host reads native transcripts. A slice and its evidence stay in the service; only the digest written from them is stored or shown. */
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const claudeConfigDirectory = (env: NodeJS.ProcessEnv = process.env) => env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
 export function claudeTranscript(sessionId: string, directory = claudeConfigDirectory()): string | undefined {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) return undefined;
+  if (!SESSION_ID.test(sessionId)) return undefined;
   let names: string[]; try { names = readdirSync(join(directory, 'projects')); } catch { return undefined; }
   for (const name of names) { const file = join(directory, 'projects', name, `${sessionId}.jsonl`); if (existsSync(file)) return file; }
+  return undefined;
+}
+/** `claudeTranscript` without blocking: the folder listing and the lookups are asynchronous. */
+export async function findClaudeTranscript(sessionId: string, directory = claudeConfigDirectory()): Promise<string | undefined> {
+  if (!SESSION_ID.test(sessionId)) return undefined;
+  let names: string[]; try { names = await readdir(join(directory, 'projects')); } catch { return undefined; }
+  for (const name of names) {
+    const file = join(directory, 'projects', name, `${sessionId}.jsonl`);
+    try { if ((await stat(file)).isFile()) return file; } catch { /* Not in this project folder. */ }
+  }
   return undefined;
 }
 

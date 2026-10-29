@@ -47,7 +47,7 @@ async function fixture() {
   };
   return { directory, source, settings, get store() { return store; }, get control() { return control; },
     get captures() { return captures; }, get freezes() { return freezes; }, set hold(value: (() => Promise<void>) | undefined) { hold = value; },
-    coordinator: (launcher?: (request: ResourceCreate, hosted: HostedLaunch) => Promise<unknown>) => new ArchitectureRequests(directory, store, control, { 'github.pull-request': source }, launcher),
+    coordinator: (launcher?: (request: ResourceCreate, hosted: HostedLaunch) => Promise<unknown>, trust?: (folder: string) => void) => new ArchitectureRequests(directory, store, control, { 'github.pull-request': source }, launcher, trust),
     reopen() { store.close(); store = new SqliteStore(join(directory, 'workspace.sqlite')); control = new WorkspaceControl(store); store.recoverInterruptedJobs(); },
     close() { store.close(); rmSync(directory, { recursive: true, force: true }); },
   };
@@ -277,7 +277,8 @@ function fakeLauncher(f: Awaited<ReturnType<typeof fixture>>, fail = '') {
 }
 
 test('Explain architecture launches one connected Claude session from the frozen comparison and focuses it on repeat', async () => {
-  const f = await fixture(), fake = fakeLauncher(f), architecture = f.coordinator(fake.launch);
+  const f = await fixture(), fake = fakeLauncher(f), trusted: [string, number][] = [];
+  const architecture = f.coordinator(fake.launch, folder => { trusted.push([folder, fake.launches.length]); });
   mkdirSync(join(f.directory, 'isolated', 'repository'), { recursive: true });
   try {
     assert.equal(architecture.options('github.pull-request').canLaunch, true);
@@ -288,6 +289,7 @@ test('Explain architecture launches one connected Claude session from the frozen
     assert.equal(request.pluginId, 'agent.session'); assert.equal(request.projectId, 'project'); assert.equal(request.title, 'Architecture · #42');
     assert.deepEqual(request.connection && { otherId: request.connection.otherId, kind: request.connection.kind, sourceIsNew: request.connection.sourceIsNew }, { otherId: 'pr', kind: 'context', sourceIsNew: false });
     assert.equal(request.data.provider, 'claude'); assert.equal(request.data.cwd, join(f.directory, 'isolated'));
+    assert.deepEqual(trusted, [[join(f.directory, 'isolated'), 0]], 'its folder is trusted for Claude before the session starts');
     assert.ok(request.position!.x > 50);
     const architectureData = hosted.data.architecture as Record<string, unknown>;
     assert.equal(architectureData.sourcePrId, 'pr'); assert.equal(architectureData.headSha, head); assert.equal(architectureData.baseSha, mergeBase);

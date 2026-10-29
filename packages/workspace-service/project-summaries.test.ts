@@ -85,6 +85,19 @@ test('changed input waits for the debounce and the ten-minute floor per project'
   assert.equal(JSON.parse(requests[1].messages[0].content).needsMe[0].title, 'Webhook agent v2');
 }));
 
+test('an agent\'s new recap counts as a project change and is sent in place of its last line', () => fixture(async ({ summaries, requests, clock, turnOn, apply }) => {
+  turnOn(); const helper = summaries();
+  await apply({ type: 'node.update', id: 'agent', lastLine: 'Done.' });
+  await helper.tick(); clock.now += PROJECT_SUMMARY_DEBOUNCE_MS; await helper.tick();
+  assert.equal(requests.length, 1);
+  await apply({ type: 'node.update', id: 'agent', recap: { text: 'I removed the flag; the PR is ready for your review. token=abc123def456', at: '2026-10-26T12:05:00.000Z' } });
+  await helper.tick(); clock.now += PROJECT_SUMMARY_INTERVAL_MS; await helper.tick();
+  assert.equal(requests.length, 2);
+  const row = JSON.parse(requests[1].messages[0].content).needsMe[0];
+  assert.equal(row.title, 'Webhook agent'); assert.match(row.said, /^I removed the flag; the PR is ready for your review\./);
+  assert.ok(!requests[1].messages[0].content.includes('abc123def456'), 'redacted');
+}));
+
 test('muted projects and projects below are never sent; unmuting queues the project', () => fixture(async ({ summaries, requests, clock, turnOn, apply }) => {
   turnOn();
   await apply({ type: 'project.create', id: 'below', title: 'Below', summary: '', position: { x: 4000, y: 0 } });

@@ -43,6 +43,7 @@ const resource = z.object({ id, pluginId: id, schemaVersion: z.number().int().po
 const POSES = ['gate', 'asking', 'fallen', 'shearing', 'command', 'ended'] as const;
 const taskProgress = z.object({ done: z.number().int().min(0).max(999), total: z.number().int().min(0).max(999) }).refine(tasks => tasks.done <= tasks.total, 'More tasks done than there are');
 const moment = z.object({ kind: z.enum(['stumble', 'bump', 'enter', 'leave']), at: z.number().int().positive() });
+const recapSchema = z.object({ text: z.string().min(1).max(600), at: z.iso.datetime() });
 const node = z.object({
   id, title, position, resourceId: id.optional(), projectId: id.optional(),
   mapSize: z.enum(ITEM_SIZES).optional(),
@@ -75,6 +76,10 @@ const node = z.object({
   summary: z.string().max(4000).default(''),
   /** The last line an agent said when its turn ended, shown in its Needs me row (STATE-02). */
   lastLine: z.string().min(1).max(200).optional(),
+  /** The newest recap Claude Code wrote while the person was away, newer than the turn end; shown in place of the last line. */
+  recap: recapSchema.optional(),
+  /** When the agent's last turn ended (its Stop); a recap counts only when it is newer. */
+  turnEndedAt: z.iso.datetime().optional(),
   /** What an agent is changing on this item right now; while set the item is working (node.rework). */
   rework: z.object({ note: z.string().min(1).max(200), since: z.string(), by: z.string().min(1).max(200).optional() }).optional(),
   workingDirectory: z.string().max(4096).optional(),
@@ -153,7 +158,7 @@ const otherCommands = [
   z.object({ type: z.literal('attention.set'), id, source: id, reason: attentionReason.nullable(), note: attentionNoteInput.optional(), eventId: id.optional() }),
   z.object({ type: z.literal('attention.acknowledge'), id, versions: z.record(id, z.number().int().nonnegative()) }),
   z.object({ type: z.literal('attention.restore'), id, versions: z.record(id, z.number().int().nonnegative()) }),
-  z.object({ type: z.literal('node.update'), id, indicators: indicatorsSchema.optional(), pips: cardPipsSchema.nullable().optional(), title: title.optional(), summary: z.string().max(4000).optional(), lastLine: z.string().min(1).max(200).nullable().optional(), workingDirectory: z.string().max(4096).optional(), color: projectColorSchema.optional(), activity: activity.optional(), attention: attention.optional(), attentionNote: attentionNoteInput.optional(),
+  z.object({ type: z.literal('node.update'), id, indicators: indicatorsSchema.optional(), pips: cardPipsSchema.nullable().optional(), title: title.optional(), summary: z.string().max(4000).optional(), lastLine: z.string().min(1).max(200).nullable().optional(), recap: recapSchema.nullable().optional(), turnEndedAt: z.iso.datetime().optional(), workingDirectory: z.string().max(4096).optional(), color: projectColorSchema.optional(), activity: activity.optional(), attention: attention.optional(), attentionNote: attentionNoteInput.optional(),
     helpers: z.number().int().min(0).max(999).optional().describe('How many helpers (subagents, teammates) the item has busy right now; 0 clears it. Kept only while the item is working.'),
     waiting: z.boolean().optional().describe('The item itself only waits on its busy helpers. Kept only while it is working and has helpers.'),
     pose: z.enum([...POSES, 'none']).optional().describe('What the item itself is doing or held by; none clears it. Kept only while its activity and attention allow it.'),
@@ -631,6 +636,8 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           const target = find(command.id);
           if (command.workingDirectory !== undefined && target.resourceId) throw new Error('Working directory defaults belong to projects; existing session directories are immutable');
           if (command.lastLine === null) delete target.lastLine; else if (command.lastLine !== undefined) target.lastLine = command.lastLine;
+          if (command.recap === null) delete target.recap; else if (command.recap !== undefined) target.recap = command.recap;
+          if (command.turnEndedAt !== undefined) target.turnEndedAt = command.turnEndedAt;
           if (command.pips === null) delete target.pips; else if (command.pips !== undefined) target.pips = command.pips;
           if (command.color !== undefined && target.resourceId) throw new Error('Neighborhood colors belong to projects');
           if (command.color !== undefined) target.color = command.color.toLowerCase();

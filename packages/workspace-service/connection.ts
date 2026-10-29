@@ -28,8 +28,10 @@ export class WorkspaceConnection extends EventEmitter {
   private events: ConnectionEvent[] = [];
   private slowestSnapshots: SnapshotDelivery[] = [];
   snapshot?: WorkspaceSnapshot;
-  constructor(directory: string, executable: string, entrypoint: string, electronRuntime = false) {
-    super(); this.options = [directory, executable, entrypoint, electronRuntime];
+  /** `subscribe: false` connects for requests only: no snapshots are sent to it, for callers such as an agent's MCP bridge that read on demand. */
+  private readonly subscribes: boolean;
+  constructor(directory: string, executable: string, entrypoint: string, electronRuntime = false, mode: { subscribe?: boolean } = {}) {
+    super(); this.options = [directory, executable, entrypoint, electronRuntime]; this.subscribes = mode.subscribe !== false;
   }
   connect(): Promise<WorkspaceClient> {
     if (this.disposed) return Promise.reject(new Error('Workspace connection closed'));
@@ -54,8 +56,8 @@ export class WorkspaceConnection extends EventEmitter {
       });
       client.once('disconnected', (error?: Error) => { disconnected = true; if (this.client === client) this.client = undefined; this.scheduleReconnect(error?.message ?? 'closed'); });
       try {
-        subscribing = true;
-        await client.subscribe(this.cursor, this.layer);
+        subscribing = this.subscribes;
+        if (subscribing) await client.subscribe(this.cursor, this.layer);
         if (this.disposed) throw new Error('Workspace connection closed');
         if (disconnected) throw new Error('Workspace disconnected while subscribing');
         this.client = client; this.setStatus('connected'); return client;

@@ -9,3 +9,6 @@ export function agentLastLine(message: string): string | undefined {
   if (!line) return undefined;
   return line.length > LAST_LINE_LENGTH ? `${line.slice(0, LAST_LINE_LENGTH - 1)}…` : line;
 }
+
+/** What a Needs me row and a large agent card quote: the agent's recap when it has one, else the line it ended its turn on. */
+export const agentSaid = (node: { lastLine?: string; recap?: { text: string } } | undefined) => node?.recap?.text ?? node?.lastLine;

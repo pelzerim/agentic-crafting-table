@@ -6,6 +6,7 @@ import type { AttentionHistoryEntry } from '../../../packages/workspace-service/
 import { NEEDS_ME, attentionAge, attentionCounts, attentionLabel, attentionReasons, attentionTierInfo, attentionTiers, needsMeButton } from '../../../src/graph/attention.ts';
 import type { AttentionCounting, AttentionItem } from '../../../src/graph/attention.ts';
 import { isArchived, isBelow } from '../../../src/graph/archive.ts';
+import { agentSaid } from '../../../packages/core/last-line.ts';
 import { RailPanel } from './rail-panel.tsx';
 import type { PanelSize } from './rail-panel.tsx';
 import { useRailTool } from './rail-state.ts';
@@ -137,8 +138,8 @@ function AttentionRows({ items, muted = [], counting, state, reveal, locate, hig
   };
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(timer); }, []);
-  // What the agent last said wins over its status summary; either drops the parts that only repeat the reason.
-  const summaries = new Map([...items, ...muted].map(item => { const node = nodes.get(item.node.id); return [item.identity, node?.lastLine ?? freshSummary(node?.summary.trim() ?? '', item.details)]; }));
+  // What the agent last said, or its recap, wins over its status summary; either drops the parts that only repeat the reason.
+  const summaries = new Map([...items, ...muted].map(item => { const node = nodes.get(item.node.id); return [item.identity, agentSaid(node) ?? freshSummary(node?.summary.trim() ?? '', item.details)]; }));
   const inspected = [...items, ...(mutedOpen ? muted : [])].filter(item => !folded.has(item.tier)).find(item => item.identity === (hovered ?? focused))?.node.id;
   useEffect(() => { highlight(inspected); return () => highlight(undefined); }, [inspected, highlight]);
   useEffect(() => {
@@ -160,7 +161,7 @@ function AttentionRows({ items, muted = [], counting, state, reveal, locate, hig
       onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(undefined); }}>
     <button className="attention-entry" aria-label={`Open ${item.node.title}`} aria-description={attentionLabel(item.tier, item.details.join(' · '))} onClick={() => { reveal(item.node.id); close(); }}>
       <strong>{item.node.title}<BadgeChips badges={badges.get(item.node.id)} /></strong><span className="attention-reason" data-tier={item.tier}><TierMark tier={item.tier} />{item.details.join(' · ')}{attentionAge(item.since, now) && <span className="attention-age"> · {attentionAge(item.since, now)}</span>}</span>
-      {summaries.get(item.identity) && <span className="attention-summary" data-said={nodes.get(item.node.id)?.lastLine ? true : undefined} title={summaries.get(item.identity)}>{summaries.get(item.identity)}</span>}
+      {summaries.get(item.identity) && <span className="attention-summary" data-said={agentSaid(nodes.get(item.node.id)) ? true : undefined} title={summaries.get(item.identity)}>{summaries.get(item.identity)}</span>}
       <small>{[...new Set(item.aliases.map(alias => nodes.get(alias.projectId ?? '')?.title ?? 'Floating item'))].join(' · ')}{item.node.completedAt ? ' · Marked done' : ''}</small>
     </button><div className="attention-actions">
       <Button size="sm" className="attention-dismiss" aria-label={`Dismiss ${item.node.title} from Needs me`} title="Mark as seen" onClick={() => dismiss(item.node.id)}><PixelGlyph name="check" />Seen</Button>

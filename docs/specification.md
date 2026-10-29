@@ -1593,7 +1593,22 @@ the message itself is neither kept nor sent to the renderer, and every other hoo
 still leaves the session without text. The same line is the body of the agent's
 native notification (in place of the attention details), and an agent card with room
 for two or more summary lines (the large size) shows it in place of its summary, after
-the attention reason; small and medium cards keep their summary. Each group heading (Asking me, My turn,
+the attention reason; small and medium cards keep their summary.
+
+A Claude agent's **recap** takes the place of that line in both, with the same clamp and
+styling. While the person is away, Claude Code writes a recap of the session into its
+transcript (`<CLAUDE_CONFIG_DIR or ~/.claude>/projects/<project>/<session>.jsonl`, a
+`system` entry with subtype `away_summary`), with no hook and possibly minutes after the
+turn's Stop. Every 30 seconds the service (`recaps.tick` in Service health) stats the
+transcript of each Claude agent that is idle or waiting, not working and not archived, and
+reads its last 256 KB only when the file's time or size changed. It keeps the newest recap
+there, without the trailing “(disable recaps in /config)”, secrets redacted, flattened and
+clipped to 600 characters on a word boundary, as the node's `recap` (`{ text, at }`) when
+it is newer than the turn end the Stop hook recorded (`turnEndedAt`); an older one clears
+it. One tick writes at most one batch of up to 100 node updates, and file access never
+blocks the service. The next prompt clears the recap, as it clears the last line.
+`node.update` takes `recap` (`null` clears) and `turnEndedAt`; older nodes read
+unchanged, and `workspace_read` carries both as part of the node. Each group heading (Asking me, My turn,
 Finished, Earlier) is a fold toggle with a chevron; a folded group keeps its heading
 and count and hides its rows. Folds are remembered on this Mac (browser storage, not
 the workspace) and never change what is counted. Hovering or keyboard-focusing an entry
@@ -1958,7 +1973,8 @@ state must win over pending generated labels.
 
 **Project summaries** (MAP-22) are a helper of the same kind: for each project on the Map that is not
 muted (never one below), the service builds a reduced input from its dashboard (name, tier counts, Needs
-me titles and reasons, Working titles with their activity summaries, open to-do titles, plot names,
+me titles and reasons with the agent's recap when it has one (240 characters; a last line alone is
+not sent), Working titles with their activity summaries, open to-do titles, plot names,
 pipeline counts per stage; with two or more plots each Needs me and Working row names its plot; never
 terminal output, note bodies, diffs or comments; at most ~2,000 characters, lists trimmed from the end,
 Needs me last) and fingerprints it without ages or times. It asks Haiku for two labelled lines (96
@@ -2288,7 +2304,7 @@ background standup digests do), so they stay visible and editable whenever any o
 is on (auto-titles and plot names default on) and are shown disabled, not hidden, when all are
 off. The privacy caveat appears once, as a page note, and says plot names send item
 titles and agent summaries only, project summaries send project, item and agent titles, Needs me
-reasons and agent summaries, and Slack titles send the attached message. Settings → General holds
+reasons, agent recaps and agent summaries, and Slack titles send the attached message. Settings → General holds
 Keep screen awake and the closing warning.
 
 **SETTINGS-DASHBOARDS — Project dashboards.** Settings → Map (not advanced) has

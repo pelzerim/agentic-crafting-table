@@ -362,15 +362,18 @@ export class AgentCoordinator {
         : event.notificationType === 'idle_prompt' ? 'Agent waiting' : event.event === 'StopFailure' ? 'Agent hit an error' : undefined;
       // The line the agent ended its turn on stays on the node until the next prompt starts a turn.
       const lastLine = event.event === 'Stop' && !waitingSummary ? agentLastLine(redactSecrets(event.lastMessage ?? '')) ?? null : event.event === 'UserPromptSubmit' ? null : undefined;
+      const turnEndedAt = event.event === 'Stop' ? new Date(event.observedAt).toISOString() : undefined;
       const next = waitingSummary ? { activity: 'working', attention: 'none', summary: waitingSummary } as const : {
         activity: working ? 'working' : 'idle', attention: inputNeeded ? 'input' : event.event === 'StopFailure' ? 'error' : event.event === 'SessionEnd' ? node.attention : 'none', ...(attentionNote ? { attentionNote } : {}),
         summary: inputNeeded ? 'Waiting for your input' : working ? 'Claude is working' : event.event === 'StopFailure' ? 'Claude reported an error' : event.event === 'SessionEnd' ? 'Conversation closed' : 'Ready for your next prompt',
         ...(lastLine !== undefined && (lastLine ?? undefined) !== node.lastLine ? { lastLine } : {}),
+        ...(turnEndedAt && turnEndedAt !== node.turnEndedAt ? { turnEndedAt } : {}),
+        ...(event.event === 'UserPromptSubmit' && node.recap ? { recap: null } : {}),
       } as const;
       // Our own MCP tools must be able to read a revision and then write with it.
       // Repeated tool hooks are observations, not graph edits. They must also not
       // overwrite a short summary the agent just wrote through MCP.
-      if ((event.event !== 'Notification' || inputNeeded) && (node.activity !== next.activity || node.attention !== next.attention || (attentionNote && !waitingSummary && node.attentionNote !== attentionNote) || event.event === 'SessionEnd' || (waitingSummary && node.summary !== waitingSummary) || 'lastLine' in next))
+      if ((event.event !== 'Notification' || inputNeeded) && (node.activity !== next.activity || node.attention !== next.attention || (attentionNote && !waitingSummary && node.attentionNote !== attentionNote) || event.event === 'SessionEnd' || (waitingSummary && node.summary !== waitingSummary) || 'lastLine' in next || 'recap' in next || 'turnEndedAt' in next))
         commands.push({ type: 'node.update', id: node.id, ...next, ...sceneChanges(node, agentScene({ activity: next.activity, attention: next.attention, attentionNote: 'attentionNote' in next ? next.attentionNote : undefined }, this.observations.agentBackground(event.processSessionId), event.observedAt, { ended: event.event === 'SessionEnd' }), event.observedAt) });
       if (event.event === 'Stop' && !waitingSummary) commands.push(...completionAttention(node, `claude:${event.processSessionId}:${event.observedAt}`, 'Agent finished'));
       try {

@@ -20,6 +20,9 @@ test('Explain architecture starts one connected Claude session whose published a
   await mkdir(bin);
   await writeFile(join(bin, 'claude'), `#!${process.execPath}\nimport ${JSON.stringify(pathToFileURL(resolve('tests/fixtures/native-agent.mjs')).href)};\n`, { mode: 0o700 });
   process.env.PATH = `${bin}:${originalPath}`;
+  const claudeConfig = join(directory, 'claude-config'), originalConfig = process.env.CLAUDE_CONFIG_DIR;
+  await mkdir(claudeConfig); await writeFile(join(claudeConfig, '.claude.json'), '{}');
+  process.env.CLAUDE_CONFIG_DIR = claudeConfig;
   const fixture = githubFixture(), head = fixture.pull.head.sha;
   const source: ReviewSource = {
     async freeze(resource) { return { connectionId: resource.connectionId, comparison: { repository: 'fixture/billing', number: 42, baseTipSha: 'b'.repeat(40), headSha: head }, title: fixture.pull.title, description: 'Architecture fixture', url: 'https://github.com/fixture/billing/pull/42' }; },
@@ -78,6 +81,8 @@ test('Explain architecture starts one connected Claude session whose published a
     expect((await read()).resources.filter(resource => resource.pluginId === 'claude.artifact')).toHaveLength(1);
     expect((await read()).nodes.find(node => node.id === artifact.id)?.title).toBe('Billing plan architecture');
 
+    const trusted = async () => (JSON.parse(await readFile(join(claudeConfig, '.claude.json'), 'utf8')).projects ?? {})[join(directory, 'comparisons')]?.hasTrustDialogAccepted;
+    await expect.poll(trusted, { message: 'the comparisons folder is trusted for Claude, so the session does not wait on the trust question' }).toBe(true);
     await page.getByRole('button', { name: 'Back to project' }).click();
     const card = page.getByRole('article', { name: 'Billing plan architecture', exact: true });
     await card.click({ button: 'right' });
@@ -91,6 +96,7 @@ test('Explain architecture starts one connected Claude session whose published a
     await expect.poll(opened).toEqual([ARTIFACT_URL, ARTIFACT_URL]);
   } finally {
     process.env.PATH = originalPath;
+    if (originalConfig === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = originalConfig;
     await exitWithoutShutdown(app); await service.close();
     const supervisor = await connectSupervisor(runtime.directory).catch(() => undefined); await supervisor?.call('admin.shutdown'); supervisor?.close();
     await new Promise(resolve => setTimeout(resolve, 300)); await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

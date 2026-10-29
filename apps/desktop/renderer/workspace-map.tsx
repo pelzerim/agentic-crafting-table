@@ -236,7 +236,7 @@ export function WorkspaceMap() {
   const [capabilities, setCapabilities] = useState<string[]>([]), [settingsOpen, setSettingsOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false), [standupOpen, setStandupOpen] = useState(false);
   const todoOverlay = useRef<TodoOverlayHandle>(null), viewRef = useRef<ViewState>(undefined);
-  const [reveal, setReveal] = useState<{ nodeId: string; nonce: number; mode?: 'map'; origin?: 'program'; select?: readonly string[] }>();
+  const [reveal, setReveal] = useState<{ nodeId: string; nonce: number; mode?: 'map' | 'centred'; origin?: 'program'; select?: readonly string[] }>();
   const saveView = (patch: Partial<ViewState>) => { const next = { ...viewRef.current!, ...patch }; viewRef.current = next; setView(next); void window.craftingTable.viewWrite(next).catch(error => setError(error.message)); };
   const [connectionDraft, setConnectionDraft] = useState<{ sourceId: string; screen: { x: number; y: number } }>();
   const [sessionRequestId, setSessionRequestId] = useState(0);
@@ -276,7 +276,7 @@ export function WorkspaceMap() {
     if (node) revealRef.current(node.id);
     else if (snapshotRef.current?.layer === 'map') void window.craftingTable.workspaceRead().then(whole => { const below = found(whole.state.nodes); if (below) revealRef.current(below.id); }).catch(() => {});
   }, []);
-  const revealRef = useRef((nodeId: string, mode?: 'map') => setReveal({ nodeId, nonce: Date.now(), ...(mode ? { mode } : {}) }));
+  const revealRef = useRef((nodeId: string, mode?: 'map' | 'centred') => setReveal({ nodeId, nonce: Date.now(), ...(mode ? { mode } : {}) }));
   const motion = activeMotion(settings?.value.belowAnimation);
   /** Travel between the map and the layer below with one shared camera. */
   const travel = useCallback(async (to: 'map' | 'below') => {
@@ -311,7 +311,7 @@ export function WorkspaceMap() {
       return record ? resolveMapSize(node, record, registry.get(record.pluginId), itemMapSizes) : { width: node.resourceId ? 150 : LARGE_ITEM_WIDTH, height: node.resourceId ? 48 : 112 };
     } });
   }, [registry, itemMapSizes, neighborhoodPadding]);
-  const revealNode = useCallback((nodeId: string, mode?: 'map') => {
+  const revealNode = useCallback((nodeId: string, mode?: 'map' | 'centred') => {
     // The map layer's snapshot leaves out most of the Undermap: an item there is looked up in the whole workspace, then revealed.
     if (snapshotRef.current?.layer === 'map' && !snapshotRef.current.state.nodes.some(candidate => candidate.id === nodeId)) {
       void window.craftingTable.workspaceRead().then(whole => {
@@ -796,7 +796,7 @@ export function WorkspaceMap() {
     {!snapshot && (error ? <div className="error-screen-overlay"><ErrorScreen error={error} kind="load" retry={() => retryLoad.current()} /></div> : <div className="map-message"><p>Opening your table…</p></div>)}
     <ToolRail below={below} settings={settingsOpen} actions={actionsOpen || standupOpen} />
     {snapshot && view && <NeedsMeTool items={attention} muted={mutedAttention} counting={counting} state={withUndermap ?? snapshot.state} highlight={setAttentionHighlight} size={view.attentionPanel ?? {}} onSize={size => saveView({ attentionPanel: size })}
-      reveal={nodeId => revealNode(nodeId)} locate={nodeId => revealNode(nodeId, 'map')} dismiss={acknowledge} openWeb={openOnWeb} unavailable={setError} />}
+      reveal={nodeId => revealNode(nodeId, 'centred')} locate={nodeId => revealNode(nodeId, 'map')} dismiss={acknowledge} openWeb={openOnWeb} unavailable={setError} />}
     {snapshot && view && plugins && <TodoOverlay ref={todoOverlay} state={snapshot.state} registry={registry} view={view} save={applyAt} saveView={saveView} reveal={nodeId => revealNode(nodeId, 'map')} onDragTodo={setTodoDrag}
       openWeb={nodeId => { if (!openOnWeb(nodeId)) return; if (needsMeIds(snapshotRef.current?.state.nodes ?? []).has(nodeId)) acknowledge(nodeId); }}
       announce={setTodoUndo} doneArchiveDays={doneArchiveDays(pluginSettings['workspace.todo']?.doneArchiveDays)} />}

@@ -20,7 +20,7 @@ export const githubRollout = defineResourcePlugin({
   settingsHelp: 'Watch a GitHub Actions deployment or infrastructure rollout. Add a run, job or workflow URL to track progress, failures and pending approvals.',
   id: 'github.rollout', apiVersion: 1, schemaVersion: 1, name: 'Rollout', icon: 'rocket',
   preferredView: 'inspector', view: { mode: 'focus', width: 900, height: 660 },
-  appearance: { tone: 'blue', shape: 'server', size: 'medium' },
+  appearance: { tone: 'blue', shape: 'server', size: 'medium', undermapWhenComplete: true },
   mapSizes: { defaultSize: 'medium', sizes: {
     small: { width: 200, height: 60, summaryLines: 0, description: 'Workflow title and rollout state.' },
     medium: { width: 200, height: 84, summaryLines: 1, description: 'Workflow title, rollout state and job progress.' },

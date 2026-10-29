@@ -11,9 +11,9 @@ import type { ResourceIndicator } from '../resource-plugins/indicators.ts';
 import { plotColor } from './plots.ts';
 import type { PlotColor, PlotView } from './plots.ts';
 
-type DashboardNode = GraphNode & { activity?: string; attention?: string; summary?: string };
-/** A Needs me row carries its `tier`, when recorded `since` when it was raised, and its attention `version` when above 0; a Working row `at`. */
-export interface DashboardRow { id: string; title: string; detail: string; at?: string; tier?: AttentionTier; since?: string; version?: number }
+type DashboardNode = GraphNode & { activity?: string; attention?: string; summary?: string; recap?: { text: string } };
+/** A Needs me row carries its `tier`, when recorded `since` when it was raised, its attention `version` when above 0, and its agent's `recap` when it has one; a Working row `at`. */
+export interface DashboardRow { id: string; title: string; detail: string; at?: string; tier?: AttentionTier; since?: string; version?: number; recap?: string }
 /** How many entries each Needs me tier has. */
 export type DashboardTiers = Pick<AttentionCounts, AttentionTier>;
 const NO_TIERS: DashboardTiers = { asking: 0, turn: 0, finished: 0 };
@@ -92,7 +92,8 @@ export function projectDashboard(projectId: string, nodes: readonly DashboardNod
   const entries = sources.paused ? [] : attentionItems(nodes, projectId);
   board.needsYou = entries.map(item => {
     const version = Math.max(0, ...item.aliases.map(alias => alias.attentionVersion ?? 0));
-    return { id: item.node.id, title: item.node.title, detail: item.details[0], tier: item.tier, ...(item.since ? { since: item.since } : {}), ...(version ? { version } : {}) };
+    const recap = (item.node as DashboardNode).recap?.text;
+    return { id: item.node.id, title: item.node.title, detail: item.details[0], tier: item.tier, ...(item.since ? { since: item.since } : {}), ...(version ? { version } : {}), ...(recap ? { recap } : {}) };
   });
   board.counts = attentionCounts(entries, sources.counting);
   const alerted = new Set(entries.map(item => item.identity));

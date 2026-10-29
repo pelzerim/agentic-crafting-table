@@ -1216,7 +1216,8 @@
 .item-close svg,
 .item-seen svg,
 .item-seen-close svg,
-.item-keep svg {
+.item-keep svg,
+.item-send-below svg {
   width: 16px;
   height: 16px;
 }
@@ -1339,7 +1340,8 @@
 .map-card .item-close,
 .map-card .item-seen,
 .map-card .item-seen-close,
-.map-card .item-keep {
+.map-card .item-keep,
+.map-card .item-send-below {
   height: 30px;
   flex: none;
   display: grid;
@@ -1731,6 +1733,7 @@
   .expanded .item-seen,
   .expanded .item-seen-close,
   .expanded .item-keep,
+  .expanded .item-send-below,
   .expanded .item-close {
     order: 1;
   }

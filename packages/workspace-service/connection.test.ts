@@ -141,3 +141,20 @@ test('closing a workspace connection during subscription never publishes ready s
     await assert.rejects(connection.connect(), /closed/);
   } finally { release.resolve(); connection.close(); await server.close(); await rm(directory, { recursive: true, force: true }); }
 });
+
+test('a connection for requests only never subscribes, so it is sent no snapshots, and still answers calls', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-connection-requests-'));
+  const paths = prepareWorkspace(directory), asked: string[] = [];
+  const server = await serveLocal(paths.socket, paths.secret, async method => {
+    asked.push(method);
+    if (method === 'hello') return { protocol: PROTOCOL_VERSION };
+    if (method === 'read') return { state: emptyState(), cursor: 0 };
+    throw new Error('Unexpected fixture request');
+  });
+  const connection = new WorkspaceConnection(directory, process.execPath, 'unused', false, { subscribe: false });
+  try {
+    await connection.connect();
+    assert.deepEqual((await connection.call<{ cursor: number }>('read')).cursor, 0);
+    assert.equal(asked.includes('subscribe'), false);
+  } finally { connection.close(); server.close(); await rm(directory, { recursive: true, force: true }); }
+});

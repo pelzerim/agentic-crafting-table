@@ -9,7 +9,7 @@ import { useInstalledPackages } from '../../src/resource-plugins/builtins.ts';
 async function main() {
   const directory = process.env.ACT_DATA_DIR;
   if (!directory || !isAbsolute(directory)) throw new Error('ACT_DATA_DIR must name the app workspace directory');
-  const connection = new WorkspaceConnection(directory, process.execPath, join(dirname(process.argv[1]), 'workspace-service.cjs'), Boolean(process.versions.electron));
+  const connection = new WorkspaceConnection(directory, process.execPath, join(dirname(process.argv[1]), 'workspace-service.cjs'), Boolean(process.versions.electron), { subscribe: false });
   await connection.connect();
   // The tools, guide and agent policies of installed packages come from the same verified builds the service runs.
   const { plugins } = await connection.call<{ plugins: PluginBuild[] }>('plugins.loaded');

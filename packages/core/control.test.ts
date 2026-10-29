@@ -313,6 +313,25 @@ test('an agent\'s last line is saved on its node and cleared with null', async (
   assert.equal((await control.read()).nodes[0].lastLine, undefined);
 });
 
+test('an agent\'s recap and turn end are saved on its node, cleared with null, and older nodes read without them', async () => {
+  const control = new WorkspaceControl(new MemoryStore());
+  await control.apply({ type: 'item.add', id: 'agent', resourceId: 'agent-r', pluginId: 'agent.session', title: 'Claude', position: { x: 0, y: 0 }, data: { sessionId: 's', provider: 'claude' } }, 0);
+  const node = async () => (await control.read()).nodes[0];
+  assert.equal('recap' in await node(), false); assert.equal('turnEndedAt' in await node(), false);
+  const recap = { text: 'I removed the flag; the PR is ready for your review.', at: '2026-09-30T14:23:09.455Z' };
+  await control.apply({ type: 'node.update', id: 'agent', recap, turnEndedAt: '2026-09-30T14:00:00.000Z' }, 1);
+  assert.deepEqual([(await node()).recap, (await node()).turnEndedAt], [recap, '2026-09-30T14:00:00.000Z']);
+  await control.apply({ type: 'node.update', id: 'agent', summary: 'Ready for your next prompt' }, 2);
+  assert.deepEqual((await node()).recap, recap, 'other updates leave it');
+  await assert.rejects(control.apply({ type: 'node.update', id: 'agent', recap: { text: 'x'.repeat(601), at: recap.at } }, 3));
+  await assert.rejects(control.apply({ type: 'node.update', id: 'agent', recap: { text: 'Fine', at: 'yesterday' } }, 3));
+  await control.apply({ type: 'node.update', id: 'agent', recap: null }, 3);
+  assert.equal('recap' in await node(), false);
+  const seeded = new WorkspaceControl(new MemoryStore(stateSchemaSeed()));
+  assert.equal('recap' in (await seeded.read()).nodes[0], false);
+});
+const stateSchemaSeed = () => ({ ...emptyState(), revision: 1, nodes: [{ id: 'old', title: 'Old agent', position: { x: 0, y: 0 }, size: { width: 280, height: 160 }, summary: '', lastLine: 'Done.', activity: 'idle', attention: 'none' }] }) as never;
+
 test('card pips a presentation draws are saved on the node, refused when malformed and cleared with null', async () => {
   const control = new WorkspaceControl(new MemoryStore());
   await control.apply({ type: 'item.add', id: 'rollout', resourceId: 'rollout-r', pluginId: 'github.rollout', title: 'Rollout', position: { x: 0, y: 0 }, data: { owner: 'acme', repo: 'app', runId: 7 } }, 0);

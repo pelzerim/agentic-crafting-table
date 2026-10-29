@@ -41,6 +41,8 @@ export interface ResourceAppearance {
   completedIcon?: string;
   /** The map card's type icon is a checkbox that marks the item done or reopens it. */
   completionToggle?: boolean;
+  /** Once the item's activity is complete, its open view offers Send to Undermap beside the close button. */
+  undermapWhenComplete?: boolean;
   /** The brand colours the type icon instead of replacing it with the brand mark. */
   brandTint?: boolean;
   /** The card face is the item's text on a paper tile; `paperField` names the

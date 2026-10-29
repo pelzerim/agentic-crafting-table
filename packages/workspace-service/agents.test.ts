@@ -176,6 +176,26 @@ test('Stop keeps the last line Claude said on the node, secrets redacted, and th
   } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test('Stop records when the turn ended, and the next prompt clears the recap', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-agent-recap-')), store = new SqliteStore(join(directory, 'workspace.sqlite')), control = new WorkspaceControl(store);
+  try {
+    const processSessionId = randomUUID(), nativeSessionId = randomUUID();
+    const sessions = { runtime: { async call() { return { session: { state: 'running' }, chunks: [], firstSequence: 0, lastSequence: 1, truncated: false }; } } };
+    await control.apply({ type: 'item.add', id: 'agent', resourceId: 'conversation', pluginId: 'agent.session', title: 'Claude', position: { x: 0, y: 0 }, data: { provider: 'claude', sessionId: processSessionId, nativeSessionId } }, 0);
+    const coordinator = new AgentCoordinator(directory, {} as any, control, sessions as any, { prepare: async () => ({}) } as any, async () => {}, store);
+    const node = async () => (await control.read()).nodes[0];
+    const ended = Date.parse('2026-09-30T14:00:00.000Z');
+    await coordinator.hook({ nodeId: 'agent', processSessionId, nativeSessionId, observedAt: ended - 1000, event: 'UserPromptSubmit' });
+    await coordinator.hook({ nodeId: 'agent', processSessionId, nativeSessionId, observedAt: ended, event: 'Stop', lastMessage: 'Done.' });
+    assert.equal((await node()).turnEndedAt, '2026-09-30T14:00:00.000Z');
+    const state = await control.read();
+    await control.apply({ type: 'node.update', id: 'agent', recap: { text: 'The PR is ready for your review.', at: '2026-09-30T14:20:00.000Z' } }, state.revision);
+    await coordinator.hook({ nodeId: 'agent', processSessionId, nativeSessionId, observedAt: ended + 1_800_000, event: 'UserPromptSubmit' });
+    assert.equal((await node()).recap, undefined, 'a new turn drops the recap');
+    assert.equal((await node()).turnEndedAt, '2026-09-30T14:00:00.000Z', 'the prompt keeps the last turn end');
+  } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('a Claude turn that leaves background work stays working until that work is done', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'craft-agent-background-'));
   const store = new SqliteStore(join(directory, 'workspace.sqlite')), control = new WorkspaceControl(store);

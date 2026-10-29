@@ -14,6 +14,7 @@ import { WorkspaceControl } from '../core/control.ts';
 import type { CommandResult, WorkspaceState } from '../core/control.ts';
 import { revisionGuard } from '../core/revision-policy.ts';
 import { APP_PRESET_TARGET } from '../core/settings.ts';
+import { trustClaudeFolder } from '../session-runtime/claude-trust.ts';
 import { applyAtHead } from './apply-at-head.ts';
 import { SqliteStore } from './sqlite-store.ts';
 import { prepareWorkspace } from './paths.ts';
@@ -24,6 +25,7 @@ import type { EncodedFrame } from './local-rpc.ts';
 import { presentLayer } from '../../src/graph/layers.ts';
 import type { MapLayer } from '../../src/graph/layers.ts';
 import { ServiceHealth } from './service-health.ts';
+import { AgentRecaps } from './agent-recaps.ts';
 import type { ResourcePluginRegistry } from '../../src/resource-plugins/registry.ts';
 import { SessionCoordinator } from './sessions.ts';
 import type { RuntimeOptions } from '../session-runtime/client.ts';
@@ -195,6 +197,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   const triage = new TriageCoordinator(store, control, providers ? providers.triage?.adapters ?? [] : [linearTriageAdapter()], providers?.triage?.connections ?? (() => store.readSettings().value.connections),
     () => control.registry.pluginSettings(store.readSettings().value.plugins), broadcast, () => !closing && lifecycle.allowsBackgroundWork);
   const todoSweeper = new TodoSweeper(control, () => control.registry.pluginSettings(store.readSettings().value.plugins)['workspace.todo'], broadcast, () => !closing && lifecycle.allowsBackgroundWork, providers?.todoClock);
+  const recaps = new AgentRecaps(control, broadcast, () => !closing && lifecycle.allowsBackgroundWork);
   const githubReader = (connection: ProviderConnection) => new GitHubClient(githubTransport(connections.resolve('github', connection.id).account));
   const inbox = new GitHubInbox(store, control, () => store.readSettings().value.connections, providers?.inboxClient ?? githubReader);
   // An injected provider set never falls through to a real GitHub account.
@@ -216,7 +219,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   // through to a real account or native provider during fixture execution.
   const reviewSources = providers ? providers.reviews ?? {} : nativeReviewSources(connections);
   const hostedAgents: HostedAgents | undefined = agents && terminals ? { ready: () => agentProvider('claude').probe(), launch: (request, hosted) => agents.launchHosted(request, hosted), fallbackDirectory: () => terminals.fallbackDirectory() } : undefined;
-  const architecture = new ArchitectureRequests(directory, store, control, reviewSources, agents ? (request, hosted) => agents.launchHosted(request, hosted) : undefined);
+  const architecture = new ArchitectureRequests(directory, store, control, reviewSources, agents ? (request, hosted) => agents.launchHosted(request, hosted) : undefined, folder => { trustClaudeFolder(folder); });
   const reviews = terminals && Object.keys(reviewSources).length ? new ReviewCoordinator(directory, store, control, terminals, reviewSources, broadcast, providers?.reviewRuntime) : undefined;
   const checkouts = new ComparisonPruner(directory, store, terminals, () => !closing && lifecycle.allowsBackgroundWork);
   const findings = reviews ? new ReviewFindingsCoordinator(store, control, nodeId => reviews.result(nodeId), terminals, broadcast, () => !closing && lifecycle.allowsBackgroundWork,
@@ -326,7 +329,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   if (agentTitles) { const titler = agentTitles; operation('agent.title', ({ nodeId }) => titler.request(nodeId)); }
   const pollers: [object, string, string][] = [[resources, 'poll', 'resources.poll'], [assignments, 'tick', 'assignments.tick'], [triage, 'tick', 'triage.tick'], [todoSweeper, 'sweep', 'todos.sweep'],
     [workflows, 'tick', 'workflows.tick'], [checkouts, 'tick', 'checkouts.tick'], [inbox, 'refresh', 'inbox.refresh'], [loops, 'reconcileOnce', 'review-loops.reconcile'],
-    [autoReviews, 'reconcileOnce', 'auto-reviews.reconcile'], ...(summaries ? [[summaries, 'tick', 'summaries.tick'] as [object, string, string]] : [])];
+    [autoReviews, 'reconcileOnce', 'auto-reviews.reconcile'], [recaps, 'tick', 'recaps.tick'], ...(summaries ? [[summaries, 'tick', 'summaries.tick'] as [object, string, string]] : [])];
   for (const [target, method, name] of pollers) health.timed(target, method, name);
   const creators: Record<string, (request: ResourceCreate) => Promise<unknown>> = { 'resource.attach': request => resources.attach(request), ...(terminals ? {
     'terminal.create': request => terminals.create({ ...request, sessionId: request.requestId, cwd: request.data.cwd }),
@@ -435,8 +438,8 @@ export async function startWorkspaceService(directory: string, registry?: Resour
           case 'attention.history': { const input = z.object({ offset: z.number().int().min(0).max(99).default(0), limit: z.number().int().min(1).max(100).default(10) }).strict().parse(args ?? {}); result = store.attentionHistory(input.offset, input.limit); break; }
           case 'lifecycle.active': result = await lifecycle.active(); break;
           case 'lifecycle.preview': result = { sessions: await lifecycle.active(), pending: lifecycle.pendingCount }; break;
-          case 'lifecycle.close': inbox.stop(); await agents?.pause(); await workflows.pause(); await servicePlugins.pause(); await findings?.close(); await loops.close(); await autoReviews.close(); await reviews?.close(); await architecture.close(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await checkouts.pause(); await resources.pause(); await summaries?.pause(); await titles?.pause(); await agentTitles?.pause(); await attachTitles?.pause(); await standup.pause(); await updates.pause(); await plots.pause(); await projectSummaries.pause(); await reminders.pause(); result = await lifecycle.close(); break;
-          case 'lifecycle.recover': { const input = z.object({ retry: z.boolean().default(false), startupId: z.string().uuid().optional() }).parse(args); result = lifecycle.recover(input.retry, input.startupId); summaries?.start(); titles?.start(); agentTitles?.start(); attachTitles?.start(); standup.start(); updates.start(); plots.start(); projectSummaries.start(); reminders.start(); assignments.start(); triage.start(); todoSweeper.start(); checkouts.start(); resources.start(); workflows.resume(); findings?.start(); loops.start(); autoReviews.start(); servicePlugins.start(); agents?.start(); break; }
+          case 'lifecycle.close': inbox.stop(); await agents?.pause(); await workflows.pause(); await servicePlugins.pause(); await findings?.close(); await loops.close(); await autoReviews.close(); await reviews?.close(); await architecture.close(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await recaps.pause(); await checkouts.pause(); await resources.pause(); await summaries?.pause(); await titles?.pause(); await agentTitles?.pause(); await attachTitles?.pause(); await standup.pause(); await updates.pause(); await plots.pause(); await projectSummaries.pause(); await reminders.pause(); result = await lifecycle.close(); break;
+          case 'lifecycle.recover': { const input = z.object({ retry: z.boolean().default(false), startupId: z.string().uuid().optional() }).parse(args); result = lifecycle.recover(input.retry, input.startupId); summaries?.start(); titles?.start(); agentTitles?.start(); attachTitles?.start(); standup.start(); updates.start(); plots.start(); projectSummaries.start(); reminders.start(); assignments.start(); triage.start(); todoSweeper.start(); recaps.start(); checkouts.start(); resources.start(); workflows.resume(); findings?.start(); loops.start(); autoReviews.start(); servicePlugins.start(); agents?.start(); break; }
           case 'agent.hook': if (!agents) throw new Error('Native agents are not configured'); result = await agents.hook(args); break;
           case 'plugins.discover': {
             const input = pluginDiscoverySchema.parse(args);
@@ -519,7 +522,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
     shutdown = (async () => {
       health.stop();
       await workflows.pause();
-      await inbox.close(); await agents?.pause(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await checkouts.pause(); await resources.pause();
+      await inbox.close(); await agents?.pause(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await recaps.pause(); await checkouts.pause(); await resources.pause();
       await summaries?.close();
       await titles?.close();
       await agentTitles?.close();
@@ -589,7 +592,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
     plots.start();
     projectSummaries.start();
     reminders.start();
-    assignments.start(); triage.start(); todoSweeper.start(); checkouts.start(); resources.start(); inbox.start(); loops.start(); servicePlugins.start(); agents?.start();
+    assignments.start(); triage.start(); todoSweeper.start(); recaps.start(); checkouts.start(); resources.start(); inbox.start(); loops.start(); servicePlugins.start(); agents?.start();
   })();
   try { await startup; } catch (error) { await close(); throw error; }
   return { close, store, control, resources, paths, instanceId };

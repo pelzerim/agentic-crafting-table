@@ -30,6 +30,14 @@ test('the sample holds titles, reasons, working summaries, to-dos, plots and pip
   assert.ok(!/2026-/.test(JSON.stringify(sample)), 'no times, so the fingerprint ignores ages');
 });
 
+test('a Needs me row carries what its agent said only when it has a recap, clipped', () => {
+  const recap = { text: `I removed the flag. ${'More detail. '.repeat(40)}`, at: '2026-10-26T11:59:00.000Z' };
+  const said = projectSummarySample(board(nodes.map(node => node.id === 'agent' ? { ...node, lastLine: 'Done.', recap } as Node : node))).needsMe;
+  assert.equal(said[0].title, 'Webhook agent'); assert.ok(said[0].said!.startsWith('I removed the flag.')); assert.ok(said[0].said!.length <= 240, String(said[0].said!.length));
+  assert.equal('said' in said[1], false);
+  assert.equal('said' in projectSummarySample(board(nodes.map(node => node.id === 'agent' ? { ...node, lastLine: 'Done.' } as Node : node))).needsMe[0], false, 'a last line alone is not sent');
+});
+
 test('the sample is capped at about 2,000 characters by dropping list entries from the end', () => {
   const many = [...nodes, ...Array.from({ length: 80 }, (_, index) => item(`w${index}`, { title: `Worker ${index} ${'x'.repeat(40)}`, activity: 'working', summary: 'y'.repeat(60) }))];
   const sample = projectSummarySample(board(many));

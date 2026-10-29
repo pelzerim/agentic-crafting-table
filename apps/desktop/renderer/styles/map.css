@@ -501,7 +501,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
   color: var(--act-ink-soft);
   user-select: none;
   padding: 4px 0;
@@ -509,6 +508,7 @@
 }
 
 .project-neighborhood-title>.project-title-plate {
+  position: relative;
   min-width: 0;
   max-width: 100%;
   display: flex;
@@ -518,6 +518,49 @@
   padding: 4px 6px 4px 10px;
   background: color-mix(in srgb, var(--act-bg) 85%, transparent);
   clip-path: var(--pixel-control-shape);
+}
+
+/* Only the plate moves the project: the rest of the label box, and the map node around it, let a drag reach the map. */
+.react-flow__node.project-title-node,
+.project-neighborhood-title {
+  pointer-events: none !important;
+}
+
+.project-neighborhood-title>.project-title-plate {
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.project-title-grip {
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  color: var(--project-color, var(--act-ink-soft));
+  visibility: hidden;
+}
+
+.project-title-grip>svg {
+  display: block;
+  width: 8px;
+  height: 8px;
+}
+
+.project-neighborhood-title>.project-title-plate:hover,
+.project-neighborhood-title[data-dragging=true]>.project-title-plate {
+  background-image: linear-gradient(var(--act-card-lift), var(--act-card-lift));
+  box-shadow: inset 0 0 0 1px var(--project-color, var(--act-line-strong)), 0 3px 0 var(--act-deep);
+}
+
+.project-neighborhood-title>.project-title-plate:hover>.project-title-grip,
+.project-neighborhood-title[data-dragging=true] .project-title-grip {
+  visibility: visible;
+}
+
+.project-neighborhood-title[data-dragging=true]>.project-title-plate {
+  cursor: grabbing;
 }
 
 .project-title-row {

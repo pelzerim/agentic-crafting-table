@@ -136,6 +136,22 @@
   grid-template-areas: "icon title tools seen-close seen close" "status status status status status status";
 }
 
+/* Send to Undermap sits left of the other close controls. */
+.expanded .card-heading:has(> .item-frame-slot > .view-header):has(> .item-send-below) {
+  grid-template-columns: auto minmax(var(--view-title-min), 1fr) auto auto auto;
+  grid-template-areas: "icon title tools below close" "status status status status status";
+}
+
+.expanded .card-heading:has(> .item-frame-slot > .view-header):has(> .item-send-below):has(> .item-seen, > .item-keep) {
+  grid-template-columns: auto minmax(var(--view-title-min), 1fr) auto auto auto auto;
+  grid-template-areas: "icon title tools below seen close" "status status status status status status";
+}
+
+.expanded .card-heading:has(> .item-frame-slot > .view-header):has(> .item-send-below):has(> .item-seen-close) {
+  grid-template-columns: auto minmax(var(--view-title-min), 1fr) auto auto auto auto auto;
+  grid-template-areas: "icon title tools below seen-close seen close" "status status status status status status status";
+}
+
 /* Blocker chips need room too; header actions move behind More actions before they shrink. */
 .expanded .card-heading:not([data-view-tight]):has(> .frame-title > .blocked-chips):has(> .item-frame-slot > .view-header) {
   --view-title-min: calc(var(--act-sp-8) * 12);
@@ -199,6 +215,14 @@
 
 .expanded .card-heading:has(> .item-frame-slot > .view-header) > .item-seen-close {
   grid-area: seen-close;
+  width: var(--act-control-size);
+  height: var(--act-control-size);
+  min-height: 0;
+  padding: var(--act-sp-1);
+}
+
+.expanded .card-heading:has(> .item-frame-slot > .view-header) > .item-send-below {
+  grid-area: below;
   width: var(--act-control-size);
   height: var(--act-control-size);
   min-height: 0;

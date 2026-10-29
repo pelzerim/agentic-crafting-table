@@ -48,8 +48,10 @@ export class ArchitectureRequests {
   private launchTail: Promise<unknown> = Promise.resolve();
   private controller = new AbortController();
   private directory: string; private store: SqliteStore; private control: WorkspaceControl; private sources: Record<string, ReviewSource>; private launcher?: ArchitectureLauncher;
-  constructor(directory: string, store: SqliteStore, control: WorkspaceControl, sources: Record<string, ReviewSource>, launcher?: ArchitectureLauncher) {
-    this.directory = directory; this.store = store; this.control = control; this.sources = sources; this.launcher = launcher;
+  /** Marks the folder the session starts in as trusted by Claude Code, so it does not wait on the folder-trust question. */
+  private trust: (folder: string) => void;
+  constructor(directory: string, store: SqliteStore, control: WorkspaceControl, sources: Record<string, ReviewSource>, launcher?: ArchitectureLauncher, trust: (folder: string) => void = () => {}) {
+    this.directory = directory; this.store = store; this.control = control; this.sources = sources; this.launcher = launcher; this.trust = trust;
   }
 
   options(pluginId?: string) {
@@ -158,6 +160,9 @@ export class ArchitectureRequests {
         const create: ResourceCreate = { ...agent, expectedRevision: state.revision, pluginId: 'agent.session', title: `Architecture · #${comparison.number}`,
           ...(source.projectId ? { projectId: source.projectId } : {}), position: { x: source.position.x + 300, y: source.position.y + 140 },
           connection: { id: randomUUID(), otherId: nodeId, kind: 'context', sourceIsNew: false }, data: { provider: 'claude', cwd: sourceDirectory } };
+        // The app's own comparisons folder, trusted once, covers every request folder in it; the PR checkout one level down is never the session's folder.
+        const comparisons = join(this.directory, 'comparisons');
+        this.trust(sourceDirectory.startsWith(`${comparisons}/`) ? comparisons : sourceDirectory);
         try { await this.launcher!(create, hosted); }
         catch (error) { if ((error as { code?: string }).code === 'REVISION_CONFLICT') continue; throw error; }
         this.store.transitionJob(job.id, 'running', 'succeeded', { result: { nodeId: agent.nodeId, resourceId: agent.resourceId, reused: false } satisfies LaunchedRun });

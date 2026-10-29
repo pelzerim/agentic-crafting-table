@@ -2,11 +2,23 @@
 
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one.
 
-## Unreleased
+## 0.10.0 — 2026-10-29
 
 ### Platform
 - **Linux** (x64 and arm64, tested on Ubuntu 26.04): `npm run dev`, `npm run package`, `npm run install:local` and `npm run update` work from the same checkout. The installer adds a desktop entry, so the app appears in the launcher and opens `act://` install links. `npm run sandbox:linux` writes the AppArmor profile that Ubuntu 23.10 and later require before Electron's sandbox can start; see [On Linux](docs/setup.md#on-linux).
 - Linear and Slack read their token from the Secret Service keyring on Linux (`secret-tool`), and Settings → Connections shows the matching `secret-tool store` command.
+
+### Agents
+- **Claude's recap**: when Claude Code writes a recap of a session while you are away, Needs me and the agent's large card show it instead of the last line, and project summaries take it into account. A new prompt clears it.
+- The table no longer keeps reconnecting with many agents open: each agent's connection to the table's tools now asks for what it needs instead of receiving every change to the whole workspace.
+- **Explain architecture** no longer stops at Claude Code's "Do you trust this folder?": the app's own comparisons folder is marked trusted once, the way answering Yes does.
+
+### Map
+- Clicking an item in Needs me first centres the map on it at the current zoom, then opens it.
+- A project title moves the project only from its title plate; the space beside it pans the map. Hovering the plate shows a grip, a grab cursor and an edge in the project's colour.
+
+### Rollouts
+- A finished rollout's open view has a purple **Send to Undermap** X at its top right.
 
 ## 0.9.0 — 2026-10-28
 

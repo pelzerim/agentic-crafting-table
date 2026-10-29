@@ -555,6 +555,25 @@
   position: relative;
 }
 
+/* Send to Undermap: the X in the Undermap's purple, its portal mark in the corner. */
+.item-send-below,
+.live-workspace .item-send-below {
+  position: relative;
+  color: var(--act-undermap-accent);
+  background: color-mix(in srgb, var(--act-undermap-accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--act-undermap-accent) 55%, transparent);
+  border-image: none;
+}
+
+.item-send-below .item-send-below-mark {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 8px;
+  height: 8px;
+  background: var(--act-bg);
+}
+
 /* Close and mark seen: the X with a check in its corner, backed so the X's arm stays clear. */
 .item-seen-close .item-seen-close-mark {
   position: absolute;

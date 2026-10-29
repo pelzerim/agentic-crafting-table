@@ -83,7 +83,7 @@ export class ProjectSummaries {
     const todos = todoEntries(state), plots = this.plots(state), stored = new Map(this.store.projectSummaries().map(row => [row.projectId, row]));
     const due: { id: string; fingerprint: string; content: ReturnType<typeof projectSummarySample> }[] = [];
     for (const id of this.inputs.keys()) if (!projects.some(project => project.id === id)) this.inputs.delete(id);
-    const titled = onMap.map(node => ({ ...node, title: summaryEvidence(node.title), summary: node.summary ? summaryEvidence(node.summary) : node.summary }));
+    const titled = onMap.map(node => ({ ...node, title: summaryEvidence(node.title), summary: node.summary ? summaryEvidence(node.summary) : node.summary, ...(node.recap ? { recap: { ...node.recap, text: summaryEvidence(node.recap.text) } } : {}) }));
     for (const project of projects) {
       const sample = projectSummarySample(projectDashboard(project.id, titled, { todos, plots, pipelineOf }));
       const fingerprint = createHash('sha256').update(canonical(['project-summary-v2', AGENT_TITLE_MODEL, sample])).digest('hex');
