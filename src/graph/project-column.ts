@@ -85,6 +85,15 @@ export function reorder(saved: readonly string[], shown: readonly string[], id: 
   return at < 0 || (!before && rest.indexOf(last) < 0) ? full : [...rest.slice(0, at), id, ...rest.slice(at)];
 }
 
+/** Most places a saved project or plot order keeps (the view schema's cap). */
+export const ORDER_LIMIT = 500;
+
+/** A saved order without ids that no longer exist; undefined when it still exceeds ORDER_LIMIT, so the move is refused rather than cut. */
+export function fitOrder(order: readonly string[], known: ReadonlySet<string>) {
+  const kept = order.filter(id => known.has(id));
+  return kept.length > ORDER_LIMIT ? undefined : kept;
+}
+
 /** A plot's name without the “· N items” a local name ends in, since the header counts its items itself. */
 export const plotName = (name: string) => name.replace(/\s*·\s*\d+ items?$/, '') || name;
 const rank = (row: ProjectColumnRow) => row.tiers.asking ? 0 : row.tiers.turn ? 1 : row.working ? 2 : 3;

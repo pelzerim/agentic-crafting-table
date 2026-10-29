@@ -399,6 +399,18 @@ test('project rows and plot headers drag into a saved order that survives a relo
     await expect.poll(async () => { const point = await centre(page); return Math.abs(point.x - 100) < 500 && Math.abs(point.y - 1200) < 400; }).toBe(true);
     await expect.poll(rows).toEqual(['runner', 'billing', 'recent', 'infra']);
   });
+  // In a short panel the list runs on under its bottom edge: a release there, over rows the panel hides, drops nothing.
+  await launch(async page => {
+    await page.keyboard.press('m');
+    const panel = page.getByRole('region', { name: 'Projects', exact: true }), rows = () => order(page, '.project-column-panel [data-project-row]:not([data-quiet] [data-project-row])', 'data-project-row');
+    await expect.poll(rows).toEqual(['billing', 'runner', 'infra', 'recent']);
+    const shown = (await panel.boundingBox())!, list = (await panel.locator('.project-column-rows').boundingBox())!;
+    expect(list.y + list.height).toBeGreaterThan(shown.y + shown.height + 12);
+    await drag(page, middle((await panel.locator('[data-project-row="billing"] .project-column-head').boundingBox())!), { x: shown.x + 60, y: shown.y + shown.height + 8 }, async () => {
+      await expect(panel.locator('[data-drop]')).toHaveCount(0);
+    });
+    await expect.poll(rows).toEqual(['billing', 'runner', 'infra', 'recent']);
+  }, { prepare: store => store.writeView('desktop', { camera: { x: 200, y: 120, zoom: .4 }, projectsPanel: { height: 160 } }) });
   const asked = () => { const state = plotProject(); return { ...state, nodes: state.nodes.map(node => node.id === 'thumb-agent' ? { ...node, attention: 'input' as const, attentionAt: new Date(Date.now() - 2 * 60_000).toISOString() } : node) }; };
   await launch(async page => {
     await page.keyboard.press('m');

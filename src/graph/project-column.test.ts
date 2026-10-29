@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { COLUMN_ICON_LIMIT, columnBaseline, columnItems, metaText, plotMapOrder, projectColumn, projectTag, projectTags, projectsNewSince, reorder } from './project-column.ts';
+import { COLUMN_ICON_LIMIT, columnBaseline, columnItems, fitOrder, metaText, ORDER_LIMIT, plotMapOrder, projectColumn, projectTag, projectTags, projectsNewSince, reorder } from './project-column.ts';
 import type { ColumnKind, ProjectColumnSource } from './project-column.ts';
 import { projectDashboard } from './project-dashboard.ts';
 import type { GraphNode } from './graph.ts';
@@ -159,6 +159,10 @@ test('a saved order wins over the automatic one; projects and plots it lacks go 
   assert.deepEqual(moved, ['c', 'a', 'b']);
   assert.deepEqual(reorder(moved, ['new', 'c', 'a', 'b'], 'new', null, 'b'), ['c', 'a', 'b', 'new'], 'an unsaved one is placed among the saved');
   assert.deepEqual(reorder(['webhooks', 'other-plot', 'refunds'], ['webhooks', 'refunds'], 'webhooks', null, 'refunds'), ['other-plot', 'refunds', 'webhooks'], 'another project\'s plot stays');
+  // Gone ids drop before the cap; an order still too long is refused, never cut (a cut id would jump back to the top).
+  const ids = Array.from({ length: ORDER_LIMIT + 1 }, (_, index) => `p${index}`), live = new Set(ids);
+  assert.deepEqual(fitOrder(['gone', ...ids.slice(1)], live), ids.slice(1));
+  assert.equal(fitOrder(ids, live), undefined);
 });
 
 test('with Needs me rows in fewer than two plots there is one group without a header', () => {

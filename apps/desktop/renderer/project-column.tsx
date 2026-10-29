@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { attentionCountText, attentionTierInfo } from '../../../src/graph/attention.ts';
-import { COLUMN_KINDS, columnBaseline, columnKindNames, metaText, projectsNewSince, reorder as reorderSaved } from '../../../src/graph/project-column.ts';
+import { COLUMN_KINDS, columnBaseline, columnKindNames, metaText, ORDER_LIMIT, projectsNewSince, reorder as reorderSaved } from '../../../src/graph/project-column.ts';
 import type { ColumnBaseline, ColumnKind, ProjectColumnGroup, ProjectColumnItem, ProjectColumnItemGroup, ProjectColumnModel, ProjectColumnNeed, ProjectColumnRow } from '../../../src/graph/project-column.ts';
 import type { ProjectsPanelState } from '../../../packages/core/control.ts';
 import type { DashboardIcon } from './project-dashboard.tsx';
@@ -17,7 +17,7 @@ export interface ProjectColumnActions { fitProject(id: string): void; locate(id:
 interface Folds { folded: ReadonlySet<string>; toggle(id: string): void }
 type RowKind = 'project' | 'plot';
 /** Saves `id` before `before`, or after `last` when `before` is null; `say` announces a keyboard move. */
-interface Reorder { move(kind: RowKind, id: string, before: string | null, last: string): void; say(text: string, focus: string): void }
+interface Reorder { move(kind: RowKind, id: string, before: string | null, last: string): boolean; say(text: string, focus: string): void }
 /** Pointer travel before a press on a row becomes a drag. */
 const DRAG_THRESHOLD = 4;
 let cancelDrag: (() => void) | undefined;
@@ -88,8 +88,9 @@ function dragRow(event: React.PointerEvent<HTMLElement>, kind: RowKind, id: stri
     if (state === 'press') cancelDrag = () => { state = 'cancel'; cancelDrag = undefined; mark(); delete self.dataset.dragging; };
     if (state === 'press' && !grip.hasPointerCapture(pointer)) grip.setPointerCapture(pointer);
     state = 'drag'; self.dataset.dragging = '';
-    const box = scope.getBoundingClientRect(), others = rows().filter(row => row !== self);
-    if (!others.length || next.clientY < box.top || next.clientY > box.bottom || next.clientX < box.left || next.clientX > box.right) { target = undefined; mark(); return; }
+    const box = scope.getBoundingClientRect(), shown = self.closest('.project-column-panel')?.getBoundingClientRect() ?? box, others = rows().filter(row => row !== self);
+    const top = Math.max(box.top, shown.top), bottom = Math.min(box.bottom, shown.bottom), left = Math.max(box.left, shown.left), right = Math.min(box.right, shown.right);
+    if (!others.length || next.clientY < top || next.clientY > bottom || next.clientX < left || next.clientX > right) { target = undefined; mark(); return; }
     const at = others.find(row => { const rect = row.getBoundingClientRect(); return next.clientY < rect.top + rect.height / 2; });
     target = { before: at ? idOf(at) : null, last: idOf(others.at(-1)!) }; mark(at ?? others.at(-1), at ? 'before' : 'after');
   };
@@ -111,7 +112,7 @@ function nudgeRow(event: React.KeyboardEvent<HTMLElement>, kind: RowKind, id: st
   event.preventDefault(); event.stopPropagation();
   const { rows, idOf } = siblings(event.currentTarget, kind), ids = rows().map(idOf), index = ids.indexOf(id), up = event.key === 'ArrowUp';
   if (up ? index <= 0 : index < 0 || index >= ids.length - 1) return;
-  if (up) reorder.move(kind, id, ids[index - 1], ''); else reorder.move(kind, id, ids[index + 2] ?? null, ids[index + 1]);
+  if (!(up ? reorder.move(kind, id, ids[index - 1], '') : reorder.move(kind, id, ids[index + 2] ?? null, ids[index + 1]))) return;
   reorder.say(`${name} moved to place ${index + (up ? 0 : 2)} of ${ids.length}`, kind === 'project' ? `[data-project-row="${CSS.escape(id)}"] .project-column-name` : `[data-plot-header="${CSS.escape(id)}"]`);
 }
 
@@ -203,7 +204,7 @@ function ProjectRow({ row, actions, folds, icons, reorder }: { row: ProjectColum
  * person, the lines the summary model wrote and what else is open. It re-renders only when its
  * model, its open state or its hover changes. */
 export const ProjectColumn = memo(function ProjectColumn({ model, open, setOpen, actions, icons, panel: saved, onPanel }: { model: ProjectColumnModel; open: boolean; setOpen(open: boolean): void; actions: ProjectColumnActions;
-  icons?: ReadonlyMap<string, DashboardIcon>; panel?: ProjectsPanelState; onPanel?(patch: Partial<ProjectsPanelState>): void }) {
+  icons?: ReadonlyMap<string, DashboardIcon>; panel?: ProjectsPanelState; onPanel?(patch: Partial<ProjectsPanelState>): boolean | void }) {
   const [hovered, setHovered] = useState<string>(), [quietOpen, setQuietOpen] = useState(false);
   const [baseline, setBaseline] = useState(() => unfoldedBaseline);
   const [draft, setDraft] = useState<{ width: number; height: number }>(), [room, setRoom] = useState<number>();
@@ -232,13 +233,14 @@ export const ProjectColumn = memo(function ProjectColumn({ model, open, setOpen,
   }, [open]);
   const folded = useMemo(() => new Set(saved?.folded ?? []), [saved?.folded]);
   const folds: Folds = { folded, toggle: id => onPanel?.({ folded: (folded.has(id) ? [...folded].filter(entry => entry !== id) : [...folded, id]).slice(-FOLD_LIMIT) }) };
-  const [said, setSaid] = useState(''), refocus = useRef<string>(undefined);
+  const [said, setSaid] = useState(''), [full, setFull] = useState(false), refocus = useRef<string>(undefined);
   const reorder: Reorder = {
     move: (kind, id, before, last) => {
       const rows = [...model.active, ...model.quiet], key = kind === 'project' ? 'order' : 'plotOrder', current = saved?.[key] ?? [];
       const shown = kind === 'project' ? rows.map(row => row.id) : rows.find(row => row.plotIds.includes(id))?.plotIds;
       const next = shown && reorderSaved(current, shown, id, before, last);
-      if (next && next.join('\n') !== current.join('\n')) onPanel?.({ [key]: next });
+      if (next && next.join('\n') !== current.join('\n') && onPanel?.({ [key]: next }) === false) { setSaid(`Not moved: the panel keeps the order of at most ${ORDER_LIMIT} ${kind === 'project' ? 'projects' : 'plots'}`); setFull(true); return false; }
+      setFull(false); return true;
     },
     say: (text, focus) => { setSaid(text); refocus.current = focus; },
   };
@@ -293,7 +295,7 @@ export const ProjectColumn = memo(function ProjectColumn({ model, open, setOpen,
           {COLUMN_KINDS.map(kind => <button key={kind} type="button" className="project-column-chip" aria-pressed={!off.has(kind)} onClick={() => chip(kind)}>{columnKindNames[kind]}</button>)}
         </div>
       </header>
-      <p className="project-column-hidden" role="status">{said}</p>
+      <p className={full ? 'project-column-refused' : 'project-column-hidden'} role="status">{said}</p>
       <ul className="project-column-rows">{model.active.map(row => <ProjectRow key={row.id} row={row} actions={actions} folds={folds} icons={icons} reorder={reorder} />)}</ul>
       {model.quiet.length > 0 && <>
         <button type="button" className="project-column-quiet" data-column-row="" aria-expanded={quietOpen} onClick={() => setQuietOpen(!quietOpen)}>

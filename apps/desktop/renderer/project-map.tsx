@@ -185,7 +185,7 @@ export interface ProjectMapProps {
   onOverview?(open: boolean): void;
   /** The Projects panel's saved size, folds, filters and pin (MAP-22). */
   projectsPanel?: ProjectsPanelState;
-  onProjectsPanel?(patch: Partial<ProjectsPanelState>): void;
+  onProjectsPanel?(patch: Partial<ProjectsPanelState>): boolean | void;
   undermapCount?: number;
   onTravel?(to: 'map' | 'below'): void;
   /** Below this zoom each neighbourhood shows its project's dashboard instead of its items. */

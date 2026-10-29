@@ -73,6 +73,7 @@
 .project-column-counts .tier-count{display:inline-flex;align-items:center;gap:3px}
 .project-column-counts .tier-mark{width:9px;height:9px}
 .project-column-counts .tier-count[data-tier=asking]{color:var(--act-attention-asking)}.project-column-counts .tier-count[data-tier=turn]{color:var(--act-attention)}.project-column-counts .tier-count[data-tier=finished]{color:var(--act-attention-finished)}
+.project-column-refused{margin:6px 0 0;color:var(--act-ink-dim)}
 .project-column-counts .tier-count-words,.project-column-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .project-column-counts .tier-count-gap{display:none}
 .project-column-group{display:grid;gap:1px;min-width:0}
