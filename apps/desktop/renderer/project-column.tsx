@@ -79,12 +79,14 @@ function siblings(element: HTMLElement, kind: RowKind) {
 /** A press that travels a few pixels drags the row: a line shows where it lands, Escape cancels, a drop outside its list (a plot outside its project) is refused. */
 function dragRow(event: React.PointerEvent<HTMLElement>, kind: RowKind, id: string, reorder: Reorder) {
   if (event.button !== 0) return;
-  const { self, scope, rows, idOf } = siblings(event.currentTarget, kind), start = { x: event.clientX, y: event.clientY };
+  const { self, scope, rows, idOf } = siblings(event.currentTarget, kind), start = { x: event.clientX, y: event.clientY }, grip = event.currentTarget, pointer = event.pointerId;
   let state: 'press' | 'drag' | 'cancel' = 'press', target: { before: string | null; last: string } | undefined;
   const mark = (row?: HTMLElement, where?: 'before' | 'after') => { for (const other of rows()) delete other.dataset.drop; if (row && where) row.dataset.drop = where; };
   const move = (next: PointerEvent) => {
+    if (!next.buttons) { abort(); return; }
     if (state === 'cancel' || (state === 'press' && Math.hypot(next.clientX - start.x, next.clientY - start.y) < DRAG_THRESHOLD)) return;
     if (state === 'press') cancelDrag = () => { state = 'cancel'; cancelDrag = undefined; mark(); delete self.dataset.dragging; };
+    if (state === 'press' && !grip.hasPointerCapture(pointer)) grip.setPointerCapture(pointer);
     state = 'drag'; self.dataset.dragging = '';
     const box = scope.getBoundingClientRect(), others = rows().filter(row => row !== self);
     if (!others.length || next.clientY < box.top || next.clientY > box.bottom || next.clientX < box.left || next.clientX > box.right) { target = undefined; mark(); return; }
@@ -236,7 +238,7 @@ export const ProjectColumn = memo(function ProjectColumn({ model, open, setOpen,
       const rows = [...model.active, ...model.quiet], key = kind === 'project' ? 'order' : 'plotOrder', current = saved?.[key] ?? [];
       const shown = kind === 'project' ? rows.map(row => row.id) : rows.find(row => row.plotIds.includes(id))?.plotIds;
       const next = shown && reorderSaved(current, shown, id, before, last);
-      if (next && next.join('\n') !== current.join('\n')) onPanel?.({ [key]: next.slice(0, FOLD_LIMIT) });
+      if (next && next.join('\n') !== current.join('\n')) onPanel?.({ [key]: next });
     },
     say: (text, focus) => { setSaid(text); refocus.current = focus; },
   };

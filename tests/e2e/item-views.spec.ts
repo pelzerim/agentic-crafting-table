@@ -104,6 +104,13 @@ test('with an item open the board pans and zooms around it; the item stays put a
   await expect.poll(async () => Math.round((await camera()).x - start.x)).toBe(-200);
   await page.mouse.move(below.x, below.y); await page.mouse.wheel(0, -300);
   await expect.poll(async () => (await camera()).zoom).toBeGreaterThan(start.zoom);
+  // The zoom keys move the board too, but not while the keyboard is inside the item.
+  const wheeled = (await camera()).zoom;
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); await page.keyboard.press('-');
+  await expect.poll(async () => (await camera()).zoom).toBeLessThan(wheeled);
+  const keyed = (await camera()).zoom;
+  await view.getByRole('button', { name: 'Back to project', exact: true }).focus(); await page.keyboard.press('0'); await page.waitForTimeout(300);
+  expect((await camera()).zoom).toBe(keyed);
   await expect(area).toHaveAttribute('data-focus', 'agent');
   expect(await view.boundingBox()).toEqual(placed);
   await expect(page.locator('[data-selected-id]')).toHaveCount(0);

@@ -538,9 +538,11 @@ function MapCanvas(props: ProjectMapProps) {
   const columnMode = props.mapCorner !== 'atlas', pinned = Boolean(columnMode && props.projectsPanel?.pinned);
   const overview = cornerShown && (pinned || ((columnMode || !focus) && (props.overview ?? ownOverview)));
   const setOverview = (open: boolean) => { (props.onOverview ?? setOwnOverview)(open); if (!open && pinned) props.onProjectsPanel?.({ pinned: false }); };
+  // With an item open the zoom keys move the board, as the wheel does, unless the keyboard is inside the item.
+  const inOpenView = () => Boolean(focus && document.activeElement?.closest('.item-view'));
   useWorkspaceShortcuts({ 'map.overview': () => { if ((focus && !columnMode) || !cornerShown) return false; setOverview(!overview); },
-    'map.zoomIn': () => { if (focus) return false; void zoomIn(); }, 'map.zoomOut': () => { if (focus) return false; void zoomOut(); },
-    'map.zoomReset': () => { if (focus) return false; void zoomTo(1); },
+    'map.zoomIn': () => { if (inOpenView()) return false; void zoomIn(); }, 'map.zoomOut': () => { if (inOpenView()) return false; void zoomOut(); },
+    'map.zoomReset': () => { if (inOpenView()) return false; void zoomTo(1); },
     'project.mute': () => {
       const id = document.activeElement?.closest('.react-flow__node')?.getAttribute('data-id');
       const project = id ? props.nodes.find(node => node.id === id && !node.resourceId && !node.projectId) : undefined;

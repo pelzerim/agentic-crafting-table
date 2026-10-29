@@ -726,10 +726,10 @@ export function WorkspaceMap() {
     if (selected && ['complete', 'reopen', 'archive'].includes(id)) run([{ type: `node.${id}` as 'node.complete' | 'node.reopen' | 'node.archive', id: selected.id }]);
   };
   const below = layer === 'below';
-  /** A dragged order keeps only projects and plots that still exist. */
+  /** A dragged order keeps only projects and plots that still exist, pruned before the schema's 500 cap so stale ids never push live ones out. */
   const pruneOrder = (patch: Partial<ProjectsPanelState>) => {
     const nodes = new Set(snapshotRef.current?.state.nodes.map(node => node.id)), plotIds = new Set(snapshotRef.current?.plots?.list.map(plot => plot.id));
-    return { ...patch, ...(patch.order ? { order: patch.order.filter(id => nodes.has(id)) } : {}), ...(patch.plotOrder ? { plotOrder: patch.plotOrder.filter(id => plotIds.has(id)) } : {}) };
+    return { ...patch, ...(patch.order ? { order: patch.order.filter(id => nodes.has(id)).slice(0, 500) } : {}), ...(patch.plotOrder ? { plotOrder: patch.plotOrder.filter(id => plotIds.has(id)).slice(0, 500) } : {}) };
   };
   const saveViewBounds = (shown: ReadonlySet<string>, positions: Record<string, ViewPlace>, sizes: Record<string, ViewSize>) => {
     const state = snapshotRef.current?.state; if (!state || !viewRef.current) return;

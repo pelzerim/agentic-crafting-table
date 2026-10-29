@@ -377,6 +377,12 @@ test('project rows and plot headers drag into a saved order that survives a relo
     // A cancelled pointer drops nothing.
     await drag(page, middle(await head('billing')), await below('runner'), () => page.evaluate(() => { window.dispatchEvent(new PointerEvent('pointercancel')); }));
     await expect.poll(rows).toEqual(['billing', 'runner', 'infra', 'recent']);
+    // A release outside the window comes back as a move with no button down: the drag ends there.
+    await drag(page, middle(await head('billing')), await below('runner'), async () => {
+      await page.evaluate(() => { window.dispatchEvent(new PointerEvent('pointermove', { buttons: 0, clientX: 5, clientY: 5 })); });
+      await expect(page.locator('.project-column-panel [data-dragging], .project-column-panel [data-drop]')).toHaveCount(0);
+    });
+    await expect.poll(rows).toEqual(['billing', 'runner', 'infra', 'recent']);
     await drag(page, middle(await head('billing')), await below('runner'));
     await expect.poll(rows).toEqual(['runner', 'billing', 'infra', 'recent']);
     await panel.getByRole('button', { name: /^Recent: / }).focus(); await page.keyboard.press('Alt+ArrowUp');
