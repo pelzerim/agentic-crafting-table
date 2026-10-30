@@ -30,6 +30,12 @@ test('the text comes from the dragged cells, in either direction', () => {
   assert.equal(dragText(lines, { start: { col: 14, row: 1 }, end: { col: 9, row: 1 } }), 'brave');
 });
 
+test('a TUI that includes the cell under the pointer copies what it deletes, spaces too', () => {
+  const lines = buffer('❯ hello brave world');
+  assert.equal(dragText(lines, { start: { col: 9, row: 1 }, end: { col: 14, row: 1 } }, true), 'brave ');
+  assert.equal(dragText(lines, { start: { col: 13, row: 1 }, end: { col: 9, row: 1 } }, true), 'brave');
+});
+
 test('a drag over rows joins them without the composer indent or trailing cells', () => {
   assert.equal(dragText(buffer('› first line   ', '  second line  ', '  third line'), { start: { col: 3, row: 1 }, end: { col: 8, row: 3 } }), 'first line\nsecond line\nthird');
 });

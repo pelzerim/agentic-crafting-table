@@ -31,17 +31,19 @@ export class TuiDrag {
 
 type Buffer = Pick<Terminal['buffer']['active'], 'viewportY' | 'getLine'>;
 
-/** The text a drag covered, in reading order. Later rows drop the composer's indent. */
-export function dragText(buffer: Buffer, drag: TerminalDrag) {
+/** The text a drag covered, in reading order, matching what the TUI deletes: `endIncluded` for a
+ * TUI whose selection takes in the cell under the pointer. Later rows drop the composer's indent. */
+export function dragText(buffer: Buffer, drag: TerminalDrag, endIncluded = false) {
   const [first, last] = drag.start.row < drag.end.row || (drag.start.row === drag.end.row && drag.start.col <= drag.end.col) ? [drag.start, drag.end] : [drag.end, drag.start];
   const rows: string[] = [];
   for (let row = first.row; row <= last.row; row++) {
-    const text = buffer.getLine(buffer.viewportY + row - 1)?.translateToString(true, row === first.row ? first.col - 1 : 0, row === last.row ? last.col - 1 : undefined) ?? '';
-    rows.push(row === first.row ? text.trimEnd() : text.trim());
+    const text = buffer.getLine(buffer.viewportY + row - 1)?.translateToString(true, row === first.row ? first.col - 1 : 0, row === last.row ? (endIncluded ? last.col : last.col - 1) : undefined) ?? '';
+    const whole = row < last.row ? text.trimEnd() : text;
+    rows.push(row === first.row ? whole : whole.trimStart());
   }
   return rows.join('\n');
 }
 
-/** A drag in the composer moves the TUI's cursor onto the row where it ended; a drag in the
- * transcript leaves the cursor in the composer, where a delete would hit unselected text. */
+/** The prompt is on the cursor's row. A drag on any other row selects transcript, and a delete
+ * sent for it would hit unselected text in the prompt. */
 export const dragIsEditable = (buffer: Pick<Terminal['buffer']['active'], 'cursorY'>, drag: TerminalDrag) => buffer.cursorY + 1 === drag.end.row;

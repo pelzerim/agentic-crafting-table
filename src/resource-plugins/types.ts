@@ -314,6 +314,9 @@ export interface NativeTerminalOptions {
   agentMenu?: boolean;
   /** The agent gets clipboard text and images through the terminal instead of reading the clipboard itself on Ctrl+V. */
   nativePaste?: boolean;
+  /** The agent deletes its own mouse selection on Backspace, so the cut key can remove what it copies.
+   * The value says which cells that selection covers: agents differ on the cell under the pointer. */
+  selectionCut?: 'end-excluded' | 'end-included';
   /** Names the agent when stopping a working turn asks for confirmation. */
   agentName?: string;
   /** Keep the session controls above the terminal instead of in the expanded frame's title bar. */
