@@ -1746,7 +1746,7 @@ navigation, Escape and outside-click dismissal.
 Omit redundant "Native Claude session" labels and stacked control bars. Fit every terminal row,
 including the last prompt line, within the available content area after resizing.
 Ctrl/Cmd +/− adjusts the focused terminal's font size only; Ctrl/Cmd 0 resets it.
-**⌘F** never reaches the process: it opens a find bar at the terminal's top right
+**Cut** (Ctrl+X, ⌘X on macOS) takes a terminal selection and copies it. In a Codex view a mouse selection is copied too, and removed when it lies on the cursor's row, the only text the terminal can edit. With no selection the key goes to the process. **⌘F** never reaches the process: it opens a find bar at the terminal's top right
 (or refocuses it, prefilled with a one-line selection). Typing highlights every match,
 case-insensitive, with a “2 of 5” or “No results” count; Enter or ⌘G steps forward,
 Shift+Enter or ⇧⌘G back, and Esc closes it, clears the highlights and returns focus to

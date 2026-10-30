@@ -68,3 +68,13 @@ test('Cmd+F opens the find bar instead of reaching the terminal, and plain F sti
   assert.equal(terminalKey(terminal, event({ key: 'f', shiftKey: false, keyCode: 70 }), false, () => opened++), true);
   assert.deepEqual(sent, []); assert.equal(opened, 1);
 });
+
+test('the cut key is taken only when something was cut, and modified keys stay keys', () => {
+  const { terminal } = fixture(), key = (init: Record<string, unknown>) => { const calls: string[] = []; const event = { type: 'keydown', key: 'x', keyCode: 88, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, preventDefault: () => calls.push('prevent'), stopPropagation: () => {}, ...init } as unknown as KeyboardEvent; return { event, calls }; };
+  const ctrl = key({ ctrlKey: true }), taken = terminalKey(terminal, ctrl.event, true, undefined, false, () => true);
+  assert.equal(taken, false); assert.deepEqual(ctrl.calls, ['prevent']);
+  assert.equal(terminalKey(terminal, key({ ctrlKey: true }).event, true, undefined, false, () => false), true, 'nothing selected: xterm sends the key');
+  assert.equal(terminalKey(terminal, key({ ctrlKey: true, shiftKey: true }).event, true, undefined, false, () => { throw new Error('not a cut'); }), true);
+  assert.equal(terminalKey(terminal, key({ ctrlKey: true, type: 'keyup' }).event, true, undefined, false, () => { throw new Error('not a cut'); }), true);
+});
+

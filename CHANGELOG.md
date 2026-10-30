@@ -14,6 +14,7 @@ their pull request and author.
 - **Launch errors**: a Codex update no longer breaks launches until restart, a slow launch no longer reports a false failure, a deleted folder gets a plain message, and a launch that is too long is refused before its item appears. (#5, @timohuovinen)
 
 ### Terminals
+- **Cut**: Ctrl+X (Cmd+X on macOS) cuts a selection. In a Codex view, text selected in the message box is copied and removed; text selected anywhere else is copied only, because a terminal can remove only what the agent is editing. With nothing selected the key reaches the terminal as before. (@timohuovinen)
 - **Right click in an open view**: Settings → General → Mouse behavior chooses whether a right click closes an open agent or terminal view anywhere, as before, or only outside it. (#5, @timohuovinen)
 - Review findings longer than 64 KiB now reach the agent instead of failing. (#5, @timohuovinen)
 
