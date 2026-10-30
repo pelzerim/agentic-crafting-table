@@ -1,5 +1,5 @@
 const pages: Record<string, string> = {
-  notifications: 'Notifications', summaries: 'AI features', keepAwake: 'General', warnBeforeClosing: 'General', terminal: 'General', diagnostics: 'Data & diagnostics',
+  notifications: 'Notifications', summaries: 'AI features', appearance: 'General', keepAwake: 'General', warnBeforeClosing: 'General', terminal: 'General', diagnostics: 'Data & diagnostics',
   quickItemTypes: 'Items', defaultWorkingDirectory: 'Items', menus: 'Items', neighborhoodPadding: 'Map', neighborhoodAppearance: 'Map', belowAnimation: 'Map', undermapLayout: 'Map', mapDashboards: 'Map', mapPlots: 'Map', hideImpliedLinks: 'Map', workingMark: 'Map', doubleClickOpensWeb: 'Map', snapToGrid: 'Map', mapCollisions: 'Map',
   pullRequestConversation: 'github.pull-request', claude: 'agent.session:claude', connections: 'Connections',
 };

@@ -3,8 +3,15 @@
 `apps/desktop/renderer/tokens.css` is the single source for colour, type,
 spacing, shape, elevation and stacking in the renderer and in resource plugin
 stylesheets. It defines custom properties on `:root`, all prefixed `--act-`.
-The app is dark only; a light theme would be one override block for these
-properties, not a rewrite.
+The dark values are the default. The light theme is one override rule,
+`:root[data-theme="light"]`, at the end of `tokens.css`: main resolves
+Settings → General → Appearance through Electron's nativeTheme (System follows
+macOS, Light or Dark pin it) and sets `data-theme` on `<html>`. Every token whose
+dark value contains a colour literal needs a light value in that rule, and the
+rule declares nothing the dark `:root` lacks; `design-tokens.test.ts` enforces
+both. A token that points at another token follows it. Stylesheets that draw
+colours a token cannot carry (the pixel border data URIs in `pixel-theme.css`)
+add their own `:root[data-theme="light"]` rule.
 
 ## Stylesheet layout
 
@@ -39,6 +46,23 @@ are imported by their modules and load after `styles.css`.
 | Dashboards and blocking | `--act-working-ink` `--act-working-sheep` `--act-working-sheep-head` `--act-todo-ink` `--act-needs-row-bg` `--act-strip-neutral` `--act-strip-violet` `--act-strip-blue` `--act-ink-on-coral` `--act-coral-bg` (+`-hover`) `--act-coral-ink` `--act-shadow-popover` |
 | Agents and brands | `--act-agent-claude` `--act-agent-codex` `--act-brand-linear` `--act-brand-github` `--act-copper` (+`-bg`, `-line`, `-ink`, `-fill`) |
 | Note papers | `--act-paper-mint` (default) `-moss` `-ice` `-sky` `-lilac` `-rose` `-peach` `-sand` `-fog` `-slate`, `--act-paper-ink` (`-slate-ink` on slate and dark custom papers; a custom paper is set inline as `--paper`), `--act-paper-tape`, `--act-paper-agent-tape` (copper, agent-written notes). Decoration only, never status; no yellow, because amber means Needs me |
+| Pixel controls | `--act-bevel-hover` (top bevel of a hovered button) |
+| Drop shadow tints | `--act-shade-soft` `--act-shade` `--act-shade-strong` (colours for one-off drop shadows; pale green-grey in the light theme) |
+| Danger and invalid input | `--act-danger-bg` (+`-ink`; confirm strips) `--act-danger-fill-hover` `--act-danger-soft` (+`-hover`, `-line`, `-ink`; quiet destructive buttons) `--act-danger-ink-dim` `--act-danger-text` `--act-invalid-line` (+`-soft`) `--act-invalid-bg` `--act-invalid-mark` (+`-ink`) `--act-invalid-ink` (+`-soft`) `--act-error-strong-bg` |
+| Irreversible actions | `--act-irreversible-bg` (+`-hover`, `-line`, `-ink`): merge, approve and stop; a warm sand caution, never Needs me amber |
+| Error screen | `--act-error-screen-line` `--act-error-screen-code` `--act-tone-green-ink` `--act-tone-green-hover` (ink and hover of a `--act-tone-green` button) |
+| Settings | `--act-switch-on` (+`-line`) `--act-switch-knob` `--act-settings-select-line` `--act-settings-quiet-hover` `--act-settings-muted` `--act-settings-chip-pending` `--act-settings-chip-error` `--act-settings-note-bg` (+`-ink`, `-strong`) `--act-settings-code` `--act-settings-clean` `--act-settings-check` `--act-settings-tree-selected-ink` (+`-bar`) `--act-settings-tree-hover-line` `--act-provider-github-bg` `--act-provider-notion-bg` (+`-ink`) `--act-provider-linear-bg` `--act-provider-slack-bg` (+`-ink`) |
+| Undermap layer | `--act-portal-glow` (+`-bright`) `--act-portal-bg` `--act-portal-ring` `--act-portal-drop` `--act-portal-line` `--act-portal-return` (+`-bright`, `-line`; the way back up) `--act-undermap-card-drop` `--act-undermap-card-wash` `--act-undermap-bar` `--act-undermap-button-line` `--act-undermap-button-hover`; glow alphas come from `color-mix(… transparent)` |
+| Tool rail | `--act-hotbar` (+`-edge`) `--act-hotbar-slot` (+`-edge`, `-shade`, `-light`, `-active`) `--act-rail-toggle-hover` `--act-rail-grip`: the Minecraft-style hotbar, dark glass in the dark theme, pale glass in the light one |
+| Card tones (more) | `--act-card-violet` (+`-bg`) `--act-card-rose` (+`-bg`) `--act-card-neutral-bg` `--act-card-open-hover` |
+| Picker | `--act-picker-hover-line` `--act-picker-pressed-line` `--act-picker-saved-line` (+`-bg`) `--act-picker-slot` (+`-line`, `-shade`; the dashed placement slot) `--act-picker-choice` `--act-picker-url` |
+| Markdown and links | `--act-link-text` (+`-hover`) `--act-quote-ink` |
+| Pull request desk | `--act-pr-ink` `--act-pr-link` `--act-pr-meta-link` `--act-pr-merged-bg` `--act-pr-closed` (+`-bg`) `--act-pr-refs` (+`-bg`) `--act-pr-help` `--act-pr-candidate-line` `--act-pr-comment-line` `--act-pr-reply-line` `--act-pr-avatar-line` `--act-pr-control` (+`-hover`) `--act-pr-preview-hover` `--act-pr-dismissed` `--act-pr-thread-path` `--act-pr-seen` `--act-pr-linked-bg` (+`-line`, `-revision`) `--act-pr-stale` `--act-pr-status-bg` |
+| Slack thread | `--act-slack-selected-line` `--act-slack-selected-tint` `--act-slack-selected-bg` |
+| Rollout view | `--act-rollout-ink` `--act-rollout-gate` (+`-line`) `--act-rollout-job-line` |
+| Terminal menus | `--act-terminal-focus-line` `--act-terminal-menu-ring` `--act-terminal-menu-hover` |
+| Panels, map and to-dos | `--act-attention-summary` `--act-elapsed-ink` `--act-resize-grip` `--act-neighborhood-paint` (+`-preview`) `--act-neighborhood-title-focus` `--act-key-hint` `--act-drop-ink` `--act-drop-ghost` `--act-drop-target` `--act-todo-hover-line` `--act-todo-done-ink` `--act-todo-hint-bg` `--act-todo-group-wash` |
+| Review findings | `--act-review-high` (+`-bg`) `--act-review-medium` `--act-review-low` `--act-review-hardening` `--act-review-security` (+`-bg`) `--act-review-question` (+`-bg`): severity and kind tones of the review desk, card pips and linked reviews |
 | Type | `--act-font-ui` (system UI stack) `--act-font-mono` and the scale `--act-fs-caps` 10 · `--act-fs-meta` 11 · `--act-fs-ui` 12 · `--act-fs-body` 13 · `--act-fs-panel` 15 · `--act-fs-title` 18 · `--act-fs-display` 24; weights `--act-fw-regular/-medium/-strong` |
 | Spacing | `--act-sp-0_5` 2 · `-1` 4 · `-1_5` 6 · `-2` 8 · `-3` 12 · `-4` 16 · `-6` 24 · `-8` 32 |
 | Sizes | `--act-control-size` 26 (every control in an item view's frame bar: actions, ⋯, ↗, ↻, close) |

@@ -23,6 +23,9 @@ their pull request and author.
 - **Where an item lives**: an open item names its project and plot above its title; click either to close the item and fly there. **Show on map**, the crosshair beside the close X, closes the item and centres the map on it. The trail at the top left now reads Project / Plot / Item. (#3, @shiini2)
 - **Projects panel type**: project rows are larger and bold, plot headers are small upper-case labels, and item rows sit indented in regular weight with their reasons and states smaller, so the panel reads as a tree. (#3, @shiini2)
 
+### Appearance
+- **Light mode.** Settings → General → Appearance chooses **System** (default: follows macOS and switches with it), Light or Dark. Cards, panels, settings, the map, the terminal and its ⌘F highlights all have light colours; amber still means Needs me. On System, test launches stay dark unless `ACT_TEST_APPEARANCE` pins light. (#4, @MegaMaddin)
+
 ## 0.10.0 — 2026-10-29
 
 ### Platform

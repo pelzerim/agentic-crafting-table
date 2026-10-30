@@ -2205,6 +2205,20 @@ Release the assertion immediately when disabled or the app exits. Use a scoped O
 assertion, without changing global sleep preferences, defeating manual lock or
 bypassing managed security policy. Reflect the setting accurately on restart.
 
+**SETTINGS-APPEARANCE — Light and dark colours.** Settings → General, section
+**Appearance**, has **Colours**: **System** (default) / Light / Dark (additive
+`appearance`; older settings read System; other values are rejected). System follows
+the macOS appearance and switches with it while the app is open; Light and Dark pin
+it. Saving applies at once to every surface without reopening views: chrome, cards,
+panels, the map's dot grid and link arrows, the terminal (its text and ANSI colours
+stay readable on the light ground) and the ⌘F highlights. Main sets Electron's
+`nativeTheme.themeSource` and tells the page light or dark (a `data-theme` attribute), and the
+`--act-*` tokens carry a light value for every colour (docs/design-tokens.md). Roles
+keep their meaning in both themes: amber is Needs me only, mint is the accent, notes
+keep their pastel papers. Biome grounds, plot colours, project colours and the
+Undermap portal art are drawn colours of the place, not of the theme, and stay as
+they are. On System, test launches are dark unless `ACT_TEST_APPEARANCE=light` pins them.
+
 **SETTINGS-02 — Launch environment.** Starting from Finder/Dock and resuming must
 find the user's installed development tools, including Node used by native hooks.
 Resolve the login shell's PATH with a bounded timeout and standard-directory

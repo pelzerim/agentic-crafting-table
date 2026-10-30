@@ -57,7 +57,7 @@
 }
 
 .code-review-elapsed {
-  color: #a8b3ab;
+  color: var(--act-elapsed-ink);
   font-variant-numeric: tabular-nums;
 }
 

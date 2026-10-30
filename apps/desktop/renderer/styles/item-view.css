@@ -49,7 +49,7 @@
   padding: 3px;
   border: 0;
   background: transparent;
-  color: #a8c5b0;
+  color: var(--act-resize-grip);
   opacity: .55;
   cursor: nwse-resize;
   touch-action: none;

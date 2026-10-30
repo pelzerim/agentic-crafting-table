@@ -21,6 +21,7 @@ async function sessionCall(method: string, args?: unknown) {
 const bridge: DesktopBridge = {
   windowFocused: () => ipcRenderer.invoke('app:focused'),
   onWindowFocus: listener => listen('app:focus', listener),
+  onColorScheme: listener => listen('app:color-scheme', listener),
   appInfo: () => ipcRenderer.invoke('app:info'),
   assistiveTechnology: () => ipcRenderer.invoke('app:assistive-technology'),
   onAssistiveTechnology: listener => listen('app:assistive-technology', listener),

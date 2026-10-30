@@ -59,8 +59,8 @@
 }
 
 .slack-thread-message[data-selected=true] {
-  border-color: #c2a5ec;
-  background: #30293c;
+  border-color: var(--act-slack-selected-line);
+  background: var(--act-slack-selected-tint);
 }
 
 .slack-thread-message header {
@@ -146,8 +146,8 @@
 }
 
 .slack-thread-message[data-selected=true] {
-  border-left: 3px solid #c2a5ec;
-  background: #262d2e;
+  border-left: 3px solid var(--act-slack-selected-line);
+  background: var(--act-slack-selected-bg);
 }
 
 .slack-thread-message p {

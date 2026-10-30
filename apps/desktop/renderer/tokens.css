@@ -169,6 +169,190 @@
   --act-paper-tape: color-mix(in srgb, var(--act-ink-bright) 62%, transparent);
   --act-paper-agent-tape: var(--act-copper-fill);
 
+  /* Pixel controls: the top bevel of a hovered button */
+  --act-bevel-hover: #89a791;
+
+  /* Drop shadow tints for one-off shadows (cards, review popovers, the tool rail) */
+  --act-shade-soft: #0005;
+  --act-shade: #0007;
+  --act-shade-strong: #0008;
+
+  /* Danger and invalid input: confirm strips, quiet destructive buttons, invalid fields and markers */
+  --act-danger-bg: #2b1d1a;
+  --act-danger-bg-ink: #f0d4cb;
+  --act-danger-fill-hover: #c4645a;
+  --act-danger-soft: #33221e;
+  --act-danger-soft-hover: #48291f;
+  --act-danger-soft-line: #a1655a;
+  --act-danger-soft-ink: #f5c2b3;
+  --act-danger-ink-dim: #c99a8f;
+  --act-danger-text: #dca597;
+  --act-invalid-line: #e3957f;
+  --act-invalid-line-soft: #e6aa95;
+  --act-invalid-bg: #241814;
+  --act-invalid-mark: #f0a28e;
+  --act-invalid-mark-ink: #2a1712;
+  --act-invalid-ink: #e3ab99;
+  --act-invalid-ink-soft: #efbd9f;
+  --act-error-strong-bg: #4a2320;
+
+  /* Irreversible actions (merge, approve, stop): a warm sand caution, never Needs me amber */
+  --act-irreversible-bg: #3a3024;
+  --act-irreversible-hover: #48392a;
+  --act-irreversible-line: #80664a;
+  --act-irreversible-ink: #eccba0;
+
+  /* Error screen */
+  --act-error-screen-line: #4f6d57;
+  --act-error-screen-code: #c9d6cd;
+  --act-tone-green-ink: #12301d;
+  --act-tone-green-hover: #b8efc7;
+
+  /* Settings */
+  --act-switch-on: #2f5a3d;
+  --act-switch-on-line: #79b58d;
+  --act-switch-knob: #c9ecd3;
+  --act-settings-select-line: #6a9075;
+  --act-settings-quiet-hover: #d4f0dc;
+  --act-settings-muted: #a8c3b0;
+  --act-settings-chip-pending: #3a3020;
+  --act-settings-chip-error: #3a2422;
+  --act-settings-note-bg: #26261c;
+  --act-settings-note-ink: #d8cfae;
+  --act-settings-note-strong: #efdcaa;
+  --act-settings-code: #d7e8db;
+  --act-settings-clean: #6f8a76;
+  --act-settings-check: #a6c9af;
+  --act-settings-tree-selected-ink: #c9e7d3;
+  --act-settings-tree-selected-bar: #a0cda8;
+  --act-settings-tree-hover-line: #496650;
+  --act-provider-github-bg: #2b2938;
+  --act-provider-notion-bg: #2a2a2a;
+  --act-provider-notion-ink: #e8e8e8;
+  --act-provider-linear-bg: #2a2840;
+  --act-provider-slack-bg: #3a2433;
+  --act-provider-slack-ink: #efb0d4;
+
+  /* Undermap layer: portal, cards and bar */
+  --act-portal-glow: #9b5cff;
+  --act-portal-glow-bright: #b98cff;
+  --act-portal-bg: #1c1428;
+  --act-portal-ring: #140f1c;
+  --act-portal-drop: #0a0710;
+  --act-portal-line: #4a3270;
+  --act-portal-return: #7fb87d;
+  --act-portal-return-bright: #9cd29a;
+  --act-portal-return-line: #4d6b52;
+  --act-undermap-card-drop: #080405;
+  --act-undermap-card-wash: #3a141626;
+  --act-undermap-bar: #241214e6;
+  --act-undermap-button-line: #8a4a42;
+  --act-undermap-button-hover: #4a2525;
+
+  /* Tool rail: a Minecraft-style hotbar, dark glass in the dark theme and pale glass in the light one */
+  --act-hotbar: #1b1b1bd9;
+  --act-hotbar-edge: #000;
+  --act-hotbar-slot: #3a3a3a8c;
+  --act-hotbar-slot-edge: #8b8b8b;
+  --act-hotbar-slot-shade: #2a2a2a;
+  --act-hotbar-slot-light: #5c5c5c;
+  --act-hotbar-slot-active: #f5f5f5;
+  --act-rail-toggle-hover: #ffffff14;
+  --act-rail-grip: #8aab91;
+
+  /* Card tones beyond the card tokens above, and the open-item button */
+  --act-card-violet: #bea3f1;
+  --act-card-violet-bg: #2f293c;
+  --act-card-rose: #dfa7b4;
+  --act-card-rose-bg: #362b31;
+  --act-card-neutral-bg: #252d28;
+  --act-card-open-hover: #b7d4ff22;
+
+  /* Picker: item types, sessions and the dashed placement slot */
+  --act-picker-hover-line: #91b99d;
+  --act-picker-pressed-line: #a3c5ae;
+  --act-picker-saved-line: #c7b17c;
+  --act-picker-saved-bg: #3d4430;
+  --act-picker-slot: #443526;
+  --act-picker-slot-line: #d8ad66;
+  --act-picker-slot-shade: #705535;
+  --act-picker-choice: #9fbaa7;
+  --act-picker-url: #a9c8b1;
+
+  /* Markdown and links in item views */
+  --act-link-text: #b4d5be;
+  --act-link-text-hover: #e1f0e4;
+  --act-quote-ink: #aabfb1;
+
+  /* Pull request desk */
+  --act-pr-ink: #cfddd1;
+  --act-pr-link: #9ebba5;
+  --act-pr-meta-link: #bdd9c6;
+  --act-pr-merged-bg: #342942;
+  --act-pr-closed: #eab5ab;
+  --act-pr-closed-bg: #412a28;
+  --act-pr-refs: #c1b0d7;
+  --act-pr-refs-bg: #30383a;
+  --act-pr-help: #cabb9e;
+  --act-pr-candidate-line: #53674f;
+  --act-pr-comment-line: #4d705c;
+  --act-pr-reply-line: #3f5948;
+  --act-pr-avatar-line: #405b49;
+  --act-pr-control: #a8c4b3;
+  --act-pr-control-hover: #ddf5e7;
+  --act-pr-preview-hover: #f1fff6;
+  --act-pr-dismissed: #a7aaa5;
+  --act-pr-thread-path: #b5b2d7;
+  --act-pr-seen: #a9bfb0;
+  --act-pr-linked-bg: #25302d;
+  --act-pr-linked-line: #526358;
+  --act-pr-linked-revision: #adc4b5;
+  --act-pr-stale: #ecc186;
+  --act-pr-status-bg: #342d21;
+
+  /* Slack thread */
+  --act-slack-selected-line: #c2a5ec;
+  --act-slack-selected-tint: #30293c;
+  --act-slack-selected-bg: #262d2e;
+
+  /* Rollout view */
+  --act-rollout-ink: #d2dfd7;
+  --act-rollout-gate: #302d22;
+  --act-rollout-gate-line: #bc995e;
+  --act-rollout-job-line: #30473c;
+
+  /* Terminal menus */
+  --act-terminal-focus-line: #8bb69a;
+  --act-terminal-menu-ring: #718b76;
+  --act-terminal-menu-hover: #97be9e;
+
+  /* Panels, map and to-dos: one-off inks and edges */
+  --act-attention-summary: #d1ddd4;
+  --act-elapsed-ink: #a8b3ab;
+  --act-resize-grip: #a8c5b0;
+  --act-neighborhood-paint: #91b78b;
+  --act-neighborhood-paint-preview: #c3edb6;
+  --act-neighborhood-title-focus: #e0ecd8;
+  --act-key-hint: #88998c;
+  --act-drop-ink: #d5eddb;
+  --act-drop-ghost: #24372abb;
+  --act-drop-target: #b4d69b;
+  --act-todo-hover-line: #536c58;
+  --act-todo-done-ink: #819087;
+  --act-todo-hint-bg: #34452b;
+  --act-todo-group-wash: #98d8af20;
+
+  /* Review findings: severity and kind tones */
+  --act-review-high: #f5ad78;
+  --act-review-high-bg: #3b2a1c;
+  --act-review-medium: #e6cf7d;
+  --act-review-low: #a9c9b3;
+  --act-review-hardening: #a8bde6;
+  --act-review-security: #c9b1f2;
+  --act-review-security-bg: #2e283d;
+  --act-review-question: #8dcbc3;
+  --act-review-question-bg: #1f3432;
+
   /* Type */
   --act-font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", sans-serif;
   --act-font-mono: ui-monospace, "SF Mono", Menlo, monospace;
@@ -215,3 +399,314 @@
   --act-z-modal: 500;
 }
 
+
+/*
+ * Light theme. Main resolves Settings → General → Appearance through Electron's nativeTheme
+ * (System follows macOS, Light or Dark pin it) and sets data-theme on <html>. Every colour
+ * token with a literal dark value has a light value here; tokens that point at another token
+ * follow it. Roles keep their meaning: amber stays Needs me, mint stays the accent.
+ */
+:root[data-theme="light"] {
+  /* Surfaces: the field is a pale sage, cards and panels sit lighter on it */
+  --act-deep: #dce4de;
+  --act-bg: #eef2ee;
+  --act-sunken: #e5ebe6;
+  --act-card: #fbfcfa;
+  --act-surface: #f5f8f5;
+  --act-panel: #f8faf7;
+  --act-raised: #ffffff;
+  --act-control: #e6ece7;
+  --act-hover: #dfe7e1;
+  --act-selected: #d0e3d5;
+  --act-control-hover: #d6e1d9;
+
+  --act-line: #c6d2c9;
+  --act-line-control: #b2c1b6;
+  --act-line-strong: #92a597;
+  --act-line-accent: #6c8d75;
+
+  --act-ink-bright: #08100b;
+  --act-ink: #17231b;
+  --act-ink-soft: #334237;
+  --act-ink-dim: #4c5d51;
+  --act-ink-faint: #5d6f62;
+  --act-ink-on-selected: #1f3326;
+  --act-ink-on-accent: #f4fbf6;
+  --act-ink-on-attention: #241c0c;
+
+  --act-accent: #2c7a49;
+  --act-accent-bg: #d4eadb;
+  --act-focus: #2c7a49;
+  --act-section: #84672a;
+
+  --act-link: #7f9886;
+
+  --act-mute-hull: #6d7aa6;
+  --act-mute-veil: #dde2ee;
+  --act-mute-card: #c6cddf;
+  --act-mute-note: #aab1c1;
+  --act-mute-star: #4a5578;
+  --act-mute-atlas: #b6bed5;
+
+  --act-undermap: #f4e6e6;
+  --act-undermap-line: #d8aeb0;
+  --act-undermap-surface: #f9eded;
+  --act-undermap-ink: #3b1717;
+  --act-undermap-ink-dim: #85524b;
+  --act-undermap-accent: #7448ad;
+  --act-undermap-edge: #c88a86;
+
+  --act-card-teal: #26776f;
+  --act-card-teal-bg: #d3ebe8;
+  --act-card-amber: #94681a;
+  --act-card-blue: #3b5d9c;
+  --act-card-indigo: #574a9c;
+  --act-card-indigo-bg: #e2def3;
+
+  --act-card-lift: #0000000a;
+
+  --act-working-ink: #1c7442;
+  --act-working-sheep: #ffffff;
+  --act-working-sheep-head: #5f9e77;
+  --act-working-raccoon: #8e9892;
+  --act-working-raccoon-band: #3d4540;
+  --act-working-raccoon-pale: #ffffff;
+  --act-working-raccoon-can: #66726c;
+  --act-todo-ink: #27643b;
+  --act-needs-row-bg: #f7eed8;
+  --act-strip-neutral: #8a9a8e;
+  --act-strip-violet: #7a60ae;
+  --act-strip-blue: #4c7cbd;
+  --act-ink-on-coral: #2a1812;
+  --act-coral-bg: #f8e0d7;
+  --act-coral-bg-hover: #f1cbbd;
+  --act-coral-ink: #7a2e17;
+
+  --act-attention: #a86f0e;
+  --act-attention-asking: #c77f00;
+  --act-attention-finished: #8f7c52;
+  --act-pending: #85600f;
+  --act-pending-bg: #f7eed3;
+  --act-pending-line: #d6bd84;
+  --act-needs-me-fill: #f7ecd0;
+  --act-needs-me-edge: #c7a35c;
+  --act-error: #9e3720;
+  --act-error-bg: #f9e2dc;
+  --act-bad: #bd332c;
+  --act-danger-fill: #b44a3d;
+  --act-danger-ink: #fff3ee;
+  --act-info: #2c62a6;
+  --act-info-bg: #dde9f7;
+  --act-info-line: #9bb4d5;
+  --act-neutral: #57665d;
+
+  --act-blue-sunken: #e5ebf3;
+  --act-blue-surface: #f1f5fa;
+  --act-blue-raised: #fbfcfe;
+  --act-blue-hover: #dce5f1;
+  --act-blue-line: #c2cede;
+  --act-blue-ink: #17212e;
+  --act-blue-ink-dim: #48586e;
+  --act-blue-ink-faint: #63728a;
+
+  --act-tone-green: #277d45;
+  --act-tone-violet: #7449ad;
+  --act-tone-red: #b43f37;
+  --act-tone-coral: #c0552d;
+
+  --act-agent-claude: #bc613d;
+  --act-agent-codex: #4264c2;
+  --act-brand-linear: #5a51cc;
+  --act-brand-github: #393450;
+  --act-copper: #a45f2c;
+  --act-copper-bg: #f4e6da;
+  --act-copper-line: #d6b294;
+  --act-copper-ink: #221710;
+  --act-copper-fill: #d59a6e;
+
+  /* Papers stay pastel with dark ink in both themes; slate is the one paper that follows the theme */
+  --act-paper-mint: #c9e8d2;
+  --act-paper-sky: #c3d2f0;
+  --act-paper-lilac: #e2d2f5;
+  --act-paper-peach: #ffd9c8;
+  --act-paper-moss: #d6e2b8;
+  --act-paper-ice: #d3f0f2;
+  --act-paper-rose: #f5ccd3;
+  --act-paper-sand: #ebe2cf;
+  --act-paper-fog: #dde1df;
+  --act-paper-ink: #15251a;
+  --act-paper-tape: #ffffff9e;
+
+  --act-shadow-sm: 0 3px 0 #c5d0c8;
+  --act-shadow-md: 0 5px 0 #bfcac2, 0 12px 35px #1a2a2014;
+  --act-shadow-lg: 0 12px 40px #1a2a201f;
+  --act-shadow-popover: 0 6px 18px #1a2a2029;
+
+  /* Pixel controls: the top bevel of a hovered button */
+  --act-bevel-hover: #ffffff;
+  /* Drop shadow tints for one-off shadows (cards, review popovers, the tool rail) */
+  --act-shade-soft: #1a2a2014;
+  --act-shade: #1a2a201f;
+  --act-shade-strong: #1a2a2029;
+  /* Danger and invalid input: confirm strips, quiet destructive buttons, invalid fields and markers */
+  --act-danger-bg: #fbe9e4;
+  --act-danger-bg-ink: #5c241b;
+  --act-danger-fill-hover: #963a2f;
+  --act-danger-soft: #f9e3dd;
+  --act-danger-soft-hover: #f3d2c9;
+  --act-danger-soft-line: #c98a7f;
+  --act-danger-soft-ink: #8f3424;
+  --act-danger-ink-dim: #91493b;
+  --act-danger-text: #9c3d2a;
+  --act-invalid-line: #c0553d;
+  --act-invalid-line-soft: #c0553d;
+  --act-invalid-bg: #fdf0ec;
+  --act-invalid-mark: #b84a34;
+  --act-invalid-mark-ink: #fff4ef;
+  --act-invalid-ink: #a23b26;
+  --act-invalid-ink-soft: #a3452a;
+  --act-error-strong-bg: #f6d6ce;
+  /* Irreversible actions (merge, approve, stop): a warm sand caution, never Needs me amber */
+  --act-irreversible-bg: #f3eadc;
+  --act-irreversible-hover: #e9dbc4;
+  --act-irreversible-line: #957650;
+  --act-irreversible-ink: #664720;
+  /* Error screen */
+  --act-error-screen-line: #a9bfaf;
+  --act-error-screen-code: #2a372e;
+  --act-tone-green-ink: #f2fbf5;
+  --act-tone-green-hover: #1f6a3a;
+  /* Settings */
+  --act-switch-on: #2c7a49;
+  --act-switch-on-line: #1f6038;
+  --act-switch-knob: #ffffff;
+  --act-settings-select-line: #6c8d75;
+  --act-settings-quiet-hover: #1d5a34;
+  --act-settings-muted: #45604d;
+  --act-settings-chip-pending: #f6ebcf;
+  --act-settings-chip-error: #f9e0da;
+  --act-settings-note-bg: #f6f3e4;
+  --act-settings-note-ink: #4f4630;
+  --act-settings-note-strong: #3b321a;
+  --act-settings-code: #1f3326;
+  --act-settings-clean: #5a7a63;
+  --act-settings-check: #2c7a49;
+  --act-settings-tree-selected-ink: #1b4a2c;
+  --act-settings-tree-selected-bar: #2c7a49;
+  --act-settings-tree-hover-line: #a6bdab;
+  --act-provider-github-bg: #e6e4f0;
+  --act-provider-notion-bg: #ebebeb;
+  --act-provider-notion-ink: #1f1f1f;
+  --act-provider-linear-bg: #e4e2f6;
+  --act-provider-slack-bg: #f6e1ee;
+  --act-provider-slack-ink: #8a2c63;
+  /* Undermap layer: portal, cards and bar */
+  --act-portal-glow: #7a3fe0;
+  --act-portal-glow-bright: #8f5af0;
+  --act-portal-bg: #ece4fa;
+  --act-portal-ring: #ddd2f0;
+  --act-portal-drop: #c9bde0;
+  --act-portal-line: #b9a3e0;
+  --act-portal-return: #3f8a45;
+  --act-portal-return-bright: #5aa75f;
+  --act-portal-return-line: #8fb596;
+  --act-undermap-card-drop: #d8b9b9;
+  --act-undermap-card-wash: #b4404014;
+  --act-undermap-bar: #fbefefe6;
+  --act-undermap-button-line: #c98d85;
+  --act-undermap-button-hover: #f1d3cf;
+  /* Tool rail: a Minecraft-style hotbar, dark glass in the dark theme and pale glass in the light one */
+  --act-hotbar: #f4f6f4d9;
+  --act-hotbar-edge: #3d4540;
+  --act-hotbar-slot: #ffffff8c;
+  --act-hotbar-slot-edge: #9aa39d;
+  --act-hotbar-slot-shade: #c9d0cb;
+  --act-hotbar-slot-light: #ffffff;
+  --act-hotbar-slot-active: #17231b;
+  --act-rail-toggle-hover: #0000000f;
+  --act-rail-grip: #72907b;
+  /* Card tones beyond the card tokens above, and the open-item button */
+  --act-card-violet: #7550b8;
+  --act-card-violet-bg: #ebe3f7;
+  --act-card-rose: #a3405a;
+  --act-card-rose-bg: #f5e2e7;
+  --act-card-neutral-bg: #e9eee9;
+  --act-card-open-hover: #2c62a61f;
+  /* Picker: item types, sessions and the dashed placement slot */
+  --act-picker-hover-line: #5f8f6d;
+  --act-picker-pressed-line: #4f7f5d;
+  --act-picker-saved-line: #9a7f45;
+  --act-picker-saved-bg: #eef0e2;
+  --act-picker-slot: #f4ebdc;
+  --act-picker-slot-line: #9e7638;
+  --act-picker-slot-shade: #dcc6a2;
+  --act-picker-choice: #5d7865;
+  --act-picker-url: #3f6b4c;
+  /* Markdown and links in item views */
+  --act-link-text: #2a6a40;
+  --act-link-text-hover: #14432a;
+  --act-quote-ink: #4a5d50;
+  /* Pull request desk */
+  --act-pr-ink: #223026;
+  --act-pr-link: #3a6b4a;
+  --act-pr-meta-link: #2f6040;
+  --act-pr-merged-bg: #e9e1f4;
+  --act-pr-closed: #9a3a2c;
+  --act-pr-closed-bg: #f7e1dd;
+  --act-pr-refs: #5d4a80;
+  --act-pr-refs-bg: #e6ebeb;
+  --act-pr-help: #6b5a36;
+  --act-pr-candidate-line: #a9b9a3;
+  --act-pr-comment-line: #9fbba9;
+  --act-pr-reply-line: #b6c9bb;
+  --act-pr-avatar-line: #a9bfaf;
+  --act-pr-control: #476452;
+  --act-pr-control-hover: #173a26;
+  --act-pr-preview-hover: #0d2416;
+  --act-pr-dismissed: #5f625d;
+  --act-pr-thread-path: #4f4b7d;
+  --act-pr-seen: #4c6152;
+  --act-pr-linked-bg: #edf2ef;
+  --act-pr-linked-line: #b1bfb5;
+  --act-pr-linked-revision: #4a6353;
+  --act-pr-stale: #7d5c24;
+  --act-pr-status-bg: #f5eedf;
+  /* Slack thread */
+  --act-slack-selected-line: #7a55b5;
+  --act-slack-selected-tint: #ece6f5;
+  --act-slack-selected-bg: #e8eded;
+  /* Rollout view */
+  --act-rollout-ink: #1f2c24;
+  --act-rollout-gate: #f4efe0;
+  --act-rollout-gate-line: #a07c3c;
+  --act-rollout-job-line: #c3d3c8;
+  /* Terminal menus */
+  --act-terminal-focus-line: #3f8a5a;
+  --act-terminal-menu-ring: #8aa391;
+  --act-terminal-menu-hover: #3f8a5a;
+  /* Panels, map and to-dos: one-off inks and edges */
+  --act-attention-summary: #2c3a30;
+  --act-elapsed-ink: #56635a;
+  --act-resize-grip: #6f8a77;
+  --act-neighborhood-paint: #5f9a62;
+  --act-neighborhood-paint-preview: #a9d8a6;
+  --act-neighborhood-title-focus: #0f1a12;
+  --act-key-hint: #5d6f62;
+  --act-drop-ink: #1f4a2d;
+  --act-drop-ghost: #d4eadbbb;
+  --act-drop-target: #4f8f3a;
+  --act-todo-hover-line: #a6bcad;
+  --act-todo-done-ink: #66736a;
+  --act-todo-hint-bg: #e3eed8;
+  --act-todo-group-wash: #2c7a4920;
+  /* Review findings: severity and kind tones */
+  --act-review-high: #b0521a;
+  --act-review-high-bg: #f8e6d8;
+  --act-review-medium: #7a6512;
+  --act-review-low: #3f6b4f;
+  --act-review-hardening: #3a5a96;
+  --act-review-security: #6a45a8;
+  --act-review-security-bg: #ebe4f6;
+  --act-review-question: #23726a;
+  --act-review-question-bg: #d6ece9;
+}

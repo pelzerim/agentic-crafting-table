@@ -94,6 +94,7 @@ import type { JsonObject } from '../../../src/resource-plugins/types.ts';
 import { UNDERMAP_LOOSE } from '../../../src/graph/undermap.ts';
 import type { MirrorArea } from '../../../src/graph/undermap.ts';
 import { UndermapMonths, UndermapPlates } from './undermap-months.tsx';
+import { useColorScheme } from './color-scheme.ts';
 
 const registry = createResourcePluginRegistry();
 type MapItem = GraphNode & { activity?: string; attention?: string; summary?: string; lastLine?: string; recap?: { text: string; at: string } };
@@ -458,6 +459,12 @@ const PlotSigns = memo(function PlotSigns({ signs, zoom, hovered, renaming, stat
 });
 const FLY_ZOOM = .8, WEB_DOUBLE_CLICK_MS = 300, DENSE_PROJECT_LINKS = 12, DASHBOARD_DRAG_THRESHOLD = 4;
 const nodeTypes = { card: Card };
+
+/** React Flow draws the context arrowhead and the dot grid from colour props, outside the CSS tokens. */
+const MAP_INK = {
+  dark: { arrow: '#98d6ac', dots: '#364c3c', belowDots: '#4a2426' },
+  light: { arrow: '#2c7a49', dots: '#c3cfc6', belowDots: '#dcb7b8' },
+} as const;
 
 function MapCanvas(props: ProjectMapProps) {
   const container = useRef<HTMLDivElement>(null);
@@ -869,6 +876,7 @@ function MapCanvas(props: ProjectMapProps) {
   // Implied links (LINK-06) follow the drawn links only, so moving items or the camera never recomputes them.
   const impliedKey = useMemo(() => props.hideImpliedLinks === false ? '' : drawable.explicit.map(link => `${link.id} ${link.sourceId} ${link.targetId} ${link.kind} ${link.reveal ?? ''}`).join('\n'), [drawable, props.hideImpliedLinks]);
   const implied = useMemo(() => impliedKey ? impliedLinks(drawable.explicit) : NO_LINKS, [impliedKey]);
+  const scheme = useColorScheme(), ink = MAP_INK[scheme];
   const edges = useMemo(() => {
     const { visible, quietOf, explicit } = drawable;
     // A hover or implied link is drawn only while an end is hovered, focused, selected or open, or the link itself is hovered, focused or highlighted.
@@ -884,8 +892,8 @@ function MapCanvas(props: ProjectMapProps) {
     }
     const resting = (link: GraphLink) => link.kind !== 'blocks' && !selection.has(link.sourceId) && !selection.has(link.targetId)
       && [projectOf(link.sourceId), projectOf(link.targetId)].some(project => project && perProject.get(project)! > DENSE_PROJECT_LINKS);
-    return explicit.map(link => ({ id: link.id, source: link.sourceId, target: link.targetId, type: 'direct', selectable: true, focusable: true, interactionWidth: 24, ...(quietOf(link.sourceId) ?? quietOf(link.targetId) ? { zIndex: -2 } : {}), markerEnd: link.kind === 'context' ? { type: MarkerType.ArrowClosed, color: '#98d6ac', width: 22, height: 22 } : undefined, ...(link.kind === 'blocks' ? { data: { stop: true } } : {}), className: `explicit-edge ${link.kind}-edge ${link.kind === 'blocks' && blocking.resolved.get(link.id) ? 'blocks-resolved ' : ''}${shown.has(link.id) ? '' : 'link-concealed '}${emphasized ? emphasized.has(link.id) ? 'connection-active' : 'connection-muted' : inspection ? [link.id, link.sourceId, link.targetId].includes(inspection) ? 'connection-active' : 'connection-muted' : resting(link) ? 'connection-resting' : ''}`, ariaLabel: link.kind === 'blocks' ? `Blocking: ${visible.get(link.sourceId)?.title} blocks ${visible.get(link.targetId)?.title}${blocking.resolved.get(link.id) ? ' (resolved)' : ''}` : `${link.kind === 'context' ? 'Context' : 'Related'}: ${visible.get(link.sourceId)?.title} to ${visible.get(link.targetId)?.title}` }));
-  }, [blocking, drawable, implied, hovered, keyboardFocused, hoveredEdge, focusedEdge, focus, inspected?.id, props.highlightedLinks, props.menuFor, selection]);
+    return explicit.map(link => ({ id: link.id, source: link.sourceId, target: link.targetId, type: 'direct', selectable: true, focusable: true, interactionWidth: 24, ...(quietOf(link.sourceId) ?? quietOf(link.targetId) ? { zIndex: -2 } : {}), markerEnd: link.kind === 'context' ? { type: MarkerType.ArrowClosed, color: ink.arrow, width: 22, height: 22 } : undefined, ...(link.kind === 'blocks' ? { data: { stop: true } } : {}), className: `explicit-edge ${link.kind}-edge ${link.kind === 'blocks' && blocking.resolved.get(link.id) ? 'blocks-resolved ' : ''}${shown.has(link.id) ? '' : 'link-concealed '}${emphasized ? emphasized.has(link.id) ? 'connection-active' : 'connection-muted' : inspection ? [link.id, link.sourceId, link.targetId].includes(inspection) ? 'connection-active' : 'connection-muted' : resting(link) ? 'connection-resting' : ''}`, ariaLabel: link.kind === 'blocks' ? `Blocking: ${visible.get(link.sourceId)?.title} blocks ${visible.get(link.targetId)?.title}${blocking.resolved.get(link.id) ? ' (resolved)' : ''}` : `${link.kind === 'context' ? 'Context' : 'Related'}: ${visible.get(link.sourceId)?.title} to ${visible.get(link.targetId)?.title}` }));
+  }, [blocking, drawable, implied, hovered, keyboardFocused, hoveredEdge, focusedEdge, focus, inspected?.id, props.highlightedLinks, props.menuFor, selection, ink]);
   const settledAtlas = useRef<{ projects: AtlasProjectEntry[]; items: AtlasItemEntry[] }>(undefined);
   // The Atlas follows committed layout only; drag and resize previews keep the last one.
   const atlas = useMemo(() => {
@@ -1495,7 +1503,7 @@ function MapCanvas(props: ProjectMapProps) {
       defaultViewport={props.initialViewport ?? { x: 70, y: 80, zoom: .85 }} minZoom={ZOOM_LEVELS.min} maxZoom={ZOOM_LEVELS.max} nodeDragThreshold={CLICK_SLIP} nodeClickDistance={CLICK_SLIP} zoomOnDoubleClick={false} elevateNodesOnSelect={false} proOptions={{ hideAttribution: true }}
       selectionKeyCode={null} multiSelectionKeyCode={null} elementsSelectable={false} nodesConnectable={false} deleteKeyCode={null} onlyRenderVisibleElements={false}
       panOnDrag={!itemResize.preview && !viewInteracting} zoomOnScroll={!itemResize.preview && !viewInteracting} zoomOnPinch={!itemResize.preview && !viewInteracting}>
-      <Background color={props.layer === 'below' ? '#4a2426' : '#364c3c'} gap={24} size={1} />
+      <Background color={props.layer === 'below' ? ink.belowDots : ink.dots} gap={24} size={1} />
       <ViewportPortal>{grounds.some(ground => ground.biome) && <div className="neighborhood-biomes" data-flat={flatGround || undefined} aria-hidden="true" style={{ opacity: fieldAppearance.brightness / 100 }}>{grounds.map(({ project, biome, items }) => biome && <BiomeGround key={project.id} id={project.id} points={project.points} appearance={fieldAppearance} biome={biome} items={items} flat={flatGround} attaching={attachingTo === project.id || ghostProject === project.id} dragging={Boolean(drag || itemResize.preview || todoGhost)} />)}</div>}
         <svg className="neighborhoods" aria-label="Project neighborhoods" opacity=".24" shapeRendering="crispEdges">{grounds.map(({ project, color, biome }) => <NeighborhoodField key={project.id} id={project.id} points={project.points} appearance={props.neighborhoodAppearance} attaching={attachingTo === project.id || ghostProject === project.id} dragging={Boolean(drag || itemResize.preview || todoGhost)} color={color} biome={biome?.id} />)}
           {!dashboards && plotShapes.map(shape => <g key={shape.plot.id} className="plot-patch" data-plot-patch={shape.plot.id} data-plot-color={plotColor(shape.plot)} style={plotStyle(plotNeighborhoods.get(shape.plot.projectId), plotColor(shape.plot))} data-parts={shape.parts} data-hover={hoveredPlot === shape.plot.id || undefined} aria-hidden="true">{shape.paths.map((path, shade) => <path key={shade} data-shade={shade} d={path} />)}</g>)}</svg>

@@ -87,7 +87,7 @@
 
 .attention-entry .attention-summary {
   display: block;
-  color: #d1ddd4;
+  color: var(--act-attention-summary);
   font-size: var(--act-fs-ui);
   line-height: 1.5;
   white-space: pre-wrap;
