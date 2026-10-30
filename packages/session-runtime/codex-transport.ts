@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import WebSocket from 'ws';
 import { CodexRpc } from './codex-client.ts';
-import { stopDescendants } from './process-tree.ts';
+import { stopProcessTree } from '../platform/process-tree.ts';
 
 /** Owns a private native server. It never connects to or stops the user's shared daemon. */
 export async function openCodexTerminalServer(executable: string, options: { cwd: string; env: NodeJS.ProcessEnv; arguments?: string[]; timeout?: number; signal?: AbortSignal; owner?: { executable: string; entrypoint: string; electron: boolean } }) {
@@ -25,12 +25,8 @@ export async function openCodexTerminalServer(executable: string, options: { cwd
     options.signal?.removeEventListener('abort', abort);
     rpc?.close(); socket?.terminate(); connecting?.terminate();
     if (child.pid && child.exitCode === null && child.signalCode === null) {
-      // Failing to list descendants must not leave the server itself running.
-      let finish = () => {};
-      try { finish = stopDescendants(child.pid); } catch { /* The server is still stopped below. */ }
-      child.kill('SIGTERM');
-      const force = setTimeout(() => { finish(); child.kill('SIGKILL'); }, 1000);
-      await exited; clearTimeout(force); finish();
+      const tree = stopProcessTree({ pid: child.pid, kill: signal => child.kill(signal) });
+      await exited; tree.settle();
     }
     await rm(directory, { recursive: true, force: true });
   })();

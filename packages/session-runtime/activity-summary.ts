@@ -1,6 +1,6 @@
 import { stripVTControlCharacters } from 'node:util';
 import { probeClaude } from './claude.ts';
-import { sessionPath } from './shell-path.ts';
+import { sessionPath } from '../platform/shell.ts';
 import type { ActivitySummaryClient } from '../../src/agents/activity-summary.ts';
 
 /** Best-effort secret removal. Full recordings and transcripts stay local; no

@@ -5,6 +5,7 @@ import { access, readFile, realpath, unlink } from 'node:fs/promises';
 import { userInfo } from 'node:os';
 import { join } from 'node:path';
 import { LAUNCHER_SCRIPT, parseLauncher } from '../../packages/desktop-update/release.ts';
+import { defaultShell, profileScriptArgs } from '../../packages/platform/shell.ts';
 import { bundleLayout } from '../../packages/core/bundle-layout.ts';
 import { CHECKOUT_PACKAGE_NAME, UPDATE_COMMAND, appUpdateRow, checkoutOfExecutable, updateFailureSchema } from '../../packages/core/updates.ts';
 import type { UpdateFailure, UpdateStatus } from '../../packages/core/updates.ts';
@@ -31,8 +32,8 @@ export async function clearUpdateFailure(userData: string, status: UpdateStatus)
 
 /** The node and PATH the person's login shell resolves, found before quitting so a shell without node never leaves the app closed. */
 export async function resolveLauncher(): Promise<{ node: string; path: string }> {
-  const shell = userInfo().shell || '/bin/zsh';
-  const output = await new Promise<string>(resolve => execFile(shell, ['-ilc', LAUNCHER_SCRIPT], { encoding: 'utf8', timeout: 15_000, maxBuffer: 1024 * 1024 }, (_error, stdout) => resolve(stdout ?? '')));
+  const shell = defaultShell(userInfo().shell);
+  const output = await new Promise<string>(resolve => execFile(shell, profileScriptArgs(LAUNCHER_SCRIPT), { encoding: 'utf8', timeout: 15_000, maxBuffer: 1024 * 1024 }, (_error, stdout) => resolve(stdout ?? '')));
   const found = parseLauncher(output);
   if (!found) throw new Error(`Node was not found in your login shell (${shell}). Update from a terminal with ${UPDATE_COMMAND}.`);
   const node = await realpath(found.node);

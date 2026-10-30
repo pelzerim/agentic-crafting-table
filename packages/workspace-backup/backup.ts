@@ -3,6 +3,7 @@ import { chmodSync, closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdir
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import * as z from 'zod/v4';
+import { isOwnedByCurrentUser } from '../platform/private-files.ts';
 import { migrations } from '../workspace-service/sqlite-store.ts';
 
 // Only app-owned durable state is included. Native conversations, OS credentials,
@@ -35,12 +36,12 @@ const contains = (parent: string, path: string) => { const offset = relative(par
 function disjoint(a: string, b: string) { if (contains(a, b) || contains(b, a)) throw new Error('Source and destination must be separate, non-nested directories'); }
 function regular(path: string) {
   const info = lstatSync(path);
-  if (!info.isFile() || info.nlink !== 1 || (process.getuid && info.uid !== process.getuid())) throw new Error('Expected an owned regular file without hard links');
+  if (!info.isFile() || info.nlink !== 1 || !isOwnedByCurrentUser(info)) throw new Error('Expected an owned regular file without hard links');
   return info;
 }
 function directory(path: string) {
   const info = lstatSync(path);
-  if (!info.isDirectory() || (process.getuid && info.uid !== process.getuid())) throw new Error('Expected an owned directory, not a symbolic link');
+  if (!info.isDirectory() || !isOwnedByCurrentUser(info)) throw new Error('Expected an owned directory, not a symbolic link');
 }
 function safeParents(root: string, path: string) {
   for (let parent = dirname(path); parent !== root; parent = dirname(parent)) { if (!contains(root, parent)) throw new Error('Path escaped its root'); directory(parent); }

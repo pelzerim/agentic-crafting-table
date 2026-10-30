@@ -1,11 +1,12 @@
 import { execFile } from 'node:child_process';
-import { sessionPath } from '../session-runtime/shell-path.ts';
+import { devNull } from 'node:os';
+import { sessionPath } from '../platform/shell.ts';
 
 export class GitError extends Error {}
 export type GitRunner = (args: readonly string[], options: { cwd?: string; timeoutMs: number }) => Promise<string>;
 
 /** Hardening applied to every invocation: no command transports, hooks or interactive prompts. */
-export const GIT_SAFETY = ['-c', 'protocol.ext.allow=never', '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', '-c', 'submodule.recurse=false', '-c', 'credential.interactive=never'] as const;
+export const GIT_SAFETY = ['-c', 'protocol.ext.allow=never', '-c', `core.hooksPath=${devNull}`, '-c', 'core.fsmonitor=false', '-c', 'submodule.recurse=false', '-c', 'credential.interactive=never'] as const;
 
 const lastLine = (text: string) => text.split('\n').map(line => line.trim()).filter(Boolean).at(-1) ?? '';
 /** Drops embedded credentials from git's own messages. */

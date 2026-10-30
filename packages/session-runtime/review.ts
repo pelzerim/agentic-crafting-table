@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import type { AgentCapability } from './agent-plan.ts';
 import type { LaunchRequest } from './protocol.ts';
 import { DEFAULT_CODEX_EFFORT } from './codex-models.ts';
-import { sessionPath } from './shell-path.ts';
+import { sessionPath } from '../platform/shell.ts';
 import type { ReviewProvider } from '../../src/pull-requests/reviews.ts';
 import type { GitComparison } from '../provider-runtime/git-comparison.ts';
 import { canonical } from '../core/control.ts';

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { chmodSync, closeSync, constants, fstatSync, openSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { isOwnedByCurrentUser } from '../platform/private-files.ts';
 
 export type FileIdentity = { dev: number; ino: number };
 export type InstallIntent = {
@@ -32,7 +33,7 @@ export class InstallJournal {
     const fd = openSync(path, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
     try {
       const stat = fstatSync(fd);
-      if (!stat.isFile() || stat.nlink !== 1 || (process.getuid && stat.uid !== process.getuid())) throw new Error('Unsafe installer journal');
+      if (!stat.isFile() || stat.nlink !== 1 || !isOwnedByCurrentUser(stat)) throw new Error('Unsafe installer journal');
     } finally { closeSync(fd); }
     chmodSync(path, 0o600);
     this.db = new DatabaseSync(path);
