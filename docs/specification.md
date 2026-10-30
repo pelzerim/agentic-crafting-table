@@ -61,7 +61,7 @@ below.
 | ID | Required behavior |
 | --- | --- |
 | MAP-01 | One continuous map supports workspace overview, project neighborhood, and expanded item views. Items expand in place as the camera approaches; navigation must not feel like opening a separate inspector panel. Keep the original bubble and its connections on the map. Animate its expanded surface continuously from the bubble’s actual visible bounds into the full-item view and back, including normal-motion intermediate frames. Keep the surrounding camera and neighborhood fixed during this expansion, preserve terminal mounts, and skip the animation for reduced motion. |
-| MAP-02 | Expanded items use type-specific bounded dimensions (SETTINGS-07), leaving surrounding map space. Agents and Terminals have larger defaults; notes and to-dos never enter detail focus (notes are written on the map, RES-09). A visible project pixel field and location trail preserve orientation; hide the locator and zoom control in this view. Connected items are directly reachable. A pixelated X or right-click anywhere returns to the project without opening a context menu; **Right click in an open view** can limit that to outside an open agent or terminal view (SETTINGS-TERMINAL). The X button has the same outer height and vertical alignment as the other buttons in the expanded item toolbar; center its glyph within that shared button height. Escape steps back through project and overview. |
+| MAP-02 | Expanded items use type-specific bounded dimensions (SETTINGS-07), leaving surrounding map space. Agents and Terminals have larger defaults; notes and to-dos never enter detail focus (notes are written on the map, RES-09). A visible project pixel field and location trail (Project / Plot / Item, the plot only when the item is in one) preserve orientation. Above the title the open item's header names its place: the project's colour square and name › the plot's name, as the map shows it (only the project in no plot, “Floating item” in no project); the project or plot name closes the item and flies there, and **Show on map** (a crosshair left of the close controls) closes it and centres the map on its card; hide the locator and zoom control in this view. Connected items are directly reachable. A pixelated X or right-click anywhere returns to the project without opening a context menu; **Right click in an open view** can limit that to outside an open agent or terminal view (SETTINGS-TERMINAL). The X button has the same outer height and vertical alignment as the other buttons in the expanded item toolbar; center its glyph within that shared button height. Escape steps back through project and overview. |
 | MAP-03 | In overview and neighborhood views, omit the central project bubble. Keep the same floating **Project: NAME** title horizontally centered above the neighborhood field. Center its text and status counts, with project actions accessible alongside. Use readable screen-space text at every zoom level and keep the title behind item content. If the cap or title extends offscreen, keep the title reachable at the visible viewport edge without moving the map. Omit derived project connection lines at every zoom; the pixel field expresses membership. The title supports opening, group dragging and project actions in both views. Preserve saved project anchors and member positions. Zoom transitions must not move members, rewrite saved positions or alter outline geometry. |
 | MAP-04 | Each project has a dynamic, padded pixel field following the rounded convex enclosure of all visible member footprints, drawn as a **spline hull**: long straight runs between distant members bow gently outward into curves, while single items and compact groups keep their rounded hull. The curve stays convex, never self-intersects, always contains the full padding around every member, and changes continuously while a member is dragged. Use **B · Broad steps**: four broad fading shades of large square pixels, **24 world pixels** by default, with **no stroked outline**. Fade inward from the logical edge across 96 world pixels by default; keep the center solid. Pixel size, fade distance and optional edge scattering are configurable (SETTINGS-09). Derive the enclosure from full detailed member footprints, ignoring the saved project anchor except for empty projects. Recenter and grow live when members move/add/remove, retaining other positions. Default minimum logical clearance is one large item width; preserve SETTINGS-03 padding and membership/attachment hit tests independently of visual opacity. Use a stable world grid and deterministic scattered cells, with no camera-dependent rerasterization or idle motion. During dragging, the field follows the member immediately; other geometry/material changes use a short shading transition, skipped for reduced motion. Keep the field behind titles, connections and items in all zoom levels and expanded-item views; remove the separate focus-view outline frame. Attachment feedback brightens the field without adding a stroke. Bound render complexity for extreme spreads using integer multiples of the chosen pixel size. This supersedes the earlier visible pixel-stepped stroke. The logical enclosure is stepped on the same world grid as the default 24-pixel fill (whole multiples of it for very large projects), so **the visible field decides membership**: at the default pixel size a point is inside a project exactly when its cell is painted. Creation, attachment, owned-item transfer previews and drops, the Atlas and far-zoom dashboards all use this smoothed field; an item dropped outside the drawn field does not join (beyond the floating-attachment reach). |
 | MAP-05 | All map levels share world-space positions. Zooming changes camera and presentation, not saved layout. Expanded surfaces may move independently in screen space (MAP-19). Transitions preserve orientation, with no radial redistribution or jump on returning to overview. |
@@ -448,7 +448,7 @@ focusing an icon shows a tooltip with the project's name, counts and age, its Ne
 four, then “+N more”), its written Next line and its meta text (“2 to-dos · 1 working”, or “Nothing
 open”); clicking it fits the project (as an Atlas blob click). **M**, the fold control or “+N” unfolds
 it into the **Projects** panel (380 px, at most 60 % of the window, scrolls). The panel says each fact
-once and spends colour only on what waits on the person. Each project row, top down: a header (a 3 px
+once and spends colour only on what waits on the person. Each project row, top down: a header (a 4 px
 bar and the tag in the project's colour, the name as a button that flies there, tier counts, age of its
 last activity); its **Needs me rows**, each a tier mark, “title — reason” and the age it has waited,
 clicking it centres the item without opening or marking it, and on hover or focus one action, **Seen**
@@ -464,7 +464,14 @@ restates them. Last, a dimmed **meta** line with only what a person still acts o
 “N to-dos” (open ones; opens the to-do list at the project's first open to-do) and “N working”; zeros,
 done to-dos and pipeline totals are never shown. Working agents are never rows. Quiet projects (no
 Needs me, nothing working, no activity for 24 h) fold into one “N quiet projects ›” line that expands.
-Up and Down move through rows, Enter acts, Esc or M folds. The panel stays open beside the Needs me
+Up and Down move through rows, Enter acts, Esc or M folds. Project rows read as parents (larger, bold), plot
+headers in upper case, item rows indented in regular weight with their reason and state smaller and dimmed.
+**Order**: dragging a project row (a few pixels, so a click still flies there) or a plot header within its
+project moves it, with a line where it lands; Esc cancels and a plot dropped outside its project stays.
+Alt+Up and Alt+Down move the focused row one place and announce it. A saved order wins: projects and plots
+it lacks go on top in the automatic order, then the saved ones in saved order; quiet projects keep their
+fold and their own order inside it, and the folded column's icons follow (active, then quiet). Item rows keep
+their automatic order. The panel stays open beside the Needs me
 sheet; with Needs me open, Esc closes Needs me first.
 The panel's header holds **filters** and a **pin**, and its top-left corner a **resize grip** (drag, or
 arrow keys; Home resets; 260 × 160 px at least, bounded by the window). Each project row and plot header
@@ -478,7 +485,8 @@ kind: **Agents** (agent and terminal sessions), **PRs** (pull requests, code rev
 item is open, and M toggles it then too; an item row opens its item (closing the open one), a project or
 plot row closes the open item and flies there. **Pinned** (“Keep the projects panel open”), it also stays
 open with Needs me, To-dos, Reminders, the GitHub inbox or the Controls card, moving left of an open rail
-panel, and Esc and row clicks leave it open; M closes it and unpins. Size, folds, filters and the pin are
+panel, and Esc and row clicks leave it open; M closes it and unpins. Size, folds, filters, the pin and the order
+(`order`, `plotOrder`, at most 500 ids each; ids that no longer exist are dropped on save) are
 saved in `view.projectsPanel`. src/graph/project-column.ts builds the model from `projectDashboard()`; the column
 re-renders only when its model changes, never with the camera. On the
 Undermap the column is not shown (Needs me and Working pause there) and M does nothing; with
@@ -725,7 +733,9 @@ settled: recomputing with its own result changes nothing. Plots are
 recomputed by the workspace service on each committed revision (drops, placement
 commits, membership changes, links saved or removed and at load), never during a drag,
 pan or zoom. Patches and signs stay drawn while an item is open; the open item covers
-only what lies under it.
+only what lies under it. The board around an open item pans and zooms as usual (drag, wheel, pinch);
+the item stays where it is on screen, wheel and drag over it stay with it, a drag is never a click,
+and Back leaves the camera where it was moved.
 After a recompute a plot keeps its id, name and sign spot when it shares at least half
 its members (Jaccard ≥ 0.5) with a previous or recently dissolved plot; otherwise it is
 new. Geometry is never persisted; plot identity, names, hiding and the per-project

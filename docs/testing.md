@@ -49,7 +49,7 @@ involved.
 Project column coverage (MAP-22, MAP-OVERVIEW-01): `src/graph/project-column.test.ts` covers the
 model as a pure function (order Asking me, My turn, working, last activity; quiet projects folded;
 muted projects absent; icon tier and count; ten icons then “+N”; Needs me rows; the counts line and a
-summary in its place). `src/agents/project-summary.test.ts` covers the reduced input (titles, reasons,
+summary in its place; a saved project and plot order with new ones on top and unknown ids ignored). `src/agents/project-summary.test.ts` covers the reduced input (titles, reasons,
 working summaries, to-dos, plots and pipeline counts only, no times, capped at 2,000 characters) and
 the reply normaliser. `packages/workspace-service/project-summaries.test.ts` drives the helper with a
 fixture client: off by default, the 60 s debounce, the 10-minute floor, unchanged input never resent,
@@ -59,7 +59,9 @@ covers the `project_summaries` migration and reservation. `project-column.spec.t
 app: icon order and marks, the tooltip, the zoom bar above the column, no column mutation while the
 camera zooms, fly to a project, the unfolded rows and quiet line, keyboard, a Needs me row centring
 its item without opening it or marking it seen, exclusivity with the Needs me sheet, a seeded summary
-with its pen mark, `mapCorner: 'atlas'` and the Undermap. Atlas specs and the shared visual fixture
+with its pen mark, drag and Alt+Arrow reorder of projects and plots surviving a reload, the open item's
+place line flying to its plot and project, `mapCorner: 'atlas'` and the Undermap. `item-views.spec.ts`
+pans and zooms the board around an open item while the item stays put. Atlas specs and the shared visual fixture
 choose `mapCorner: 'atlas'`; `map-performance.spec.ts` keeps the default column. No model is called.
 
 Rail menus coverage (MAP-21): `rail-menus.spec.ts` drives the hidden app.
