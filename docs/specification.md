@@ -217,7 +217,8 @@ requested. Lifecycle operations remain independent of native session lifetime.
 
 **MAP-18 — Undermap.** The layer below the map is called **Undermap** (a name, always capitalized). Item and
 project menus on the map offer **Send to Undermap** (Send project/selection to
-Undermap) instead of Archive. The Undermap is a second map: the same camera, pan and
+Undermap) instead of Archive. A note shown as a badge goes below with the items it badges once none of
+them stays on the map. The Undermap is a second map: the same camera, pan and
 zoom, reached through the portal, **4** / **U**, with the sink and rise. It has two
 layouts (Settings → Map → Undermap layout); **Mirror** is the default.
 
@@ -3501,6 +3502,33 @@ and merge anyway”); the chosen option carries the acknowledged blockers, and a
 merge request without them, or with a blocker added since, is refused (“Blocked
 by …. Reopen the menu and choose an option marked “anyway” to go ahead.”).
 Show/Ship and other actions are unaffected.
+**Merge when ready (PR-MERGE-WHEN-READY).** The options query also reads the
+repository's `autoMergeAllowed` and the PR's `autoMergeRequest { enabledAt mergeMethod }`;
+the card's merge-queue read carries `autoMergeRequest` and `isMergeQueueEnabled`. When the
+PR is open, not a draft, not in the queue, has no conflicts (not DIRTY) and GitHub cannot
+merge it yet (BLOCKED, which includes pending required checks; UNKNOWN; or BEHIND without
+a queue) in a repository that allows auto-merge, Merge offers merge when ready instead of
+the immediate merge: one choice per allowed method in the usual order (“Squash and merge
+when ready”, “Create a merge commit when ready”, “Rebase and merge when ready”), or “Add
+to merge queue when ready” with a merge queue. The prompt reads “Merge #42 … into main at
+aaaaaaa when ready? Required reviews or checks are not satisfied.” (the same warnings as
+above). In every other case the menu is exactly the immediate merge; the full view's one
+click applies the first choice either way. With merge when ready already on, the prompt
+says so (“Merge when ready is on: GitHub will squash and merge #42 … into main once it
+can.”) and the only choice is **Cancel merge when ready**. Applying sends one fixed
+`enablePullRequestAutoMerge(input: { pullRequestId, expectedHeadOid, mergeMethod })`
+(without `mergeMethod` for a merge queue) or `disablePullRequestAutoMerge(input: { pullRequestId })`,
+humanOnly, confirmed and never retried like the merge, with the same permission (403)
+and decline handling (“GitHub declined merge when ready: …”); a refusal because the PR
+can be merged now reads “GitHub declined merge when ready because the pull request can
+be merged now. Open Merge again to merge it.” While `autoMergeRequest` is set the card
+cue reads **Merge when ready (squash)** (merge commit, rebase or merge queue; amber,
+git-merge), behind Queued and Checks failing and ahead of review outcomes, the view's
+meta line says the same and no primary action is marked; turning it on shows the cue at
+once (“Merge when ready · confirming”), cancelling shows the status beneath it.
+`pr.mergeReadiness` keeps the immediate method and adds `mergeWhenReady`; Auto deploy
+never merges a PR with it on and waits (“Auto deploy · waiting for GitHub to merge when
+ready”) until the merge GitHub makes, as it does for the queue.
 
 **PR-SHOW-SHIP — Tag the title [show] or [ship].** Opt-in: Settings → Items →
 GitHub pull request → Title tags → Show/Ship, off for new installs (installs that
@@ -3564,7 +3592,8 @@ so aliases share it and it survives restarts; no table or migration):
    retitling or closing. A new head's checks are then waited for. At most two attempts.
 4. **Merge** with one PR-MERGE write (`pr.merge`) at the head it read: the viewer's default
    method, or Add to merge queue on a queued base branch (blockers, LINK-04, are not
-   acknowledged, so GitHub's or the table's refusal halts it). In the queue it waits.
+   acknowledged, so GitHub's or the table's refusal halts it). In the queue it waits; with
+   merge when ready on (PR-MERGE-WHEN-READY) it sends no merge and waits for GitHub's.
 5. **Follow the rollouts** the merge discovers (PR-05). Phases: with a stage rule for the
    workflow (Staged runs), each stage is a phase, validated once its environment finished
    and its `delayMinutes` passed (“waiting out live · 7 min”); without one, each set of

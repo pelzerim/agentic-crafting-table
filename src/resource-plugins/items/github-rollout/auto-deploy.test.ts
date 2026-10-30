@@ -364,3 +364,20 @@ test('a plain rollout whose parallel jobs interleave groups them by stage: per-s
   const unnamed = rollout({ gates: [gate(7, 'live')], jobs: [job(1, 'plan'), job(2, 'apply-staging / apply'), job(3, 'apply-phase-1 / apply', 'waiting', null), job(4, 'apply-phase-2 / apply', 'queued', null)] });
   assert.deepEqual(phaseTrack(undefined, unnamed).phases.map(phase => phase.name), ['build', 'staging', 'phase-1', 'phase-2'], 'a phase named only by its label is not named twice');
 });
+
+test('staging stays before production when a staging job finishes after production is held at its gate', () => {
+  const late = rollout({ gates: [gate(7, 'app-production')], run: { id: 101, attempt: 1, status: 'waiting', conclusion: null, headSha: 'c'.repeat(40) }, jobs: [
+    job(1, 'build'), job(2, 'dev-deploy / deploy'), job(3, 'staging-deploy / deploy'), job(4, 'prod-deploy / deploy', 'waiting', null), job(5, 'staging-slack / slack')] });
+  assert.deepEqual(phaseTrack(undefined, late).phases.map(phase => phase.name), ['build', 'dev', 'staging', 'production']);
+});
+
+test('a pull request with merge when ready on is not merged a second time: Auto deploy waits for GitHub as it does for the queue', () => {
+  waits(decide(armed(), facts({ pull: pull({ mergeWhenReady: true }) })), 'merge-when-ready');
+  waits(decide(armed(), facts({ pull: pull({ mergeWhenReady: true, mergeStateStatus: 'BLOCKED', reviewDecision: 'REVIEW_REQUIRED', checks: 'pending' }) })), 'merge-when-ready');
+  assert.deepEqual(decide(armed(), facts({ pull: pull({ mergeWhenReady: true, title: 'Batch exports', tag: '' }) })), { kind: 'tag', title: 'Batch exports' });
+  halts(decide(armed(), facts({ pull: pull({ mergeWhenReady: true, lifecycle: 'closed' }) })), 'closed');
+  assert.deepEqual(decide(armed(), facts({ pull: pull({ mergeWhenReady: false }) })), { kind: 'merge', method: 'SQUASH', pullRequestId: 'PR_node42', head });
+  const landed = facts({ pull: pull({ mergeWhenReady: true, lifecycle: 'merged' }) }), after = observe(armed(), landed);
+  assert.equal(after.mergedAt, T0); waits(decide(after, landed), 'waiting-rollout');
+  assert.equal(statusLine(settle(armed(), { kind: 'wait', step: 'merge-when-ready' }, T0)), 'Auto deploy · waiting for GitHub to merge when ready');
+});

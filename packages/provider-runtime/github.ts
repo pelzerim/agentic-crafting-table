@@ -19,8 +19,10 @@ const file = z.object({ filename: short, previous_filename: short.optional(), st
 const comment = z.object({ id: z.number().int().positive(), body: text, user: user.nullable(), created_at: short, updated_at: short, path: short.optional(), line: z.number().int().positive().nullable().optional(), original_line: z.number().int().positive().nullable().optional(), in_reply_to_id: z.number().int().positive().optional() });
 const review = z.object({ id: z.number().int().positive(), body: text.nullable(), user: user.nullable(), state: short, submitted_at: short.nullable(), commit_id: short.nullable() });
 const mergeCommit = z.object({ data: z.object({ repository: z.object({ pullRequest: z.object({ mergeCommit: z.object({ oid: z.string().regex(/^[a-f0-9]{40,64}$/i) }).nullable() }) }) }) });
-const mergeQueue = z.object({ data: z.object({ repository: z.object({ pullRequest: z.object({ isInMergeQueue: z.boolean(),
-  mergeQueueEntry: z.object({ position: z.number().int().nonnegative() }).nullable(), headRefOid: z.unknown().optional(), commits: z.unknown().optional() }) }) }) });
+const mergeMethod = z.enum(['MERGE', 'SQUASH', 'REBASE']);
+const autoMergeRequest = z.object({ enabledAt: z.string().max(100).nullable().optional(), mergeMethod: mergeMethod.nullable().optional() }).nullable().optional();
+const mergeQueue = z.object({ data: z.object({ repository: z.object({ pullRequest: z.object({ isInMergeQueue: z.boolean(), isMergeQueueEnabled: z.boolean().optional(),
+  mergeQueueEntry: z.object({ position: z.number().int().nonnegative() }).nullable(), autoMergeRequest, headRefOid: z.unknown().optional(), commits: z.unknown().optional() }) }) }) });
 const checkContext = z.union([z.object({ __typename: z.literal('CheckRun'), name: short, status: short, conclusion: short.nullable(), isRequired: z.boolean() }),
   z.object({ __typename: z.literal('StatusContext'), context: short, state: short, isRequired: z.boolean() })]).nullable();
 const headChecks = z.object({ headRefOid: z.string().regex(/^[a-f0-9]{40,64}$/i), commits: z.object({ nodes: z.array(z.object({ commit: z.object({ oid: z.string(),
@@ -36,18 +38,20 @@ function failingChecks(pullRequest: unknown): PullChecks | undefined {
   const failing = contexts.filter(context => (!required || context.isRequired) && (context.__typename === 'CheckRun' ? context.status === 'COMPLETED' && FAILED_RUN.includes(context.conclusion ?? '') : FAILED_STATUS.includes(context.state)));
   return { head: parsed.data.headRefOid.toLowerCase(), failing: failing.map(context => context.__typename === 'CheckRun' ? context.name : context.context) };
 }
-const oid = z.string().regex(/^[a-f0-9]{40,64}$/i), nodeId = z.string().regex(/^[A-Za-z0-9_=-]{1,200}$/), mergeMethod = z.enum(['MERGE', 'SQUASH', 'REBASE']);
-const mergeState = z.object({ data: z.object({ repository: z.object({ mergeCommitAllowed: z.boolean(), squashMergeAllowed: z.boolean(), rebaseMergeAllowed: z.boolean(), viewerDefaultMergeMethod: mergeMethod,
+const oid = z.string().regex(/^[a-f0-9]{40,64}$/i), nodeId = z.string().regex(/^[A-Za-z0-9_=-]{1,200}$/);
+const mergeState = z.object({ data: z.object({ repository: z.object({ mergeCommitAllowed: z.boolean(), squashMergeAllowed: z.boolean(), rebaseMergeAllowed: z.boolean(), viewerDefaultMergeMethod: mergeMethod, autoMergeAllowed: z.boolean().optional(),
   pullRequest: z.object({ id: nodeId, number: z.number().int().positive(), title: z.string().min(1).max(500), state: z.enum(['OPEN', 'CLOSED', 'MERGED']), isDraft: z.boolean(), merged: z.boolean(), headRefOid: oid, baseRefName: short,
     mergeStateStatus: z.enum(['BEHIND', 'BLOCKED', 'CLEAN', 'DIRTY', 'DRAFT', 'HAS_HOOKS', 'UNKNOWN', 'UNSTABLE']), isMergeQueueEnabled: z.boolean(), isInMergeQueue: z.boolean(),
-    reviewDecision: z.enum(['APPROVED', 'CHANGES_REQUESTED', 'REVIEW_REQUIRED']).nullable().optional(),
+    reviewDecision: z.enum(['APPROVED', 'CHANGES_REQUESTED', 'REVIEW_REQUIRED']).nullable().optional(), autoMergeRequest,
     commits: z.object({ nodes: z.array(z.object({ commit: z.object({ oid, statusCheckRollup: z.object({ state: short }).nullable() }) }).nullable()).max(1) }).optional() }) }) }) });
 const mergeResult = z.object({ data: z.object({ mergePullRequest: z.object({ pullRequest: z.object({ id: nodeId, merged: z.boolean() }) }) }) });
+const autoMergeResult = (field: string) => z.object({ data: z.object({ [field]: z.object({ pullRequest: z.object({ id: nodeId, autoMergeRequest: z.object({}).passthrough().nullable() }) }) }) });
 const enqueueResult = z.object({ data: z.object({ enqueuePullRequest: z.object({ mergeQueueEntry: z.object({ position: z.number().int().nonnegative(), pullRequest: z.object({ id: nodeId }).nullable() }) }) }) });
 const graphError = z.object({ errors: z.array(z.object({ message: z.string().max(10_000).optional(), type: z.string().max(100).optional() })).min(1).max(100) });
 export type PullMergeState = z.infer<typeof mergeState>['data']['repository'];
 export type PullMergeMethod = z.infer<typeof mergeMethod> | 'QUEUE';
-export interface PullMergeRequest { pullRequestId: string; expectedHeadOid: string; method: PullMergeMethod }
+/** `whenReady` asks GitHub to merge (or queue) once it can: auto-merge. */
+export interface PullMergeRequest { pullRequestId: string; expectedHeadOid: string; method: PullMergeMethod; whenReady?: boolean }
 export type PullLifecycle = 'open' | 'draft' | 'closed' | 'merged';
 export type PullStateChange = 'ready' | 'draft' | 'close' | 'reopen';
 /** `comment` is posted before a close. */
@@ -97,19 +101,27 @@ export interface PullIdentity { owner: string; repo: string; number: number }
 export interface AssignedGitHubPull extends PullIdentity { title: string; assignees: string[]; state: 'open' | 'closed' }
 export interface GitHubResponse { status: number; headers: Headers; body: unknown }
 export interface PullChecks { head: string; failing: string[] }
-/** The fixed queue read also carries the head commit's check rollup, when readable. */
-export interface MergeQueueState { queued: boolean; position: number | null; checks?: PullChecks }
+/** GitHub's auto-merge request (merge when ready): the method it will merge with, QUEUE for a merge queue. */
+export interface MergeWhenReady { method: PullMergeMethod | null; enabledAt: string | null }
+/** The fixed queue read also carries the head commit's check rollup, when readable, and merge when ready while it is on. */
+export interface MergeQueueState { queued: boolean; position: number | null; checks?: PullChecks; mergeWhenReady?: MergeWhenReady }
 export interface GitHubTransport { postComment?(path: string, body: string, signal: AbortSignal): Promise<GitHubResponse>; get(path: string, signal: AbortSignal): Promise<GitHubResponse>; mergeCommit?(identity: PullIdentity, signal: AbortSignal): Promise<GitHubResponse>; mergeQueue?(identity: PullIdentity, signal: AbortSignal): Promise<GitHubResponse>;
   mergeOptions?(identity: PullIdentity, signal: AbortSignal): Promise<GitHubResponse>; merge?(request: PullMergeRequest, signal: AbortSignal): Promise<GitHubResponse>;
+  disableAutoMerge?(pullRequestId: string, signal: AbortSignal): Promise<GitHubResponse>;
   setTitle?(identity: PullIdentity, title: string, signal: AbortSignal): Promise<GitHubResponse>;
   setState?(identity: PullIdentity, state: 'open' | 'closed', signal: AbortSignal): Promise<GitHubResponse>;
   setDraft?(pullRequestId: string, draft: boolean, signal: AbortSignal): Promise<GitHubResponse>;
   approveDeployments?(run: { owner: string; repo: string; runId: number }, environmentIds: number[], signal: AbortSignal): Promise<GitHubResponse> }
 const METHOD_LABELS = { SQUASH: 'Squash and merge', MERGE: 'Create a merge commit', REBASE: 'Rebase and merge' } as const;
-/** What a person may try for this PR: the prompt, warning about what GitHub reports,
- * and the methods it allows (a merge queue takes the place of direct merging).
- * GitHub decides; only an already merged PR is refused. */
-export function mergeChoices(state: PullMergeState): { refusal: string } | { prompt: string; options: { id: PullMergeMethod; label: string }[] } {
+/** A Merge menu choice: merge or queue now, the same when ready (GitHub's auto-merge), or turn merge when ready off. */
+export type PullMergeChoice = PullMergeMethod | `${PullMergeMethod}_WHEN_READY` | 'CANCEL_WHEN_READY';
+export const WHEN_READY_SUFFIX = '_WHEN_READY';
+type MergeChoices = { refusal: string } | { prompt: string; options: { id: PullMergeChoice; label: string }[] };
+/** How GitHub will land a pull request once merge when ready fires, in the words of the prompt. */
+const WHEN_READY_VERBS = { SQUASH: 'squash and merge', MERGE: 'merge', REBASE: 'rebase and merge' } as const;
+/** Today's immediate merge: the prompt, warning about what GitHub reports, and the methods it allows
+ * (a merge queue takes the place of direct merging). Only an already merged PR is refused. */
+function immediateMergeChoices(state: PullMergeState): { refusal: string } | { name: string; base: string; head: string; warnings: string; prompt: string; options: { id: PullMergeMethod; label: string }[] } {
   const pull = state.pullRequest, status = pull.mergeStateStatus;
   if (pull.merged || pull.state === 'MERGED') return { refusal: 'This pull request is already merged.' };
   const title = pull.title.length > 120 ? `${pull.title.slice(0, 119)}…` : pull.title, head = pull.headRefOid.slice(0, 7), base = pull.baseRefName.length > 100 ? `${pull.baseRefName.slice(0, 99)}…` : pull.baseRefName;
@@ -117,22 +129,39 @@ export function mergeChoices(state: PullMergeState): { refusal: string } | { pro
     pull.isInMergeQueue ? 'GitHub reports it is already in the merge queue.' : '',
     ({ DIRTY: 'GitHub reports merge conflicts.', BLOCKED: 'Required reviews or checks are not satisfied.', UNKNOWN: 'GitHub is still checking whether it can merge.', UNSTABLE: 'Some non-required checks are failing.',
       BEHIND: pull.isMergeQueueEnabled ? '' : `The branch is out of date with ${base}.` } as Partial<Record<typeof status, string>>)[status] ?? ''].filter(Boolean).map(warning => ` ${warning}`).join('');
-  if (pull.isMergeQueueEnabled) return { prompt: `Add #${pull.number} “${title}” to the ${base} merge queue at ${head}?${warnings}`, options: [{ id: 'QUEUE', label: 'Add to merge queue' }] };
+  const name = `#${pull.number} “${title}”`;
+  if (pull.isMergeQueueEnabled) return { name, base, head, warnings, prompt: `Add ${name} to the ${base} merge queue at ${head}?${warnings}`, options: [{ id: 'QUEUE' as PullMergeMethod, label: 'Add to merge queue' }] };
   const allowed = { SQUASH: state.squashMergeAllowed, MERGE: state.mergeCommitAllowed, REBASE: state.rebaseMergeAllowed }, any = !Object.values(allowed).some(Boolean);
   const methods = (['SQUASH', 'MERGE', 'REBASE'] as const).filter(method => any || allowed[method]).sort((a, b) => Number(b === state.viewerDefaultMergeMethod) - Number(a === state.viewerDefaultMergeMethod));
-  return { prompt: `Merge #${pull.number} “${title}” into ${base} at ${head}?${warnings}`, options: methods.map(id => ({ id, label: METHOD_LABELS[id] })) };
+  return { name, base, head, warnings, prompt: `Merge ${name} into ${base} at ${head}?${warnings}`, options: methods.map(id => ({ id: id as PullMergeMethod, label: METHOD_LABELS[id] })) };
+}
+/** What a person may try for this PR. When it is open, ready, free of conflicts and GitHub cannot merge it yet
+ * (blocked, still checking, or behind without a queue) in a repository that allows auto-merge, the methods become
+ * merge when ready; with merge when ready already on, the only choice is to cancel it. GitHub decides. */
+export function mergeChoices(state: PullMergeState): MergeChoices {
+  const immediate = immediateMergeChoices(state), pull = state.pullRequest, status = pull.mergeStateStatus;
+  if ('refusal' in immediate) return immediate;
+  const { name, base, head, warnings, prompt, options } = immediate, ready = pull.state === 'OPEN' && !pull.isDraft && status !== 'DRAFT';
+  if (ready && pull.autoMergeRequest) {
+    const landing = pull.isMergeQueueEnabled ? `add ${name} to the ${base} merge queue` : `${WHEN_READY_VERBS[pull.autoMergeRequest.mergeMethod ?? 'MERGE']} ${name} into ${base}`;
+    return { prompt: `Merge when ready is on: GitHub will ${landing} once it can.${warnings}`, options: [{ id: 'CANCEL_WHEN_READY', label: 'Cancel merge when ready' }] };
+  }
+  const waiting = status === 'BLOCKED' || status === 'UNKNOWN' || status === 'BEHIND' && !pull.isMergeQueueEnabled;
+  if (!ready || !waiting || pull.isInMergeQueue || !state.autoMergeAllowed) return { prompt, options };
+  return { prompt: pull.isMergeQueueEnabled ? `Add ${name} to the ${base} merge queue at ${head} when ready?${warnings}` : `Merge ${name} into ${base} at ${head} when ready?${warnings}`,
+    options: options.map(option => ({ id: `${option.id}${WHEN_READY_SUFFIX}` as PullMergeChoice, label: `${option.label} when ready` })) };
 }
 export type HeadChecks = 'passing' | 'pending' | 'failing' | 'none';
 export interface PullMergeReadiness { pullRequestId: string; number: number; title: string; lifecycle: PullLifecycle; head: string; base: string; mergeStateStatus: PullMergeState['pullRequest']['mergeStateStatus'];
-  reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null; checks: HeadChecks; queued: boolean; queueEnabled: boolean; method: PullMergeMethod | null }
+  reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null; checks: HeadChecks; queued: boolean; queueEnabled: boolean; mergeWhenReady: boolean; method: PullMergeMethod | null }
 const ROLLUP: Record<string, HeadChecks> = { SUCCESS: 'passing', PENDING: 'pending', EXPECTED: 'pending', FAILURE: 'failing', ERROR: 'failing' };
 /** What decides a merge nobody watches: GitHub's merge state, the review decision and the head commit's check rollup
- * (a rollup of another commit counts as pending), with the method a person's one-click merge would use. */
+ * (a rollup of another commit counts as pending), whether merge when ready is on, and the method an immediate merge would use. */
 export function mergeReadiness(state: PullMergeState): PullMergeReadiness {
-  const pull = state.pullRequest, commit = pull.commits?.nodes[0]?.commit, choices = mergeChoices(state);
+  const pull = state.pullRequest, commit = pull.commits?.nodes[0]?.commit, choices = immediateMergeChoices(state);
   const checks: HeadChecks = !commit ? 'none' : commit.oid.toLowerCase() !== pull.headRefOid.toLowerCase() ? 'pending' : commit.statusCheckRollup ? ROLLUP[commit.statusCheckRollup.state] ?? 'pending' : 'none';
   return { pullRequestId: pull.id, number: pull.number, title: pull.title, lifecycle: pullLifecycle(pull), head: pull.headRefOid.toLowerCase(), base: pull.baseRefName, mergeStateStatus: pull.mergeStateStatus,
-    reviewDecision: pull.reviewDecision ?? null, checks, queued: pull.isInMergeQueue, queueEnabled: pull.isMergeQueueEnabled, method: 'options' in choices ? choices.options[0]?.id ?? null : null };
+    reviewDecision: pull.reviewDecision ?? null, checks, queued: pull.isInMergeQueue, queueEnabled: pull.isMergeQueueEnabled, mergeWhenReady: Boolean(pull.autoMergeRequest), method: 'options' in choices ? choices.options[0]?.id ?? null : null };
 }
 /** A GraphQL reply whose every field is null with errors: GitHub refused, with its first error sanitized. */
 function graphRejection(body: unknown): string | undefined {
@@ -140,6 +169,8 @@ function graphRejection(body: unknown): string | undefined {
   if (!rejected.success || !(value?.data === null || value?.data === undefined || Object.values(value.data as object).every(field => field === null))) return undefined;
   return (rejected.data.errors[0].message ?? '').replace(/[^\x20-\x7E]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
 }
+/** GitHub refuses auto-merge for a pull request that can merge at once ("Pull request is in clean status"). */
+const MERGEABLE_NOW = /\b(?:clean|unstable|has[ _]hooks) status\b/i;
 const PERMISSION = 'This GitHub account doesn’t have permission to change this pull request. Check its repository access.';
 /** Write replies: a 403 that is not a rate limit is a missing permission, not missing content. */
 function checkedWrite(response: GitHubResponse, now: number) {
@@ -204,8 +235,9 @@ export class GitHubClient {
     const response = await this.transport.mergeQueue(identity, signal); signal.throwIfAborted();
     const parsed = mergeQueue.safeParse(checkedGitHubResponse(response, this.now()));
     if (!parsed.success) throw new GitHubError('GITHUB_INVALID_RESPONSE', 'GitHub returned an unsupported merge queue response. No saved content was replaced.');
-    const { isInMergeQueue, mergeQueueEntry } = parsed.data.data.repository.pullRequest, checks = failingChecks(parsed.data.data.repository.pullRequest);
-    return { queued: isInMergeQueue, position: isInMergeQueue ? mergeQueueEntry?.position ?? null : null, ...(checks ? { checks } : {}) };
+    const { isInMergeQueue, isMergeQueueEnabled, mergeQueueEntry, autoMergeRequest: request } = parsed.data.data.repository.pullRequest, checks = failingChecks(parsed.data.data.repository.pullRequest);
+    const mergeWhenReady: MergeWhenReady | undefined = request ? { method: isMergeQueueEnabled ? 'QUEUE' : request.mergeMethod ?? null, enabledAt: request.enabledAt ?? null } : undefined;
+    return { queued: isInMergeQueue, position: isInMergeQueue ? mergeQueueEntry?.position ?? null : null, ...(checks ? { checks } : {}), ...(mergeWhenReady ? { mergeWhenReady } : {}) };
   }
   /** Fixed GraphQL read of the merge facts GitHub enforces: state, head, queue and allowed methods. */
   async mergeState(identity: PullIdentity, signal: AbortSignal): Promise<PullMergeState> {
@@ -223,6 +255,7 @@ export class GitHubClient {
     pullKey(identity);
     if (!this.transport.merge) throw new GitHubError('GITHUB_FORBIDDEN', 'Merging is unavailable for this connection.');
     signal.throwIfAborted();
+    if (request.whenReady) return this.mergeWhenReady(request, signal);
     const queue = request.method === 'QUEUE', uncertain = () => Object.assign(new Error(`GitHub may have ${queue ? 'queued' : 'merged'} it. Check the PR before trying again.`), { outcomeUnknown: true });
     let response: GitHubResponse;
     try { response = await this.transport.merge({ pullRequestId: request.pullRequestId, expectedHeadOid: request.expectedHeadOid, method: request.method }, signal); }
@@ -233,6 +266,37 @@ export class GitHubClient {
     if (detail !== undefined) throw new GitHubError('GITHUB_REJECTED', `GitHub declined the ${queue ? 'merge queue request' : 'merge'}${detail ? `: ${detail}` : '.'}`);
     const merged = mergeResult.safeParse(body).data?.data.mergePullRequest.pullRequest, queued = enqueueResult.safeParse(body).data?.data.enqueuePullRequest.mergeQueueEntry;
     if (queue ? queued?.pullRequest?.id !== request.pullRequestId : merged?.id !== request.pullRequestId || !merged.merged) throw uncertain();
+  }
+  /** Asks GitHub to merge (or queue) once it can: one enable auto-merge write at the head the
+   * options were read for, never retried. A refusal because it can merge now says so. */
+  private async mergeWhenReady(request: PullMergeRequest, signal: AbortSignal) {
+    const uncertain = () => Object.assign(new Error('GitHub may have turned on merge when ready. Check the PR before trying again.'), { outcomeUnknown: true });
+    let response: GitHubResponse;
+    try { response = await this.transport.merge!({ pullRequestId: request.pullRequestId, expectedHeadOid: request.expectedHeadOid, method: request.method, whenReady: true }, signal); }
+    catch (error) { if ((error as GitHubError).code === 'GITHUB_POST_UNCERTAIN') throw uncertain(); throw error; }
+    checkedWrite(response, this.now());
+    if (response.status !== 200) throw uncertain();
+    const detail = graphRejection(response.body);
+    if (detail !== undefined && MERGEABLE_NOW.test(detail)) throw new GitHubError('GITHUB_REJECTED', 'GitHub declined merge when ready because the pull request can be merged now. Open Merge again to merge it.');
+    if (detail !== undefined) throw new GitHubError('GITHUB_REJECTED', `GitHub declined merge when ready${detail ? `: ${detail}` : '.'}`);
+    const enabled = autoMergeResult('enablePullRequestAutoMerge').safeParse(response.body).data?.data.enablePullRequestAutoMerge as { pullRequest: { id: string; autoMergeRequest: object | null } } | undefined;
+    if (enabled?.pullRequest.id !== request.pullRequestId || !enabled.pullRequest.autoMergeRequest) throw uncertain();
+  }
+  /** Turns merge when ready off: one disable auto-merge write, never retried. */
+  async cancelMergeWhenReady(identity: PullIdentity, pullRequestId: string, signal: AbortSignal) {
+    pullKey(identity);
+    if (!this.transport.disableAutoMerge) throw new GitHubError('GITHUB_FORBIDDEN', 'Merging is unavailable for this connection.');
+    signal.throwIfAborted();
+    const uncertain = () => Object.assign(new Error('GitHub may have cancelled merge when ready. Check the PR before trying again.'), { outcomeUnknown: true });
+    let response: GitHubResponse;
+    try { response = await this.transport.disableAutoMerge(pullRequestId, signal); }
+    catch (error) { if ((error as GitHubError).code === 'GITHUB_POST_UNCERTAIN') throw uncertain(); throw error; }
+    checkedWrite(response, this.now());
+    if (response.status !== 200) throw uncertain();
+    const detail = graphRejection(response.body);
+    if (detail !== undefined) throw new GitHubError('GITHUB_REJECTED', `GitHub declined to cancel merge when ready${detail ? `: ${detail}` : '.'}`);
+    const disabled = autoMergeResult('disablePullRequestAutoMerge').safeParse(response.body).data?.data.disablePullRequestAutoMerge as { pullRequest: { id: string; autoMergeRequest: object | null } } | undefined;
+    if (disabled?.pullRequest.id !== pullRequestId || disabled.pullRequest.autoMergeRequest !== null) throw uncertain();
   }
   /** Sends one title PATCH and lets GitHub decide, never retried. A reply that does
    * not echo the new title is outcome-unknown. */

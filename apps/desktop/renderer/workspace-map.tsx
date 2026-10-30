@@ -32,7 +32,6 @@ import type { WorkspaceCommand, WorkspaceState, ViewState, ProjectsPanelState } 
 import { viewSchema } from '../../../packages/core/control.ts';
 import type { WorkspaceSnapshot } from '../../../packages/workspace-service/protocol.ts';
 import { pluginSettingsValues, registryFromDescriptions } from '../../../src/resource-plugins/describe.client.ts';
-import { webLinkUrl } from '../../../src/resource-plugins/define.ts';
 import type { PluginDescription } from '../../../src/resource-plugins/describe.client.ts';
 import type { ResourceChoices, ResourceRecord, MountedResourceView } from '../../../src/resource-plugins/types.ts';
 import { installedRenderersReady } from './installed-plugins.ts';
@@ -80,6 +79,7 @@ import { ControlsCard } from './controls-card.tsx';
 import { UNDERMAP_LOOSE, mirrorLayout, searchUndermap } from '../../../src/graph/undermap.ts';
 import type { MirrorLayout, UndermapMatch } from '../../../src/graph/undermap.ts';
 import { resolveMapSize, sizeAsDefault } from '../../../packages/core/item-map-sizes.ts';
+import { resourceWebPage } from '../../../src/resource-plugins/web-page.ts';
 import { SNAP_PITCH } from '../../../src/graph/snap.ts';
 import { LARGE_ITEM_WIDTH } from '../../../src/graph/footprints.ts';
 import { UndermapSearch } from './undermap-search.tsx';
@@ -585,7 +585,7 @@ export function WorkspaceMap() {
   const scope = selectedLink ? 'link' : selected ? selected.resourceId ? 'item' : 'project' : editor?.projectId ? 'neighborhood' : 'board';
   const belowMenu = (node?: GraphNode) => layer === 'below' ? { blocker: node && snapshot ? surfaceBlocker(node, snapshot.state.nodes) : undefined } : undefined;
   /** The item's web page: what Open on … opens and Copy URL copies. */
-  const webPage = (resource?: ResourceRecord) => { const link = resource && registry.get(resource.pluginId)?.webLink, url = link && webLinkUrl(link.template, resource.data); return url ? { label: link!.label, url } : undefined; };
+  const webPage = (resource?: ResourceRecord) => { const state = snapshotRef.current?.state; return resourceWebPage(resource, registry, nodeId => state?.resources.find(record => record.id === state.nodes.find(node => node.id === nodeId)?.resourceId)); };
   const web = webPage(selectedResource), webUrl = web?.url;
   /** Opens the item's web page in the browser, when its type has one. */
   const webOpener = (id: string) => {

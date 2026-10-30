@@ -99,6 +99,19 @@ export function moveItems<T extends GraphNode>(nodes: readonly T[], resources: r
   return nodes.map(node => positions.has(node.id) ? { ...node, position: positions.get(node.id)! } : node);
 }
 
+/** Where a solid drag that stopped at `stop` is saved. The drag reached `stop` along its own path, but a saved move that is not
+ * clear sweeps straight from where the item was, so it could land back on the side it came from. The snapped spot is used when
+ * the move keeps it; otherwise the stop itself, which the drag left clear. */
+export function solidDropPosition<T extends GraphNode>(nodes: readonly T[], resources: readonly ResourceRecord[], registry: ResourcePluginRegistry, id: string,
+  stop: GraphNode['position'], sizes: ItemMapSizes = {}, pitch?: number): GraphNode['position'] {
+  const kept = (position: GraphNode['position']) => {
+    const moved = moveItems(nodes, resources, registry, [{ id, position }], sizes, pitch, 'solid').find(node => node.id === id)?.position;
+    return moved !== undefined && Math.abs(moved.x - position.x) < .001 && Math.abs(moved.y - position.y) < .001;
+  };
+  const snapped = snapPosition(stop, pitch);
+  return snapped.x !== stop.x || snapped.y !== stop.y ? kept(snapped) ? snapped : stop : stop;
+}
+
 /** A requested spot that is clear is taken as it is. Otherwise the moved footprints travel from where they were until
  * they touch another, sliding along it; footprints moved by different amounts travel separately. With a grid pitch
  * the stop moves back to a clear grid point when there is one. */

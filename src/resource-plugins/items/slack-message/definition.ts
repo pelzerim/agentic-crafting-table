@@ -40,6 +40,7 @@ export const slackMessage = defineResourcePlugin({
   id: 'slack.message', apiVersion: 1, schemaVersion: 1,
   name: 'Slack', icon: 'messages-square', brand: 'slack', preferredView: 'inspector',
   connectionProvider: 'slack',
+  webLink: { label: 'Open in Slack', template: ['https://{workspaceHost}/archives/{channelId}/p{messageTs:digits}?thread_ts={threadTs}&cid={channelId}', 'https://{workspaceHost}/archives/{channelId}/p{messageTs:digits}'] },
   providerIdentity: (data, resource) => resource.connectionId ? JSON.stringify([data.workspaceHost, data.channelId, data.messageTs, data.scope]) : undefined,
   mapSizes: { defaultSize: 'small', sizes: {
     small: { width: 210, height: 48, summaryLines: 0, description: "Message/thread title and attention." },

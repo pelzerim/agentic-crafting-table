@@ -17,7 +17,7 @@ import type { SessionCoordinator } from './sessions.ts';
 import { rolloutDiscoveryKey } from '../provider-runtime/github-status.ts';
 import type { RolloutObservation } from '../provider-runtime/github-rollout.ts';
 import type { PullMergeReadiness } from '../provider-runtime/github.ts';
-import { AutoDeploys, AUTO_DEPLOY_COLLECTION, autoDeployArmed } from './auto-deploy.ts';
+import { AutoDeploys, AUTO_DEPLOY_COLLECTION, autoDeployArmed, validationRequestFailure } from './auto-deploy.ts';
 import { AUTO_DEPLOY_OPERATION } from '../../src/resource-plugins/items/github-rollout/auto-deploy.ts';
 import type { AutoDeployRecord } from '../../src/resource-plugins/items/github-rollout/auto-deploy.ts';
 import { agentRuntimeRefusal } from '../core/runtime.ts';
@@ -38,7 +38,7 @@ async function fixture(options: { starter?: boolean; tagging?: boolean; director
     { type: 'item.add', id: 'pr', resourceId: 'pr-r', pluginId: 'github.pull-request', title: 'Batch exports', projectId: 'web', position: { x: 300, y: 200 }, data: { owner: 'acme', repo: 'app', number: 42 } },
   ]);
   let now = T0;
-  const readiness: PullMergeReadiness = { pullRequestId: 'PR_node42', number: 42, title: 'Batch exports', lifecycle: 'open', head, base: 'main', mergeStateStatus: 'CLEAN', reviewDecision: 'APPROVED', checks: 'passing', queued: false, queueEnabled: false, method: 'SQUASH' };
+  const readiness: PullMergeReadiness = { pullRequestId: 'PR_node42', number: 42, title: 'Batch exports', lifecycle: 'open', head, base: 'main', mergeStateStatus: 'CLEAN', reviewDecision: 'APPROVED', checks: 'passing', queued: false, queueEnabled: false, mergeWhenReady: false, method: 'SQUASH' };
   const github = { readiness, failing: [] as string[], observation: undefined as RolloutObservation | undefined, outcomes: {} as Record<string, Outcome>, reads: 0,
     writes: [] as { nodeId: string; actionId: string; input: JsonObject }[], approvable: '', merged: false };
   const resources = {
@@ -163,6 +163,16 @@ test('the whole flow: tag, merge, validate before the gate, approve, validate th
   await f.pass();
   assert.deepEqual(f.github.writes.map(write => write.actionId), ['pr.showShip', 'pr.merge', 'rollout.approve']);
   assert.equal(new Set(f.github.writes.map(write => write.input.requestId)).size, 3);
+});
+
+test('a pull request GitHub will merge when ready gets no merge from Auto deploy, which follows the merge GitHub makes', async () => {
+  const f = await fixture();
+  f.github.readiness.title = '[ship] Batch exports'; f.github.readiness.mergeWhenReady = true;
+  await f.arm(); await f.pass(); await f.pass();
+  assert.deepEqual(f.github.writes.map(write => write.actionId), []);
+  assert.equal(f.record()!.step, 'merge-when-ready');
+  f.github.readiness.lifecycle = 'merged'; await f.pass();
+  assert.deepEqual(f.github.writes.map(write => write.actionId), []); assert.notEqual(f.record()!.mergedAt, undefined);
 });
 
 test('a restart resumes from the saved record without sending a confirmed write again', async () => {
@@ -432,4 +442,13 @@ test('autoDeployArmed reads the stored record: only an armed one counts', () => 
   const records = new Map<string, unknown>([['armed-pr', { state: 'armed' }], ['stopped-pr', { state: 'stopped' }]]);
   const storage = { get: (collection: string, key: string) => collection === AUTO_DEPLOY_COLLECTION && records.has(key) ? { value: records.get(key) } : undefined };
   assert.deepEqual(['armed-pr', 'stopped-pr', 'other-pr'].map(id => autoDeployArmed(storage as never, id)), [true, false, false]);
+});
+
+test('a validation that cannot be requested halts with its error, however long the phase label', () => {
+  const label = `before production (${Array.from({ length: 7 }, (_, index) => `Prod - region-${index} AWS / deploy`).join(', ')})`;
+  const reason = validationRequestFailure(label, 'Claude Code is not installed.');
+  assert.ok(reason.length <= 300, `${reason.length} characters`);
+  assert.match(reason, /Claude Code is not installed\.$/);
+  assert.match(reason, /^The validation of before production \(Prod - region-0 AWS \/ deploy/);
+  assert.equal(validationRequestFailure('staging', 'No agent.'), 'The validation of staging could not be requested: No agent.');
 });

@@ -52,10 +52,14 @@ export class TerminalModes {
 
 const reset = /\x1bc|\x1b\[[23]J|\x1b\[\?(?:47|1047|1049)[hl]/;
 
-/** Earliest point in a window where replay can begin without depending on its earlier screen. */
+/** Earliest point in a window where replay can begin without depending on its earlier screen: a full reset, else a whole
+ * line, else the next escape sequence. */
 export function restartOffset(text: string) {
   const boundary = text.search(reset);
   if (boundary >= 0) return boundary;
   const line = text.indexOf('\n');
-  return line >= 0 && line + 1 < text.length ? line + 1 : 0;
+  if (line >= 0 && line + 1 < text.length) return line + 1;
+  // A screen drawn by cursor moves has no lines: begin at its next escape sequence, never inside one.
+  const escape = text.indexOf('\x1b');
+  return escape > 0 ? escape : 0;
 }

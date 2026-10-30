@@ -35,6 +35,7 @@ test('restart points prefer the earliest full reset and otherwise begin at a who
   assert.equal(restartOffset('xx\x1b[?1049lnormal'), 2);
   assert.equal(restartOffset('cut line\r\nwhole line\r\n'), 10);
   assert.equal(restartOffset('one long line without a break'), 0);
+  assert.equal(restartOffset(';48;2;44;49;46m.\x1b[1;1HWorking\x1b[2;1Hmore'), 16, 'a cut inside a colour sequence starts at the next whole one');
   assert.equal(restartOffset('only a final break\n'), 0);
   assert.equal(restartOffset('\x1b[2K erases a line, not the screen\nnext'), 35);
 });

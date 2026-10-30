@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { GraphNode } from './graph.ts';
-import { moveItems, repairLayout, layoutFootprints, ITEM_GAP } from './movement.ts';
+import { moveItems, repairLayout, layoutFootprints, solidDropPosition, ITEM_GAP } from './movement.ts';
+import { snapPosition } from './snap.ts';
 import { overlaps } from './spatial.ts';
 import { freePosition, itemFootprint } from './footprints.ts';
 import { createResourcePluginRegistry } from '../resource-plugins/builtins.ts';
@@ -159,4 +160,18 @@ test('solid moves on a grid stop at the last clear grid point', () => {
   assert.deepEqual(result[1], input[1]);
   assert.equal(Math.abs(result[0].position.x % 48), 0); assert.equal(Math.abs(result[0].position.y), 0);
   assertClear(result);
+});
+
+test('a solid drop sends a spot the move keeps: the snapped one when it is, else the clear stop the drag showed', () => {
+  const input = [item('held', -800), item('wall', 0)];
+  const held = itemFootprint(input[0], resources, registry), wall = itemFootprint(input[1], resources, registry), pitch = 48;
+  const stop = { x: (held.width + wall.width) / 2 + ITEM_GAP + 1, y: 0 }, snapped = snapPosition(stop, pitch);
+  const asSnapped = moveItems(input, resources, registry, [{ id: 'held', position: snapped }], {}, pitch, 'solid');
+  assert.ok(asSnapped[0].position.x < 0, 'a snapped spot inside the gap sends the item back to the side it came from');
+  const drop = solidDropPosition(input, resources, registry, 'held', stop, {}, pitch);
+  const kept = moveItems(input, resources, registry, [{ id: 'held', position: drop }], {}, pitch, 'solid');
+  assert.deepEqual(kept[0].position, drop);
+  assert.ok(drop.x > 0, `stays beyond the wall at ${drop.x}`);
+  const open = { x: 900 + 7, y: 3 };
+  assert.deepEqual(solidDropPosition(input, resources, registry, 'held', open, {}, pitch), snapPosition(open, pitch), 'a clear snapped spot is used as it is');
 });

@@ -30,8 +30,12 @@ export function githubFixture(additionalPulls: typeof pullFixture[] = []) {
   const accounts = [{ id: 'github-fixture', providerId: 'github', account: 'fixture-developer', enabled: true, isDefault: true }];
   const connections = new ProviderConnections(() => accounts, [{ id: 'github', name: 'GitHub', setupHint: 'Fixture account', accounts: async () => [{ id: 'fixture-developer', label: 'fixture-developer', active: true, available: true, credentialSource: 'test fixture' }] }]);
   const posts: { path: string; body: string }[] = [], merges: PullMergeRequest[] = [];
-  /** `review` is GitHub's review decision; `rollup` the head commit's check rollup state, absent without checks. */
-  let mergeSettings: { status: string; queueEnabled: boolean; squash: boolean; merge: boolean; rebase: boolean; defaultMethod: string; review?: string | null; rollup?: string } = { status: 'CLEAN', queueEnabled: false, squash: true, merge: true, rebase: true, defaultMethod: 'SQUASH' };
+  /** `review` is GitHub's review decision; `rollup` the head commit's check rollup state, absent without checks; `autoMergeAllowed` the repository's auto-merge setting, off by default as on GitHub. */
+  let mergeSettings: { status: string; queueEnabled: boolean; squash: boolean; merge: boolean; rebase: boolean; defaultMethod: string; review?: string | null; rollup?: string; autoMergeAllowed?: boolean } = { status: 'CLEAN', queueEnabled: false, squash: true, merge: true, rebase: true, defaultMethod: 'SQUASH' };
+  /** GitHub's auto-merge request of the pull request (merge when ready); `method` is null for a merge queue. */
+  let autoMerge: { method: string | null; enabledAt: string } | null = null;
+  const mergeCancels: string[] = [];
+  const autoMergeRequest = () => autoMerge && { enabledAt: autoMerge.enabledAt, mergeMethod: autoMerge.method };
   let mergeReply: ((request: PullMergeRequest) => GitHubResponse | Promise<GitHubResponse>) | undefined;
   const titles: string[] = []; let titleReply: ((title: string) => GitHubResponse | Promise<GitHubResponse>) | undefined;
   /** Every comment/state/draft write in order, e.g. ['comment', 'state:closed', 'draft:true']. */
@@ -46,23 +50,37 @@ export function githubFixture(additionalPulls: typeof pullFixture[] = []) {
   }, async mergeQueue(_identity, signal) {
     requests++; await before?.(signal); signal.throwIfAborted();
     const rollup = checks && { headRefOid: pull.head.sha, commits: { nodes: [{ commit: { oid: pull.head.sha, statusCheckRollup: { contexts: { nodes: checks.map(check => ({ __typename: 'CheckRun', name: check.name, status: 'COMPLETED', conclusion: check.conclusion, isRequired: check.required === true })) } } } }] } };
-    return { status, headers: new Headers(headers), body: { data: { repository: { pullRequest: { isInMergeQueue: queue.queued, mergeQueueEntry: queue.queued ? { position: queue.position ?? 0 } : null, ...rollup } } } } };
+    return { status, headers: new Headers(headers), body: { data: { repository: { pullRequest: { isMergeQueueEnabled: mergeSettings.queueEnabled, isInMergeQueue: queue.queued, mergeQueueEntry: queue.queued ? { position: queue.position ?? 0 } : null, autoMergeRequest: autoMergeRequest(), ...rollup } } } } };
   }, async mergeOptions(_identity, signal) {
     requests++; await before?.(signal); signal.throwIfAborted();
-    return { status, headers: new Headers(headers), body: { data: { repository: { mergeCommitAllowed: mergeSettings.merge, squashMergeAllowed: mergeSettings.squash, rebaseMergeAllowed: mergeSettings.rebase, viewerDefaultMergeMethod: mergeSettings.defaultMethod,
+    return { status, headers: new Headers(headers), body: { data: { repository: { mergeCommitAllowed: mergeSettings.merge, squashMergeAllowed: mergeSettings.squash, rebaseMergeAllowed: mergeSettings.rebase, viewerDefaultMergeMethod: mergeSettings.defaultMethod, autoMergeAllowed: mergeSettings.autoMergeAllowed ?? false,
       pullRequest: { id: nodeId(), number: pull.number, title: pull.title, state: pull.merged ? 'MERGED' : pull.state === 'closed' ? 'CLOSED' : 'OPEN', isDraft: pull.draft, merged: pull.merged, headRefOid: pull.head.sha, baseRefName: pull.base.ref,
-        mergeStateStatus: pull.draft ? 'DRAFT' : mergeSettings.status, isMergeQueueEnabled: mergeSettings.queueEnabled, isInMergeQueue: queue.queued, reviewDecision: mergeSettings.review ?? null,
+        mergeStateStatus: pull.draft ? 'DRAFT' : mergeSettings.status, isMergeQueueEnabled: mergeSettings.queueEnabled, isInMergeQueue: queue.queued, reviewDecision: mergeSettings.review ?? null, autoMergeRequest: autoMergeRequest(),
         commits: { nodes: [{ commit: { oid: pull.head.sha, statusCheckRollup: mergeSettings.rollup ? { state: mergeSettings.rollup } : null } }] } } } } } };
   }, async merge(request, signal) {
     signal.throwIfAborted(); await beforeWrite?.(); signal.throwIfAborted(); merges.push(request);
     if (mergeReply) return mergeReply(request);
+    if (request.whenReady) {
+      const refuse = (message: string) => ({ status: 200, headers: new Headers(), body: { data: { enablePullRequestAutoMerge: null }, errors: [{ type: 'UNPROCESSABLE', message }] } });
+      if (request.expectedHeadOid !== pull.head.sha) return refuse('Head branch was modified. Review and try the merge again.');
+      if (!mergeSettings.autoMergeAllowed) return refuse('Pull request Auto merge is not allowed for this repository');
+      if (pull.merged || pull.state === 'closed' || pull.draft) return refuse('Pull request is not in the correct state to enable auto-merge');
+      if (['CLEAN', 'UNSTABLE', 'HAS_HOOKS'].includes(mergeSettings.status)) return refuse(`Pull request Pull request is in ${mergeSettings.status.toLowerCase().replace('_', ' ')} status`);
+      if (request.method === 'QUEUE' ? !mergeSettings.queueEnabled : mergeSettings.queueEnabled || !mergeSettings[request.method.toLowerCase() as 'squash' | 'merge' | 'rebase']) return refuse('Merge method is not allowed for this repository');
+      autoMerge = { method: request.method === 'QUEUE' ? null : request.method, enabledAt: new Date().toISOString() };
+      return { status: 200, headers: new Headers(), body: { data: { enablePullRequestAutoMerge: { pullRequest: { id: nodeId(), autoMergeRequest: autoMergeRequest() } } } } };
+    }
     const decline = (message: string) => ({ status: 200, headers: new Headers(), body: { data: { [request.method === 'QUEUE' ? 'enqueuePullRequest' : 'mergePullRequest']: null }, errors: [{ type: 'UNPROCESSABLE', message }] } });
     if (request.expectedHeadOid !== pull.head.sha) return decline('Head branch was modified. Review and try the merge again.');
     if (pull.merged || pull.state === 'closed' || pull.draft || queue.queued || ['DIRTY', 'BLOCKED', 'UNKNOWN'].includes(mergeSettings.status) || mergeSettings.status === 'BEHIND' && request.method !== 'QUEUE') return decline('Pull Request is not mergeable');
     if (request.method === 'QUEUE' ? !mergeSettings.queueEnabled : mergeSettings.queueEnabled || !mergeSettings[request.method.toLowerCase() as 'squash' | 'merge' | 'rebase']) return decline('Merge method is not allowed for this repository');
     if (request.method === 'QUEUE') { queue = { queued: true, position: 0 }; return { status: 200, headers: new Headers(), body: { data: { enqueuePullRequest: { mergeQueueEntry: { position: 0, pullRequest: { id: nodeId() } } } } } }; }
-    pull = { ...pull, state: 'closed', merged: true, merged_at: new Date().toISOString(), merge_commit_sha: 'c'.repeat(40) } as typeof pull;
+    pull = { ...pull, state: 'closed', merged: true, merged_at: new Date().toISOString(), merge_commit_sha: 'c'.repeat(40) } as typeof pull; autoMerge = null;
     return { status: 200, headers: new Headers(), body: { data: { mergePullRequest: { pullRequest: { id: nodeId(), merged: true } } } } };
+  }, async disableAutoMerge(pullRequestId, signal) {
+    signal.throwIfAborted(); await beforeWrite?.(); signal.throwIfAborted(); mergeCancels.push(pullRequestId);
+    autoMerge = null;
+    return { status: 200, headers: new Headers(), body: { data: { disablePullRequestAutoMerge: { pullRequest: { id: nodeId(), autoMergeRequest: null } } } } };
   }, async setTitle(_identity, title, signal) {
     signal.throwIfAborted(); await beforeWrite?.(); signal.throwIfAborted(); titles.push(title);
     if (titleReply) return titleReply(title);
@@ -92,7 +110,7 @@ export function githubFixture(additionalPulls: typeof pullFixture[] = []) {
         : path.includes('/reviews?') ? structuredClone(reviews) : structuredClone(additionalPulls.find(candidate => path.endsWith(`/pulls/${candidate.number}`)) ?? pull);
     return { status, body, headers: new Headers(headers) };
   } });
-  return { connections, accounts, client, posts, merges, get mergeCommit() { return mergeCommit; }, set mergeCommit(value) { mergeCommit = value; }, get mergeCommitReads() { return mergeCommitReads; }, get mergeSettings() { return mergeSettings; }, set mergeSettings(value) { mergeSettings = value; }, replyToMerge(reply: typeof mergeReply) { mergeReply = reply; }, titles, replyToTitle(reply: typeof titleReply) { titleReply = reply; }, writes, states, drafts, replyToState(reply: typeof stateReply) { stateReply = reply; }, replyToDraft(reply: typeof draftReply) { draftReply = reply; }, get comments() { return comments; }, set comments(value) { comments = value; }, get inline() { return inline; }, set inline(value) { inline = value; }, get reviewEntries() { return reviews; }, set reviewEntries(value) { reviews = value; }, get requests() { return requests; }, get pull() { return pull; }, set pull(value) { pull = value; }, get runs() { return runs; }, set runs(value) { runs = value; }, get queue() { return queue; }, set queue(value) { queue = value; }, get checks() { return checks; }, set checks(value) { checks = value; },
+  return { connections, accounts, client, posts, merges, mergeCancels, get autoMerge() { return autoMerge; }, set autoMerge(value) { autoMerge = value; }, get mergeCommit() { return mergeCommit; }, set mergeCommit(value) { mergeCommit = value; }, get mergeCommitReads() { return mergeCommitReads; }, get mergeSettings() { return mergeSettings; }, set mergeSettings(value) { mergeSettings = value; }, replyToMerge(reply: typeof mergeReply) { mergeReply = reply; }, titles, replyToTitle(reply: typeof titleReply) { titleReply = reply; }, writes, states, drafts, replyToState(reply: typeof stateReply) { stateReply = reply; }, replyToDraft(reply: typeof draftReply) { draftReply = reply; }, get comments() { return comments; }, set comments(value) { comments = value; }, get inline() { return inline; }, set inline(value) { inline = value; }, get reviewEntries() { return reviews; }, set reviewEntries(value) { reviews = value; }, get requests() { return requests; }, get pull() { return pull; }, set pull(value) { pull = value; }, get runs() { return runs; }, set runs(value) { runs = value; }, get queue() { return queue; }, set queue(value) { queue = value; }, get checks() { return checks; }, set checks(value) { checks = value; },
     fail(code: number, extra: Record<string, string> = {}) { status = code; headers = extra; }, delay(callback: typeof before) { before = callback; }, holdWrites(gate: typeof beforeWrite) { beforeWrite = gate; },
     host(registry: ResourcePluginRegistry) { const host = new ResourcePluginHost(registry); host.register('github.pull-request', githubPullRequestConnector(resource => { connections.resolve('github', resource.connectionId); return client; }, { viewer: resource => resource.connectionId ? connections.resolve('github', resource.connectionId).account : undefined })); host.present('github.pull-request', pullRequestPresentation); return host; },
   };

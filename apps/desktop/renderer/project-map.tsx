@@ -25,7 +25,7 @@ import { TierCounts, TierMark } from './ui/tier-mark.tsx';
 import { performanceMetrics, observeMapPerformance } from './performance.ts';
 import { createResourcePluginRegistry } from '../../../src/resource-plugins/builtins.ts';
 import { itemFootprint } from '../../../src/graph/footprints.ts';
-import { moveItems, resizeItem } from '../../../src/graph/movement.ts';
+import { moveItems, resizeItem, solidDropPosition } from '../../../src/graph/movement.ts';
 import { snapPosition, snapStep } from '../../../src/graph/snap.ts';
 import { ItemIcon, StatusGlyph } from './icons.tsx';
 import { ZoomBar } from './zoom-bar.tsx';
@@ -1118,8 +1118,10 @@ function MapCanvas(props: ProjectMapProps) {
   /** The dropped card stays where it was let go until its save lands. Saves run one after another,
    * and the cards stay draggable meanwhile: a press during a save never falls through to the map. */
   const finishMove = (id: string, dropped: { x: number; y: number }, screen: { x: number; y: number }) => {
-    const position = snapPosition(props.collisions === 'solid' ? layout.find(node => node.id === id)?.position ?? dropped : dropped, props.snap);
     const held = dragStart.current, base = settling ?? props.nodes, item = base.find(node => node.id === id), saving = saves.current;
+    const stop = layout.find(node => node.id === id)?.position ?? dropped;
+    const position = props.collisions === 'solid' && (held?.selected.length ?? 1) < 2 ? solidDropPosition(base, props.resources, props.registry ?? registry, id, stop, props.itemMapSizes, props.snap)
+      : snapPosition(props.collisions === 'solid' ? stop : dropped, props.snap);
     const many = held && held.selected.length > 1 ? selectionMoves(base, held.selected, id, position) : undefined, projectId = !many && item ? dropProject(item, position) : undefined;
     moving.current = false; setDrag({ id, ...position }); saving.pending++;
     const save = async () => {

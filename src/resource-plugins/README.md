@@ -97,7 +97,9 @@ Types that should open a browser instead of expanding can declare
 record and sends the field through its HTTP(S)-only browser bridge. Camera and
 item positions remain unchanged; custom types need no map or transport branch.
 
-Types with a page on their provider's website declare `webLink: { label, template }`,
+Types with a page on their provider's website declare `webLink: { label, template }`
+(`{field:digits}` keeps only a field's digits, as a Slack permalink needs; `from: '<field>'` links
+to the page of the map item that field names, like a review's pull request),
 e.g. `'https://github.com/{owner}/{repo}/pull/{number}'`. `{field}` parts are filled
 from saved data and URL-encoded; a template that is only `{field}` takes a whole
 saved URL. A list of templates uses the first one whose fields are all present.
