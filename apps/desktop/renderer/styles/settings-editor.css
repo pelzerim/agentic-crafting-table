@@ -15,7 +15,7 @@
 .settings-editor input[type=checkbox] {
   width: 16px;
   height: 16px;
-  accent-color: #a6c9af;
+  accent-color: var(--act-settings-check);
 }
 
 .settings-editor .setting-hint {
@@ -31,7 +31,7 @@
 
 .settings-editor [role=alert] {
   font-size: var(--act-fs-ui);
-  color: #e3ab99;
+  color: var(--act-invalid-ink);
   overflow-wrap: anywhere;
 }
 
@@ -144,14 +144,14 @@
 
 .settings-tree [aria-selected=true]>.settings-tree-row {
   background: var(--act-selected);
-  color: #c9e7d3;
-  border-color: #6a9075;
-  box-shadow: inset 3px 0 #a0cda8;
+  color: var(--act-settings-tree-selected-ink);
+  border-color: var(--act-settings-select-line);
+  box-shadow: inset 3px 0 var(--act-settings-tree-selected-bar);
 }
 
 .settings-tree-row:hover {
   background: var(--act-hover);
-  border-color: #496650;
+  border-color: var(--act-settings-tree-hover-line);
 }
 
 .settings-tree [role=treeitem]:focus-visible>.settings-tree-row {

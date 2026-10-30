@@ -9,13 +9,14 @@ import { pluginDiscoverySchema } from '../../src/resource-plugins/url-input.ts';
 import { createKeepAwake } from './keep-awake.ts';
 import { ScreenReaderWatch, assistiveTechnologyOverride, voiceOverRunning } from './assistive-technology.ts';
 import { NEIGHBORHOOD_STYLE_PARAMETER, neighborhoodStylePin } from './neighborhood-style-pin.ts';
+import { COLOR_SCHEME_PARAMETER, WINDOW_BACKGROUND, themeSource } from './appearance.ts';
 import { settingsWriteSchema } from '../../packages/core/settings.ts';
 import { providerAccountsSchema, providerRefreshSchema, providerSelectSchema } from '../../packages/core/connections.ts';
-import type { SettingsSnapshot } from '../../packages/core/settings.ts';
+import type { Appearance, SettingsSnapshot } from '../../packages/core/settings.ts';
 import { clockTime, reminderDoneSchema, reminderSaveSchema, reminderSnoozeSchema } from '../../packages/core/reminders.ts';
 import type { ReminderDue } from '../../packages/core/reminders.ts';
 import { standupRequestSchema } from '../../packages/core/standup.ts';
-import { app, BrowserWindow, ipcMain, nativeImage, net, protocol, session, shell, dialog, screen, clipboard, Notification, Menu, MenuItem } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeImage, net, protocol, session, shell, dialog, screen, clipboard, Notification, Menu, MenuItem, nativeTheme } from 'electron';
 import { join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readFile, realpath, writeFile } from 'node:fs/promises';
@@ -55,6 +56,7 @@ const testDirectory = process.env.ACT_TEST_DATA_DIR;
 // Test windows still render and accept automation input, but never take over the
 // user's desktop. The opt-in is useful when watching a failing journey locally.
 const backgroundTest = Boolean(testDirectory) && process.env.ACT_TEST_SHOW_WINDOW !== '1';
+const colorScheme = () => nativeTheme.shouldUseDarkColors ? 'dark' as const : 'light' as const;
 if (backgroundTest && process.platform === 'darwin') app.setActivationPolicy('accessory');
 app.setPath('userData', testDirectory ? resolve(testDirectory) : join(app.getPath('appData'), 'agent-crafting-table'));
 const spike = process.argv.includes('--renderer-spike');
@@ -205,10 +207,15 @@ async function main() {
   ipcMain.handle('app:install-link', event => { assertCaller(event); const link = installLink; installLink = null; return link; });
   app.on('will-quit', () => { notifications.dispose(); for (const notice of nativeNotices.values()) notice.close(); nativeNotices.clear(); });
   const keepAwake = createKeepAwake();
+  const applyAppearance = (appearance: Appearance) => { nativeTheme.themeSource = themeSource(Boolean(testDirectory), process.env.ACT_TEST_APPEARANCE, appearance); };
+  applyAppearance('system');
+  nativeTheme.on('updated', () => {
+    for (const window of BrowserWindow.getAllWindows()) { window.setBackgroundColor(WINDOW_BACKGROUND[colorScheme()]); window.webContents.send('app:color-scheme', colorScheme()); }
+  });
   let settingsRevision = -1;
   const applySettings = (snapshot: SettingsSnapshot) => {
     if (snapshot.revision < settingsRevision) return;
-    settingsRevision = snapshot.revision; keepAwake.apply(snapshot.value.keepAwake); notifications.preferences = snapshot.value.notifications;
+    settingsRevision = snapshot.revision; keepAwake.apply(snapshot.value.keepAwake); applyAppearance(snapshot.value.appearance); notifications.preferences = snapshot.value.notifications;
     broadcast('workspace:settings', snapshot);
   };
   app.on('will-quit', () => keepAwake.apply(false));
@@ -391,7 +398,7 @@ async function main() {
     const window = new BrowserWindow({
       ...placement.state.bounds, minWidth: placement.minWidth, minHeight: placement.minHeight,
       show: !backgroundTest, focusable: !backgroundTest,
-      backgroundColor: '#141a17', title: 'Agentic Crafting Table',
+      backgroundColor: WINDOW_BACKGROUND[colorScheme()], title: 'Agentic Crafting Table',
       webPreferences: { preload: join(app.getAppPath(), 'dist', 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: !backgroundTest },
     });
     // maximize() reveals a hidden window, so background tests retain normal bounds.
@@ -416,6 +423,7 @@ async function main() {
     window.webContents.on('will-navigate', event => event.preventDefault());
     const query = new URLSearchParams(spike ? { spike: '1' } : {}), pinnedStyle = neighborhoodStylePin(Boolean(testDirectory), process.env.ACT_TEST_NEIGHBORHOOD_STYLE);
     if (pinnedStyle) query.set(NEIGHBORHOOD_STYLE_PARAMETER, pinnedStyle);
+    query.set(COLOR_SCHEME_PARAMETER, colorScheme());
     await window.loadURL(`${origin}/index.html${query.size ? `?${query}` : ''}`);
     return window;
   };

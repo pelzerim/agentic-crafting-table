@@ -162,7 +162,7 @@
   display: flex;
   flex-direction: column;
   background: var(--act-surface);
-  box-shadow: 0 12px 36px #0005;
+  box-shadow: 0 12px 36px var(--act-shade-soft);
   padding: 12px;
 }
 
@@ -1618,12 +1618,12 @@
 }
 
 .map-card .item-open-icon:hover {
-  background: #b7d4ff22;
+  background: var(--act-card-open-hover);
   outline: 1px solid var(--tone);
 }
 
 .map-card .item-open-icon:focus-visible {
-  background: #b7d4ff22;
+  background: var(--act-card-open-hover);
   outline: var(--act-focus-ring);
   outline-offset: 2px;
 }

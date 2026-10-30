@@ -1,4 +1,5 @@
 import { createRoot } from 'react-dom/client';
+import './color-scheme.ts';
 import './styles.css';
 import './pixel-theme.css';
 import '../../../src/resource-plugins/bundled/styles.generated.css';

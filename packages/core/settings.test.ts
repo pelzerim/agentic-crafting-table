@@ -75,6 +75,12 @@ test('terminal scrollback defaults to 5,000 lines and accepts only the offered c
   for (const scrollback of [0, 3000, 100000, '5000', null]) assert.equal(settingsSchema.safeParse({ terminal: { scrollback } }).success, false, String(scrollback));
 });
 
+test('appearance follows the system by default and accepts only system, light or dark', () => {
+  assert.equal(settingsSchema.parse({}).appearance, 'system', 'settings saved before appearance existed');
+  for (const appearance of ['system', 'light', 'dark']) assert.equal(settingsSchema.parse({ appearance }).appearance, appearance);
+  for (const appearance of ['sepia', '', 'Light', null, 1]) assert.equal(settingsSchema.safeParse({ appearance }).success, false, String(appearance));
+});
+
 test('opening marks no item type seen by default; saved type ids survive, including unknown ones', () => {
   assert.deepEqual(settingsSchema.parse({}).notifications.seenOnOpen, []);
   assert.deepEqual(settingsSchema.parse({ notifications: { mode: 'always' } }).notifications.seenOnOpen, []);

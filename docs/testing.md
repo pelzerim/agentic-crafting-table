@@ -920,6 +920,12 @@ In the same way it defaults `ACT_TEST_NEIGHBORHOOD_STYLE=plain`: test launches d
 plain neighborhoods whatever the setting says, so the baselines of unrelated
 journeys do not depend on the ground. The setting is still saved and shown.
 `tests/e2e/biomes.spec.ts` launches with the variable empty so the setting decides.
+Test launches are also dark whatever the machine's appearance: on the default System
+setting main sets `nativeTheme.themeSource` to dark unless `ACT_TEST_APPEARANCE=light`
+says otherwise, so no baseline follows the runner's macOS setting. An explicit Light or
+Dark setting still applies. `tests/e2e/appearance.spec.ts` launches light, checks the
+light tokens, the window and the terminal colours, and that saving Dark in Settings →
+General → Appearance turns the open page and terminal dark.
 `tests/e2e/terminal-settings.spec.ts` does so: it checks the Settings → General →
 Terminals controls, that an open terminal gains and loses its accessibility tree
 when the setting or the OS report changes, and that a saved scrollback length

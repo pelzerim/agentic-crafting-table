@@ -88,7 +88,7 @@
 .markdown-content blockquote {
   border-left: 3px solid var(--act-ink-faint);
   padding: 0 16px;
-  color: #aabfb1;
+  color: var(--act-quote-ink);
 }
 
 .markdown-content blockquote p {
@@ -96,13 +96,13 @@
 }
 
 .markdown-content a[href] {
-  color: #b4d5be;
+  color: var(--act-link-text);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
 .markdown-content a[href]:hover {
-  color: #e1f0e4;
+  color: var(--act-link-text-hover);
 }
 
 .markdown-content code {

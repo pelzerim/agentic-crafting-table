@@ -100,6 +100,9 @@ export const mapDashboardsSchema = z.object({
 }).default(() => ({ ...DEFAULT_MAP_DASHBOARDS, sections: { ...DEFAULT_DASHBOARD_SECTIONS } }));
 export const MAP_CORNERS = ['projects', 'atlas'] as const;
 export type MapCorner = typeof MAP_CORNERS[number];
+/** How the app is coloured: following macOS, or always light or dark. */
+export const APPEARANCES = ['system', 'light', 'dark'] as const;
+export type Appearance = typeof APPEARANCES[number];
 export const TERMINAL_SCROLLBACK_CHOICES = [2000, 5000, 10000, 25000] as const;
 export const DEFAULT_TERMINAL_SCROLLBACK = 5000;
 /** Terminal views. Screen reader support also turns on while macOS reports assistive technology. */
@@ -127,6 +130,8 @@ export const settingsSchema = z.object({
   plugins: pluginSettingsSchema,
   itemMapSizes: itemMapSizesSchema,
   menus: menuSettingsSchema,
+  /** Light or dark colours; System follows macOS and switches with it. */
+  appearance: z.enum(APPEARANCES).default('system'),
   keepAwake: z.boolean().default(false),
   warnBeforeClosing: z.boolean().default(false),
   diagnostics: logPolicySchema.default(() => ({ ...DEFAULT_LOG_POLICY })),

@@ -53,7 +53,7 @@
 }
 
 .terminal-error {
-  color: #e3ab99;
+  color: var(--act-invalid-ink);
   font-size: var(--act-fs-ui);
   padding: 4px 8px;
 }
@@ -113,9 +113,9 @@
 /* Stop is the one irreversible control here; in the toolbar and in the Session menu it wears the same amber. */
 .live-workspace .terminal-status .session-stop:not(:disabled),
 .native-session-menu .session-stop:not(:disabled) {
-  color: #eccba0;
-  background: #3a3024;
-  border-color: #80664a;
+  color: var(--act-irreversible-ink);
+  background: var(--act-irreversible-bg);
+  border-color: var(--act-irreversible-line);
 }
 
 /* The agent menu sits above the pixel-clipped item and never consumes terminal rows. */
@@ -150,7 +150,7 @@
 .native-session-menu button:hover:not(:disabled),
 .native-session-menu button:focus-visible {
   background: var(--act-control-hover);
-  border-color: #8bb69a;
+  border-color: var(--act-terminal-focus-line);
 }
 
 .native-session-menu button:focus-visible {
@@ -194,7 +194,7 @@
   padding: 8px;
   background: var(--act-panel);
   color: var(--act-ink);
-  box-shadow: 0 0 0 2px #718b76,4px 4px 0 2px var(--act-deep);
+  box-shadow: 0 0 0 2px var(--act-terminal-menu-ring),4px 4px 0 2px var(--act-deep);
   font-size: var(--act-fs-ui);
 }
 
@@ -225,7 +225,7 @@
 
 .terminal-link-menu button:hover {
   background: var(--act-control-hover);
-  outline: 1px solid #97be9e;
+  outline: 1px solid var(--act-terminal-menu-hover);
   outline-offset: -1px;
 }
 
@@ -241,7 +241,7 @@
 }
 
 .terminal-link-menu [role=alert] {
-  color: #efbd9f;
+  color: var(--act-invalid-ink-soft);
 }
 
 /* ⌘F floats over the terminal's top-right corner without taking rows. */
@@ -317,4 +317,9 @@
 .terminal-find button:disabled {
   color: var(--act-ink-faint);
   cursor: default;
+}
+
+/* xterm's viewport keeps its stock black under the last row; on the light ground it matches the terminal (--act-card is its background). */
+.terminal-surface[data-terminal-theme="light"] .xterm-viewport {
+  background-color: var(--act-card);
 }

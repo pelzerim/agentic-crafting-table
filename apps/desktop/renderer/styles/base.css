@@ -6,6 +6,10 @@
   color-scheme: dark;
 }
 
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
 .live-workspace {
   position: relative;
   display: flex;

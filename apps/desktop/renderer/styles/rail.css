@@ -4,9 +4,9 @@
   z-index: 113;
   width: 52px;
   box-sizing: border-box;
-  background: #1b1b1bd9;
-  border: 2px solid #000;
-  box-shadow: 3px 3px 0 #0008;
+  background: var(--act-hotbar);
+  border: 2px solid var(--act-hotbar-edge);
+  box-shadow: 3px 3px 0 var(--act-shade-strong);
   pointer-events: none;
 }
 
@@ -30,14 +30,14 @@
   height: 44px;
   margin-top: -2px;
   box-sizing: border-box;
-  background: #3a3a3a8c;
-  border: 2px solid #8b8b8b;
-  box-shadow: inset 2px 2px 0 #2a2a2a,inset -2px -2px 0 #5c5c5c;
+  background: var(--act-hotbar-slot);
+  border: 2px solid var(--act-hotbar-slot-edge);
+  box-shadow: inset 2px 2px 0 var(--act-hotbar-slot-shade),inset -2px -2px 0 var(--act-hotbar-slot-light);
 }
 
 .tool-rail-slot[data-active] {
-  border-color: #f5f5f5;
-  box-shadow: inset 2px 2px 0 #2a2a2a,inset -2px -2px 0 #5c5c5c,0 0 0 2px #000;
+  border-color: var(--act-hotbar-slot-active);
+  box-shadow: inset 2px 2px 0 var(--act-hotbar-slot-shade),inset -2px -2px 0 var(--act-hotbar-slot-light),0 0 0 2px var(--act-hotbar-edge);
 }
 
 /* Actions and Settings sit apart from the tools, below a notch in the frame. */
@@ -326,7 +326,7 @@
 }
 
 .live-workspace .rail-panel-toggle:hover {
-  background: #ffffff14;
+  background: var(--act-rail-toggle-hover);
 }
 
 .live-workspace .rail-panel-toggle:focus-visible {
@@ -488,7 +488,7 @@
   padding: 2px;
   cursor: nwse-resize;
   touch-action: none;
-  color: #8aab91;
+  color: var(--act-rail-grip);
   z-index: 3;
 }
 

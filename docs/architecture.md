@@ -503,6 +503,15 @@ there is no biome layer for that field and the SVG is the former markup unchange
 `ACT_TEST_NEIGHBORHOOD_STYLE` pins the drawn style in test launches only; it
 reaches the renderer in the page address and never changes saved settings.
 
+The `appearance` setting (SETTINGS-APPEARANCE) becomes Electron's
+`nativeTheme.themeSource` in main (`apps/desktop/appearance.ts`), which also picks the
+window's pre-paint fill. Main passes the resulting light or dark to the page in its
+address and over IPC on every change; the renderer sets it as `data-theme` on `<html>`
+and never reads `prefers-color-scheme`, which Playwright emulates as light. CSS picks it
+up through the light block of `tokens.css`, and canvas or prop colours that cannot read
+tokens (xterm, its search decorations, React Flow's arrowhead and dot grid) through
+`useColorScheme()` in `color-scheme.ts`.
+
 Overview and neighborhood use the same draggable title above the outline; there
 is no central project bubble. The locator uses the derived center. Neither
 projection rewrites saved positions. Switching zoom levels never changes
