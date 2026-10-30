@@ -350,5 +350,5 @@ See the unknown-provider reconciliation fixtures and Linear connector.
 Creation presentation can supply `creation.shortLabel` for the compact ring and
 `creation.label` for the confirmation action. Optional `creation.labelByField`
 selects a label from a declared field's value (for example Start Claude/Codex).
-Select fields support `optionLabels`; IDs and validation remain unchanged, and
+Select fields support `optionBrands` (a row of square logo buttons for known providers) and `optionLabels`; IDs and validation remain unchanged, and
 live catalog labels take precedence. New plugins need no picker/transport branch.

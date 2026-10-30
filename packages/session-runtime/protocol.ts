@@ -1,3 +1,4 @@
+import { MAX_SESSION_INPUT } from './input-chunks.ts';
 import * as z from 'zod/v4';
 const id = z.string().min(1).max(200);
 export const launchSchema = z.object({
@@ -11,6 +12,8 @@ export const launchSchema = z.object({
   native: z.object({ provider: z.literal('codex'), nativeSessionId: z.string().uuid().optional(), model: z.string().max(100).optional(),
     instructions: z.string().max(32_000), context: z.string().max(32_000), config: z.record(z.string(), z.json()),
     initialPrompt: z.string().max(32_000).optional(),
+    /** The conversation already holds this guide; another copy would stay in its history for good. */
+    contextDelivered: z.boolean().optional(),
     serverArguments: z.array(z.string().max(200_000)).max(100).default([]),
   }).optional(),
   executable: z.string().min(1).max(4096), args: z.array(z.string().max(200_000)).max(100),
@@ -63,7 +66,7 @@ export interface SessionPage { sessions: SessionRecord[]; total: number; counts:
 export type SessionManagementAction = z.infer<typeof manageSessionSchema>['action'];
 export const stopSessionSchema = sessionIdSchema.extend({ preservePids: z.array(z.number().int().positive()).max(8).default([]) });
 /** `source: 'user'` marks keys the person typed in the app's terminal; only the desktop main process sets it. */
-export const inputSchema = sessionIdSchema.extend({ data: z.string().max(64 * 1024), encoding: z.literal('binary').optional(), source: z.literal('user').optional() })
+export const inputSchema = sessionIdSchema.extend({ data: z.string().max(MAX_SESSION_INPUT), encoding: z.literal('binary').optional(), source: z.literal('user').optional() })
   .refine(input => input.encoding !== 'binary' || !/[^\u0000-\u00ff]/.test(input.data), 'Binary input must contain only byte values');
 export const resizeSchema = sessionIdSchema.extend({ cols: launchSchema.shape.cols, rows: launchSchema.shape.rows });
 export const readSessionSchema = sessionIdSchema.extend({ after: z.number().int().nonnegative().optional(), history: z.boolean().optional(), through: z.number().int().nonnegative().optional(), tail: z.number().int().positive().optional() });

@@ -37,6 +37,8 @@ export interface ResourceAppearance {
   showFullTitle?: boolean;
   /** Clicking visible title text edits the local title without entering focus view. */
   editableTitle?: boolean;
+  /** Clicking the title in the item's open view edits the local title; the map card still opens the view. */
+  editableViewTitle?: boolean;
   /** Optional icon driven by the host node's completion state. */
   completedIcon?: string;
   /** The map card's type icon is a checkbox that marks the item done or reopens it. */
@@ -78,6 +80,8 @@ export interface ResourceDraft {
 /** One description drives inline forms, validation and agent discovery. */
 export interface ResourceField {
   label: string;
+  /** A select of known providers is a row of square logo buttons; keys are `options`, values brand names. */
+  optionBrands?: Readonly<Record<string, string>>;
   /** `multiselect` (any of `options`, stored as a list) is for settings sections only. */
   kind: 'text' | 'url' | 'number' | 'boolean' | 'select' | 'multiselect' | 'directory';
   required?: boolean;
@@ -308,6 +312,8 @@ export interface NativeTerminalOptions {
    * An archived session or one whose recording was deleted stays as it is; `resume` remains the explicit start. */
   startWhenStopped?: boolean;
   agentMenu?: boolean;
+  /** The agent gets clipboard text and images through the terminal instead of reading the clipboard itself on Ctrl+V. */
+  nativePaste?: boolean;
   /** Names the agent when stopping a working turn asks for confirmation. */
   agentName?: string;
   /** Keep the session controls above the terminal instead of in the expanded frame's title bar. */

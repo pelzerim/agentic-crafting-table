@@ -4,7 +4,7 @@ const CMD_LINE_KEYS: Record<string, string> = { Backspace: '\x15', ArrowLeft: '\
 
 /** Agents interpret the modified key themselves. Shell line editors receive a
  * bracketed newline so neither line executes until ordinary Enter. */
-export function terminalKey(terminal: Pick<Terminal, 'options' | 'paste' | 'input' | 'hasSelection'> & { modes: Pick<Terminal['modes'], 'bracketedPasteMode' | 'mouseTrackingMode'> }, event: KeyboardEvent, agent = false, find?: () => void) {
+export function terminalKey(terminal: Pick<Terminal, 'options' | 'paste' | 'input' | 'hasSelection'> & { modes: Pick<Terminal['modes'], 'bracketedPasteMode' | 'mouseTrackingMode'> }, event: KeyboardEvent, agent = false, find?: () => void, browserPaste = false) {
   // An IME composition keeps every key.
   if (event.isComposing || event.keyCode === 229) return true;
   if (event.key === 'f' && event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
@@ -16,6 +16,12 @@ export function terminalKey(terminal: Pick<Terminal, 'options' | 'paste' | 'inpu
   if (agent && event.key === 'c' && event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && terminal.modes.mouseTrackingMode !== 'none' && !terminal.hasSelection()) {
     event.preventDefault(); event.stopPropagation();
     if (event.type === 'keydown' && !terminal.options.disableStdin) terminal.input('\x1b[99;9u', true);
+    return false;
+  }
+  // Sending Ctrl+V as a key would make the agent read the desktop clipboard itself, which fails on text.
+  // Left uncancelled, the browser pastes instead; the terminal's paste handling takes it from there.
+  if (browserPaste && !terminal.options.disableStdin && event.type === 'keydown' && event.key.toLowerCase() === 'v' && event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+    event.stopPropagation();
     return false;
   }
   // Line-editing Cmd keys send what iTerm2 and Terminal.app send.

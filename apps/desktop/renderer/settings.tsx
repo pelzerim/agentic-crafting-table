@@ -2,7 +2,7 @@ import { NotificationSettings } from './notification-settings.tsx';
 import { AdvancedDisclosure, DefaultMeta, InlineConfirm, NumberField, SettingRow, SettingsPage, SettingsSection, SliderField, Switch, TextField, useRowControl } from './settings-ui.tsx';
 import { DirectoryField, useDirectoryChoices } from './ui/directory-field.tsx';
 import type { RowStatus } from './settings-ui.tsx';
-import { DEFAULT_BELOW_ANIMATION, DEFAULT_TERMINAL_SCROLLBACK, TERMINAL_SCROLLBACK_CHOICES, notificationSettingsSchema, settingsSchema } from '../../../packages/core/settings.ts';
+import { DEFAULT_BELOW_ANIMATION, DEFAULT_TERMINAL_SCROLLBACK, TERMINAL_SCROLLBACK_CHOICES, RIGHT_CLICK_CLOSES, notificationSettingsSchema, settingsSchema } from '../../../packages/core/settings.ts';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { AppInfo } from '../bridge.ts';
 import { LARGE_ITEM_WIDTH } from '../../../src/graph/footprints.ts';
@@ -44,6 +44,12 @@ const SUMMARY_DEFAULTS = settingsSchema.parse({}).summaries, TERMINAL_DEFAULTS =
 function ScrollbackSelect({ value, change }: { value: AppSettings['terminal']['scrollback']; change(value: AppSettings['terminal']['scrollback']): void }) {
   return <select {...useRowControl()} value={value} onChange={event => change(Number(event.target.value) as AppSettings['terminal']['scrollback'])}>
     {TERMINAL_SCROLLBACK_CHOICES.map(lines => <option key={lines} value={lines}>{lines.toLocaleString('en-US')} lines</option>)}
+  </select>;
+}
+const RIGHT_CLICK_LABELS: Record<AppSettings['terminal']['rightClickCloses'], string> = { anywhere: 'Closes the view', outside: 'Closes it only outside the view' };
+function RightClickSelect({ value, change }: { value: AppSettings['terminal']['rightClickCloses']; change(value: AppSettings['terminal']['rightClickCloses']): void }) {
+  return <select {...useRowControl()} value={value} onChange={event => change(event.target.value as AppSettings['terminal']['rightClickCloses'])}>
+    {RIGHT_CLICK_CLOSES.map(choice => <option key={choice} value={choice}>{RIGHT_CLICK_LABELS[choice]}</option>)}
   </select>;
 }
 function LaunchArguments({ value, change }: { value: string; change(value: string): void }) {
@@ -360,6 +366,11 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
           <SettingRow label="Scrollback lines" description="History each terminal view keeps for scrolling back. Longer history uses more memory and makes large sessions slower to open. The full recording is kept either way."
             meta={<DefaultMeta value={terminal.scrollback} fallback={DEFAULT_TERMINAL_SCROLLBACK} format={lines => `${lines.toLocaleString('en-US')} lines`} />}>
             <ScrollbackSelect value={terminal.scrollback} change={scrollback => setTerminal({ ...terminal, scrollback })} />
+          </SettingRow>
+        </SettingsSection>
+        <SettingsSection label="Mouse behavior">
+          <SettingRow label="Right click in an open view" description="What a right click does in an open agent or terminal view." meta={`Default ${RIGHT_CLICK_LABELS.anywhere.toLowerCase()}`}>
+            <RightClickSelect value={terminal.rightClickCloses} change={rightClickCloses => setTerminal({ ...terminal, rightClickCloses })} />
           </SettingRow>
         </SettingsSection>
         <SettingsSection label="Closing the app">

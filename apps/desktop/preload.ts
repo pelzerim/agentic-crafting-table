@@ -45,6 +45,7 @@ const bridge: DesktopBridge = {
   openUrl: url => ipcRenderer.invoke('app:open-url', url),
   setBadgeCount: count => ipcRenderer.invoke('app:badge', count),
   copyUrl: url => ipcRenderer.invoke('app:copy-url', url),
+  savePastedImage: bytes => ipcRenderer.invoke('app:save-pasted-image', bytes),
   chooseDirectory: () => ipcRenderer.invoke('app:choose-directory'),
   recentDirectories: () => invoke('directories.recent'),
   workspaceCapabilities: () => invoke('capabilities'),

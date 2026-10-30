@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { AgentCapability } from './agent-plan.ts';
 import type { LaunchRequest } from './protocol.ts';
+import { DEFAULT_CODEX_EFFORT } from './codex-models.ts';
 import { sessionPath } from './shell-path.ts';
 import type { ReviewProvider } from '../../src/pull-requests/reviews.ts';
 import type { GitComparison } from '../provider-runtime/git-comparison.ts';
@@ -43,7 +44,7 @@ export function prepareReviewProcess(directory: string, input: ReviewProcessInpu
   const resultFile = input.provider === 'codex' ? join(folder, 'result.md') : undefined, schemaFile = join(folder, 'findings-schema.json');
   if (structured && input.provider === 'codex') writeFileSync(schemaFile, JSON.stringify(providerFindingsSchema), { mode: 0o600 });
   const args = input.provider === 'codex'
-    ? ['exec', '--ignore-user-config', '--ignore-rules', '--skip-git-repo-check', '--sandbox', 'read-only', '--model', input.model, '--color', 'always', '--output-last-message', resultFile!, ...(structured ? ['--output-schema', schemaFile] : []), '-c', 'approval_policy="never"', '-c', 'mcp_servers={}', prompt]
+    ? ['exec', '--ignore-user-config', '--ignore-rules', '--skip-git-repo-check', '--sandbox', 'read-only', '--model', input.model, '-c', `model_reasoning_effort="${DEFAULT_CODEX_EFFORT}"`, '--color', 'always', '--output-last-message', resultFile!, ...(structured ? ['--output-schema', schemaFile] : []), '-c', 'approval_policy="never"', '-c', 'mcp_servers={}', prompt]
     : ['--print', '--safe-mode', '--restricted', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--tools', 'Read,Glob,Grep', '--allowedTools', 'Read,Glob,Grep', '--permission-mode', 'dontAsk', '--disable-slash-commands', '--model', input.model, '--session-id', input.requestId,
       ...(structured ? ['--output-format', 'stream-json', '--verbose', '--json-schema', JSON.stringify(providerFindingsSchema)] : ['--output-format', 'text']), '--', prompt];
   const launch: LaunchRequest = { ...(input.provider === 'claude' ? { stopOnArchive: true } : {}), sessionId: input.requestId, requestId: input.requestId, nodeId: input.nodeId,

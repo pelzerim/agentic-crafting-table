@@ -39,6 +39,7 @@ export function StatusGlyph({ icon, tone }: { icon: string; tone?: string }) {
 export function ItemIcon({ icon = 'item', brand, tint = false, size = 12, className = '' }: { icon?: string; brand?: string; tint?: boolean; size?: GlyphSize; className?: string }) {
   const path = tint ? undefined : brands[brand as keyof typeof brands];
   if (path) return <svg className={`item-icon brand-${brand} ${className}`} data-icon={icon} aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d={path} /></svg>;
+  if (icon === 'robot') return <span className={`item-icon item-emoji ${className}`} aria-hidden="true" data-icon={icon}>🤖</span>;
   const small = size === 8 ? STATUS_GLYPHS[icon] : undefined;
   return <svg className={`item-icon pixel-icon ${brand ? `brand-${brand}` : ''} ${className}`} aria-hidden="true" data-icon={icon} viewBox={VIEW_BOX[small ? 8 : 12]} shapeRendering="crispEdges">
     <path fill="currentColor" d={glyphPath(small ? PIXEL_GLYPHS[8][small] : PIXEL_GLYPHS[12][uiGlyph(icon)])} />

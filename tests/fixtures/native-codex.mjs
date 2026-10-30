@@ -1,7 +1,7 @@
 // Deterministic native protocol fixture, not a Codex model or live-provider test.
 import { createServer } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
@@ -52,8 +52,8 @@ if (args.includes('app-server')) {
       case 'thread/resume':
         if (!thread || thread.id !== params.threadId) throw new Error('Native conversation is missing');
         if (params.config) thread.config = params.config;
-        subscriber = socket; notify('thread/started', { thread }); break;
-      case 'thread/inject_items': thread.context = params.items; save(); break;
+        subscriber = socket; if (!process.env.CODEX_FIXTURE_QUIET_RESUME) notify('thread/started', { thread }); break;
+      case 'thread/inject_items': thread.context = params.items; thread.injections = (thread.injections ?? 0) + 1; save(); break;
       case 'thread/unsubscribe': if (subscriber === socket) subscriber = undefined; break;
       case 'fixture/input':
         if (params.data === 'work') { status('active'); const tool = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' }); writeFileSync(join(process.cwd(), 'native-tool.pid'), String(tool.pid)); }
@@ -88,7 +88,9 @@ if (args.includes('app-server')) {
     if (frame.method === 'fixture/output') process.stdout.write(frame.params.text + '\r\n');
   });
   socket.on('close', () => process.exit(0));
+  // Real Codex asks for bracketed paste; only the paste journey needs it here.
+  if (process.env.CODEX_FIXTURE_INPUT_LOG) process.stdout.write('\x1b[?2004h');
   process.stdin.setRawMode?.(true); process.stdin.resume(); let line = '';
-  process.stdin.on('data', data => { for (const char of String(data)) { if (char === '\r' || char === '\n') { if (line === 'exit') process.exit(0); socket.send(JSON.stringify({ method: 'fixture/input', params: { data: line } })); process.stdout.write('NATIVE_INPUT:' + line + '\r\n'); line = ''; } else line += char; } });
+  process.stdin.on('data', data => { if (process.env.CODEX_FIXTURE_INPUT_LOG) appendFileSync(process.env.CODEX_FIXTURE_INPUT_LOG, data); for (const char of String(data)) { if (char === '\r' || char === '\n') { if (line === 'exit') process.exit(0); socket.send(JSON.stringify({ method: 'fixture/input', params: { data: line } })); process.stdout.write('NATIVE_INPUT:' + line + '\r\n'); line = ''; } else line += char; } });
   process.on('SIGTERM', () => process.exit(0));
 }

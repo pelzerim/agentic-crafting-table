@@ -54,9 +54,17 @@ function ColorField({ field, value, change }: { field: ResourceField; value: str
   const presets = (field.options ?? []).map(option => ({ id: option, label: field.optionLabels?.[option] ?? option, color: field.menu?.swatches?.[option] ?? 'var(--act-control)' }));
   return <ColorPicker label={field.label} presets={presets} value={value ?? field.menu?.fallback} recent={recent} onRecent={remember} onChange={next => change('custom' in next ? next.custom : next.id)} />;
 }
+/** Native radios keep arrow keys and focus; the logos are the visible control. */
+function BrandField({ name, field, value, change }: { name: string; field: ResourceField; value: string; change(value: string): void }) {
+  return <div className="field-brands" role="radiogroup" aria-label={field.label}>{(field.options ?? []).map(option => {
+    const label = field.optionLabels?.[option] ?? option;
+    return <label key={option} title={label} data-selected={option === value || undefined}><input type="radio" name={name} aria-label={label} checked={option === value} onChange={() => change(option)} /><ItemIcon brand={field.optionBrands?.[option]} /></label>;
+  })}</div>;
+}
 function Fields({ fields, values, change, pluginId, focusField, directories, projectDirectory, error }: { focusField?: string; fields: ResourceFields; values: JsonObject; change(key: string, value: string | number | boolean): void; pluginId?: string; directories: DirectoryChoices; projectDirectory?: string; error(message: string): void }) {
   return Object.entries(fields).filter(([, field]) => field.form !== false).map(([key, field]) => field.kind === 'select' && field.customColor
     ? <div key={key} className="field-color"><span aria-hidden="true">{field.label}</span><ColorField field={field} value={typeof values[key] === 'string' ? values[key] as string : undefined} change={value => change(key, value)} /></div>
+    : field.optionBrands ? <div key={key} className="field-color"><span aria-hidden="true">{field.label}</span><BrandField name={key} field={field} value={String(values[key] ?? '')} change={value => change(key, value)} /></div>
     : <label key={key}>{field.label}
     {field.kind === 'directory' ? <DirectoryField label={field.label} required={field.required} value={String(values[key] ?? '')} change={value => change(key, value)} choices={directories} project={field.fromProject ? projectDirectory : undefined} error={error} />
       : field.kind === 'select' ? <SelectField pluginId={pluginId} name={key} field={field} values={values} change={change} />

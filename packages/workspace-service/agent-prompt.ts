@@ -1,3 +1,4 @@
+import { sessionInputChunks } from '../session-runtime/input-chunks.ts';
 import type { SessionCoordinator } from './sessions.ts';
 
 /** The typed line every prompt from the table opens with, ahead of what it asks for. */
@@ -12,6 +13,6 @@ export const FROM_TABLE = 'I asked for this from the Agentic Crafting Table.';
 export const promptAgent = async (sessions: SessionCoordinator, sessionId: string, request: string, details: string) => {
   const typed = request.replace(/[\r\n]+/g, ' ').replace(/[\x00-\x1f\x7f-\x9f]/g, '');
   const pasted = details.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '');
-  await sessions.runtime.call('sessions.input', { sessionId, data: `${typed} \x1b[200~${pasted}\x1b[201~` });
+  for (const data of sessionInputChunks(`${typed} \x1b[200~${pasted}\x1b[201~`)) await sessions.runtime.call('sessions.input', { sessionId, data });
   await sessions.runtime.call('sessions.input', { sessionId, data: '\r' });
 };

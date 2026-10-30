@@ -1,3 +1,4 @@
+import { pastedImage, pastedPath } from './terminal-input.ts';
 import { terminalKey } from './terminal-keys.ts';
 import { bindTerminalLinks } from './terminal-links.ts';
 import type { TerminalLink } from './terminal-links.ts';
@@ -27,13 +28,14 @@ export interface TerminalChannel {
 }
 
 /** A view only: unmounting never stops the underlying session. */
-export function TerminalSurface({ channel, active, readOnly = false, nativeShiftEnter = false }: { channel: TerminalChannel; active: boolean; readOnly?: boolean; nativeShiftEnter?: boolean }) {
+export function TerminalSurface({ channel, active, readOnly = false, nativeShiftEnter = false, nativePaste = false }: { channel: TerminalChannel; active: boolean; readOnly?: boolean; nativeShiftEnter?: boolean; nativePaste?: boolean }) {
   const container = useRef<HTMLDivElement>(null), host = useRef<HTMLDivElement>(null);
   const instance = useRef<{ terminal: Terminal; fit: FitAddon; search: SearchAddon; renderer: ReturnType<typeof createTerminalRenderer>; wheel: ReturnType<typeof bindTerminalWheel> } | null>(null);
   const [linkMenu, setLinkMenu] = useState<TerminalLink>();
   const [find, setFind] = useState<TerminalFindRequest>();
   const activeRef = useRef(active); activeRef.current = active;
   const nativeKeyRef = useRef(nativeShiftEnter); nativeKeyRef.current = nativeShiftEnter;
+  const nativePasteRef = useRef(nativePaste); nativePasteRef.current = nativePaste;
   const findRef = useRef(find); findRef.current = find;
   const closeFind = () => { if (findRef.current) { instance.current?.search.clearDecorations(); instance.current?.terminal.clearSelection(); } setFind(undefined); };
   useEffect(() => { if (!active) { setLinkMenu(undefined); closeFind(); } }, [active]);
@@ -52,7 +54,17 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
     terminal.open(element);
     setFind(undefined);
     const openFind = () => { const selected = terminal.getSelection(); setFind(old => ({ query: selected && !selected.includes('\n') ? selected : old?.query ?? '', request: (old?.request ?? 0) + 1 })); };
-    terminal.attachCustomKeyEventHandler(event => terminalKey(terminal, event, nativeKeyRef.current, openFind));
+    // On macOS Ctrl+V pastes nothing in the browser, and the agent's own clipboard read works there.
+    terminal.attachCustomKeyEventHandler(event => terminalKey(terminal, event, nativeKeyRef.current, openFind, nativePasteRef.current && !navigator.platform.startsWith('Mac')));
+    // Before xterm's handler, which reads text only: an image reaches the agent as a local path it can attach.
+    const pasteImage = (event: ClipboardEvent) => {
+      if (!nativePasteRef.current || event.clipboardData?.getData('text/plain')) return;
+      event.preventDefault(); event.stopPropagation();
+      const image = pastedImage(event.clipboardData);
+      if (image) void image.arrayBuffer().then(bytes => window.craftingTable.savePastedImage(new Uint8Array(bytes))).then(path => terminal.paste(pastedPath(path)),
+        error => window.craftingTable.reportError({ kind: 'recoverable', message: `Image paste failed: ${(error as Error).message}` }));
+    };
+    element.addEventListener('paste', pasteImage, true);
     const links = bindTerminalLinks(terminal, link => { if (activeRef.current) setLinkMenu(link); });
     const renderer = createTerminalRenderer(terminal, mode => { element.dataset.terminalRenderer = mode; });
     renderer.setActive(active);
@@ -85,7 +97,7 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
     if (active && host.current!.clientWidth > 0 && host.current!.clientHeight > 0) fit.fit();
     terminal.write(channel.history);
     instance.current = { terminal, fit, search, renderer, wheel: input };
-    return () => { unsubscribe(); reset?.(); input.dispose(); identity.dispose(); links(); resize.dispose(); renderer.dispose(); terminal.dispose(); for (const resolve of pending) resolve(); pending.clear(); instance.current = null; };
+    return () => { element.removeEventListener('paste', pasteImage, true); unsubscribe(); reset?.(); input.dispose(); identity.dispose(); links(); resize.dispose(); renderer.dispose(); terminal.dispose(); for (const resolve of pending) resolve(); pending.clear(); instance.current = null; };
   }, [channel]);
   useLayoutEffect(() => {
     const terminal = instance.current?.terminal;

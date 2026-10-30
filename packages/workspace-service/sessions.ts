@@ -26,13 +26,15 @@ export type TerminalCreate = z.infer<typeof terminalCreateSchema>;
 export interface PreparedSession { requestId: string; expectedRevision?: number; nodeId: string; commands: WorkspaceCommand[]; launch: LaunchRequest; action: 'terminal.create' | 'terminal.resume' | 'agent.create' | 'agent.resume' | 'review.create' | 'review.resume'; source?: unknown }
 
 /** The short Needs me reason for a native agent status that needs the user. */
-export function nativeAttentionNote(native: Pick<NativeAgentState, 'status' | 'input'>) {
-  return native.status === 'error' ? 'Agent disconnected' : native.status !== 'input' ? undefined
+export function nativeAttentionNote(native: Pick<NativeAgentState, 'status' | 'input'>, disconnected = true) {
+  return native.status === 'error' ? disconnected ? 'Agent disconnected' : 'Agent reported an error' : native.status !== 'input' ? undefined
     : native.input === 'approval' ? 'Agent needs permission' : native.input === 'question' ? 'Agent asked a question' : 'Agent waiting';
 }
 
 export class SessionCoordinator {
   readonly runtime: SupervisorConnection;
+  /** The native status last written per running session. */
+  private nativeApplied = new Map<string, string>();
   private store: SqliteStore;
   private control: WorkspaceControl;
   private changed: () => Promise<void>;
@@ -178,21 +180,24 @@ export class SessionCoordinator {
     const resource = state.resources.find(resource => resource.id === node.resourceId);
     if (resource?.data.sessionId !== session.id) return false; // Ignore old processes after a native resume.
     const commands: WorkspaceCommand[] = [];
+    let nativeKey: string | undefined;
     if (session.native) {
       const native = session.native, data = { ...resource.data, nativeSessionId: native.nativeSessionId, ...(native.readyAt ? { nativeStartedAt: native.readyAt } : {}) };
       if (canonical(data) !== canonical(resource.data)) commands.push({ type: 'item.update', id: node.id, data });
       if (session.state === 'running') {
         const activity = native.status === 'working' ? 'working' : native.status === 'unknown' ? 'unknown' : 'idle';
         const attention = native.status === 'input' ? 'input' : native.status === 'error' ? 'error' : 'none';
-        const attentionNote = nativeAttentionNote(native);
+        const disconnected = Boolean(session.error), attentionNote = nativeAttentionNote(native, disconnected);
         const pose = native.status === 'input' ? 'asking' : native.status === 'error' ? 'fallen' : undefined;
-        if (node.activity !== activity || node.attention !== attention || node.attentionNote !== attentionNote) commands.push({ type: 'node.update', id: node.id, activity, attention, ...(attentionNote ? { attentionNote } : {}), pose: pose ?? 'none',
-          summary: native.status === 'input' ? 'Waiting for your input' : native.status === 'working' ? 'Codex is working' : native.status === 'error' ? 'Codex disconnected; resume to reconnect' : native.status === 'unknown' ? 'Starting Codex…' : 'Ready for your next prompt' });
+        // Only a change of native status writes: between changes an agent's own status on its node stands.
+        nativeKey = `${native.status}:${native.input ?? ''}:${disconnected}`;
+        if (this.nativeApplied.get(session.id) !== nativeKey && (node.activity !== activity || node.attention !== attention || node.attentionNote !== attentionNote)) commands.push({ type: 'node.update', id: node.id, activity, attention, ...(attentionNote ? { attentionNote } : {}), pose: pose ?? 'none',
+          summary: native.status === 'input' ? 'Waiting for your input' : native.status === 'working' ? 'Codex is working' : native.status === 'error' ? disconnected ? 'Codex disconnected; resume to reconnect' : 'Codex reported an error; check its terminal' : native.status === 'unknown' ? 'Starting Codex…' : 'Ready for your next prompt' });
       }
       if (native.completionId) commands.push(...completionAttention(node, `codex:${session.id}:${native.completionId}`, 'Agent finished'));
     }
     if (!(node.acceptsContext && session.state === 'running')) { // Native hooks/status own running agent activity.
-      const failed = Boolean(session.error) || ['lost', 'failed'].includes(session.state) || (session.state === 'exited' && session.exitCode !== 0);
+      const failed = Boolean(session.error) || ['lost', 'failed'].includes(session.state) || (session.state === 'exited' && session.exitCode !== 0 && !session.stopRequestedAt);
       const review = resource.data.launchMode === 'review';
       const activity = review && failed ? 'unknown' : session.state === 'running' ? (review ? 'working' : 'idle') : session.state === 'exited' ? (node.acceptsContext ? 'idle' : 'complete') : 'unknown';
       const attention = failed ? 'error' : 'none';
@@ -206,9 +211,11 @@ export class SessionCoordinator {
       if (node.activity !== activity || node.attention !== attention || node.attentionNote !== attentionNote || (session.state !== 'running' && node.summary !== summary)) commands.push({ type: 'node.update', id: node.id, activity, attention, ...(attentionNote ? { attentionNote } : {}), summary, pose: pose ?? 'none' });
       if (!node.acceptsContext && session.state === 'exited' && !failed && !session.stopRequestedAt) commands.push(...completionAttention(node, `session:${session.id}`, review ? 'Review ready' : 'Terminal finished'));
     }
-    if (!commands.length) return false;
+    const applied = () => { if (nativeKey) this.nativeApplied.set(session.id, nativeKey); else this.nativeApplied.delete(session.id); };
+    if (!commands.length) { applied(); return false; }
     try {
       await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'system', id: 'sessions' }, commands });
+      applied();
       await this.changed();
     } catch (error) { if ((error as { code?: string }).code !== 'REVISION_CONFLICT') throw error; }
     return true;

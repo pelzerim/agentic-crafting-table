@@ -11,7 +11,7 @@ export interface ItemChoice { id: string; name: string; shortLabel?: string; ico
 export function itemChoices(plugins: PluginDescription[], projectId?: string, canRunSkill = false): ItemChoice[] {
   const urls = plugins.filter(plugin => plugin.creation?.mode === 'url' || plugin.creation?.group === 'url');
   return [...(projectId ? canRunSkill ? [{ id: RUN_SKILL, name: 'Run skill', icon: 'sparkles', tone: 'amber', alwaysQuick: true }] : [] : [{ id: 'project', name: 'Project', icon: 'project' }]), ...(urls.length ? [{ id: FROM_URL, name: 'From URL', icon: 'link', aliases: urls.map(plugin => plugin.id) }] : []), ...plugins.filter(plugin => plugin.creation && plugin.creation.mode !== 'url' && plugin.creation.group !== 'url').map(plugin => ({
-    id: plugin.id, name: plugin.name, shortLabel: plugin.creation?.shortLabel, icon: plugin.icon, brand: plugin.brand ?? plugin.providerBrands?.claude, ...(plugin.appearance?.brandTint ? { tint: true } : {}), tone: plugin.appearance?.tone, size: plugin.appearance?.size, ...(plugin.creation?.hotkey ? { hotkey: plugin.creation.hotkey } : {}),
+    id: plugin.id, name: plugin.name, shortLabel: plugin.creation?.shortLabel, icon: plugin.icon, brand: plugin.brand, ...(plugin.appearance?.brandTint ? { tint: true } : {}), tone: plugin.appearance?.tone, size: plugin.appearance?.size, ...(plugin.creation?.hotkey ? { hotkey: plugin.creation.hotkey } : {}),
   }))];
 }
 /** Project legacy shortcuts into one choice without rewriting saved/missing IDs. */

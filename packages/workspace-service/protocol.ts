@@ -17,7 +17,7 @@ export const REQUEST_TIMEOUT = 'TIMEOUT', CONNECTION_LOST = 'CONNECTION_LOST';
 /** How long a provider action may run in the service: a slow GitHub write plus its refresh. */
 export const PROVIDER_ACTION_MS = 180_000;
 /** How long a caller waits for a reply: a request that waits on a provider a little longer than the service lets it run, so its own error arrives first. */
-const PROVIDER_REPLIES: Record<string, number> = { 'runtime.run': PROVIDER_ACTION_MS + 20_000, 'github.inbox.read': 110_000, 'connections.accounts': 90_000 };
+const PROVIDER_REPLIES: Record<string, number> = { 'runtime.run': PROVIDER_ACTION_MS + 20_000, 'github.inbox.read': 110_000, 'connections.accounts': 90_000, 'sessions.launch': 75_000 };
 export const replyTimeout = (method: string) => PROVIDER_REPLIES[method] ?? 15_000;
 export function serializeError(error: unknown): WireError {
   const value = error as { message?: string; code?: string; currentRevision?: number };

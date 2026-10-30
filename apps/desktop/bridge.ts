@@ -40,6 +40,8 @@ export interface DesktopBridge {
   setBadgeCount(count: number): Promise<void>;
   /** Puts one http(s) URL on the clipboard, or several, one per line. */
   copyUrl(url: string | string[]): Promise<void>;
+  /** Saves an image pasted into an agent's terminal and returns its local path. */
+  savePastedImage(bytes: Uint8Array): Promise<string>;
   chooseDirectory(): Promise<string | undefined>;
   /** Launch directories, most recent first; only paths that still exist. */
   recentDirectories(): Promise<string[]>;

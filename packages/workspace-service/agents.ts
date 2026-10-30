@@ -166,7 +166,9 @@ export class AgentCoordinator {
     }
     if (typeof request.data.resumeNodeId === 'string' && request.data.resumeNodeId) return this.resume(request.data.resumeNodeId, request.requestId, request.projectId, request);
     const provider = agentProvider(request.data.provider), capability = await provider.probe(), state = await this.control.read();
-    return this.sessions.launchPrepared(provider.prepare({ request, state, directory: this.directory, runtime: this.options, capability, fallbackDirectory: this.sessions.fallbackDirectory() }, this.observations.readSettings().value));
+    // A launch that names no model, such as one from an agent, gets the provider's current default.
+    const model = typeof request.data.model === 'string' && request.data.model.trim() ? request.data.model : (await provider.models()).default;
+    return this.sessions.launchPrepared(provider.prepare({ request: { ...request, data: { ...request.data, model } }, state, directory: this.directory, runtime: this.options, capability, fallbackDirectory: this.sessions.fallbackDirectory() }, this.observations.readSettings().value));
   }
   /** A new Claude session whose opening prompt the host built (never the renderer). */
   async launchHosted(request: ResourceCreate, hosted: HostedLaunch) {

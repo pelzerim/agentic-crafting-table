@@ -61,6 +61,13 @@ test('terminal screen reader support is off by default and only accepts a boolea
   for (const screenReader of ['yes', 1, null]) assert.equal(settingsSchema.safeParse({ terminal: { screenReader } }).success, false, String(screenReader));
 });
 
+test('a right click closes an open view anywhere by default', () => {
+  assert.equal(settingsSchema.parse({}).terminal.rightClickCloses, 'anywhere');
+  assert.equal(settingsSchema.parse({ terminal: { screenReader: true } }).terminal.rightClickCloses, 'anywhere', 'settings saved before this option existed');
+  assert.equal(settingsSchema.parse({ terminal: { rightClickCloses: 'outside' } }).terminal.rightClickCloses, 'outside');
+  for (const rightClickCloses of ['inside', 1, null]) assert.equal(settingsSchema.safeParse({ terminal: { rightClickCloses } }).success, false, String(rightClickCloses));
+});
+
 test('terminal scrollback defaults to 5,000 lines and accepts only the offered choices', () => {
   assert.equal(settingsSchema.parse({}).terminal.scrollback, 5000);
   assert.equal(settingsSchema.parse({ terminal: { screenReader: true } }).terminal.scrollback, 5000, 'settings saved before scrollback existed');

@@ -4,7 +4,7 @@ Status: local orchestration and scripted native-process tests implemented.
 Real model/review-result acceptance remains pending. Write integration tests require
 human supervision.
 
-The PR view offers Codex and Claude review actions with model selectors. Astra and
+The PR view offers Codex and Claude review actions with model selectors. The latest Sol model and
 Opus are preferred when available; an unavailable choice fails before capture or
 launch. A native CLI capability probe checks required read-only controls in the
 installed `codex exec --help` and `claude --help`; recognizing flags is not evidence
