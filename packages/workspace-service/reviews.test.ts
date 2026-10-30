@@ -26,7 +26,7 @@ async function fixture() {
       if (!session) { launchCount++; session = { ...prepared.launch, native: undefined, id: prepared.launch.sessionId, state: 'running' as const, createdAt: '', updatedAt: '' }; records.set(session.id, session); }
       return { session, chunks: [], firstSequence: 1, lastSequence: 0, truncated: false };
     } } as unknown as SessionCoordinator;
-  const runtime = { models: async () => ({ options: ['gpt-6-astra', 'opus', 'sonnet'], default: 'opus' }), probe: async () => ({ executable: '/usr/bin/native', version: 'fixture' }) };
+  const runtime = { models: async (provider: string) => ({ options: ['gpt-6-astra', 'opus', 'sonnet'], default: provider === 'codex' ? 'gpt-6-astra' : 'opus' }), probe: async () => ({ executable: '/usr/bin/native', version: 'fixture' }) };
   const coordinator = () => new ReviewCoordinator(directory, store, control, sessions, { 'github.pull-request': source }, async () => {}, runtime);
   return { directory, store, control, records, coordinator, runtime, source, sessions, get captureCount() { return captureCount; }, get launchCount() { return launchCount; }, set head(value: string) { headSha = value; }, set failure(value: string) { failure = value; }, set block(value: (() => Promise<void>) | undefined) { block = value; }, close() { store.close(); rmSync(directory, { recursive: true, force: true }); } };
 }

@@ -3,13 +3,13 @@ import { DEFAULT_TERMINAL_SCROLLBACK } from '../../../packages/core/settings.ts'
 import type { AppSettings, SettingsSnapshot } from '../../../packages/core/settings.ts';
 
 export type TerminalSettings = AppSettings['terminal'];
-export interface TerminalPreferences { screenReaderMode: boolean; scrollback: number }
+export interface TerminalPreferences { screenReaderMode: boolean; scrollback: number; rightClickCloses: TerminalSettings['rightClickCloses'] }
 
 /** xterm options for every terminal view. Screen reader support keeps a second,
  * DOM copy of the visible rows up to date, so it stays off unless chosen or
  * a screen reader is running. */
 export function terminalOptions(settings: TerminalSettings | undefined, assistive: boolean): TerminalPreferences {
-  return { screenReaderMode: assistive || settings?.screenReader === true, scrollback: settings?.scrollback ?? DEFAULT_TERMINAL_SCROLLBACK };
+  return { screenReaderMode: assistive || settings?.screenReader === true, scrollback: settings?.scrollback ?? DEFAULT_TERMINAL_SCROLLBACK, rightClickCloses: settings?.rightClickCloses ?? 'anywhere' };
 }
 
 /** Recorded bytes per scrollback line that a fresh view replays. Agent CLIs

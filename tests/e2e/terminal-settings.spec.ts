@@ -121,3 +121,30 @@ test('an open terminal applies a new scrollback length, trimming older history w
     await expect(surface).toHaveAttribute('data-mount-id', mount!);
   });
 });
+
+test('set to close outside only, a right click inside the open view does nothing and a right click outside it returns to the map', async () => {
+  await openTerminal(async (_app, page) => {
+    const map = page.locator('.map-area'), surface = page.locator('.terminal-surface'), mount = await surface.getAttribute('data-mount-id');
+    // Off by default: a right click in the view returns to the map.
+    await surface.click({ button: 'right' });
+    await expect(map).toHaveAttribute('data-focus', '');
+    await page.getByRole('article', { name: 'Preferences terminal' }).click();
+
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Settings' });
+    await dialog.getByRole('treeitem', { name: 'General', exact: true }).click();
+    const rightClick = dialog.getByRole('combobox', { name: 'Right click in an open view' });
+    await expect(rightClick).toHaveValue('anywhere');
+    await rightClick.selectOption('outside');
+    await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+
+    await surface.click({ button: 'right' });
+    await page.getByRole('button', { name: 'Back to project' }).click({ button: 'right' });
+    await expect(map).not.toHaveAttribute('data-focus', '');
+    await expect(page.getByRole('menu')).toHaveCount(0);
+    await page.locator('.rail-settings').click({ button: 'right' });
+    await expect(map).toHaveAttribute('data-focus', '');
+    await expect(surface).toHaveAttribute('data-mount-id', mount!);
+  });
+});

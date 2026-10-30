@@ -25,7 +25,10 @@ export async function openCodexTerminalServer(executable: string, options: { cwd
     options.signal?.removeEventListener('abort', abort);
     rpc?.close(); socket?.terminate(); connecting?.terminate();
     if (child.pid && child.exitCode === null && child.signalCode === null) {
-      const finish = stopDescendants(child.pid); child.kill('SIGTERM');
+      // Failing to list descendants must not leave the server itself running.
+      let finish = () => {};
+      try { finish = stopDescendants(child.pid); } catch { /* The server is still stopped below. */ }
+      child.kill('SIGTERM');
       const force = setTimeout(() => { finish(); child.kill('SIGKILL'); }, 1000);
       await exited; clearTimeout(force); finish();
     }

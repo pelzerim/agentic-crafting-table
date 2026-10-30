@@ -61,7 +61,7 @@ below.
 | ID | Required behavior |
 | --- | --- |
 | MAP-01 | One continuous map supports workspace overview, project neighborhood, and expanded item views. Items expand in place as the camera approaches; navigation must not feel like opening a separate inspector panel. Keep the original bubble and its connections on the map. Animate its expanded surface continuously from the bubble’s actual visible bounds into the full-item view and back, including normal-motion intermediate frames. Keep the surrounding camera and neighborhood fixed during this expansion, preserve terminal mounts, and skip the animation for reduced motion. |
-| MAP-02 | Expanded items use type-specific bounded dimensions (SETTINGS-07), leaving surrounding map space. Agents and Terminals have larger defaults; notes and to-dos never enter detail focus (notes are written on the map, RES-09). A visible project pixel field and location trail preserve orientation; hide the locator and zoom control in this view. Connected items are directly reachable. A pixelated X or right-click anywhere returns to the project without opening a context menu. The X button has the same outer height and vertical alignment as the other buttons in the expanded item toolbar; center its glyph within that shared button height. Escape steps back through project and overview. |
+| MAP-02 | Expanded items use type-specific bounded dimensions (SETTINGS-07), leaving surrounding map space. Agents and Terminals have larger defaults; notes and to-dos never enter detail focus (notes are written on the map, RES-09). A visible project pixel field and location trail preserve orientation; hide the locator and zoom control in this view. Connected items are directly reachable. A pixelated X or right-click anywhere returns to the project without opening a context menu; **Right click in an open view** can limit that to outside an open agent or terminal view (SETTINGS-TERMINAL). The X button has the same outer height and vertical alignment as the other buttons in the expanded item toolbar; center its glyph within that shared button height. Escape steps back through project and overview. |
 | MAP-03 | In overview and neighborhood views, omit the central project bubble. Keep the same floating **Project: NAME** title horizontally centered above the neighborhood field. Center its text and status counts, with project actions accessible alongside. Use readable screen-space text at every zoom level and keep the title behind item content. If the cap or title extends offscreen, keep the title reachable at the visible viewport edge without moving the map. Omit derived project connection lines at every zoom; the pixel field expresses membership. The title supports opening, group dragging and project actions in both views. Preserve saved project anchors and member positions. Zoom transitions must not move members, rewrite saved positions or alter outline geometry. |
 | MAP-04 | Each project has a dynamic, padded pixel field following the rounded convex enclosure of all visible member footprints, drawn as a **spline hull**: long straight runs between distant members bow gently outward into curves, while single items and compact groups keep their rounded hull. The curve stays convex, never self-intersects, always contains the full padding around every member, and changes continuously while a member is dragged. Use **B · Broad steps**: four broad fading shades of large square pixels, **24 world pixels** by default, with **no stroked outline**. Fade inward from the logical edge across 96 world pixels by default; keep the center solid. Pixel size, fade distance and optional edge scattering are configurable (SETTINGS-09). Derive the enclosure from full detailed member footprints, ignoring the saved project anchor except for empty projects. Recenter and grow live when members move/add/remove, retaining other positions. Default minimum logical clearance is one large item width; preserve SETTINGS-03 padding and membership/attachment hit tests independently of visual opacity. Use a stable world grid and deterministic scattered cells, with no camera-dependent rerasterization or idle motion. During dragging, the field follows the member immediately; other geometry/material changes use a short shading transition, skipped for reduced motion. Keep the field behind titles, connections and items in all zoom levels and expanded-item views; remove the separate focus-view outline frame. Attachment feedback brightens the field without adding a stroke. Bound render complexity for extreme spreads using integer multiples of the chosen pixel size. This supersedes the earlier visible pixel-stepped stroke. The logical enclosure is stepped on the same world grid as the default 24-pixel fill (whole multiples of it for very large projects), so **the visible field decides membership**: at the default pixel size a point is inside a project exactly when its cell is painted. Creation, attachment, owned-item transfer previews and drops, the Atlas and far-zoom dashboards all use this smoothed field; an item dropped outside the drawn field does not join (beyond the floating-attachment reach). |
 | MAP-05 | All map levels share world-space positions. Zooming changes camera and presentation, not saved layout. Expanded surfaces may move independently in screen space (MAP-19). Transitions preserve orientation, with no radial redistribution or jump on returning to overview. |
@@ -2140,7 +2140,9 @@ and an equivalent title is not written. Archived/Undermap items are skipped.
 Automation owns a title only while it is the creation default (“Claude session”,
 “Codex session”) or the last generated one (`generatedTitle` on the node). A name
 typed at creation, a resumed conversation's title or any later rename is the
-user's and is never replaced. **Auto-name from activity** in the item menu hands
+user's and is never replaced. The title in an agent's open view renames it in place
+(appearance `editableViewTitle`): a click, or Enter/Space on the focused title, edits it,
+Enter saves, Escape cancels and an empty name is refused; the map card still opens the view. **Auto-name from activity** in the item menu hands
 the title back and runs once immediately (bypassing the item interval, not the
 allowance); agents cannot invoke it through MCP. Commits use `node.title.generated`
 with the title the request started from and are refused if it changed; a rename,
@@ -2452,6 +2454,11 @@ chosen scrollback at 200 recorded bytes per line and bounded to 512 KiB–4 MiB
 the tail may hold fewer lines than the scrollback; it bounds the replay cost, which
 xterm pays on the renderer thread in proportion to bytes. A view that falls further
 behind than this tail while hidden restarts from it, as before.
+
+Settings → General, section **Mouse behavior**, has **Right click in an open view**
+(additive `terminal.rightClickCloses`; older settings read `anywhere`). `anywhere` keeps
+MAP-02. `outside` makes a right click inside an open agent or terminal view, including
+its toolbar, do nothing; a right click outside the view still returns to the project.
 
 **SETTINGS-04 — New item quick choices.** Settings → Items (the parent page)
 houses New item shortcuts, rather than Map. It lets users choose which item
@@ -3849,7 +3856,7 @@ menus, with an optional text field whose non-blank value is sent as
 `input[text.field]`. Unlike `irreversible`, it applies per option and does not
 claim the change cannot be undone.
 
-**PR-02 — Direct reviews.** Provide Codex review (Astra default, selectable) and
+**PR-02 — Direct reviews.** Provide Codex review (latest Sol default, selectable) and
 Claude review (Opus default, selectable). Resolve available native model IDs at
 runtime and report unsupported choices. Each starts a one-off analysis session
 with a captured complete comparison and produces a separate review item. Opening

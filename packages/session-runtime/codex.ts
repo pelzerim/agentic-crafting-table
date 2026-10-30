@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { accessSync, constants, realpathSync, statSync } from 'node:fs';
+import { accessSync, constants, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { sessionPath } from './shell-path.ts';
@@ -21,7 +21,8 @@ export function probeCodex(): Promise<CodexCapability> {
       exec(executable, ['--version'], { timeout: 5000, env }), exec(executable, ['--help'], { timeout: 5000, env }), exec(executable, ['app-server', '--help'], { timeout: 5000, env }),
     ]);
     if (['--remote', '--model', '--config', 'resume'].some(flag => !help.stdout.includes(flag)) || !server.stdout.includes('--listen') || !server.stdout.includes('--stdio')) throw new Error('This Codex version lacks native terminal/session integration. Update Codex and retry.');
-    return { executable: realpathSync(executable), version: version.stdout.trim().slice(0, 100) };
+    // The PATH entry, not its target: an update moves the target to a new release folder.
+    return { executable, version: version.stdout.trim().slice(0, 100) };
   })().catch(error => { capability = undefined; throw error; });
   return capability;
 }

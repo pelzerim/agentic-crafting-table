@@ -27,7 +27,7 @@ test('Codex creation uses native models, context/MCP, live attachment and same-c
     const newAgent = async () => {
       await openProjectPicker(page, 'Codex project');
       await page.getByRole('button', { name: 'Agent session', exact: true }).click();
-      await page.getByLabel('Provider', { exact: true }).selectOption('codex');
+      await page.getByRole('radio', { name: 'Codex', exact: true }).check();
     };
     await newAgent();
     await expect(page.getByLabel('Model', { exact: true })).toHaveValue('gpt-6-astra');

@@ -4,6 +4,7 @@ import type { DesktopAnnouncement, NotificationTarget } from './notifications.ts
 import type { WorkspaceSnapshot } from '../../packages/workspace-service/protocol.ts';
 import { isOffMap } from '../../src/graph/archive.ts';
 import { browserUrl, clipboardUrls } from './browser-url.ts';
+import { savePastedImage } from './pasted-images.ts';
 import { pluginDiscoverySchema } from '../../src/resource-plugins/url-input.ts';
 import { createKeepAwake } from './keep-awake.ts';
 import { ScreenReaderWatch, assistiveTechnologyOverride, voiceOverRunning } from './assistive-technology.ts';
@@ -14,7 +15,7 @@ import type { SettingsSnapshot } from '../../packages/core/settings.ts';
 import { clockTime, reminderDoneSchema, reminderSaveSchema, reminderSnoozeSchema } from '../../packages/core/reminders.ts';
 import type { ReminderDue } from '../../packages/core/reminders.ts';
 import { standupRequestSchema } from '../../packages/core/standup.ts';
-import { app, BrowserWindow, ipcMain, net, protocol, session, shell, dialog, screen, clipboard, Notification, Menu, MenuItem } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeImage, net, protocol, session, shell, dialog, screen, clipboard, Notification, Menu, MenuItem } from 'electron';
 import { join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readFile, realpath, writeFile } from 'node:fs/promises';
@@ -131,6 +132,14 @@ async function main() {
   ipcMain.handle('app:open-url', async (event, input: unknown) => {
     assertCaller(event);
     await shell.openExternal(browserUrl(input));
+  });
+  // Bytes the page already received from a paste the person made; this reads no clipboard.
+  ipcMain.handle('app:save-pasted-image', (event, bytes: unknown) => {
+    assertCaller(event);
+    if (!(bytes instanceof Uint8Array)) throw new Error('Unsupported pasted image');
+    const image = nativeImage.createFromBuffer(Buffer.from(bytes));
+    if (image.isEmpty()) throw new Error('Unsupported pasted image');
+    return savePastedImage(join(app.getPath('userData'), 'pasted-images'), image.toPNG());
   });
   ipcMain.handle('app:copy-url', async (event, input: unknown) => {
     assertCaller(event);

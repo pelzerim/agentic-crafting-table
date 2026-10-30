@@ -103,11 +103,14 @@ export type MapCorner = typeof MAP_CORNERS[number];
 export const TERMINAL_SCROLLBACK_CHOICES = [2000, 5000, 10000, 25000] as const;
 export const DEFAULT_TERMINAL_SCROLLBACK = 5000;
 /** Terminal views. Screen reader support also turns on while macOS reports assistive technology. */
+export const RIGHT_CLICK_CLOSES = ['anywhere', 'outside'] as const;
 export const terminalSettingsSchema = z.object({
   screenReader: z.boolean().default(false),
   /** Lines of history each terminal view keeps; the full recording is unaffected. */
   scrollback: z.union(TERMINAL_SCROLLBACK_CHOICES.map(lines => z.literal(lines))).default(DEFAULT_TERMINAL_SCROLLBACK),
-}).default({ screenReader: false, scrollback: DEFAULT_TERMINAL_SCROLLBACK });
+  /** What a right click closes in an open agent or terminal view: `anywhere`, or `outside` the view only. */
+  rightClickCloses: z.enum(RIGHT_CLICK_CLOSES).default('anywhere'),
+}).default({ screenReader: false, scrollback: DEFAULT_TERMINAL_SCROLLBACK, rightClickCloses: 'anywhere' });
 /** Settings of item packages, keyed by package id; each package declares and validates its own fields. */
 export const pluginSettingsSchema = z.record(z.string().max(100).regex(/^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)*$/), z.record(z.string().max(100), z.json())).default({});
 const menuLists = (max: number) => z.record(z.string().min(1).max(200), z.array(z.string().min(1).max(200)).max(max)).default({});

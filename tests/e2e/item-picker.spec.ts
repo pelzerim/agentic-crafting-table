@@ -20,7 +20,7 @@ test('hover and keyboard choices preview the center without selecting or moving 
   await expect(seed).toBeEmpty();
   const agent = form.getByRole('button', { name: 'Agent session', exact: true });
   await agent.hover(); await expect(seed).toHaveAttribute('data-preview-choice', 'agent.session');
-  await expect(seed).toContainText('Agent'); await expect(seed.locator('.brand-claude')).toHaveCount(1);
+  await expect(seed).toContainText('Agent'); await expect(seed.locator('[data-icon="robot"]')).toHaveText('🤖');
   await expect(seed).toHaveCSS('background-color', 'rgb(32, 55, 53)');
   const large = (await seed.boundingBox())!;
   expect(large.width).toBeLessThan(136); expect(large.width).toBeGreaterThan(initial.width);

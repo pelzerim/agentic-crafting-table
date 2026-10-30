@@ -47,7 +47,17 @@ reading project context, with one-time approvals and no change to account
 permissions; its conversations and workspaces are removed afterwards.
 
 Choose **Agent session → Provider: codex**. The native CLI supplies the model list;
-Astra is the default when available. Continue lists saved Codex conversations with
+The newest `gpt-<version>-sol` in that list is the default, compared by number, with the
+catalog's own default as fallback; no version is written in the code. New sessions start
+at `high` effort through `model_reasoning_effort`; `/model` changes it, and resumed or
+imported conversations keep what they have. A Codex view does not send Ctrl+V as a key:
+the TUI would read the desktop clipboard itself and report "no image on clipboard" for
+text. The browser paste event carries the content instead. Text goes through as a
+bracketed paste split into 64 KiB writes; an image is saved as a private PNG for seven
+days and pasted as a path, which the TUI attaches. macOS keeps native Ctrl+V. The thread
+status in the `thread/start` or `thread/resume` response seeds the item, and the guide
+is injected for a new or imported conversation or a changed guide version only.
+Continue lists saved Codex conversations with
 cursor pagination and reuses an existing table item/process. Imported/resumed
 conversations retain native model selection. The guide is appended as developer
 context, project facts as reference data, without replacing user or built-in

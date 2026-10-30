@@ -467,7 +467,7 @@ assignments and holds viewed state only in memory.
 
 Every loaded PR exposes **Start Codex review**, **Start Claude review**, and
 **Post /review & watch**. The first two create one-off sessions, defaulting to
-`gpt-6-astra` and `opus` respectively. Each has a model selector populated by its
+the provider's default model (the latest Sol for Codex, `opus` for Claude). Each has a model selector populated by its
 connected provider's available models. If a requested model is unavailable, report
 that explicitly rather than silently substituting it. The prototype's options are
 a sample catalog, not an account availability check.

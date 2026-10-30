@@ -63,6 +63,34 @@ async function fixture(count = 2) {
   };
 }
 
+test('a status an agent set on its item stands until the native status changes', async () => {
+  const f = await fixture(1), coordinator = f.coordinator(), update = (session: unknown) => (coordinator as unknown as { updateSession(session: unknown): Promise<boolean> }).updateSession(session);
+  try {
+    await f.control.apply({ type: 'item.add', id: 'agent', resourceId: 'agent-resource', pluginId: 'agent.session', title: 'Codex', position: { x: 900, y: 0 }, data: { provider: 'codex', sessionId: 'agent-session' } }, (await f.control.read()).revision);
+    const session = { id: 'agent-session', nodeId: 'agent', state: 'running', native: { provider: 'codex', nativeSessionId: randomUUID(), status: 'idle', observedAt: '2026-10-30' } };
+    await update(session);
+    const node = async () => (await f.control.read()).nodes.find(node => node.id === 'agent')!;
+    assert.equal((await node()).activity, 'idle');
+    await f.control.apply({ type: 'node.update', id: 'agent', attention: 'review', attentionNote: 'Findings ready' }, (await f.control.read()).revision);
+    await update(session); await update(session);
+    assert.equal((await node()).attention, 'review');
+    assert.equal((await node()).attentionNote, 'Findings ready');
+    await update({ ...session, native: { ...session.native, status: 'working' } });
+    assert.equal((await node()).activity, 'working');
+    assert.equal((await node()).attention, 'none');
+  } finally { await f.close(); }
+});
+
+test('Codex reporting an error is not a disconnect, and a stop during preparation is not a failure', async () => {
+  assert.equal(nativeAttentionNote({ status: 'error' }), 'Agent disconnected');
+  assert.equal(nativeAttentionNote({ status: 'error' }, false), 'Agent reported an error');
+  const f = await fixture(1), coordinator = f.coordinator(), update = (session: unknown) => (coordinator as unknown as { updateSession(session: unknown): Promise<boolean> }).updateSession(session);
+  try {
+    await update({ id: 'session-0', nodeId: 'item-0', state: 'exited', stopRequestedAt: '2026-10-30' });
+    assert.notEqual((await f.control.read()).nodes.find(node => node.id === 'item-0')!.attention, 'error');
+  } finally { await f.close(); }
+});
+
 test('natural exits need viewing, explicit stops do not announce success, and failures keep their error status', async () => {
   const f = await fixture(3), coordinator = f.coordinator();
   try {

@@ -37,6 +37,24 @@ async function cleanup(service, directory) {
   await rm(directory, { recursive: true, force: true });
 }
 
+test('a resumed Codex conversation takes its status from the response and keeps one copy of its guide', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-codex-seeded-')), service = await start(directory, { CODEX_FIXTURE_QUIET_RESUME: '1' });
+  const fixture = resolve('tests/fixtures/native-codex.mjs');
+  const launch = { ...request(directory, 'codex'), args: [fixture], native: { provider: 'codex', model: 'fixture', instructions: 'Trusted test guide', context: 'Untrusted project data', config: {}, serverArguments: [fixture] } };
+  try {
+    await service.client.call('sessions.launch', launch);
+    const started = await output(service.client, 'codex', 'NATIVE_READY:'), nativeId = started.session.native.nativeSessionId;
+    assert.equal(started.session.native.status, 'idle'); assert.ok(started.session.native.readyAt);
+    await service.client.call('sessions.stop', { sessionId: 'codex' });
+    await until(async () => (await service.client.call('sessions.read', { sessionId: 'codex' })).session.state === 'exited');
+    const resumed = { ...launch, sessionId: 'resumed', requestId: 'resumed', predecessorId: 'codex', native: { ...launch.native, nativeSessionId: nativeId, contextDelivered: true } };
+    await service.client.call('sessions.launch', resumed);
+    const ready = await output(service.client, 'resumed', 'NATIVE_READY:');
+    assert.equal(ready.session.native.status, 'idle', 'no notification is needed'); assert.ok(ready.session.native.readyAt);
+    assert.equal(JSON.parse(await readFile(join(directory, 'native-codex.json'), 'utf8')).injections, 1);
+  } finally { service.process.kill('SIGKILL'); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('native supervisor deduplicates launches and preserves ordered PTY streams across clients', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'craft-pty-')); const service = await start(directory);
   try {

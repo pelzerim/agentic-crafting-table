@@ -4,6 +4,7 @@ import type { PreparedSession } from './sessions.ts';
 import { discoverClaudeSessions, resolveClaudeSession } from '../session-runtime/saved-sessions.ts';
 import { probeCodex, codexModels, discoverCodexSessions, resolveCodexSession } from '../session-runtime/codex.ts';
 import { prepareCodex } from '../session-runtime/codex-launch.ts';
+import { latestSolModel } from '../session-runtime/codex-models.ts';
 import type { WorkspaceState } from '../core/control.ts';
 import type { AppSettings } from '../core/settings.ts';
 import type { SavedSessionPage } from '../../src/resource-plugins/types.ts';
@@ -30,7 +31,7 @@ export const agentProviders: Readonly<Record<string, AgentProvider>> = {
       if (modelCache && Date.now() - modelCache.time < 60_000) return modelCache.value;
       const { models } = await codexModels(), options = models.map(model => model.model);
       if (!options.length) throw new Error('The installed Codex CLI returned no available models.');
-      const value = { options, default: options.includes('gpt-6-astra') ? 'gpt-6-astra' : models.find(model => model.isDefault)?.model ?? options[0] };
+      const value = { options, default: latestSolModel(options) ?? models.find(model => model.isDefault)?.model ?? options[0] };
       modelCache = { time: Date.now(), value }; return value;
     }, skills: discoverCodexSkills, skillPrompt: (skill, text) => '$' + skill.name + (text ? ' ' + text : '') },
 };

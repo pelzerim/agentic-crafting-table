@@ -12,7 +12,7 @@ import { prepareReviewProcess, probeReview, readReviewProcess } from '../session
 import type { ReviewProcessPlan } from '../session-runtime/review.ts';
 import type { ReviewSource, FrozenReviewSource } from '../provider-runtime/review-sources.ts';
 import { comparisonInput } from '../provider-runtime/git-comparison.ts';
-import { buildReviewLaunch, defaultReviewModels } from '../../src/pull-requests/reviews.ts';
+import { buildReviewLaunch } from '../../src/pull-requests/reviews.ts';
 import type { ReviewProvider } from '../../src/pull-requests/reviews.ts';
 import type { AgentCapability } from '../session-runtime/agent-plan.ts';
 import type { ProjectContext } from '../../src/agents/project-context.ts';
@@ -101,7 +101,7 @@ export class ReviewCoordinator {
   }
   async options() {
     return Promise.all((['codex', 'claude'] as const).map(async provider => {
-      try { const [catalog] = await Promise.all([this.runtime.models(provider), this.runtime.probe(provider)]); return { provider, ...catalog, default: catalog.options.includes(defaultReviewModels[provider]) ? defaultReviewModels[provider] : catalog.default }; }
+      try { const [catalog] = await Promise.all([this.runtime.models(provider), this.runtime.probe(provider)]); return { provider, ...catalog }; }
       catch (error) { return { provider, options: [], error: (error as Error).message }; }
     }));
   }
@@ -128,7 +128,7 @@ export class ReviewCoordinator {
     if (args.loop?.from && (!previousRound || isOffMap(previousRound, state.nodes) || state.resources.find(resource => resource.id === previousRound.resourceId)?.pluginId !== 'code.review')) throw new Error('The previous round of this review loop is no longer on the map.');
     const source = this.sources[resource.pluginId]; if (!source) throw new Error('This item does not support revision-pinned reviews');
     const [catalog, capability] = await Promise.all([this.runtime.models(provider), this.runtime.probe(provider)]);
-    const model = args.model ?? (catalog.options.includes(defaultReviewModels[provider]) ? defaultReviewModels[provider] : catalog.default);
+    const model = args.model ?? catalog.default;
     if (!catalog.options.includes(model)) throw new Error(`Model unavailable for ${provider}: ${model}`);
     const frozen = await source.freeze(resource, AbortSignal.any([this.controller.signal, AbortSignal.timeout(60_000)]));
     const sessions = await this.sessions.runtime.call<SessionRecord[]>('sessions.list');

@@ -3,6 +3,20 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Agents
+- **Codex defaults**: new Codex sessions and reviews start on the newest Sol model the installed CLI offers, at high effort. The version comes from the catalog, so a newer Sol needs no update here; a catalog without Sol uses Codex's own default. Resumed conversations keep their model and effort. (#5, @timohuovinen)
+- **Paste in Codex**: Ctrl+V no longer shows "no image on clipboard" before text arrives. Text of any size pastes at once, and a screenshot attaches as an image, through Ctrl+V, Ctrl+Shift+V or the Edit menu. (#5, @timohuovinen)
+- **Rename from the open view**: click an agent session's title in its open view to edit it; Enter saves the new name and Escape keeps the old one. A typed name is yours, so automatic agent titles leave it alone. (#5, @timohuovinen)
+- **Provider buttons**: the new agent form chooses Claude or Codex with square logo buttons, Codex cards show the Codex mark, and the generic Agent session entry is 🤖. (#5, @timohuovinen)
+- **Codex status**: a resumed Codex session no longer stays on "Resuming Codex…" until its first turn, and recovery no longer fails on it. A status an agent sets on its own item stays until Codex's status changes. A resume no longer adds another copy of the guide to the conversation. A stopped launch no longer reads as a failure, and an error from Codex itself no longer reads as a disconnect. (#5, @timohuovinen)
+- **Launch errors**: a Codex update no longer breaks launches until restart, a slow launch no longer reports a false failure, a deleted folder gets a plain message, and a launch that is too long is refused before its item appears. (#5, @timohuovinen)
+
+### Terminals
+- **Right click in an open view**: Settings → General → Mouse behavior chooses whether a right click closes an open agent or terminal view anywhere, as before, or only outside it. (#5, @timohuovinen)
+- Review findings longer than 64 KiB now reach the agent instead of failing. (#5, @timohuovinen)
+
 ## 0.10.0 — 2026-10-29
 
 ### Platform

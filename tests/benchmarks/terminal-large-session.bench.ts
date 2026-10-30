@@ -67,7 +67,7 @@ for (let repeat = 1; repeat <= repeats; repeat++) for (const variant of variants
     await page.evaluate(async terminal => {
       const settings = await window.craftingTable.settingsRead();
       await window.craftingTable.settingsWrite({ expectedRevision: settings.revision, value: { ...settings.value, terminal } });
-    }, { screenReader: variant.screenReader, scrollback: variant.scrollback });
+    }, { screenReader: variant.screenReader, scrollback: variant.scrollback, rightClickCloses: 'anywhere' as const });
     const sessionId = await page.evaluate(async cwd => {
       const id = crypto.randomUUID(), { state } = await window.craftingTable.workspaceRead();
       await window.craftingTable.resourceCreate({ requestId: id, nodeId: crypto.randomUUID(), resourceId: crypto.randomUUID(), expectedRevision: state.revision,

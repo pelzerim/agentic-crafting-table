@@ -1,3 +1,4 @@
+import { sessionInputChunks } from '../../../packages/session-runtime/input-chunks.ts';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createPortal } from 'react-dom';
@@ -79,7 +80,8 @@ class NativeChannel implements TerminalChannel {
   write(data: string, encoding?: 'binary') {
     if (this.running && !this.inputDisabled) {
       const started = performance.now();
-      void window.craftingTable.sessionInput(this.id, data, encoding).then(() => { for (const input of this.inputs) input(); }).catch(error => this.error(error.message))
+      // A large paste arrives as one write; IPC keeps its pieces in order.
+      for (const chunk of sessionInputChunks(data)) void window.craftingTable.sessionInput(this.id, chunk, encoding).then(() => { for (const input of this.inputs) input(); }).catch(error => this.error(error.message))
         .finally(() => performanceMetrics.record('terminal.input', performance.now() - started));
     }
   }
@@ -267,7 +269,7 @@ function NativeTerminal({ sessionId, active, options }: { sessionId: string; act
     </div>}
     {(error || readError || promptError) && <div className="terminal-error" role="alert">{error || readError || promptError}</div>}
     {promptStatus && ['queued', 'acknowledged'].includes(promptStatus.state) && <div className="terminal-prompt-status" role="status">{promptStatus.message}</div>}
-    <div className="terminal-content" aria-busy={replaying || undefined}><TerminalSurface channel={channel} active={active} nativeShiftEnter={options.agentMenu} readOnly={Boolean(session?.readOnly) || session?.state !== 'running'} /></div>
+    <div className="terminal-content" aria-busy={replaying || undefined}><TerminalSurface channel={channel} active={active} nativeShiftEnter={options.agentMenu} nativePaste={options.nativePaste} readOnly={Boolean(session?.readOnly) || session?.state !== 'running'} /></div>
   </div>;
 }
 
