@@ -47,6 +47,7 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
     await server.rpc.request('thread/unsubscribe', { threadId: seeded.nativeSessionId });
     signal?.throwIfAborted();
     server.rpc.once('closed', (error: Error) => { if (!closing && !signal?.aborted) disconnected(error); });
-    return { args: [...request.args, '--remote', server.endpoint, 'resume', seeded.nativeSessionId, ...(native.initialPrompt ? ['--', native.initialPrompt] : [])], async close() { closing = true; await server.close(); } };
+    Object.assign(env, server.terminal.environment);
+    return { args: [...request.args, '--remote', server.endpoint, ...server.terminal.arguments, 'resume', seeded.nativeSessionId, ...(native.initialPrompt ? ['--', native.initialPrompt] : [])], async close() { closing = true; await server.close(); } };
   } catch (error) { closing = true; await server.close(); throw error; }
 }

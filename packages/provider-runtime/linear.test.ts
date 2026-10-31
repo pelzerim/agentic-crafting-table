@@ -31,6 +31,8 @@ test('Keychain reader passes no credentials as arguments and normalizes missing/
   assert.deepEqual(calls, [['find-generic-password', '-s', 'dev.agentcraftingtable.linear', '-a', 'default', '-w']]);
   await providerCredential('slack', async args => { calls.push(args); return 'private-fixture-token'; }, credentialStore('linux'))(signal());
   assert.deepEqual(calls.pop(), ['lookup', 'service', 'dev.agentcraftingtable.slack', 'account', 'default']);
+  await providerCredential('slack', async args => { calls.push(args); return 'private-fixture-token'; }, credentialStore('win32'))(signal());
+  assert.match(calls.pop()!.at(-1)!, /CredReadW\('dev\.agentcraftingtable\.slack'/);
   for (const value of ['bad\nvalue', 'short', '']) await assert.rejects(providerCredential('linear', async () => value)(signal()), /credentials are unavailable/);
   await assert.rejects(providerCredential('slack', async () => { throw new Error('PRIVATE TOKEN'); })(signal()), error => error instanceof Error && !error.message.includes('PRIVATE'));
   await assert.rejects(read(AbortSignal.abort()), { name: 'AbortError' }); assert.equal(calls.length, 1);

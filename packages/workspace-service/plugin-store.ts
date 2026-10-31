@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { isAbsolute, join, sep } from 'node:path';
+import { isAbsolute, join, sep, win32 } from 'node:path';
 import { parsePluginManifest } from '../plugin-sdk/manifest.ts';
 import type { PluginManifest } from '../plugin-sdk/manifest.ts';
 import { INTEGRITY_FILE, MANIFEST_FILE, RELEASE_DIRECTORY, readIntegrity, verifyRelease } from '../plugin-sdk/integrity.ts';
@@ -45,8 +45,11 @@ export function describeContributions(contributes: PluginManifest['contributes']
   ];
 }
 
+/** Git Bash's GNU tar comes first on many Windows PATHs and reads `C:` in the archive path as a remote host. */
+const systemTar = () => process.platform === 'win32' ? win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
+
 function untar(archive: string, directory: string) {
-  return new Promise<void>((resolve, reject) => execFile('tar', ['-x', '-f', archive, '-C', directory], { timeout: LOCAL_TIMEOUT, killSignal: 'SIGKILL', windowsHide: true },
+  return new Promise<void>((resolve, reject) => execFile(systemTar(), ['-x', '-f', archive, '-C', directory], { timeout: LOCAL_TIMEOUT, killSignal: 'SIGKILL', windowsHide: true },
     error => error ? reject(new Error('The plugin release could not be unpacked.')) : resolve()));
 }
 

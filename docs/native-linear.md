@@ -37,7 +37,8 @@ separate improvements; this initial personal-app setup does not claim them.
 
 On Linux the key lives in the Secret Service keyring instead, stored with
 `secret-tool store --label 'Agentic Crafting Table Linear' service dev.agentcraftingtable.linear account default`
-and read with `secret-tool lookup`; Settings shows the command for the running platform.
+and read with `secret-tool lookup`. On Windows it lives in Credential Manager, stored with
+`cmdkey /generic:dev.agentcraftingtable.linear /user:default /pass`. Settings shows the command for the running platform.
 
 The same guide is available in **Settings → Connections → Linear → How to
 connect**, with a Copy button for the Keychain command. After storing the key,

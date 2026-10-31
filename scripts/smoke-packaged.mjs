@@ -19,7 +19,7 @@ try {
     // linker-signed executable. Local ad-hoc signatures are not notarization.
     execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', dirname(dirname(dirname(executable)))], { stdio: 'pipe' });
   }
-  const child = spawn(executable, [`--smoke-report=${report}`], { env: { ...process.env, ACT_TEST_DATA_DIR: directory, CLAUDE_CONFIG_DIR: nativeConfig, SHELL: '/bin/sh' }, stdio: 'inherit' });
+  const child = spawn(executable, [`--smoke-report=${report}`], { env: { ...process.env, ACT_TEST_DATA_DIR: directory, CLAUDE_CONFIG_DIR: nativeConfig, ...(process.platform === 'win32' ? {} : { SHELL: '/bin/sh' }) }, stdio: 'inherit' });
   const timeout = setTimeout(() => child.kill('SIGKILL'), 30_000);
   try {
     const code = await new Promise((resolve, reject) => { child.on('error', reject); child.on('exit', resolve); });

@@ -46,6 +46,7 @@ export interface UpdateStatus { app: UpdateSubject; plugins: PluginUpdate[]; che
 export const CHECKOUT_PACKAGE_NAME = 'agent-crafting-table';
 /** The checkout an installed app runs from, from its executable path; undefined for any other location. */
 export function checkoutOfExecutable(executable: string, layout: BundleLayout): string | undefined {
+  if (/^[A-Za-z]:\\/.test(executable)) executable = executable.replaceAll('\\', '/');
   const marker = `/${layout.installed}/${layout.executable}`, index = executable.lastIndexOf(marker);
   return index > 0 && index + marker.length === executable.length ? executable.slice(0, index) : undefined;
 }

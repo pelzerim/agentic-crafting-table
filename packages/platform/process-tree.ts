@@ -1,6 +1,20 @@
 import { execFileSync } from 'node:child_process';
+import { powerShell } from './shell.ts';
+
+const WINDOWS_PROCESS_LIST = `Get-CimInstance Win32_Process | ForEach-Object { '{0} {1} {2}' -f $_.ProcessId, $_.ParentProcessId, $_.CreationDate.Ticks }`;
+
+/** Windows keeps a parent ID after that parent exits, so a parent younger than its child is a reused ID. */
+export function parseWindowsProcesses(output: string) {
+  const listed = output.trim().split(/\r?\n/).flatMap(line => {
+    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)$/);
+    return match ? [{ pid: Number(match[1]), parent: Number(match[2]), started: match[3] }] : [];
+  });
+  const started = new Map(listed.map(process => [process.pid, BigInt(process.started)]));
+  return listed.map(process => (started.get(process.parent) ?? 0n) > BigInt(process.started) ? { ...process, parent: 0 } : process);
+}
 
 function processes() {
+  if (process.platform === 'win32') return parseWindowsProcesses(execFileSync(powerShell(), ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_PROCESS_LIST], { encoding: 'utf8', timeout: 5000, windowsHide: true }));
   return execFileSync('/bin/ps', ['-axo', 'pid=,ppid=,lstart='], { encoding: 'utf8', timeout: 2000 }).trim().split('\n').flatMap(line => {
     const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/);
     return match ? [{ pid: Number(match[1]), parent: Number(match[2]), started: match[3] }] : [];
@@ -27,10 +41,17 @@ function stopDescendants(parent: number, preservePids: number[] = []) {
   return () => signal('SIGKILL');
 }
 
+/** Stops a pseudo-terminal's process. node-pty refuses signals on Windows, where only the first request does anything. */
+export function killPty(pty: { kill(signal?: string): void }, signal: NodeJS.Signals, platform: NodeJS.Platform = process.platform) {
+  if (platform !== 'win32') { pty.kill(signal); return; }
+  if (signal === 'SIGTERM') pty.kill();
+}
+
 const STOP_GRACE_MS = 1000;
 export interface ProcessTreeStop { settle(): void }
 
-/** Asks a process and its descendants to stop, and forces them after a grace period. Call `settle` once the process has exited. */
+/** Asks a process and its descendants to stop, and forces them after a grace period. Call `settle` once the process has exited.
+ * Windows has no stop request: `process.kill` ends a process at once with any signal, so there the grace period does nothing. */
 export function stopProcessTree(target: { pid: number; kill(signal: NodeJS.Signals): void }, preservePids: number[] = []): ProcessTreeStop {
   // Failing to list descendants must not leave the process itself running.
   let finish = () => {};

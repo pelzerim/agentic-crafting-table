@@ -20,7 +20,7 @@ export async function ensureLocalService<T>(directory: string, executable: strin
     ? join(dirname(entrypoint), '../diagnostics/log-entry.ts')
     : join(dirname(entrypoint), 'service-log.cjs');
   if (!existsSync(logEntry)) throw new Error('Service log launcher is missing. Rebuild or reinstall the app.');
-  const child = spawn(executable, [logEntry, entrypoint], { detached: true, stdio: 'ignore', env: {
+  const child = spawn(executable, [logEntry, entrypoint], { detached: true, stdio: 'ignore', windowsHide: true, env: {
     ...process.env, ACT_DATA_DIR: paths.dataDirectory, ...(electronRuntime ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
   } });
   child.unref();

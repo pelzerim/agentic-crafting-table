@@ -34,7 +34,7 @@ try {
   if (update.status !== 0) throw new Error(reason(update.stderr ?? '') || `npm run update exited with ${update.status ?? update.signal}`);
   if (values.tag) {
     // An earlier run may have checked the tag out but failed to build or install it.
-    if (afterUpdate({ tag: values.tag, installed: version(), tagsAtHead: tagsAtHead() }) === 'rebuild') for (const args of [['ci'], ['run', 'package'], ['run', 'install:local']]) execFileSync('npm', args, { stdio: ['ignore', 'inherit', 'inherit'] });
+    if (afterUpdate({ tag: values.tag, installed: version(), tagsAtHead: tagsAtHead() }) === 'rebuild') for (const args of [['ci'], ['run', 'package'], ['run', 'install:local']]) execFileSync('npm', args, { stdio: ['ignore', 'inherit', 'inherit'], shell: process.platform === 'win32' });
     if (afterUpdate({ tag: values.tag, installed: version(), tagsAtHead: tagsAtHead() }) !== 'installed') throw new Error(`The installed app is ${version() ?? 'missing'}, not ${values.tag}. Details in logs/update-restart.log.`);
   }
 } catch (error) {

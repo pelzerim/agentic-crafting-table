@@ -19,6 +19,22 @@ jobs:
         env:
           CSC_FOR_PULL_REQUEST: "true"
       - run: npm run test:package
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # Most of the suite still expects POSIX paths; these cover the code that differs on Windows.
+      - run: node --test packages/platform/shell.test.ts packages/platform/private-files.test.ts packages/platform/process-tree.test.ts packages/platform/local-endpoint.test.ts packages/core/updates.test.ts
+      - run: npm run build
+      - run: npm run package
+      - run: npm run test:package
   linux:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
