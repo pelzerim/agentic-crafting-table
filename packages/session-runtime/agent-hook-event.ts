@@ -1,7 +1,8 @@
-import { closeSync, openSync, readSync, statSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
+import { closeSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { findClaudeArtifactUrls, parseClaudeArtifactUrl } from '../../src/resource-plugins/items/claude-artifact/url.ts';
 import { extractPageTitle } from '../../src/resource-plugins/items/web-link/metadata.ts';
+import type { ConversationSwitch } from './protocol.ts';
 
 type Input = Record<string, unknown>;
 const text = (value: unknown) => typeof value === 'string' ? value : undefined;
@@ -57,7 +58,20 @@ export function localArtifactTitle(path: string): string | undefined {
   } catch { return undefined; } finally { if (descriptor !== undefined) closeSync(descriptor); }
 }
 
-type HookFields = { event: string | undefined; lastMessage?: string; notificationType?: string; toolName?: string; recipient?: string; agentId?: string; teammate?: string; taskId?: string; model?: string; previousModel?: string; interrupt?: true; worktree?: true;
+const followedPath = (directory: string, processSessionId: string) => join(directory, 'agent-launches', processSessionId, 'conversation');
+/** Hooks are bound to the conversation their process launched on; this names the one it moved to in place (AGENT-04a). */
+export function followConversation(directory: string, processSessionId: string, nativeSessionId: string) {
+  mkdirSync(dirname(followedPath(directory, processSessionId)), { recursive: true, mode: 0o700 });
+  writeFileSync(followedPath(directory, processSessionId), nativeSessionId, { mode: 0o600 });
+}
+export function followedConversation(directory: string, processSessionId: string) {
+  try { return readFileSync(followedPath(directory, processSessionId), 'utf8') || undefined; } catch { return undefined; }
+}
+
+/** How Claude Code names the start of a conversation it moved to while running. Compaction keeps its session id. */
+const SWITCH_SOURCES: Partial<Record<string, ConversationSwitch['kind']>> = { clear: 'new', fork: 'fork', resume: 'resume' };
+
+type HookFields = { event: string | undefined; switched?: ConversationSwitch; endReason?: string; lastMessage?: string; notificationType?: string; toolName?: string; recipient?: string; agentId?: string; teammate?: string; taskId?: string; model?: string; previousModel?: string; interrupt?: true; worktree?: true;
   backgroundTasks?: { id: string; type: string; status?: string; name?: string }[]; launched?: { id: string; kind: 'subagent' }; artifact?: ReturnType<typeof publishedArtifact> };
 
 /** Fields of a Claude Code hook payload that the table uses. Turns inside a
@@ -71,8 +85,11 @@ type HookFields = { event: string | undefined; lastMessage?: string; notificatio
  * message goes to and two flags leave the session: no other input, error text, reason, subject or path. The one
  * text that does is the assistant's last message on Stop, bounded, for the line its Needs me row shows. */
 export function hookFields(event: Input, nativeSessionId: string): HookFields | undefined {
-  if (event.session_id !== nativeSessionId) return;
   const name = text(event.hook_event_name), agentId = text(event.agent_id);
+  if (event.session_id !== nativeSessionId) {
+    const kind = name === 'SessionStart' && !agentId ? SWITCH_SOURCES[text(event.source) ?? ''] : undefined, target = text(event.session_id);
+    return kind && target ? { event: name, switched: { kind, nativeSessionId: target } } : undefined;
+  }
   if (name === 'TeammateIdle') { const teammate = text(event.teammate_name)?.slice(0, 200); return { event: name, ...(teammate ? { teammate } : {}), ...(agentId ? { agentId } : {}) }; }
   if (agentId && name === 'SubagentStart') return { event: name, agentId };
   if (agentId && name === 'PreToolUse') return { event: 'SubagentToolStart', agentId };
@@ -92,7 +109,7 @@ export function hookFields(event: Input, nativeSessionId: string): HookFields | 
   const model = name === 'SessionStart' ? limited(event.model) : name === 'PostModelSwitch' ? limited(event.to_model) : undefined, previousModel = name === 'PostModelSwitch' ? limited(event.from_model) : undefined;
   const lastMessage = name === 'Stop' ? text(event.last_assistant_message)?.slice(0, 2000) : undefined;
   return {
-    event: name, ...(lastMessage ? { lastMessage } : {}), ...(text(event.notification_type) ? { notificationType: text(event.notification_type) } : {}), ...(text(event.tool_name) ? { toolName: text(event.tool_name) } : {}), ...(recipient ? { recipient } : {}),
+    event: name, ...(name === 'SessionEnd' && limited(event.reason) ? { endReason: limited(event.reason) } : {}), ...(lastMessage ? { lastMessage } : {}), ...(text(event.notification_type) ? { notificationType: text(event.notification_type) } : {}), ...(text(event.tool_name) ? { toolName: text(event.tool_name) } : {}), ...(recipient ? { recipient } : {}),
     ...(name === 'SubagentStop' && agentId ? { agentId } : {}), ...(backgroundTasks ? { backgroundTasks } : {}), ...(launched ? { launched: { id: launched, kind: 'subagent' as const } } : {}),
     ...(artifact ? { artifact } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(previousModel ? { previousModel } : {}),
     ...(name === 'PostToolUseFailure' && event.is_interrupt === true ? { interrupt: true as const } : {}), ...(WORKTREE.test(text(event.cwd) ?? '') ? { worktree: true as const } : {}),

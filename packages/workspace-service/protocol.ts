@@ -9,7 +9,7 @@ export const MAX_FRAME_BYTES = 8 * 1024 * 1024;
 export interface WorkspaceSnapshot { state: WorkspaceState; cursor: number; plots?: import('../../src/graph/plots.ts').PlotSnapshot; projectSummaries?: import('./project-summaries.ts').ProjectSummariesSnapshot; reminders?: import('../core/reminders.ts').RemindersSnapshot;
   layer?: import('../../src/graph/layers.ts').MapLayer; layers?: import('../../src/graph/layers.ts').LayerSummary }
 export interface WireError { message: string; code: string; currentRevision?: number }
-export type ResponseFrame = { id: string; result: unknown } | { id: string; error: WireError } | { event: 'snapshot'; snapshot: WorkspaceSnapshot } | { event: 'settings'; settings: import('../core/settings.ts').SettingsSnapshot } | { event: 'recording-deleted'; sessionId: string } | ({ event: 'reminder-due' } & import('../core/reminders.ts').ReminderDue);
+export type ResponseFrame = { id: string; result: unknown } | { id: string; error: WireError } | { event: 'snapshot'; snapshot: WorkspaceSnapshot } | { event: 'settings'; settings: import('../core/settings.ts').SettingsSnapshot } | { event: 'recording-deleted'; sessionId: string } | ({ event: 'reminder-due' } & import('../core/reminders.ts').ReminderDue) | { event: 'session-switched'; fromNodeId: string; toNodeId: string };
 /** Error code of a write the service could not confirm: the provider may have applied it. A refusal keeps its own code. */
 export const OUTCOME_UNKNOWN = 'OUTCOME_UNKNOWN';
 /** Error codes of a request whose reply never arrived: the service may still have run it. */

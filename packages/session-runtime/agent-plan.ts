@@ -22,6 +22,8 @@ export interface AgentPreparation {
   resumeNodeId?: string;
   originRequest?: import('../core/resource-creation.ts').ResourceCreate;
   native?: { nativeSessionId: string; cwd: string };
+  /** Opens an empty conversation with no first prompt, as a person's `/new` expects. */
+  blank?: boolean;
   /** Used by a new session when neither the request nor its project names a folder. */
   fallbackDirectory?: string;
   continueWork?: boolean;

@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Agents
+- **Session commands**: `/new`, `/clear`, `/fork`, `/branch` and `/resume` typed in a Claude or Codex terminal now follow the CLI on the map. New and forked conversations open in their own session beside the item, `/resume` goes to the item that holds the conversation, and the session view moves with you. The item where you typed keeps its conversation. `/new` and `/clear` do nothing in a session that has no conversation yet. (#9, @timohuovinen)
+
 ## 0.11.0 — 2026-10-30
 
 ### Agents

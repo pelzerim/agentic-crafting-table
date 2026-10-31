@@ -8,7 +8,7 @@ import { completionAttention } from '../core/completion-attention.ts';
 import { canonical } from '../core/control.ts';
 import { SupervisorConnection } from '../session-runtime/client.ts';
 import type { RuntimeOptions } from '../session-runtime/client.ts';
-import type { LaunchRequest, NativeAgentState, SessionRecord, SessionSnapshot } from '../session-runtime/protocol.ts';
+import type { ConversationSwitch, LaunchRequest, NativeAgentState, SessionRecord, SessionSnapshot } from '../session-runtime/protocol.ts';
 import type { WorkspaceControl, WorkspaceCommand } from '../core/control.ts';
 import type { SqliteStore } from './sqlite-store.ts';
 import { fieldDefaults } from '../../src/resource-plugins/define.ts';
@@ -33,6 +33,8 @@ export function nativeAttentionNote(native: Pick<NativeAgentState, 'status' | 'i
 
 export class SessionCoordinator {
   readonly runtime: SupervisorConnection;
+  /** Told when a running native CLI has moved to another conversation. */
+  onConversationSwitch?: (nodeId: string, sessionId: string, switched: ConversationSwitch) => void;
   /** The native status last written per running session. */
   private nativeApplied = new Map<string, string>();
   private store: SqliteStore;
@@ -181,8 +183,11 @@ export class SessionCoordinator {
     if (resource?.data.sessionId !== session.id) return false; // Ignore old processes after a native resume.
     const commands: WorkspaceCommand[] = [];
     let nativeKey: string | undefined;
+    if (session.native?.switched && session.state === 'running' && !session.stopRequestedAt) this.onConversationSwitch?.(node.id, session.id, session.native.switched);
     if (session.native) {
-      const native = session.native, data = { ...resource.data, nativeSessionId: native.nativeSessionId, ...(native.readyAt ? { nativeStartedAt: native.readyAt } : {}) };
+      const native = session.native;
+      // The switch may give the item another conversation; this process no longer speaks for its identity.
+      const data = native.switched ? resource.data : { ...resource.data, nativeSessionId: native.nativeSessionId, ...(native.readyAt ? { nativeStartedAt: native.readyAt } : {}) };
       if (canonical(data) !== canonical(resource.data)) commands.push({ type: 'item.update', id: node.id, data });
       if (session.state === 'running') {
         const activity = native.status === 'working' ? 'working' : native.status === 'unknown' ? 'unknown' : 'idle';
