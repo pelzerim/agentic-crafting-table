@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Map
+- **Radial menu on right click**: a new setting, off by default, in Settings → Map. Right-clicking the empty map opens the radial menu directly, with Mute project, Open archive and the other entries of the usual right-click menu among its items. (#10, @timohuovinen)
+
 ## 0.11.0 — 2026-10-30
 
 ### Agents

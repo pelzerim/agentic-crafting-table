@@ -115,6 +115,10 @@ words on click, and a setting to turn badges off.
 when a position is decided, so connections run straight or at even angles; off by
 default. The rule and its settings switch are SETTINGS-SNAP-GRID.
 
+**MAP-31 — Right click opens the radial menu.** An optional way to skip the ground's
+context menu; off by default. The rule and its settings switch are
+SETTINGS-GROUND-RING.
+
 **MAP-19 — Independent expanded-view movement.** Drag anywhere on the expanded item's menu bar (including status, directory, provider/model text and empty space; excluding buttons and other interactive controls)
 to move its open view in screen space, without moving or resizing the map bubble,
 rewriting graph/camera state, rearranging neighbors or changing its connections.
@@ -2438,6 +2442,19 @@ repeats a review; pull requests added while it was off are part of the new basel
 The service keeps its record in the code.review package's plugin storage (`auto-review`)
 and checks every 15 seconds and on workspace changes. Later pushes are not reviewed
 again (Review loop does that).
+
+**SETTINGS-GROUND-RING — Right click opens the radial menu (MAP-31).** Settings → Map,
+section **Placing items**, has the switch **Right-click opens the radial menu** (off by
+default; additive boolean `groundRightClickRing`, older settings read off). When on, a
+right click on the empty map opens the New item radial picker at the pointer instead of
+the context menu, with the placement New item would have. Every other entry of that
+ground's menu joins the first ring after All, and runs as that entry: **Open archive**
+on the board and **Mute project**/**Unmute project** in a neighborhood, whose label and
+count stay in the tooltip and accessible name. **New project** is the ring's Project
+choice; it is added, opening the project form, only when Project is not a quick item.
+The ring is a wider oval while it holds these entries, so up to ten choices stay apart.
+A right click on an item, project, line or plot keeps its menu, and so does the
+Undermap, where nothing is created. Right click or Escape still dismisses the ring.
 
 **SETTINGS-ITEM-DELETE — Delete in item menus.** Settings → Map, section **Removing
 items**, has the switch **Delete in item menus** (off by default; additive boolean

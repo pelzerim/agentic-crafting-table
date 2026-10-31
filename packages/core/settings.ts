@@ -151,6 +151,8 @@ export const settingsSchema = z.object({
   doubleClickOpensWeb: z.boolean().default(false),
   /** Item centres land on an invisible 48 px grid when moved or placed (MAP-30). */
   snapToGrid: z.boolean().default(false),
+  /** A right click on the empty map opens the radial menu, holding that menu's entries, instead of the context menu (MAP-31). */
+  groundRightClickRing: z.boolean().default(false),
   /** A moved item pushes the items in its way aside, or stops at them (MAP-13). */
   mapCollisions: z.enum(MAP_COLLISIONS).default('shove'),
   /** Item menus end in Delete…, which removes the item for good after a confirmation. */

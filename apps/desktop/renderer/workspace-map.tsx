@@ -86,7 +86,7 @@ import { UndermapSearch } from './undermap-search.tsx';
 import type { UndermapSearchHandle } from './undermap-search.tsx';
 
 type Anchor = Parameters<NonNullable<ProjectMapProps['onContext']>>[0];
-type Editor = Anchor & { connectedFromId?: string; initialType?: string; initialUrl?: string; mode: 'menu' | 'create' | 'edit' };
+type Editor = Anchor & { connectedFromId?: string; initialType?: string; initialUrl?: string; mode: 'menu' | 'create' | 'edit'; /** A ring opened by right-clicking the ground, offering that ground's menu entries (MAP-31). */ ground?: true };
 /** A new paper tile shown on the map before its first words; it is saved only once it has text. */
 type PaperDraft = { nodeId: string; resourceId: string; linkId: string; pluginId: string; position: { x: number; y: number }; projectId?: string; connectedFromId?: string; data: Record<string, string>;
   /** A size given before the first words; the first save applies it. */
@@ -606,7 +606,7 @@ export function WorkspaceMap() {
   // Move to plot and Remove from plot (MAP-24) while plots are on; hidden plots are listed too.
   const plotEntries = moveIds && snapshot && settings?.value.mapPlots !== false ? itemPlotActions(snapshot.state.nodes, snapshot.plots?.list ?? [], moveIds) : [];
   // The project a Mute or Unmute entry acts on: the project itself, or the neighbourhood that was right-clicked.
-  const muteTarget = editor?.mode === 'menu' && layer === 'map' && snapshot ? scope === 'project' ? selected : scope === 'neighborhood' ? snapshot.state.nodes.find(node => node.id === editor.projectId && !node.resourceId) : undefined : undefined;
+  const muteTarget = (editor?.mode === 'menu' || editor?.ground) && layer === 'map' && snapshot ? scope === 'project' ? selected : scope === 'neighborhood' ? snapshot.state.nodes.find(node => node.id === editor.projectId && !node.resourceId) : undefined : undefined;
   // A hidden item comes back through an item it links to; one the host may hide offers Hide.
   const shownPartner = editor?.mode === 'menu' && layer === 'map' && selected?.resourceId && snapshot ? hiddenPartner(snapshot.state.nodes, snapshot.state.links, selected.id) : undefined;
   const visibility = { ...(shownPartner ? { show: shownPartner.hideLabel } : {}), ...(selected?.hideLabel && !selected.hiddenAt ? { hide: selected.hideLabel } : {}) };
@@ -765,7 +765,7 @@ export function WorkspaceMap() {
         void apply([{ type: 'link.save', link: automaticLink(crypto.randomUUID(), source, target) }]).catch(error => setError(error.message));
       }}
       onConnect={below ? undefined : (sourceId, screen) => { setEditor(undefined); setConnectionDraft({ sourceId, screen }); }}
-      onContext={anchor => { setConnectionDraft(undefined); setEditor({ ...anchor, mode: 'menu' }); }}
+      onContext={anchor => { setConnectionDraft(undefined); setEditor(!below && settings.value.groundRightClickRing && !anchor.nodeId && !anchor.linkId ? { ...anchor, mode: 'create', ground: true } : { ...anchor, mode: 'menu' }); }}
       onCreate={below ? undefined : anchor => { setConnectionDraft(undefined); setEditor({ ...anchor, mode: 'create' }); }}
       onTodoDrop={!below && !editor && !settingsOpen && !archiveOpen && !connectionDraft ? target => apply([{ type: 'todo.place', ...target, nodeId: crypto.randomUUID(), resourceId: crypto.randomUUID() }]).catch(error => setError(error.message)) : undefined}
       todoDrag={todoDrag} todos={todoEntries} onTodoShow={id => todoOverlay.current?.show(id)}
@@ -874,6 +874,6 @@ export function WorkspaceMap() {
         else menuAction(action.id);
       }} onHighlight={setMenuHighlight} close={() => setEditor(undefined)} />}
     {editor && editor.mode !== 'menu' && snapshot && plugins && settings && <InlineEditor key={`${editor.mode}:${editor.nodeId ?? ''}:${editor.position.x}:${editor.position.y}`} editor={editor} state={withUndermap ?? snapshot.state} plugins={plugins} quickIds={settings.value.quickItemTypes} capabilities={capabilities} save={apply} close={() => setEditor(undefined)}
-      writeInPlace={below ? undefined : pluginId => writeInPlace(pluginId, editor)} />}
+      writeInPlace={below ? undefined : pluginId => writeInPlace(pluginId, editor)} ground={editor.ground ? menuActions : undefined} act={menuAction} />}
   </section></RailContext.Provider>;
 }
