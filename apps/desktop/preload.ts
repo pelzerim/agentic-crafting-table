@@ -69,6 +69,7 @@ const bridge: DesktopBridge = {
   remindersDone: id => invoke('reminders.done', { id }),
   remindersSnooze: (id, minutes) => invoke('reminders.snooze', { id, minutes }),
   onReminderDue: listener => listen('workspace:reminder-due', listener),
+  onSessionSwitched: listener => listen('workspace:session-switched', listener),
   retryRecovery: () => invoke('lifecycle.retry'),
   resourceOptions: (pluginId, field, values) => invoke('creation.options', { pluginId, field, values }),
   projectSkills: input => invoke('skills.list', input),

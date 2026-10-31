@@ -89,6 +89,8 @@ test('Claude plans keep native arguments, trusted guide and project brief separa
     assert.ok(!imported.launch.args.includes('--'), 'resume must not send a new task');
     assert.equal(imported.nodeId, importedRequest.nodeId);
     const idleRequest = { ...request, requestId: randomUUID(), nodeId: randomUUID(), resourceId: randomUUID(), expectedRevision: (await control.read()).revision, data: { provider: 'claude', model: 'fable' } };
+    const blank = prepareClaude({ request: { ...idleRequest, requestId: randomUUID() }, state: await control.read(), directory, runtime, capability, blank: true });
+    assert.ok(!blank.launch.args.includes('--'), 'a blank session sends no first prompt');
     const idle = prepareClaude({ request: idleRequest, state: await control.read(), directory, runtime, capability });
     assert.equal(idle.launch.cwd, plan.launch.cwd);
     assert.equal(idle.launch.args[idle.launch.args.indexOf('--model') + 1], 'fable');

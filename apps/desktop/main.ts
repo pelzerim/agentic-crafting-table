@@ -283,6 +283,7 @@ async function main() {
   });
   workspace.on('settings', applySettings);
   workspace.on('recording-deleted', value => broadcast('workspace:recording-deleted', value));
+  workspace.on('session-switched', value => broadcast('workspace:session-switched', value));
   workspace.on('reminder-due', (value: ReminderDue) => {
     notifications.reminder({ key: `reminder:${value.reminder.id}:${value.day.date}`, title: value.reminder.label, body: clockTime(value.day.dueAt) });
     broadcast('workspace:reminder-due', value);

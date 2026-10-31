@@ -1869,6 +1869,26 @@ selection rather than overriding it with the new-session default. Missing
 conversations or folders fail explicitly. Continue requires selecting a conversation;
 switching back to New preserves the new-session draft and clears the resume choice.
 
+**AGENT-04a — Commands that change the conversation.** Typing `/new`, `/clear`, `/fork`,
+Claude's `/branch`, or `/resume` in an agent's terminal follows the CLI on the map.
+The table reads the change from Claude's hooks or Codex's app-server, after the CLI has
+acted, and never parses keystrokes. The item where it was typed keeps its conversation.
+
+| Typed | Result |
+|---|---|
+| `/new`, `/clear` | A new empty session beside the item, with no first prompt |
+| `/fork`, `/branch` | A new session beside the item, holding the forked conversation |
+| `/resume` of a conversation on the map | That item, reattached or resumed |
+| `/resume` of a conversation not on the map | The same item becomes that conversation |
+
+The session view moves to the result only while the item where it was typed is open.
+A new conversation gets its own process because hooks and the MCP server are bound to one
+item at launch. When the CLI left the item's conversation, the table stops that process and
+resumes the conversation in the item. A conversation with no transcript cannot be resumed,
+so its item stays ended. A failure shows as an error on the item.
+Codex refuses to open a conversation that is live in another process and asks to close it
+there, so `/resume` of a Codex item that is still running changes nothing until that item stops.
+
 **AGENT-05 — Guide/context updates.** Queue newly connected context and outdated
 guide updates for the next supported input/turn boundary, deduplicated by identity
 and revision. Never type into an arbitrary permission prompt. Removing a link

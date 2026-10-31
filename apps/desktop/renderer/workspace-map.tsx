@@ -237,7 +237,8 @@ export function WorkspaceMap() {
   const [capabilities, setCapabilities] = useState<string[]>([]), [settingsOpen, setSettingsOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false), [standupOpen, setStandupOpen] = useState(false);
   const todoOverlay = useRef<TodoOverlayHandle>(null), viewRef = useRef<ViewState>(undefined);
-  const [reveal, setReveal] = useState<{ nodeId: string; nonce: number; mode?: 'map' | 'centred'; origin?: 'program'; select?: readonly string[] }>();
+  const [reveal, setReveal] = useState<{ nodeId: string; nonce: number; mode?: 'map' | 'centred'; origin?: 'program'; select?: readonly string[]; from?: string }>();
+  useEffect(() => window.craftingTable.onSessionSwitched(({ fromNodeId, toNodeId }) => setReveal({ nodeId: toNodeId, nonce: Date.now(), origin: 'program', from: fromNodeId })), []);
   const saveView = (patch: Partial<ViewState>) => { const next = { ...viewRef.current!, ...patch }; viewRef.current = next; setView(next); void window.craftingTable.viewWrite(next).catch(error => setError(error.message)); };
   const [connectionDraft, setConnectionDraft] = useState<{ sourceId: string; screen: { x: number; y: number } }>();
   const [sessionRequestId, setSessionRequestId] = useState(0);

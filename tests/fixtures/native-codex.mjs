@@ -61,6 +61,8 @@ if (args.includes('app-server')) {
         if (params.data === 'done') status('idle');
         if (params.data === 'sync') await sync(socket);
         if (params.data === 'disconnect') for (const client of clients) client.terminate?.();
+        // What the real TUI's `/new` sends to the server's other connections.
+        if (params.data === 'new-command') notify('thread/started', { thread: { id: randomUUID(), forkedFromId: null, source: 'vscode' } });
         break;
     }
     if (input.method === 'thread/start' || input.method === 'thread/resume') result = { thread };

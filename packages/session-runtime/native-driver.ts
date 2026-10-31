@@ -1,6 +1,6 @@
 import type { LaunchRequest, NativeAgentState } from './protocol.ts';
 import { openCodexTerminalServer } from './codex-transport.ts';
-import { codexInput, codexStatus, codexThreadStatus, nativeInput, nativeStatus } from './codex-status.ts';
+import { codexInput, codexStatus, codexSwitch, codexThreadStatus, nativeInput, nativeStatus } from './codex-status.ts';
 import * as z from 'zod/v4';
 import { randomUUID } from 'node:crypto';
 
@@ -13,8 +13,10 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
   let closing = false;
   try {
     let state: NativeAgentState | undefined;
-    const notified: { method: string; params?: any }[] = [];
+    const notified: { method: string; params?: any }[] = [], subagents = new Set<string>();
     const apply = (event: { method: string; params?: any }, current: NativeAgentState) => {
+      const switched = current.switched ? undefined : codexSwitch(event, current.nativeSessionId, subagents);
+      if (switched) { state = { ...current, switched, observedAt: new Date().toISOString() }; observe(state); return; }
       const status = codexStatus(event, current.nativeSessionId);
       const started = event.method === 'thread/started' && event.params?.thread?.id === current.nativeSessionId;
       if (status === undefined && !started) return;

@@ -1,4 +1,4 @@
-import { probeClaude, prepareClaude } from '../session-runtime/claude.ts';
+import { stopClaudeBackground, probeClaude, prepareClaude } from '../session-runtime/claude.ts';
 import type { AgentCapability, AgentPreparation } from '../session-runtime/agent-plan.ts';
 import type { PreparedSession } from './sessions.ts';
 import { discoverClaudeSessions, resolveClaudeSession } from '../session-runtime/saved-sessions.ts';
@@ -17,13 +17,15 @@ export interface AgentProvider {
   prepare(input: AgentPreparation, settings: AppSettings): PreparedSession;
   discover(state: WorkspaceState, query: string, offset: number, cursor?: string): Promise<SavedSessionPage>;
   resolve(id: string): Promise<{ nativeSessionId: string; cwd: string }>;
+  /** Frees a fork the CLI keeps running on its own, so that an item can open it. */
+  releaseFork?(id: string): Promise<void>;
   models(): Promise<{ options: string[]; default: string }>;
   skills(cwd: string): Promise<ProjectSkillCatalog>;
   skillPrompt(skill: ProjectSkill, argumentsText: string): string;
 }
 let modelCache: { time: number; value: { options: string[]; default: string } } | undefined;
 export const agentProviders: Readonly<Record<string, AgentProvider>> = {
-  claude: { name: 'Claude', probe: probeClaude, prepare: (input, settings) => prepareClaude({ ...input, settings: settings.claude }), discover: discoverClaudeSessions, resolve: resolveClaudeSession,
+  claude: { name: 'Claude', probe: probeClaude, prepare: (input, settings) => prepareClaude({ ...input, settings: settings.claude }), discover: discoverClaudeSessions, resolve: resolveClaudeSession, releaseFork: stopClaudeBackground,
     async models() { return { options: ['opus', 'fable', 'sonnet', 'haiku'], default: 'opus' }; },
     skills: discoverClaudeSkills, skillPrompt: (skill, text) => '/' + skill.name + (text ? ' ' + text : '') },
   codex: { name: 'Codex', probe: probeCodex, prepare: input => prepareCodex(input), discover: (state, query, _offset, cursor) => discoverCodexSessions(state, query, cursor), resolve: resolveCodexSession,

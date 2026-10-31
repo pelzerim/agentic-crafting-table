@@ -22,7 +22,9 @@ export const launchSchema = z.object({
   bindings: z.partialRecord(z.enum(['ACT_DATA_DIR', 'ACT_NODE_ID', 'ACT_PROJECT_ID', 'ACT_SESSION_ID', 'CLAUDE_CODE_FORCE_SYNC_OUTPUT']), z.string()).optional(),
 });
 export type LaunchRequest = z.infer<typeof launchSchema>;
-export interface NativeAgentState { provider: 'codex'; nativeSessionId: string; status: 'idle' | 'working' | 'input' | 'error' | 'unknown'; input?: 'approval' | 'question'; observedAt: string; readyAt?: string; completionId?: string }
+/** A native CLI left its conversation from inside its terminal: `/new` or `/clear`, a fork, or `/resume`. */
+export interface ConversationSwitch { kind: 'new' | 'fork' | 'resume'; nativeSessionId: string }
+export interface NativeAgentState { provider: 'codex'; nativeSessionId: string; status: 'idle' | 'working' | 'input' | 'error' | 'unknown'; input?: 'approval' | 'question'; observedAt: string; readyAt?: string; completionId?: string; switched?: ConversationSwitch }
 export interface SessionRecord {
   id: string; requestId: string; nodeId: string; workspaceId: string; cwd: string;
   state: 'starting' | 'running' | 'exited' | 'failed' | 'lost';

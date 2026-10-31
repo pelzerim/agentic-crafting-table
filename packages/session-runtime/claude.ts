@@ -40,13 +40,20 @@ export function probeClaude(): Promise<ClaudeCapability> {
   return capability;
 }
 
+/** Claude's `/fork` runs as a background session, and it refuses to resume one until it stops. The conversation is kept.
+ * `claude stop` matches a background job by the short id Claude prints, and refuses the full session id. */
+export async function stopClaudeBackground(id: string) {
+  const installed = await probeClaude();
+  await promisify(execFile)(installed.executable, ['stop', id.slice(0, 8)], { timeout: 10_000, env: { ...process.env, PATH: await sessionPath() } });
+}
+
 export const claudeCreateFields = z.object({ provider: z.literal('claude').default('claude'), cwd: z.string().min(1, 'Select a working directory for this session or its project').max(4096), model: z.string().trim().min(1).max(100).default('opus'), task: z.string().trim().max(32_000).default(''), summary: z.string().max(4000).optional() });
 export interface ClaudePreparation extends AgentPreparation { settings?: AppSettings['claude'] }
 
 /** Only the host builds this plan. User text is never interpolated into a shell. */
 export function prepareClaude(input: ClaudePreparation): PreparedSession {
   const { request, state, runtime, capability } = input;
-  const source = JSON.parse(JSON.stringify(input.originRequest ? { request: input.originRequest } : { request, ...(input.resumeNodeId ? { resumeNodeId: input.resumeNodeId } : {}), ...(input.continueWork ? { continueWork: true } : {}), ...(input.hosted ? { hosted: input.hosted } : {}) }));
+  const source = JSON.parse(JSON.stringify(input.originRequest ? { request: input.originRequest } : { request, ...(input.resumeNodeId ? { resumeNodeId: input.resumeNodeId } : {}), ...(input.continueWork ? { continueWork: true } : {}), ...(input.hosted ? { hosted: input.hosted } : {}), ...(input.blank ? { blank: true } : {}) }));
   const launchDirectory = join(input.directory, 'agent-launches', request.requestId), planPath = join(launchDirectory, 'plan.json');
   const saved = readAgentPlan(input.directory, request.requestId);
   if (saved) {
@@ -92,7 +99,7 @@ export function prepareClaude(input: ClaudePreparation): PreparedSession {
   if (permission.mode === 'auto' && capability.autoMode === false) throw new Error('This Claude Code version does not support Auto mode. Update Claude or turn off Auto mode in Settings → Items → Claude.');
   const args = [resumed || input.native ? '--resume' : '--session-id', nativeSessionId, ...(fields.model === 'native' ? [] : ['--model', fields.model]), '--append-system-prompt', context.systemPrompt,
     '--system-prompt-snapshot', 'off', '--mcp-config', mcpConfig, '--plugin-dir', join(launchDirectory, 'plugin'), '--allowedTools', 'mcp__crafting_table', ...permission.arguments, '--permission-mode', permission.mode, ...(launchSettings.remoteControl ? ['--remote-control'] : ['--settings', JSON.stringify({ disableRemoteControl: true })])];
-  if (!resumed && !input.native) args.push('--', input.skill?.prompt ?? input.hosted?.prompt ?? launchContext.initialPrompt);
+  if (!resumed && !input.native && !input.blank) args.push('--', input.skill?.prompt ?? input.hosted?.prompt ?? launchContext.initialPrompt);
   if (resumed && input.continueWork) args.push('--', RECOVERY_PROMPT);
   // Host provenance never overrides the session identity fields that follow.
   const data = { ...(resumed?.data ?? {}), ...(!resumed ? input.hosted?.data ?? {} : {}), sessionId: request.requestId, nativeSessionId, provider: 'claude', workspaceId, cwd, model: fields.model,

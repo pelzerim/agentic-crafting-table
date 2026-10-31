@@ -7,7 +7,7 @@ import * as z from 'zod/v4';
 import type { ResourceCreate } from '../core/resource-creation.ts';
 import type { WorkspaceControl, WorkspaceCommand } from '../core/control.ts';
 import type { RuntimeOptions } from '../session-runtime/client.ts';
-import type { SessionSnapshot } from '../session-runtime/protocol.ts';
+import type { ConversationSwitch, SessionSnapshot } from '../session-runtime/protocol.ts';
 import { canonical } from '../core/control.ts';
 import { readAgentPlan } from '../session-runtime/agent-plan.ts';
 import type { HostedLaunch } from '../session-runtime/agent-plan.ts';
@@ -30,6 +30,7 @@ import { parseClaudeArtifactUrl } from '../../src/resource-plugins/items/claude-
 /** Hooks that say something about the session without being a step of its turn: they are recorded and never change the item's status. */
 const NOTED = ['SubagentStart', 'PreCompact', 'PostCompact', 'PostToolUseFailure', 'PermissionDenied', 'TaskCreated', 'TaskCompleted', 'PostModelSwitch'] as const;
 const hookSchema = z.object({ nodeId: z.string().min(1), processSessionId: z.string().uuid(), nativeSessionId: z.string().uuid(),
+  switched: z.object({ kind: z.enum(['new', 'fork', 'resume']), nativeSessionId: z.string().uuid() }).optional(), endReason: z.string().max(200).optional(),
   observedAt: z.number().int().positive(), event: z.enum(['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PermissionRequest', 'Notification', 'Stop', 'StopFailure', 'SessionEnd', 'SubagentStop', 'SubagentToolUse', 'SubagentToolStart', 'TeammateIdle', ...NOTED]),
   lastMessage: z.string().max(2000).optional(), taskId: z.string().min(1).max(200).optional(), model: z.string().min(1).max(200).optional(), previousModel: z.string().min(1).max(200).optional(), interrupt: z.boolean().optional(), worktree: z.boolean().optional(),
   notificationType: z.string().optional(), toolName: z.string().optional(), recipient: z.string().min(1).max(64).optional(), agentId: z.string().min(1).max(200).optional(), teammate: z.string().min(1).max(200).optional(),
@@ -61,9 +62,14 @@ export class AgentCoordinator {
   private quietTimer?: ReturnType<typeof setInterval>; private settling?: Promise<void>;
   private resuming = new Map<string, Promise<SessionSnapshot>>();
   private skillRuns = new Map<string, { source: string; promise: Promise<SessionSnapshot> }>();
+  /** Processes that have left their item's conversation, and those whose switch is being followed. */
+  private moved = new Set<string>(); private switching = new Set<string>();
+  /** Told when a person's session view should follow a switch from one item to another. */
+  onSwitched?: (fromNodeId: string, toNodeId: string) => void;
   constructor(directory: string, options: RuntimeOptions, control: WorkspaceControl, sessions: SessionCoordinator, context: AgentContextCoordinator, changed: () => Promise<void>, observations: Observations) {
     this.directory = directory; this.options = options; this.control = control; this.sessions = sessions; this.context = context; this.changed = changed;
     this.observations = observations;
+    sessions.onConversationSwitch = (nodeId, sessionId, switched) => { this.moved.add(sessionId); void this.followSwitch(nodeId, sessionId, switched); };
   }
   start() { this.quietTimer ??= setInterval(() => { this.settling ??= this.settleQuiet().catch(() => {}).finally(() => { this.settling = undefined; }); }, 5_000); this.quietTimer.unref?.(); }
   async pause() { clearInterval(this.quietTimer); this.quietTimer = undefined; await this.settling; }
@@ -157,7 +163,7 @@ export class AgentCoordinator {
     })().finally(() => this.skillRuns.delete(args.requestId));
     this.skillRuns.set(args.requestId, { source, promise }); return promise;
   }
-  async create(request: ResourceCreate) {
+  async create(request: ResourceCreate, blank = false) {
     if (typeof request.data.resumeNativeSessionId === 'string') {
       const id = z.string().uuid().parse(request.data.resumeNativeSessionId), key = `native:${request.data.provider ?? 'claude'}:${id}`;
       if (this.resuming.has(key)) return this.resuming.get(key)!;
@@ -168,7 +174,7 @@ export class AgentCoordinator {
     const provider = agentProvider(request.data.provider), capability = await provider.probe(), state = await this.control.read();
     // A launch that names no model, such as one from an agent, gets the provider's current default.
     const model = typeof request.data.model === 'string' && request.data.model.trim() ? request.data.model : (await provider.models()).default;
-    return this.sessions.launchPrepared(provider.prepare({ request: { ...request, data: { ...request.data, model } }, state, directory: this.directory, runtime: this.options, capability, fallbackDirectory: this.sessions.fallbackDirectory() }, this.observations.readSettings().value));
+    return this.sessions.launchPrepared(provider.prepare({ request: { ...request, data: { ...request.data, model } }, state, directory: this.directory, runtime: this.options, capability, fallbackDirectory: this.sessions.fallbackDirectory(), blank }, this.observations.readSettings().value));
   }
   /** A new Claude session whose opening prompt the host built (never the renderer). */
   async launchHosted(request: ResourceCreate, hosted: HostedLaunch) {
@@ -241,6 +247,57 @@ export class AgentCoordinator {
     // Probing the CLI takes seconds while status updates keep changing the graph.
     const fresh = await this.control.read();
     return this.sessions.launchPrepared(provider.prepare({ request: { requestId, nodeId, resourceId: resource.id, expectedRevision: fresh.revision, pluginId: resource.pluginId, title: node.title, projectId: node.projectId, position: node.position, data: {} }, state: fresh, directory: this.directory, runtime: this.options, capability, resumeNodeId: nodeId, originRequest, continueWork }, this.observations.readSettings().value));
+  }
+  /** AGENT-04a: a CLI's hooks and MCP server stay bound to the item it launched for, so a new conversation gets
+   * its own item and process, and a process that left its item's conversation is replaced on that conversation. */
+  private async followSwitch(nodeId: string, processSessionId: string, switched: ConversationSwitch) {
+    if (this.switching.has(processSessionId)) return;
+    this.switching.add(processSessionId);
+    try {
+      const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+      if (!node || !resource || resource.data.sessionId !== processSessionId || typeof resource.data.nativeSessionId !== 'string') return;
+      const provider = String(resource.data.provider), left = resource.data.nativeSessionId, isMoved = this.moved.delete(processSessionId);
+      const target = state.nodes.find(node => state.resources.some(resource => resource.id === node.resourceId && resource.data.provider === provider && resource.data.nativeSessionId === switched.nativeSessionId));
+      // Two processes on one conversation would interleave its transcript.
+      if (isMoved) await this.stopProcess(processSessionId);
+      if (switched.kind === 'resume' && !target) { await this.adopt(nodeId, provider, switched.nativeSessionId); return; }
+      try {
+        const toNodeId = target?.id ?? randomUUID();
+        const request = { requestId: randomUUID(), nodeId: toNodeId, resourceId: randomUUID(), pluginId: resource.pluginId, projectId: node.projectId, placedBy: nodeId };
+        if (switched.kind === 'fork' && !isMoved) await this.releaseFork(provider, switched.nativeSessionId);
+        if (target) await this.resume(target.id, randomUUID());
+        else if (switched.kind === 'fork') await this.create({ ...request, title: `${node.title} (fork)`, data: { provider, resumeNativeSessionId: switched.nativeSessionId } });
+        else await this.create({ ...request, title: 'New session', data: { provider, cwd: String(resource.data.cwd), model: resource.data.model === 'native' ? '' : String(resource.data.model) } }, true);
+        this.onSwitched?.(nodeId, toNodeId);
+      } finally { if (isMoved) await this.reopen(nodeId, provider, left); }
+    } catch (error) {
+      await applyAtHead(this.control, { commandId: randomUUID(), actor: { kind: 'system', id: 'agent-switch' }, commands: [{ type: 'node.update', id: nodeId, attention: 'error', attentionNote: 'Session switch failed', summary: (error as Error).message.slice(0, 4000) }] });
+      await this.changed();
+    } finally { this.switching.delete(processSessionId); }
+  }
+  private async releaseFork(provider: string, nativeSessionId: string) { await agentProvider(provider).releaseFork?.(nativeSessionId); }
+  private async stopProcess(sessionId: string) {
+    await this.sessions.runtime.call('sessions.stop', { sessionId, preservePids: [process.pid] });
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline) {
+      const current = await this.sessions.runtime.call<SessionSnapshot>('sessions.read', { sessionId });
+      if (!['running', 'starting'].includes(current.session.state)) return;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    throw new Error('The session did not stop in time');
+  }
+  /** `/resume` of a conversation no item holds: the item where it was typed becomes that conversation. */
+  private async adopt(nodeId: string, provider: string, nativeSessionId: string) {
+    const native = await agentProvider(provider).resolve(nativeSessionId), state = await this.control.read();
+    const node = state.nodes.find(node => node.id === nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+    if (!resource) return;
+    await applyAtHead(this.control, { commandId: randomUUID(), actor: { kind: 'system', id: 'agent-switch' }, commands: [{ type: 'item.update', id: nodeId, data: { ...resource.data, nativeSessionId, cwd: native.cwd } }] });
+    await this.resume(nodeId, randomUUID());
+  }
+  /** A conversation left before its first prompt has no transcript to return to, so its item stays ended. */
+  private async reopen(nodeId: string, provider: string, nativeSessionId: string) {
+    const isSaved = await agentProvider(provider).resolve(nativeSessionId).then(() => true, () => false);
+    if (isSaved) await this.resume(nodeId, randomUUID());
   }
   private waitingInBackground(sessionId: string, at: number) {
     const background = this.observations.agentBackground(sessionId);
@@ -327,7 +384,11 @@ export class AgentCoordinator {
   }
   /** Every hook may change what the item's sheep is told (AGENT-07e); the node is written only when a value differs. */
   async hook(input: unknown) {
-    const event = hookSchema.parse(input), noted = (NOTED as readonly string[]).includes(event.event), result = noted ? {} : await this.observed(event);
+    const event = hookSchema.parse(input);
+    // Claude Code ends the old conversation first only when its own process moves; a `/fork` leaves it where it is.
+    if (event.event === 'SessionEnd' && ['clear', 'resume'].includes(event.endReason ?? '')) this.moved.add(event.processSessionId);
+    if (event.switched) { void this.followSwitch(event.nodeId, event.processSessionId, event.switched); return {}; }
+    const noted = (NOTED as readonly string[]).includes(event.event), result = noted ? {} : await this.observed(event);
     const happened = event.event === 'PostToolUseFailure' && !event.interrupt ? 'stumble' : event.event === 'PermissionDenied' ? 'bump' : undefined;
     for (let attempt = 0; attempt < 3 && !('ignored' in result); attempt++) {
       const state = await this.control.read(), node = state.nodes.find(node => node.id === event.nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
