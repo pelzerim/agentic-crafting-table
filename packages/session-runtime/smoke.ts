@@ -8,7 +8,7 @@ const SMOKE_POWERSHELL = `Write-Output ACT_READY; $value = Read-Host; Write-Outp
 export function smokePty(): Promise<{ input: true; resize: true; exitCode: number }> {
   return new Promise((resolve, reject) => {
     const terminal = process.platform === 'win32'
-      ? spawn(powerShell(), ['-NoProfile', '-NonInteractive', '-Command', SMOKE_POWERSHELL], { name: 'xterm-256color', cols: 80, rows: 24, cwd: tmpdir(), env: process.env })
+      ? spawn(powerShell(), ['-NoProfile', '-Command', SMOKE_POWERSHELL], { name: 'xterm-256color', cols: 80, rows: 24, cwd: tmpdir(), env: process.env })
       : spawn('/bin/sh', ['-c', 'printf "ACT_READY\\n"; read value; printf "ACT_INPUT:%s\\n" "$value"; stty size'], {
         name: 'xterm-256color', cols: 80, rows: 24, cwd: tmpdir(), env: { PATH: '/usr/bin:/bin', TERM: 'xterm-256color' },
       });
