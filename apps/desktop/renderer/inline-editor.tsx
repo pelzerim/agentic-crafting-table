@@ -18,7 +18,8 @@ import { ItemIcon } from './icons.tsx';
 import { FROM_URL, RUN_SKILL, itemChoices } from '../../../packages/core/item-picker.ts';
 import { SkillPicker } from './skill-picker.tsx';
 import { PixelCombobox } from './ui/combobox.tsx';
-import { ItemPicker, PICKER_SIZE } from './item-picker.tsx';
+import { ItemPicker, PICKER_SIZE, WIDE_PICKER_SIZE } from './item-picker.tsx';
+import type { MenuAction, MenuActionId } from '../../../packages/core/context-menu.ts';
 import { useMovablePanel } from './use-movable-panel.ts';
 import { useBubbleMotion } from './bubble-motion.ts';
 import type { BubbleBounds } from './bubble-motion.ts';
@@ -76,9 +77,11 @@ function Fields({ fields, values, change, pluginId, focusField, directories, pro
   </label>);
 }
 
-export function InlineEditor({ editor, state, plugins, quickIds, capabilities, save, close, writeInPlace }: { editor: Editor; state: WorkspaceState; plugins: PluginDescription[]; quickIds: string[]; capabilities: string[]; save(commands: WorkspaceCommand[]): Promise<void>; close(): void;
+export function InlineEditor({ editor, state, plugins, quickIds, capabilities, save, close, writeInPlace, ground, act }: { editor: Editor; state: WorkspaceState; plugins: PluginDescription[]; quickIds: string[]; capabilities: string[]; save(commands: WorkspaceCommand[]): Promise<void>; close(): void;
   /** Paper types skip the form: the new tile opens on the map with the caret in it. */
-  writeInPlace?(pluginId: string): void }) {
+  writeInPlace?(pluginId: string): void;
+  /** A ring opened by right-clicking the ground also offers that ground's menu entries (MAP-31). */
+  ground?: readonly MenuAction[]; act?(id: MenuActionId): void }) {
   const target = state.nodes.find(node => node.id === editor.nodeId), project = state.nodes.find(node => node.id === editor.projectId);
   const resource = state.resources.find(resource => resource.id === target?.resourceId);
   const textFirst = plugins.find(plugin => plugin.id === resource?.pluginId)?.generatedTitle;
@@ -105,7 +108,7 @@ export function InlineEditor({ editor, state, plugins, quickIds, capabilities, s
   const [ids] = useState(() => ({ nodeId: crypto.randomUUID(), resourceId: crypto.randomUUID(), linkId: crypto.randomUUID() }));
   const [resume, setResume] = useState<SavedSessionOption>();
   const [sessionMode, setSessionMode] = useState<'new' | 'continue'>('new');
-  const pickerPosition = { x: editor.screen.x - PICKER_SIZE.width / 2, y: editor.screen.y - PICKER_SIZE.height / 2 };
+  const pickerSize = ground ? WIDE_PICKER_SIZE : PICKER_SIZE, pickerPosition = { x: editor.screen.x - pickerSize.width / 2, y: editor.screen.y - pickerSize.height / 2 };
   const formPosition = { x: editor.screen.x - 150, y: editor.screen.y - 24 };
   const { panel, position, dragging, handle, moveTo } = useMovablePanel(type ? formPosition : pickerPosition, type === RUN_SKILL);
   const seed = useRef<BubbleBounds>(undefined);
@@ -206,11 +209,11 @@ export function InlineEditor({ editor, state, plugins, quickIds, capabilities, s
   };
   if (type === RUN_SKILL && editor.projectId && skillPlugin) return <SkillPicker projectId={editor.projectId} state={state} plugin={skillPlugin} screen={formPosition} position={editor.position} connectedFromId={editor.connectedFromId} growFrom={seed.current} back={backToChoices} close={close} />;
   return <>{!type && <div className="picker-backdrop" aria-hidden="true" />}<form ref={panel} className={`inline-editor item-creation ${!type ? 'radial-picker' : ''}`} aria-label={editor.mode === 'edit' ? editLabel : 'New item'} data-project-id={editor.projectId ?? ''} data-world-x={editor.position.x} data-world-y={editor.position.y} data-dragging={dragging}
-    style={{ left: position.x, top: position.y, transformOrigin: 'top left' }} onSubmit={submit}>
+    style={{ left: position.x, top: position.y, transformOrigin: 'top left', ...(!type && ground ? { width: pickerSize.width } : {}) }} onSubmit={submit}>
     {type && <><div className="editor-heading" {...handle}><strong>{editor.mode === 'edit' ? editLabel : fromUrl ? 'From URL' : type ? plugin?.name ?? 'Project' : 'New item'}</strong>{editor.mode === 'edit' && <button type="button" aria-label="Close item form" onClick={close}><PixelGlyph name="close" /></button>}</div>
     <small className="placement-note">{type === 'project' ? 'New project' : project?.title ?? 'Floating · no project'}</small></>}
     {linkError && <p role="alert">{linkError}</p>}
-    {!type ? <ItemPicker choices={itemChoices(plugins, editor.projectId, !!skillPlugin && capabilities.includes('agent.create'))} quickIds={quickIds} panel={panel} select={select} close={close} /> : <>
+    {!type ? <ItemPicker choices={itemChoices(plugins, editor.projectId, !!skillPlugin && capabilities.includes('agent.create'))} quickIds={quickIds} panel={panel} select={select} close={close} ground={ground} act={act} /> : <>
       <fieldset disabled={pending || locked}>
         {editor.mode === 'edit' && resource && <label>Project<select aria-label="Project membership" value={membership} onChange={event => setMembership(event.target.value)}><option value="">Floating · no project</option>{state.nodes.filter(node => !node.resourceId && !node.projectId && !isOffMap(node, state.nodes)).map(project => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label>}
         {editor.mode === 'edit' && providerTitle && <label>Name<input aria-label="Title" readOnly value={target?.title ?? ''} /><small>Title comes from the linked item.</small></label>}

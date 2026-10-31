@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { createResourcePluginRegistry } from '../../src/resource-plugins/builtins.ts';
 import { defineResourcePlugin } from '../../src/resource-plugins/define.ts';
 import { settingsSchema } from './settings.ts';
-import { DEFAULT_QUICK_ITEMS, RUN_SKILL, itemChoices, itemChoiceLayers } from './item-picker.ts';
+import { DEFAULT_QUICK_ITEMS, RUN_SKILL, groundRingChoices, itemChoices, itemChoiceLayers } from './item-picker.ts';
+import { contextMenuActions, muteProjectAction } from './context-menu.ts';
 
 test('Note is in the default ring and carries its one-letter hotkey', () => {
   const choices = itemChoices(createResourcePluginRegistry().describe());
@@ -61,4 +62,14 @@ test('URL choices collapse into From URL and legacy shortcuts keep order without
   assert.deepEqual(itemChoiceLayers(choices, saved).quick.map(choice => choice.id), ['terminal.session', 'from-url', 'workspace.todo']);
   assert.deepEqual(saved, ['terminal.session', 'slack.message', 'workspace.todo', 'github.pull-request', 'web.bookmark', 'missing.plugin']);
   assert.equal(itemChoiceLayers(choices, []).remaining.filter(choice => choice.id === 'from-url').length, 1);
+});
+
+test('the ground ring offers every ground menu entry but New item, and Project only once', () => {
+  const quick = (ids: string[]) => itemChoiceLayers(itemChoices(createResourcePluginRegistry().describe()), ids).quick;
+  const board = contextMenuActions('board');
+  assert.deepEqual(groundRingChoices(board, quick(DEFAULT_QUICK_ITEMS)).map(choice => choice.id), ['archive-browser']);
+  assert.deepEqual(groundRingChoices(board, quick(['agent.session'])).map(choice => [choice.id, Boolean(choice.menuAction)]), [['project', false], ['archive-browser', true]]);
+  const mute = muteProjectAction(false, 2), [muted] = groundRingChoices(contextMenuActions('neighborhood', false, undefined, [], undefined, undefined, undefined, false, undefined, undefined, mute), []);
+  assert.deepEqual([muted!.id, muted!.name, muted!.shortLabel, muted!.menuAction], ['mute', 'Mute project (Needs me: 2)', 'Mute project', true]);
+  assert.equal(groundRingChoices([muteProjectAction(true)], [])[0]?.id, 'unmute');
 });

@@ -1,11 +1,12 @@
 import type { PluginDescription } from '../../src/resource-plugins/describe.client.ts';
 import type { ResourceAppearance } from '../../src/resource-plugins/types.ts';
+import type { MenuAction } from './context-menu.ts';
 
 export const FROM_URL = 'from-url';
 export const RUN_SKILL = 'run-skill';
 export const DEFAULT_QUICK_ITEMS = ['project', 'agent.session', 'terminal.session', FROM_URL, 'workspace.todo', 'workspace.note'];
 export const MAX_QUICK_ITEMS = 7;
-export interface ItemChoice { id: string; name: string; shortLabel?: string; icon: string; brand?: string; tint?: boolean; tone?: string; size?: ResourceAppearance['size']; aliases?: string[]; alwaysQuick?: boolean; hotkey?: string }
+export interface ItemChoice { id: string; name: string; shortLabel?: string; icon: string; brand?: string; tint?: boolean; tone?: string; size?: ResourceAppearance['size']; aliases?: string[]; alwaysQuick?: boolean; hotkey?: string; /** A map menu entry, run as that entry instead of creating an item. */ menuAction?: true }
 
 /** The catalog owns item discovery; missing preferences remain stored for when a plugin returns. */
 export function itemChoices(plugins: PluginDescription[], projectId?: string, canRunSkill = false): ItemChoice[] {
@@ -27,4 +28,15 @@ export function itemChoiceLayers(choices: ItemChoice[], quickIds: string[]) {
   const quick = [...(fixed.length ? configured.slice(0, MAX_QUICK_ITEMS - fixed.length) : configured), ...fixed];
   const shown = new Set(quick.map(choice => choice.id));
   return { quick, remaining: choices.filter(choice => !shown.has(choice.id)) };
+}
+
+const GROUND_ICONS: Readonly<Record<string, string>> = { 'new-project': 'project', 'archive-browser': 'archive', mute: 'bell', unmute: 'bell' };
+/** The ground menu's entries as ring choices (MAP-31). New item is left out because the ring is that entry; New project is
+ * the ring's Project choice, so it is added only when `quick` does not show one. Counts in a label stay in the tooltip. */
+export function groundRingChoices(actions: readonly MenuAction[], quick: readonly ItemChoice[]): ItemChoice[] {
+  return actions.flatMap((action): ItemChoice[] => {
+    if (action.id === 'new-item' || (action.id === 'new-project' && quick.some(choice => choice.id === 'project'))) return [];
+    const icon = GROUND_ICONS[action.id] ?? 'item';
+    return [action.id === 'new-project' ? { id: 'project', name: action.label, icon } : { id: action.id, name: action.label, shortLabel: action.label.replace(/ \(.*\)$/, ''), icon, menuAction: true }];
+  });
 }

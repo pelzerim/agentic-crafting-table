@@ -57,7 +57,9 @@ manual approval; read-only PR review sessions keep their separate restrictions.
 
 Double-click empty space inside a project → **Run skill** in the radial picker
 to discover installed skills, choose a model and launch a tracked native run.
-Right-click → New item opens the same picker. A dragged + also connects the new
+Right-click → New item opens the same picker; with **Right-click opens the radial
+menu** on in Settings → Map, a right click on the ground opens it directly, with Mute
+project and Open archive among its items. A dragged + also connects the new
 skill agent to its source. See [project skills](native-skills.md) for the shared
 MCP operations, retry behavior and explicit live-provider smoke test.
 

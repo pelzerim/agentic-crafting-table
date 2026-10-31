@@ -124,6 +124,12 @@ test('snapping to the grid is off by default and only accepts a boolean', () => 
   for (const value of ['yes', 1, null]) assert.equal(settingsSchema.safeParse({ snapToGrid: value }).success, false, String(value));
 });
 
+test('the ground ring on right click is off by default and only accepts a boolean', () => {
+  assert.equal(settingsSchema.parse({}).groundRightClickRing, false);
+  assert.equal(settingsSchema.parse({ groundRightClickRing: true }).groundRightClickRing, true);
+  for (const value of ['yes', 1, null]) assert.equal(settingsSchema.safeParse({ groundRightClickRing: value }).success, false, String(value));
+});
+
 test('Delete in item menus is off by default and only accepts a boolean', () => {
   assert.equal(settingsSchema.parse({}).itemDelete, false);
   assert.equal(settingsSchema.parse({ itemDelete: true }).itemDelete, true);
