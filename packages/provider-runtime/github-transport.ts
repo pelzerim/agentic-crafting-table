@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { sessionPath } from '../session-runtime/shell-path.ts';
+import { sessionPath } from '../platform/shell.ts';
 import { GitHubError, INBOX_PATHS, isActivityPath } from './github.ts';
 import { pullKey } from './github.ts';
 import type { WorkflowTransport } from './github-workflow.ts';

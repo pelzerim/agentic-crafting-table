@@ -1,6 +1,7 @@
 import { prepareNativeDriver } from './native-driver.ts';
 import type { NativeDriver } from './native-driver.ts';
-import { sessionPath } from './shell-path.ts';
+import { isShadowedPath, sessionPath } from '../platform/shell.ts';
+import { killPty } from '../platform/process-tree.ts';
 import { terminalLocale } from './terminal-locale.ts';
 import { logPolicySchema, publishLogPolicy } from '../core/log-policy.ts';
 import { spawn } from 'node-pty';
@@ -15,13 +16,14 @@ import type { RpcPeer } from '../workspace-service/local-rpc.ts';
 import { RuntimeJournal } from './journal.ts';
 import { managedSessionsSchema, sessionPageSchema, manageSessionSchema, launchSchema, inputSchema, resizeSchema, sessionIdSchema, readSessionSchema, stopSessionSchema, recordingsSchema, deleteRecordingSchema } from './protocol.ts';
 import type { OutputChunk, SessionSnapshot, SessionEvent, SessionRecord } from './protocol.ts';
-import { stopDescendants } from './process-tree.ts';
+import { stopProcessTree } from '../platform/process-tree.ts';
+import type { ProcessTreeStop } from '../platform/process-tree.ts';
 import { outputSuffix } from './output-tail.ts';
 import { isDecisiveInput } from './decisive-input.ts';
 import { HeadlessTerminal } from './terminal-identity.ts';
 
 export const OUTPUT_BYTES = 256 * 1024;
-type Live = { pty: IPty; ended: Promise<void>; stopTimer?: ReturnType<typeof setTimeout>; finishChildren?: () => void };
+type Live = { pty: IPty; ended: Promise<void>; stopping?: ProcessTreeStop };
 type BufferState = { chunks: OutputChunk[]; bytes: number; sequence: number; timer?: ReturnType<typeof setTimeout>; truncated: boolean; pending: OutputChunk[]; pendingBytes: number };
 
 export async function startSupervisor(directory: string) {
@@ -118,13 +120,11 @@ export async function startSupervisor(directory: string) {
       return journal.get(id);
     }
     const running = live.get(id);
-    if (running && !running.stopTimer) {
+    if (running && !running.stopping) {
       // Freeze the readable screen before native CLI teardown clears its alternate buffer.
       emitState(journal.update(id, { displayThroughSequence: bufferFor(id).sequence }));
       flush(id);
-      running.finishChildren = stopDescendants(running.pty.pid, [process.pid, ...preservePids]);
-      running.pty.kill('SIGTERM');
-      running.stopTimer = setTimeout(() => { running.finishChildren?.(); if (live.has(id)) running.pty.kill('SIGKILL'); }, 1000);
+      running.stopping = stopProcessTree({ pid: running.pty.pid, kill: signal => { if (live.has(id)) killPty(running.pty, signal); } }, [process.pid, ...preservePids]);
     }
     return journal.get(id);
   };
@@ -195,7 +195,7 @@ export async function startSupervisor(directory: string) {
           // profile. Resolve its potentially slow PATH only for a fresh launch.
           const environment = terminalLocale({ ...process.env, PATH: await sessionPath() });
           signal.throwIfAborted();
-          for (const key of Object.keys(environment)) if (key.startsWith('ACT_') || ['ELECTRON_RUN_AS_NODE', 'NO_COLOR', 'FORCE_COLOR', 'CLICOLOR', 'CLICOLOR_FORCE'].includes(key)) delete environment[key];
+          for (const key of Object.keys(environment)) if (key.startsWith('ACT_') || ['ELECTRON_RUN_AS_NODE', 'NO_COLOR', 'FORCE_COLOR', 'CLICOLOR', 'CLICOLOR_FORCE'].includes(key) || isShadowedPath(key)) delete environment[key];
           Object.assign(environment, request.bindings, { TERM: 'xterm-256color', COLORTERM: 'truecolor' });
           native = await prepareNativeDriver(request, environment,
             state => { if (!signal.aborted) emitState(journal.update(request.sessionId, { native: state })); },
@@ -219,7 +219,7 @@ export async function startSupervisor(directory: string) {
           });
           pty.onExit(({ exitCode, signal }) => {
             void (async () => {
-              clearTimeout(running.stopTimer); running.finishChildren?.();
+              running.stopping?.settle();
               try { await native?.close(); }
               finally { live.delete(request.sessionId); decisive.delete(request.sessionId); emitState(journal.update(request.sessionId, { state: 'exited', exitCode, signal })); flush(request.sessionId); end(); }
             })().catch(error => { process.stderr.write(`Native session cleanup failed: ${(error as Error).message}\n`); });

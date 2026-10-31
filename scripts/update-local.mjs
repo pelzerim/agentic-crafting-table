@@ -7,7 +7,8 @@ import { installedBundle, isRunningFrom, stagedBundle } from './local-bundle.mjs
 const dryRun = process.argv.includes('--dry-run');
 if (process.argv.slice(2).some(arg => arg !== '--dry-run')) throw new Error('Usage: npm run update [-- --dry-run]');
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim();
-const run = (command, args) => execFileSync(command, args, { stdio: 'inherit' });
+// npm is a batch file on Windows, which only a shell can start. Every argument here is a fixed word.
+const run = (command, args) => execFileSync(command, args, { stdio: 'inherit', shell: process.platform === 'win32' });
 const assertStopped = () => {
   if (isRunningFrom([stagedBundle, installedBundle])) throw new Error('Quit Agentic Crafting Table before updating. The app or its background services are still running; nothing was changed.');
 };

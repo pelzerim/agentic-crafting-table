@@ -55,7 +55,7 @@
 
 ## Get it running
 
-macOS on Apple silicon, or Linux on x64 or arm64 ([what differs](docs/setup.md#on-linux)).
+macOS on Apple silicon, Linux on x64 or arm64 ([what differs](docs/setup.md#on-linux)), or Windows on x64 (early, [what differs](docs/setup.md#on-windows)).
 Node 26 and npm 11 to build; the packaged app brings its own.
 You also want the Claude Code CLI and the GitHub CLI signed in; Codex, Linear, Slack
 and Notion are optional. [Setup](docs/setup.md) lists every tool with its `brew`
@@ -76,7 +76,8 @@ npm run install:local    # install it (quit the running app first)
 ```
 
 Then launch `release/mac-arm64/Agentic Crafting Table.app`; on Linux, open
-**Agentic Crafting Table** from the launcher.
+**Agentic Crafting Table** from the launcher; on Windows, run
+`release\win-x64\Agentic Crafting Table\Contents\agentic-crafting-table.exe`.
 
 First steps:
 1. **Create your first project** and give it a working directory.

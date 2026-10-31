@@ -2,7 +2,7 @@ import { createConnection, createServer } from 'node:net';
 import type { Socket } from 'node:net';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { addAbortListener, EventEmitter } from 'node:events';
-import { chmodSync, rmSync } from 'node:fs';
+import { listenOnEndpoint, removeEndpoint } from '../platform/local-endpoint.ts';
 import { CONNECTION_LOST, MAX_FRAME_BYTES, REQUEST_TIMEOUT, replyTimeout, serializeError } from './protocol.ts';
 
 /** How long a received notification took to parse, and its length in characters. */
@@ -155,8 +155,6 @@ export async function serveLocal(path: string, secret: string, handle: (method: 
       while ((newline = buffer.indexOf('\n')) !== -1) { const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1); if (line) void request(line); }
     });
   });
-  rmSync(path, { force: true });
-  await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(path, () => { server.removeListener('error', reject); resolve(); }); });
-  chmodSync(path, 0o600);
-  return { async close() { for (const socket of sockets) socket.destroy(); await new Promise<void>(resolve => server.close(() => resolve())); rmSync(path, { force: true }); } };
+  await listenOnEndpoint(server, path);
+  return { async close() { for (const socket of sockets) socket.destroy(); await new Promise<void>(resolve => server.close(() => resolve())); removeEndpoint(path); } };
 }

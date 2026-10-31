@@ -99,6 +99,11 @@
         }
       ]
     },
+    "win": {
+      "target": "dir",
+      "executableName": "agentic-crafting-table",
+      "icon": "apps/desktop/assets/app-icon.png"
+    },
     "linux": {
       "target": "dir",
       "executableName": "agentic-crafting-table",

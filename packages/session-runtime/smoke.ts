@@ -1,12 +1,17 @@
 import { spawn } from 'node-pty';
 import { tmpdir } from 'node:os';
+import { powerShell } from '../platform/shell.ts';
+
+const SMOKE_POWERSHELL = `Write-Output ACT_READY; $value = Read-Host; Write-Output "ACT_INPUT:$value"; $size = [Console]::WindowHeight; Write-Output "$size $([Console]::WindowWidth)"`;
 
 /** A real, bounded input/output/resize check for the packaged native module. */
 export function smokePty(): Promise<{ input: true; resize: true; exitCode: number }> {
   return new Promise((resolve, reject) => {
-    const terminal = spawn('/bin/sh', ['-c', 'printf "ACT_READY\\n"; read value; printf "ACT_INPUT:%s\\n" "$value"; stty size'], {
-      name: 'xterm-256color', cols: 80, rows: 24, cwd: tmpdir(), env: { PATH: '/usr/bin:/bin', TERM: 'xterm-256color' },
-    });
+    const terminal = process.platform === 'win32'
+      ? spawn(powerShell(), ['-NoProfile', '-Command', SMOKE_POWERSHELL], { name: 'xterm-256color', cols: 80, rows: 24, cwd: tmpdir(), env: process.env })
+      : spawn('/bin/sh', ['-c', 'printf "ACT_READY\\n"; read value; printf "ACT_INPUT:%s\\n" "$value"; stty size'], {
+        name: 'xterm-256color', cols: 80, rows: 24, cwd: tmpdir(), env: { PATH: '/usr/bin:/bin', TERM: 'xterm-256color' },
+      });
     let output = '', sent = false;
     const timer = setTimeout(() => { terminal.kill(); reject(new Error('PTY smoke timed out')); }, 10_000);
     terminal.onData(data => {
