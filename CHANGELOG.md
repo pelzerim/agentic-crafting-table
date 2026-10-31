@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Terminals
+- **Cut**: Ctrl+X (Cmd+X on macOS) cuts selected text in every editable input. In a terminal that means the line being edited: an agent's prompt or a shell's command line. Text selected anywhere else in a terminal is copied, because a terminal can remove only what is being edited. With nothing selected the key reaches the terminal as before. (#6, @timohuovinen)
+
 ## 0.11.0 — 2026-10-30
 
 ### Agents

@@ -83,7 +83,7 @@ if (args.includes('app-server')) {
   socket.on('open', () => { socket.send(JSON.stringify({ id: 1, method: 'initialize', params: {} })); socket.send(JSON.stringify({ id: 2, method: 'thread/resume', params: { threadId: value('resume') } })); });
   socket.on('message', bytes => {
     const frame = JSON.parse(String(bytes));
-    if (frame.id === 2 && frame.result) { process.stdout.write('NATIVE_READY:' + frame.result.thread.id + '\r\n'); if (args.includes('--')) process.stdout.write('INITIAL_PROMPT:' + value('--') + '\r\n'); }
+    if (frame.id === 2 && frame.result) { process.stdout.write('NATIVE_READY:' + frame.result.thread.id + '\r\n'); if (process.env.CODEX_FIXTURE_DRAFT) process.stdout.write('\x1b[?1002h\x1b[?1006h' + process.env.CODEX_FIXTURE_DRAFT); if (args.includes('--')) process.stdout.write('INITIAL_PROMPT:' + value('--') + '\r\n'); }
     if (frame.method === 'item/commandExecution/requestApproval') process.stdout.write('NATIVE_APPROVAL_WAITING\r\n');
     if (frame.method === 'fixture/output') process.stdout.write(frame.params.text + '\r\n');
   });

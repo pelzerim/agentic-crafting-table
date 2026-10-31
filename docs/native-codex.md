@@ -54,7 +54,13 @@ imported conversations keep what they have. A Codex view does not send Ctrl+V as
 the TUI would read the desktop clipboard itself and report "no image on clipboard" for
 text. The browser paste event carries the content instead. Text goes through as a
 bracketed paste split into 64 KiB writes; an image is saved as a private PNG for seven
-days and pasted as a path, which the TUI attaches. macOS keeps native Ctrl+V. The thread
+days and pasted as a path, which the TUI attaches. macOS keeps native Ctrl+V. The cut key copies a selection; for a Codex or Claude mouse selection the app tracks the
+drag from the mouse reports it forwards, copies those cells and, when the drag ended on the
+cursor's row, sends Backspace, which deletes the TUI's selection. Claude's selection takes
+in the cell under the pointer and Codex's does not. Codex's own copy key would end that
+selection first, and a drag on any other row is transcript, so it is copied only. A
+terminal selection (Shift+drag) on the cursor's row is removed with arrow keys and
+Backspace, as in a shell. The thread
 status in the `thread/start` or `thread/resume` response seeds the item, and the guide
 is injected for a new or imported conversation or a changed guide version only.
 Continue lists saved Codex conversations with
