@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Terminals
+- **Cut**: Ctrl+X (Cmd+X on macOS) cuts selected text in every editable input. In a terminal that means the line being edited: an agent's prompt or a shell's command line. Text selected anywhere else in a terminal is copied, because a terminal can remove only what is being edited. With nothing selected the key reaches the terminal as before. (#6, @timohuovinen)
+
 ## 0.11.0 — 2026-10-30
 
 ### Agents
@@ -14,7 +19,6 @@ their pull request and author.
 - **Launch errors**: a Codex update no longer breaks launches until restart, a slow launch no longer reports a false failure, a deleted folder gets a plain message, and a launch that is too long is refused before its item appears. (#5, @timohuovinen)
 
 ### Terminals
-- **Cut**: Ctrl+X (Cmd+X on macOS) cuts a selection. In an agent view, text selected in the message box is copied and removed; text selected anywhere else is copied only, because a terminal can remove only what the agent is editing. With nothing selected the key reaches the terminal as before. (#6, @timohuovinen)
 - **Right click in an open view**: Settings → General → Mouse behavior chooses whether a right click closes an open agent or terminal view anywhere, as before, or only outside it. (#5, @timohuovinen)
 - Review findings longer than 64 KiB now reach the agent instead of failing. (#5, @timohuovinen)
 - Reopening a long Codex or Claude session redraws its screen at once, instead of showing stray colour codes until new output arrives.

@@ -58,7 +58,9 @@ days and pasted as a path, which the TUI attaches. macOS keeps native Ctrl+V. Th
 drag from the mouse reports it forwards, copies those cells and, when the drag ended on the
 cursor's row, sends Backspace, which deletes the TUI's selection. Claude's selection takes
 in the cell under the pointer and Codex's does not. Codex's own copy key would end that
-selection first, and a drag on any other row is transcript, so it is copied only. The thread
+selection first, and a drag on any other row is transcript, so it is copied only. A
+terminal selection (Shift+drag) on the cursor's row is removed with arrow keys and
+Backspace, as in a shell. The thread
 status in the `thread/start` or `thread/resume` response seeds the item, and the guide
 is injected for a new or imported conversation or a changed guide version only.
 Continue lists saved Codex conversations with

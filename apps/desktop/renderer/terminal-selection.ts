@@ -1,4 +1,4 @@
-import type { Terminal } from '@xterm/xterm';
+import type { IBufferRange, Terminal } from '@xterm/xterm';
 
 export interface TerminalCell { col: number; row: number }
 export interface TerminalDrag { start: TerminalCell; end: TerminalCell }
@@ -47,3 +47,19 @@ export function dragText(buffer: Buffer, drag: TerminalDrag, endIncluded = false
 /** The prompt is on the cursor's row. A drag on any other row selects transcript, and a delete
  * sent for it would hit unselected text in the prompt. */
 export const dragIsEditable = (buffer: Pick<Terminal['buffer']['active'], 'cursorY'>, drag: TerminalDrag) => buffer.cursorY + 1 === drag.end.row;
+
+const characters = (text: string) => [...new Intl.Segmenter().segment(text)].length;
+
+export interface LineEditKeys { left: string; right: string }
+type Cursor = Pick<Terminal['buffer']['active'], 'baseY' | 'cursorX' | 'cursorY' | 'getLine'>;
+
+/** The keys that delete a terminal selection from the line being edited: walk the cursor to the
+ * end of the selection, then erase back over it. These move by character, not by terminal cell.
+ * A selection anywhere but the cursor's row is not on that line, and nothing can remove it. */
+export function lineDeletion(buffer: Cursor, selection: IBufferRange, text: string, keys: LineEditKeys) {
+  const row = buffer.baseY + buffer.cursorY;
+  if (selection.start.y !== row || selection.end.y !== row) return undefined;
+  const moved = buffer.getLine(row)?.translateToString(true, Math.min(buffer.cursorX, selection.end.x), Math.max(buffer.cursorX, selection.end.x)) ?? '';
+  return (buffer.cursorX < selection.end.x ? keys.right : keys.left).repeat(characters(moved)) + '\x7f'.repeat(characters(text));
+}
+

@@ -49,7 +49,7 @@ for (const { provider, name, fixture, endCol } of [
     await expect.poll(async () => (await page.locator('.xterm-screen').boundingBox())!.width / (await grid()).cols).toBeGreaterThan(5);
     const rowOf = (text: string) => page.evaluate(([value]) => [...document.querySelectorAll('.xterm-accessibility-tree > div')].findIndex(row => row.textContent?.includes(value)) + 1, [text]);
     const drag = async (row: number, from: number, to: number) => {
-      const box = (await page.locator('.xterm-screen').boundingBox())!, { cols, rows } = await grid(), x = (col: number) => box.x + (col - .5) * box.width / cols, y = box.y + (row - .5) * box.height / rows;
+      const box = (await page.locator('.xterm-screen').boundingBox())!, { cols, rows } = await grid(), x = (col: number) => box.x + (col - 1) * box.width / cols + 1, y = box.y + (row - .5) * box.height / rows;
       await page.mouse.move(x(from), y); await page.mouse.down(); await page.mouse.move(x(to), y, { steps: 4 }); await page.mouse.up();
     };
 
@@ -65,6 +65,14 @@ for (const { provider, name, fixture, endCol } of [
     await page.keyboard.press('Control+x');
     await expect.poll(received).toContain('\x18');
     expect(await clipboard()).toBe('cut me');
+
+    // Shift+drag makes a terminal selection even while the agent owns the mouse.
+    await page.keyboard.down('Shift');
+    await drag(await rowOf('cut me here'), 8, 12);
+    await page.keyboard.up('Shift');
+    await page.keyboard.press('Control+x');
+    await expect.poll(clipboard).toBe('here');
+    await expect.poll(async () => (await received()).split('\x7f').length).toBe(6);
     await expect(page.locator('.terminal-error')).toHaveCount(0);
   } finally {
     await app.evaluate(async ({ clipboard }) => { await clipboard.write((globalThis as any).clipboardBeforeTest); }).catch(() => {});

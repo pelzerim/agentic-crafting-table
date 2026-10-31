@@ -1,6 +1,6 @@
 import type { NativeTerminalOptions } from '../../../src/resource-plugins/types.ts';
 import { pastedImage, pastedPath } from './terminal-input.ts';
-import { TuiDrag, dragIsEditable, dragText } from './terminal-selection.ts';
+import { TuiDrag, dragIsEditable, dragText, lineDeletion } from './terminal-selection.ts';
 import { terminalKey } from './terminal-keys.ts';
 import { bindTerminalLinks } from './terminal-links.ts';
 import type { TerminalLink } from './terminal-links.ts';
@@ -63,9 +63,17 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
     // On macOS Ctrl+V pastes nothing in the browser, and the agent's own clipboard read works there.
     const tuiDrag = new TuiDrag();
     const copied = (text: string, then?: () => void) => void navigator.clipboard.writeText(text).then(then, error => window.craftingTable.reportError({ kind: 'recoverable', message: `Cut failed: ${(error as Error).message}` }));
-    /** A terminal can only remove what the agent is editing; anything else on screen is copied. */
+    /** A terminal can only remove the line being edited; anything else on screen is copied. */
     const cut = () => {
-      if (terminal.hasSelection()) { const text = terminal.getSelection(); terminal.clearSelection(); copied(text); return true; }
+      if (terminal.hasSelection()) {
+        const text = terminal.getSelection(), buffer = terminal.buffer.active, position = terminal.getSelectionPosition();
+        // A full-screen program that is not an agent would read these keys as commands.
+        const editable = position && !terminal.options.disableStdin && (selectionCutRef.current || buffer.type === 'normal');
+        const arrow = terminal.modes.applicationCursorKeysMode ? '\x1bO' : '\x1b[';
+        const keys = editable ? lineDeletion(buffer, position, text, { left: `${arrow}D`, right: `${arrow}C` }) : undefined;
+        terminal.clearSelection(); copied(text, keys ? () => terminal.input(keys, true) : undefined);
+        return true;
+      }
       const drag = selectionCutRef.current ? tuiDrag.selection : undefined;
       if (!drag) return false;
       const buffer = terminal.buffer.active, text = dragText(buffer, drag, selectionCutRef.current === 'end-included'), editable = dragIsEditable(buffer, drag);
