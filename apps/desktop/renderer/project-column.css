@@ -49,7 +49,7 @@
 .project-column-plot-head{display:flex;align-items:center;gap:2px;padding-left:8px}
 .map-area .project-column-panel .project-column-plot-head .project-column-plot{padding-left:0}
 .project-column-item .item-icon{flex:none;width:12px;height:12px;color:var(--act-ink-soft)}
-.project-column-panel .project-column-state{min-width:0;color:var(--act-ink-dim)}
+.project-column-panel .project-column-state{min-width:0;color:var(--act-ink-dim);font-size:var(--act-fs-meta)}
 .project-column-item[data-state=asking] .project-column-state{color:var(--act-attention-asking)}
 .project-column-item[data-state=turn] .project-column-state{color:var(--act-attention)}
 .project-column-panel h2{flex:1;margin:0;font-size:var(--act-fs-body);font-weight:700}
@@ -58,47 +58,47 @@
 .map-area .project-column-panel .project-column-close:is(:hover,:focus-visible){color:var(--act-ink-bright);background:var(--act-raised)}
 .project-column-rows,.project-column-entries{list-style:none;margin:0;padding:0;min-width:0}
 .project-column-row>*{min-width:0}
-.project-column-row{display:grid;gap:1px;padding:7px 0 8px;border-top:1px solid var(--act-line)}
+.project-column-row{display:grid;gap:2px;padding:10px 0 11px;border-top:1px solid var(--act-line)}
 .project-column-row:first-child{border-top:0}
 .project-column-panel p{margin:0}
 .map-area .project-column-panel button{border-radius:0;padding:0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .map-area .project-column-panel button:focus-visible{outline:var(--act-focus-ring);outline-offset:-2px}
 .project-column-panel small{flex:none;min-width:30px;color:var(--act-ink-faint);font-size:var(--act-fs-ui);font-weight:500;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
 .project-column-head{display:flex;align-items:center;gap:8px;min-width:0}
-.project-column-tag{position:relative;flex:none;padding-left:8px;color:var(--project-color);font:700 var(--act-fs-meta)/1 var(--act-font-ui);letter-spacing:.04em}
-.project-column-tag::before{content:"";position:absolute;left:0;top:-2px;bottom:-2px;width:3px;background:var(--project-color)}
-.map-area .project-column-panel .project-column-name{flex:1;min-width:0;color:var(--act-ink);font-weight:650;font-size:var(--act-fs-body);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-column-tag{position:relative;flex:none;padding-left:9px;color:var(--project-color);font:700 var(--act-fs-meta)/1 var(--act-font-ui);letter-spacing:.04em}
+.project-column-tag::before{content:"";position:absolute;left:0;top:-4px;bottom:-4px;width:4px;background:var(--project-color)}
+.map-area .project-column-panel .project-column-name{flex:1;min-width:0;color:var(--act-ink-bright);font-weight:var(--act-fw-strong);font-size:var(--act-fs-panel);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .map-area .project-column-panel .project-column-name:hover{text-decoration:underline}
 .project-column-counts{flex:none;display:flex;align-items:center;gap:7px;color:var(--act-ink-soft);font-size:var(--act-fs-ui);font-variant-numeric:tabular-nums}
 .project-column-counts .tier-count{display:inline-flex;align-items:center;gap:3px}
 .project-column-counts .tier-mark{width:9px;height:9px}
 .project-column-counts .tier-count[data-tier=asking]{color:var(--act-attention-asking)}.project-column-counts .tier-count[data-tier=turn]{color:var(--act-attention)}.project-column-counts .tier-count[data-tier=finished]{color:var(--act-attention-finished)}
+.project-column-refused{margin:6px 0 0;color:var(--act-ink-dim)}
 .project-column-counts .tier-count-words,.project-column-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .project-column-counts .tier-count-gap{display:none}
 .project-column-group{display:grid;gap:1px;min-width:0}
-.map-area .project-column-panel .project-column-plot{display:flex;align-items:center;gap:6px;width:100%;padding:4px 0 1px 8px;color:var(--act-ink-dim);font-size:var(--act-fs-meta);letter-spacing:.04em}
+.map-area .project-column-panel .project-column-plot{display:flex;align-items:center;gap:6px;width:100%;padding:6px 0 2px 8px;color:var(--act-ink-dim);font-size:var(--act-fs-caps);font-weight:var(--act-fw-medium);letter-spacing:.06em;text-transform:uppercase}
 .map-area .project-column-panel .project-column-plot:hover .project-column-plot-name{text-decoration:underline}
 .project-column-plot i{flex:none;width:7px;height:7px;background:var(--act-plot-hue)}
-.project-column-loose{padding:4px 0 1px 8px;color:var(--act-ink-faint);font-size:var(--act-fs-meta);letter-spacing:.04em}
+.project-column-loose{padding:6px 0 2px 8px;color:var(--act-ink-faint);font-size:var(--act-fs-caps);font-weight:var(--act-fw-medium);letter-spacing:.06em;text-transform:uppercase}
 .project-column-group[data-plot] .project-column-entries,.project-column-loose+.project-column-entries{padding-left:13px}
-.project-column-entry{display:flex;align-items:center;gap:6px;padding-left:8px;min-width:0}
+.project-column-entry{display:flex;align-items:center;gap:6px;padding-left:14px;min-width:0}
 .map-area .project-column-panel .project-column-entry-main{flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:2px 0;overflow:hidden}
 .project-column-entry-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.project-column-entry-title{font-weight:600}
+.project-column-entry-title{font-weight:var(--act-fw-regular)}
 .project-column-entry[data-seen] .project-column-entry-text{color:var(--act-ink-dim)}
-.project-column-entry[data-seen] .project-column-entry-title{font-weight:500}
 .project-column-entry-main .tier-mark{flex:none;width:9px;height:9px;color:var(--act-attention)}
 .project-column-entry[data-tier=asking] .tier-mark{color:var(--act-attention-asking)}.project-column-entry[data-tier=finished] .tier-mark{color:var(--act-attention-finished)}
 .project-column-entry[data-seen] .tier-mark{color:var(--act-ink-faint)}
 .map-area .project-column-panel .project-column-entry-main:hover .project-column-entry-title{text-decoration:underline}
-.project-column-reason{color:var(--act-ink-dim)}
+.project-column-reason{color:var(--act-ink-dim);font-size:var(--act-fs-meta)}
 .map-area .project-column-panel .project-column-seen{flex:none;visibility:hidden;color:var(--act-ink-faint);font-size:var(--act-fs-meta)}
 .project-column-entry:is(:hover,:focus-within) .project-column-seen{visibility:visible}
 .map-area .project-column-panel .project-column-seen:is(:hover,:focus-visible){color:var(--act-ink-bright);visibility:visible}
-.project-column-panel .project-column-next{display:grid;grid-template-columns:9px 1fr;gap:6px;align-items:baseline;padding:3px 0 0 8px;min-width:0;overflow-wrap:anywhere}
-.project-column-status{padding-left:23px;color:var(--act-ink-dim);min-width:0;overflow-wrap:anywhere}
+.project-column-panel .project-column-next{display:grid;grid-template-columns:9px 1fr;gap:6px;align-items:baseline;padding:3px 0 0 14px;min-width:0;overflow-wrap:anywhere}
+.project-column-status{padding-left:29px;color:var(--act-ink-dim);min-width:0;overflow-wrap:anywhere}
 .project-column-pen{display:inline-block;width:9px;height:9px;align-self:center;color:var(--act-copper)}
-.project-column-meta{padding:2px 0 0 23px;color:var(--act-ink-faint);font-variant-numeric:tabular-nums}
+.project-column-meta{padding:2px 0 0 29px;color:var(--act-ink-faint);font-size:var(--act-fs-meta);font-variant-numeric:tabular-nums}
 .map-area .project-column-panel .project-column-meta button{display:inline;color:inherit}
 .map-area .project-column-panel .project-column-meta button:hover{text-decoration:underline;color:var(--act-ink)}
 .map-area .project-column-panel .project-column-quiet{display:flex;align-items:center;gap:8px;width:100%;margin-top:4px;padding:7px 0 2px;border-top:1px solid var(--act-line);color:var(--act-ink-faint)}
@@ -106,3 +106,8 @@
 .project-column-quiet span{margin-left:auto}
 .project-column-empty{margin:8px 6px;color:var(--act-ink-faint);font-size:var(--act-fs-ui)}
 .map-area:not([data-focus=""]) .project-column-tooltip{display:none}
+.project-column-head,.project-column-plot-head{touch-action:none}
+.project-column-row[data-dragging],.project-column-group[data-dragging]{opacity:.5}
+.project-column-panel:has([data-dragging]){user-select:none;cursor:grabbing}
+.project-column-row[data-drop=before],.project-column-group[data-drop=before]{box-shadow:inset 0 2px 0 var(--act-accent)}
+.project-column-row[data-drop=after],.project-column-group[data-drop=after]{box-shadow:inset 0 -2px 0 var(--act-accent)}

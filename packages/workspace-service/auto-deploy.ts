@@ -53,6 +53,13 @@ export interface AutoDeployOptions {
 
 const pullUrl = (data: Record<string, unknown>) => `https://github.com/${String(data.owner)}/${String(data.repo)}/pull/${Number(data.number)}`;
 const errorText = (error: unknown) => clip(String((error as Error)?.message ?? error), 300);
+const HALT_REASON = 300;
+/** Why a validation could not be requested, within a halt reason's length: the error is kept whole and the phase label is
+ * shortened instead, since a phase gated on many jobs names them all. */
+export function validationRequestFailure(label: string, error: string) {
+  const tail = ` could not be requested: ${clip(error, 200)}`, room = HALT_REASON - 'The validation of '.length - tail.length;
+  return `The validation of ${clip(label, Math.max(room, 20))}${tail}`;
+}
 
 /** Auto deploy of pull requests: a person arms it, this service performs each step. It reads the pull request and the rollouts its
  * merge discovered, lets the pure state machine decide, and sends each write through the journaled provider actions exactly once.
@@ -262,7 +269,8 @@ export class AutoDeploys {
         record = { ...record, checks: record.checks.map(entry => entry.key === check.key ? { ...entry, validationId: result.validationId as string } : entry) };
         this.save(record);
       } catch (error) {
-        await this.finish(record, { kind: 'halt', code: 'agent-unavailable', reason: clip(`The validation of ${check.label} could not be requested: ${errorText(error)}`, 300) });
+        console.error(`Auto deploy could not request the validation of ${check.label}: ${String((error as Error)?.message ?? error)}`);
+        await this.finish(record, { kind: 'halt', code: 'agent-unavailable', reason: validationRequestFailure(check.label, errorText(error)) });
         return this.read(recordKey(record))!;
       }
     }

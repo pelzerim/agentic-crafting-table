@@ -6,7 +6,7 @@
   flex-direction: column;
   padding: 18px 22px;
   overflow: hidden;
-  color: #d2dfd7;
+  color: var(--act-rollout-ink);
 }
 
 .rollout-header {
@@ -42,8 +42,8 @@
 
 .rollout-gate {
   padding: 10px 12px;
-  background: #302d22;
-  border-left: 3px solid #bc995e;
+  background: var(--act-rollout-gate);
+  border-left: 3px solid var(--act-rollout-gate-line);
 }
 
 .rollout-content {
@@ -76,12 +76,12 @@
   justify-content: space-between;
   gap: 18px;
   padding: 10px 0;
-  border-bottom: 1px solid #30473c;
+  border-bottom: 1px solid var(--act-rollout-job-line);
   font-size: var(--act-fs-body);
 }
 
 .rollout-jobs a {
-  color: #d2dfd7;
+  color: var(--act-rollout-ink);
   overflow-wrap: anywhere;
 }
 

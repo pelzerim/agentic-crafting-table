@@ -1,9 +1,9 @@
 /* Below the map: a portal button under the to-dos, a crimson layer, and transitions. */
 
 .live-workspace .below-portal:hover:not(:disabled) {
-  background: radial-gradient(circle at 50% 55%,#9b5cff66,transparent 70%),#1c1428;
+  background: radial-gradient(circle at 50% 55%,color-mix(in srgb, var(--act-portal-glow) 40%, transparent),transparent 70%),var(--act-portal-bg);
   transform: translateY(-1px);
-  box-shadow: 3px 4px 0 #0a0710,0 0 0 2px #140f1c,0 0 18px -2px #9b5cffcc;
+  box-shadow: 3px 4px 0 var(--act-portal-drop),0 0 0 2px var(--act-portal-ring),0 0 18px -2px color-mix(in srgb, var(--act-portal-glow) 80%, transparent);
 }
 
 .live-workspace .below-portal:focus-visible {
@@ -17,25 +17,25 @@
 }
 
 .live-workspace .below-portal[data-layer=below] {
-  background: radial-gradient(circle at 50% 55%,#7fb87d55,transparent 68%),var(--act-sunken);
-  border-color: #4d6b52;
-  box-shadow: 3px 3px 0 var(--act-bg),0 0 0 2px var(--act-card),0 0 12px -4px #7fb87daa;
+  background: radial-gradient(circle at 50% 55%,color-mix(in srgb, var(--act-portal-return) 33.3333%, transparent),transparent 68%),var(--act-sunken);
+  border-color: var(--act-portal-return-line);
+  box-shadow: 3px 3px 0 var(--act-bg),0 0 0 2px var(--act-card),0 0 12px -4px color-mix(in srgb, var(--act-portal-return) 66.6667%, transparent);
 }
 
 .live-workspace .below-portal[data-layer=below]:hover:not(:disabled) {
-  background: radial-gradient(circle at 50% 55%,#9cd29a55,transparent 70%),var(--act-card);
-  box-shadow: 3px 4px 0 var(--act-bg),0 0 0 2px var(--act-card),0 0 18px -2px #9cd29acc;
+  background: radial-gradient(circle at 50% 55%,color-mix(in srgb, var(--act-portal-return-bright) 33.3333%, transparent),transparent 70%),var(--act-card);
+  box-shadow: 3px 4px 0 var(--act-bg),0 0 0 2px var(--act-card),0 0 18px -2px color-mix(in srgb, var(--act-portal-return-bright) 80%, transparent);
 }
 
 .portal-art {
   width: 26px;
   height: 32px;
   image-rendering: pixelated;
-  filter: drop-shadow(0 0 3px #9b5cff88);
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--act-portal-glow) 53.3333%, transparent));
 }
 
 .live-workspace .below-portal[data-layer=below] .portal-art {
-  filter: drop-shadow(0 0 3px #9cd29a88);
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--act-portal-return-bright) 53.3333%, transparent));
 }
 
 .below-particle {
@@ -56,7 +56,7 @@
 }
 
 .map-area[data-layer=below] .map-card {
-  box-shadow: 0 4px 0 #080405,inset 0 0 0 999px #3a141626;
+  box-shadow: 0 4px 0 var(--act-undermap-card-drop),inset 0 0 0 999px var(--act-undermap-card-wash);
 }
 
 .map-area[data-layer=below] .project-neighborhood-title {
@@ -73,7 +73,7 @@
   align-items: center;
   gap: 10px;
   padding: 6px 8px 6px 12px;
-  background: #241214e6;
+  background: var(--act-undermap-bar);
   border: 1px solid var(--act-undermap-edge);
   color: var(--act-undermap-ink);
   font-size: var(--act-fs-body);
@@ -82,7 +82,7 @@
 
 .below-bar button {
   background: var(--act-error-bg);
-  border: 1px solid #8a4a42;
+  border: 1px solid var(--act-undermap-button-line);
   color: inherit;
   padding: 4px 9px;
   font-size: var(--act-fs-ui);
@@ -90,7 +90,7 @@
 }
 
 .below-bar button:hover {
-  background: #4a2525;
+  background: var(--act-undermap-button-hover);
 }
 
 .below-empty p {
@@ -117,7 +117,7 @@
   width: 0;
   max-width: 160px;
   height: 8px;
-  background: repeating-linear-gradient(90deg,#9cd29a 0 6px,#7fb87d 6px 12px);
+  background: repeating-linear-gradient(90deg,var(--act-portal-return-bright) 0 6px,var(--act-portal-return) 6px 12px);
   outline: 1px solid var(--act-undermap-edge);
   outline-offset: 1px;
   align-self: flex-start;
@@ -193,7 +193,7 @@
   margin: 0;
   cursor: pointer;
   color: inherit;
-  border: 1px solid #4a3270;
+  border: 1px solid var(--act-portal-line);
   transition: box-shadow .15s,transform .15s;
   width: 44px;
   height: 44px;
@@ -213,7 +213,7 @@
 }
 
 .live-workspace .below-portal:hover:not(:disabled) .portal-art {
-  filter: drop-shadow(0 0 6px #b98cff);
+  filter: drop-shadow(0 0 6px var(--act-portal-glow-bright));
 }
 
 /* Undermap mirror layout (MAP-18): month lines are part of the layer; text keeps a readable size down to the dashboard zoom. */

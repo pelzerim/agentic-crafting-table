@@ -4,6 +4,7 @@ export const codeReview = defineResourcePlugin({
   settingsHelp: 'Inspect a one-off Claude or Codex review attached to its pull request. Start it from the PR, then open this item to triage its findings and send the ones worth fixing to a connected agent.',
   id: 'code.review', apiVersion: 1, schemaVersion: 1,
   name: 'Code review', icon: 'review', preferredView: 'focus',
+  webLink: { label: 'Open pull request', from: 'sourcePrId' },
   view: { width: 1040, height: 720, minWidth: 750 },
   providerBrands: { claude: 'claude', codex: 'codex' },
   mapSizes: { defaultSize: 'small', sizes: {

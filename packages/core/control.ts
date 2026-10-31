@@ -21,6 +21,7 @@ import { localItemTitle } from '../../src/resource-plugins/generated-title.ts';
 import { fieldDefaults } from '../../src/resource-plugins/define.ts';
 import { ATTENTION_NOTE_LENGTH, attentionNote } from '../../src/graph/attention.ts';
 import { humanOnlyMessage } from '../../src/resource-plugins/host.ts';
+import { mapBadges } from '../../src/graph/badges.ts';
 const projectColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
 const id = z.string().trim().min(1).max(200);
@@ -124,8 +125,9 @@ export const viewSchema = z.object({
   inboxPanel: z.object({ width: z.number().min(260).max(900).optional(), height: z.number().min(160).max(1000).optional() }).optional(),
   attentionPanel: z.object({ width: z.number().min(260).max(900).optional(), height: z.number().min(160).max(1000).optional() }).optional(),
   remindersPanel: z.object({ width: z.number().min(260).max(900).optional(), height: z.number().min(160).max(1000).optional() }).optional(),
-  /** The Projects panel (MAP-22): its size, folded project and plot ids, row filters, and whether it stays open. */
+  /** The Projects panel (MAP-22): its size, folded project and plot ids, row filters, whether it stays open, and the order the person dragged projects and plots into. */
   projectsPanel: z.object({ width: z.number().min(260).max(900).optional(), height: z.number().min(160).max(1000).optional(), folded: z.array(id).max(500).optional(),
+    order: z.array(id).max(500).optional(), plotOrder: z.array(id).max(500).optional(),
     filters: z.object({ needsMe: z.boolean().optional(), off: z.array(z.enum(COLUMN_KINDS)).max(COLUMN_KINDS.length).optional() }).optional(), pinned: z.boolean().optional() }).optional(),
   /** Update offers the person closed, by subject (`app` or `plugin:<id>`) and the tag dismissed; a newer tag is offered again. */
   dismissedUpdates: z.record(z.string().regex(/^(app|plugin:[A-Za-z0-9._-]{1,80})$/), z.string().max(80)).optional(),
@@ -432,9 +434,13 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
         if (found.resourceId || found.projectId) throw new Error('Target is not a project');
         return found;
       };
+      /** Sends items below, with every note shown as a badge on them once none of the items it badges stays on the map. */
       const sendBelowDraft = (ids: readonly string[]) => {
         ids.forEach(find);
-        state.nodes = sendBelow(state.nodes, ids, new Date().toISOString(), node => itemFootprint(node, state.resources, registry, sizes));
+        const sent = new Set(ids), badged = new Map<string, Set<string>>();
+        for (const [itemId, badges] of mapBadges(state.nodes, state.resources, state.links).onItems) for (const badge of badges) badged.set(badge.noteId, (badged.get(badge.noteId) ?? new Set()).add(itemId));
+        const notes = [...badged].filter(([noteId, items]) => !sent.has(noteId) && [...items].some(id => sent.has(id)) && [...items].every(id => sent.has(id))).map(([noteId]) => noteId);
+        state.nodes = sendBelow(state.nodes, [...ids, ...notes], new Date().toISOString(), node => itemFootprint(node, state.resources, registry, sizes));
       };
       const createId = (key: string) => { if (state.nodes.some(n => n.id === key)) throw new Error(`Node already exists: ${key}`); };
       const footprint = (target: GraphNode) => itemFootprint(target, state.resources, registry, sizes);

@@ -20,7 +20,7 @@ export const ROLLOUT_DEADLINE_MS = 30 * 60_000;
 export const BLOCKED_GRACE_MS = 10 * 60_000;
 
 export type AutoDeployState = 'armed' | 'done' | 'halted' | 'stopped';
-export type AutoDeployStep = 'tagging' | 'waiting-checks' | 'fixing-ci' | 'merging' | 'merge-queue' | 'waiting-rollout' | 'deploying' | 'delayed' | 'validating' | 'approving' | 'waiting-gate' | 'done' | 'halted' | 'stopped';
+export type AutoDeployStep = 'tagging' | 'waiting-checks' | 'fixing-ci' | 'merging' | 'merge-queue' | 'merge-when-ready' | 'waiting-rollout' | 'deploying' | 'delayed' | 'validating' | 'approving' | 'waiting-gate' | 'done' | 'halted' | 'stopped';
 export type HaltCode = 'closed' | 'draft' | 'changes-requested' | 'review-required' | 'conflicts' | 'behind' | 'blocked' | 'ci-failing' | 'fix-stalled' | 'declined' | 'outcome-unknown'
   | 'no-rollout' | 'deploy-failed' | 'validation-failed' | 'validation-concerns' | 'validation-inconclusive' | 'no-verdict' | 'agent-unavailable' | 'error';
 
@@ -49,6 +49,8 @@ export const recordKey = (record: Pick<AutoDeployRecord, 'id' | 'pullResourceId'
 
 export interface PullFacts extends Pick<PullMergeReadiness, 'head' | 'base' | 'title' | 'reviewDecision' | 'queued' | 'queueEnabled' | 'pullRequestId'> {
   lifecycle: PullLifecycle; tag: string; mergeStateStatus: PullMergeReadiness['mergeStateStatus']; checks: HeadChecks; failing: string[]; method: PullMergeMethod | null;
+  /** GitHub will merge it when ready (auto-merge is on). */
+  mergeWhenReady?: boolean;
 }
 /** A validation of the rollout: its run attempt and the jobs it was scoped to, when known, say what a passing one covers. */
 /** `environments` and `requestedAt` say what one scoped to environments, or to the whole run, is about. */
@@ -165,6 +167,7 @@ function beforeMerge(record: AutoDeployRecord, facts: AutoDeployFacts): AutoDepl
   if (pull.lifecycle === 'draft') return halt('draft', 'The pull request is a draft.');
   if (facts.tagging && pull.tag !== 'ship' && !sent(record, 'tag')) return { kind: 'tag', title: pull.title };
   if (pull.queued) return wait('merge-queue');
+  if (pull.mergeWhenReady) return wait('merge-when-ready');
   if (sent(record, 'merge')) return pull.queueEnabled ? { kind: 'stop', reason: 'The pull request was taken out of the merge queue.' } : wait('merging');
   if (pull.reviewDecision === 'CHANGES_REQUESTED') return halt('changes-requested', 'A reviewer requested changes; only a person can resolve that.');
   if (pull.mergeStateStatus === 'DIRTY') return halt('conflicts', `The branch has merge conflicts with ${pull.base}.`);
@@ -282,7 +285,7 @@ export function settle(record: AutoDeployRecord, decision: AutoDeployDecision, n
 export function statusLine(record: Pick<AutoDeployRecord, 'step' | 'detail' | 'halt'>): string {
   const detail = record.detail ?? '';
   const text: Record<AutoDeployStep, string> = {
-    tagging: 'tagging [ship]', 'waiting-checks': 'waiting for checks', 'fixing-ci': `fixing CI (${detail || `1/${FIX_ATTEMPTS}`})`, merging: 'merging', 'merge-queue': 'in the merge queue',
+    tagging: 'tagging [ship]', 'waiting-checks': 'waiting for checks', 'fixing-ci': `fixing CI (${detail || `1/${FIX_ATTEMPTS}`})`, merging: 'merging', 'merge-queue': 'in the merge queue', 'merge-when-ready': 'waiting for GitHub to merge when ready',
     'waiting-rollout': 'waiting for the deploy run', deploying: detail ? `deploying ${detail}` : 'deploying', delayed: `waiting out ${detail}`, validating: detail ? `validating ${detail}` : 'validating',
     approving: detail ? `approving ${detail}` : 'approving', 'waiting-gate': `${detail || 'a gate'} waits for another approver`, done: 'done', halted: `halted: ${record.halt?.reason ?? 'stopped on a doubt'}`, stopped: 'stopped',
   };
@@ -346,12 +349,14 @@ function groupPhases(record: AutoDeployRecord | undefined, rollout: RolloutFacts
   return groups;
 }
 
+const STAGE_ORDER = ['build', 'test', 'dev', 'preview', 'staging', 'canary', 'production'];
 const BUILD_STEP = /(^|[^a-z])(build|lint|manifest|version|regions|setup|plan)([^a-z]|$)/, DEV_STAGE = /(^|[^a-z])(dev|development)([^a-z]|$)/;
 const phaseLabel = (name: string) => /phase[-_ ]?\d+/i.exec(name)?.[0].toLowerCase();
 /** Phases of a rollout without a stage rule. Parallel jobs interleave their ids, so jobs are grouped by stage wherever they fall:
  * a job whose first name part is a build step (`staging-build`, `runtime-version`) is build, `dev` is a stage, and a stage splits
  * by `phase-N` labels, with unlabelled jobs joining the labelled phase nearest by id. Jobs before the first deployment that name
- * no deploying stage are build too. Stages are ordered by their last job, since a stage's preparation can start early. */
+ * no deploying stage are build too. Stages are ordered by their last job, since a stage's preparation can start early, and then
+ * by the usual order of the well-known ones. */
 function inferredPhases(jobs: readonly RolloutJob[], environments: readonly string[], gateEnvironments: readonly string[], held: (job: RolloutJob) => boolean, deploying: (stage: string) => boolean): Grouped[] {
   const gatedStages = new Set(gateEnvironments.map(name => stageOf(name)));
   const named = (name: string) => { const top = name.split(' / ')[0].toLowerCase(); return BUILD_STEP.test(top) ? 'build' : DEV_STAGE.test(top) ? 'dev' : stageOf(name, environments); };
@@ -373,7 +378,13 @@ function inferredPhases(jobs: readonly RolloutJob[], environments: readonly stri
     group.keys = [...new Set(group.jobs.map(job => jobKey(job.name)))];
     if (!group.setup) group.gated = group.jobs.some(held) || gatedStages.has(group.stage);
   }
-  return groups.sort((a, b) => Number(Boolean(b.setup)) - Number(Boolean(a.setup)) || a.jobs.at(-1)!.id - b.jobs.at(-1)!.id);
+  const byLastJob = groups.sort((a, b) => Number(Boolean(b.setup)) - Number(Boolean(a.setup)) || a.jobs.at(-1)!.id - b.jobs.at(-1)!.id);
+  // Well-known stages keep their order (a staging job may finish after production waits at its gate); any other stage stays
+  // after the known stage before it. A stage's phases follow their phase-N labels.
+  let rank = -1;
+  const ranked = byLastJob.map((group, index) => { const known = STAGE_ORDER.indexOf(group.setup ? 'build' : group.stage); rank = known >= 0 ? known : rank + .001; return { group, rank, index }; });
+  const phaseNumber = (group: Grouped) => Number(/\d+/.exec(group.label ?? '')?.[0] ?? 0);
+  return ranked.sort((a, b) => a.rank - b.rank || (a.group.stage === b.group.stage ? phaseNumber(a.group) - phaseNumber(b.group) : 0) || a.index - b.index).map(entry => entry.group);
 }
 
 const startedAt = (job: RolloutJob) => Date.parse(job.started_at ?? '');

@@ -187,7 +187,9 @@ export interface ResourcePluginDefinition {
   /** The item's page on its provider's website, offered as "Open on …" in its menu. The
    * template's {field} parts are filled from the item's data (serializable for the renderer);
    * a list uses the first template whose fields are all present. */
-  webLink?: { label: string; template: string | readonly string[] };
+  /** The item's page on the web, for Open on … and Copy URL: a `template` over its data, or `from`, a data field naming the map
+   * item whose page this item links to instead (a review's pull request). Plain data: descriptions reach the window as JSON. */
+  webLink?: { label: string; template?: string | readonly string[]; from?: string };
   /** Account adapter used for authenticated content. No credentials in records. */
   connectionProvider?: string;
   migrations?: readonly ResourceDataMigration[];

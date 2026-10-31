@@ -344,6 +344,122 @@ test('a project whose Needs me rows span two plots groups them by plot; a plot h
   }, { state: plotProject });
 });
 
+test('project rows and plot headers drag into a saved order that survives a reload; a short click still flies there, Escape cancels, Alt+Arrow moves a row', async () => {
+  const order = (page: Page, selector: string, attribute: string) => page.locator(selector).evaluateAll((rows, name) => rows.map(row => row.getAttribute(name)), attribute);
+  const drag = async (page: Page, from: { x: number; y: number }, to: { x: number; y: number }, beforeDrop?: () => Promise<void>) => {
+    await page.mouse.move(from.x, from.y); await page.mouse.down(); await page.mouse.move(to.x, to.y, { steps: 6 }); await beforeDrop?.(); await page.mouse.up();
+  };
+  const middle = (box: { x: number; y: number; width: number; height: number }, dy = 0) => ({ x: box.x + Math.min(60, box.width / 2), y: box.y + box.height / 2 + dy });
+  await launch(async page => {
+    await page.keyboard.press('m');
+    const panel = page.getByRole('region', { name: 'Projects', exact: true }), rows = () => order(page, '.project-column-panel [data-project-row]:not([data-quiet] [data-project-row])', 'data-project-row');
+    await expect.poll(rows).toEqual(['billing', 'runner', 'infra', 'recent']);
+    const head = async (id: string) => (await panel.locator(`[data-project-row="${id}"] .project-column-head`).boundingBox())!;
+    const below = async (id: string) => { const box = (await panel.locator(`[data-project-row="${id}"]`).boundingBox())!; return { x: box.x + 60, y: box.y + box.height - 4 }; };
+    // Escape mid-drag leaves the order as it was.
+    await drag(page, middle(await head('billing')), await below('runner'), async () => {
+      await expect(panel.locator('[data-project-row="infra"]')).toHaveAttribute('data-drop', 'before');
+      // A workspace change mid-drag renders the map, which re-registers its Escape handler after the drag's; the cancel still ends the key.
+      await apply(page, [{ type: 'node.update', id: 'budget', summary: 'Checking quotas' }]);
+      await expect(page.locator('.project-column-panel [data-dragging]')).toHaveCount(1);
+      await expect(panel.locator('[data-project-row="infra"]')).toHaveAttribute('data-drop', 'before');
+      await page.keyboard.press('Escape');
+    });
+    await expect(panel).toBeVisible();
+    await expect.poll(rows).toEqual(['billing', 'runner', 'infra', 'recent']);
+    // An open form's capture Escape handler, added after the panel loaded, does not leave the drag armed.
+    await drag(page, middle(await head('billing')), await below('runner'), async () => {
+      await page.evaluate(() => { const eat = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); } }; (window as unknown as { eat: typeof eat }).eat = eat; window.addEventListener('keydown', eat, true); });
+      await page.keyboard.press('Escape');
+    });
+    await page.evaluate(() => window.removeEventListener('keydown', (window as unknown as { eat: (event: KeyboardEvent) => void }).eat, true));
+    await expect.poll(rows).toEqual(['billing', 'runner', 'infra', 'recent']);
+    // A cancelled pointer drops nothing.
+    await drag(page, middle(await head('billing')), await below('runner'), () => page.evaluate(() => { window.dispatchEvent(new PointerEvent('pointercancel')); }));
+    await expect.poll(rows).toEqual(['billing', 'runner', 'infra', 'recent']);
+    // A release outside the window comes back as a move with no button down: the drag ends there.
+    await drag(page, middle(await head('billing')), await below('runner'), async () => {
+      await page.evaluate(() => { window.dispatchEvent(new PointerEvent('pointermove', { buttons: 0, clientX: 5, clientY: 5 })); });
+      await expect(page.locator('.project-column-panel [data-dragging], .project-column-panel [data-drop]')).toHaveCount(0);
+    });
+    await expect.poll(rows).toEqual(['billing', 'runner', 'infra', 'recent']);
+    await drag(page, middle(await head('billing')), await below('runner'));
+    await expect.poll(rows).toEqual(['runner', 'billing', 'infra', 'recent']);
+    await panel.getByRole('button', { name: /^Recent: / }).focus(); await page.keyboard.press('Alt+ArrowUp');
+    await expect.poll(rows).toEqual(['runner', 'billing', 'recent', 'infra']);
+    await expect(panel.getByRole('button', { name: /^Recent: / })).toBeFocused();
+    await expect(panel.getByRole('status')).toHaveText('Recent moved to place 3 of 4');
+    await page.reload(); await expect(page.getByText('Desktop connected')).toBeVisible();
+    await expect.poll(() => order(page, '[data-project-icon]', 'data-project-icon')).toEqual(['runner', 'billing', 'recent', 'infra', 'docs', 'archive']);
+    await page.keyboard.press('m');
+    await expect.poll(rows).toEqual(['runner', 'billing', 'recent', 'infra']);
+    // A press that barely moves is a click: it flies to the project and moves nothing.
+    const infra = middle(await head('infra'));
+    await page.mouse.move(infra.x, infra.y); await page.mouse.down(); await page.mouse.move(infra.x, infra.y + 2); await page.mouse.up();
+    await expect.poll(async () => { const point = await centre(page); return Math.abs(point.x - 100) < 500 && Math.abs(point.y - 1200) < 400; }).toBe(true);
+    await expect.poll(rows).toEqual(['runner', 'billing', 'recent', 'infra']);
+  });
+  // In a short panel the list runs on under its bottom edge: a release there, over rows the panel hides, drops nothing.
+  await launch(async page => {
+    await page.keyboard.press('m');
+    const panel = page.getByRole('region', { name: 'Projects', exact: true }), rows = () => order(page, '.project-column-panel [data-project-row]:not([data-quiet] [data-project-row])', 'data-project-row');
+    await expect.poll(rows).toEqual(['billing', 'runner', 'infra', 'recent']);
+    const shown = (await panel.boundingBox())!, list = (await panel.locator('.project-column-rows').boundingBox())!;
+    expect(list.y + list.height).toBeGreaterThan(shown.y + shown.height + 12);
+    await drag(page, middle((await panel.locator('[data-project-row="billing"] .project-column-head').boundingBox())!), { x: shown.x + 60, y: shown.y + shown.height + 8 }, async () => {
+      await expect(panel.locator('[data-drop]')).toHaveCount(0);
+    });
+    await expect.poll(rows).toEqual(['billing', 'runner', 'infra', 'recent']);
+  }, { prepare: store => store.writeView('desktop', { camera: { x: 200, y: 120, zoom: .4 }, projectsPanel: { height: 160 } }) });
+  const asked = () => { const state = plotProject(); return { ...state, nodes: state.nodes.map(node => node.id === 'thumb-agent' ? { ...node, attention: 'input' as const, attentionAt: new Date(Date.now() - 2 * 60_000).toISOString() } : node) }; };
+  await launch(async page => {
+    await page.keyboard.press('m');
+    const row = page.getByRole('region', { name: 'Projects', exact: true }).locator('[data-project-row="photos"]'), plots = () => order(page, '[data-project-row="photos"] [data-plot-header]', 'data-plot-header');
+    const names = async () => row.locator('[data-plot-header]').allTextContents();
+    await expect.poll(names).toEqual(['Thumbnail', 'Billing']);
+    const [thumbnail, billing] = await plots();
+    // Out of its project a plot header does not land.
+    const outside = (await row.boundingBox())!;
+    await drag(page, middle((await row.locator(`[data-plot-header="${billing}"]`).boundingBox())!), { x: outside.x + 40, y: outside.y - 40 });
+    await expect.poll(plots).toEqual([thumbnail, billing]);
+    await drag(page, middle((await row.locator(`[data-plot-header="${billing}"]`).boundingBox())!), middle((await row.locator(`[data-plot-header="${thumbnail}"]`).boundingBox())!, -6));
+    await expect.poll(names).toEqual(['Billing', 'Thumbnail']);
+    await page.reload(); await expect(page.getByText('Desktop connected')).toBeVisible();
+    await page.keyboard.press('m');
+    await expect.poll(names).toEqual(['Billing', 'Thumbnail']);
+    expect((await page.evaluate(() => window.craftingTable.viewRead()))?.projectsPanel?.plotOrder?.slice(0, 2)).toEqual([billing, thumbnail]);
+  }, { state: asked });
+});
+
+test('an open item names its project and plot above its title; the plot closes the item and flies there, the project to the project, Show on map to the item', async () => {
+  await launch(async page => {
+    await page.locator('.map-card[data-item-id="thumb-agent"]').click();
+    const area = page.locator('.map-area'), place = page.getByRole('navigation', { name: 'Item location', exact: true });
+    await expect(area).toHaveAttribute('data-focus', 'thumb-agent');
+    await expect(place).toHaveText('Photos›Thumbnail');
+    await expect(page.getByRole('navigation', { name: 'Map location', exact: true })).toContainText(/Photos\s*\/\s*Thumbnail\s*\/\s*Fix thumbnail refresh loop/);
+    await place.getByRole('button', { name: 'Go to plot Thumbnail', exact: true }).click();
+    await expect(area).toHaveAttribute('data-focus', '');
+    await expect.poll(async () => { const point = await centre(page); return point.x > 180 && point.x < 520 && point.y > 180 && point.y < 380; }).toBe(true);
+    await page.locator('.map-card[data-item-id="upload-ticket"]').click();
+    await expect(area).toHaveAttribute('data-focus', 'upload-ticket');
+    await expect(place).toHaveText('Photos›Upload');
+    const plotView = await centre(page);
+    await place.getByRole('button', { name: 'Go to project Photos', exact: true }).click();
+    await expect(area).toHaveAttribute('data-focus', '');
+    await expect.poll(async () => { const point = await centre(page); return point.zoom < plotView.zoom && point.y > plotView.y; }).toBe(true);
+  }, { state: plotProject, prepare: store => store.writeView('desktop', { camera: { x: 80, y: 70, zoom: .8 } }) });
+  // Show on map closes the item and centres the map on its card.
+  await launch(async page => {
+    const area = page.locator('.map-area'), card = page.locator('.map-card[data-item-id="thumb-agent"]');
+    await card.click(); await expect(area).toHaveAttribute('data-focus', 'thumb-agent');
+    await page.getByRole('button', { name: 'Show on map', exact: true }).click();
+    await expect(area).toHaveAttribute('data-focus', '');
+    const map = (await area.boundingBox())!;
+    await expect.poll(async () => { const box = (await card.boundingBox())!; return Math.hypot(box.x + box.width / 2 - (map.x + map.width / 2), box.y + box.height / 2 - (map.y + map.height / 2)) < 40; }).toBe(true);
+  }, { state: plotProject, prepare: store => store.writeView('desktop', { camera: { x: 80, y: 70, zoom: .8 } }) });
+});
+
 test('with mapCorner set to atlas the corner is the Atlas, and on the Undermap the project column is not shown', async () => {
   await launch(async page => {
     const atlas = page.locator('.map-locator.atlas');

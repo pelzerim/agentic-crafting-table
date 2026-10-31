@@ -207,11 +207,11 @@
 }
 
 .neighborhood-paint {
-  fill: #91b78b;
+  fill: var(--act-neighborhood-paint);
 }
 
 .neighborhood-field[data-attach-preview=true] .neighborhood-paint {
-  fill: #c3edb6;
+  fill: var(--act-neighborhood-paint-preview);
 }
 
 /* Plots (MAP-24): inside the field's .24 opacity, .55/.275 give a .13/.066 tint in the plot's color, so the ground still shows through. */
@@ -607,7 +607,7 @@
   text-decoration: underline;
   text-decoration-thickness: 2px;
   text-underline-offset: 5px;
-  color: #e0ecd8;
+  color: var(--act-neighborhood-title-focus);
 }
 
 .project-membership-edge .react-flow__edge-path {

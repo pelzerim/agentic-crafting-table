@@ -176,7 +176,7 @@
   position: absolute;
   z-index: 125;
   pointer-events: none;
-  color: #d5eddb;
+  color: var(--act-drop-ink);
   background: var(--act-control);
   border: 1px solid var(--act-accent);
   border-radius: 3px;
@@ -256,7 +256,7 @@
 }
 
 .canvas-menu [data-destructive=true] {
-  color: #dca597;
+  color: var(--act-danger-text);
 }
 
 .canvas-context {

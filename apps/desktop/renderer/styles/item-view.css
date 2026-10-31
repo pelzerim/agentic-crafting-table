@@ -49,7 +49,7 @@
   padding: 3px;
   border: 0;
   background: transparent;
-  color: #a8c5b0;
+  color: var(--act-resize-grip);
   opacity: .55;
   cursor: nwse-resize;
   touch-action: none;
@@ -119,37 +119,37 @@
 .expanded .card-heading:has(> .item-frame-slot > .view-header) {
   --view-title-min: calc(var(--act-sp-8) * 6);
   display: grid;
-  grid-template-columns: auto minmax(var(--view-title-min), 1fr) auto auto;
-  grid-template-areas: "icon title tools close" "status status status status";
+  grid-template-columns: auto minmax(var(--view-title-min), 1fr) auto auto auto;
+  grid-template-areas: "icon title tools locate close" "status status status status status";
   align-items: center;
   gap: var(--act-sp-1_5) var(--act-sp-2);
 }
 
 /* Mark seen, or Close and keep in Needs me, is a fixed control beside the close X; it never folds into More actions. */
 .expanded .card-heading:has(> .item-frame-slot > .view-header):has(> .item-seen, > .item-keep) {
-  grid-template-columns: auto minmax(var(--view-title-min), 1fr) auto auto auto;
-  grid-template-areas: "icon title tools seen close" "status status status status status";
+  grid-template-columns: auto minmax(var(--view-title-min), 1fr) auto auto auto auto;
+  grid-template-areas: "icon title tools locate seen close" "status status status status status status";
 }
 
 .expanded .card-heading:has(> .item-frame-slot > .view-header):has(> .item-seen-close) {
-  grid-template-columns: auto minmax(var(--view-title-min), 1fr) auto auto auto auto;
-  grid-template-areas: "icon title tools seen-close seen close" "status status status status status status";
+  grid-template-columns: auto minmax(var(--view-title-min), 1fr) auto auto auto auto auto;
+  grid-template-areas: "icon title tools locate seen-close seen close" "status status status status status status status";
 }
 
 /* Send to Undermap sits left of the other close controls. */
 .expanded .card-heading:has(> .item-frame-slot > .view-header):has(> .item-send-below) {
-  grid-template-columns: auto minmax(var(--view-title-min), 1fr) auto auto auto;
-  grid-template-areas: "icon title tools below close" "status status status status status";
+  grid-template-columns: auto minmax(var(--view-title-min), 1fr) auto auto auto auto;
+  grid-template-areas: "icon title tools locate below close" "status status status status status status";
 }
 
 .expanded .card-heading:has(> .item-frame-slot > .view-header):has(> .item-send-below):has(> .item-seen, > .item-keep) {
-  grid-template-columns: auto minmax(var(--view-title-min), 1fr) auto auto auto auto;
-  grid-template-areas: "icon title tools below seen close" "status status status status status status";
+  grid-template-columns: auto minmax(var(--view-title-min), 1fr) auto auto auto auto auto;
+  grid-template-areas: "icon title tools locate below seen close" "status status status status status status status";
 }
 
 .expanded .card-heading:has(> .item-frame-slot > .view-header):has(> .item-send-below):has(> .item-seen-close) {
-  grid-template-columns: auto minmax(var(--view-title-min), 1fr) auto auto auto auto auto;
-  grid-template-areas: "icon title tools below seen-close seen close" "status status status status status status status";
+  grid-template-columns: auto minmax(var(--view-title-min), 1fr) auto auto auto auto auto auto;
+  grid-template-areas: "icon title tools locate below seen-close seen close" "status status status status status status status status";
 }
 
 /* Blocker chips need room too; header actions move behind More actions before they shrink. */
@@ -215,6 +215,14 @@
 
 .expanded .card-heading:has(> .item-frame-slot > .view-header) > .item-seen-close {
   grid-area: seen-close;
+  width: var(--act-control-size);
+  height: var(--act-control-size);
+  min-height: 0;
+  padding: var(--act-sp-1);
+}
+
+.expanded .card-heading:has(> .item-frame-slot > .view-header) > .item-locate {
+  grid-area: locate;
   width: var(--act-control-size);
   height: var(--act-control-size);
   min-height: 0;

@@ -4,6 +4,7 @@ export const githubReviewRun = defineResourcePlugin({
   settingsHelp: 'Track a repository review triggered by a /review comment. Start it from a PR and use this item to follow the workflow and open its result.',
   id: 'github.review-run', apiVersion: 1, schemaVersion: 1,
   name: 'Workflow review', icon: 'review', preferredView: 'focus',
+  webLink: { label: 'Open pull request', from: 'sourcePrId' },
   brand: 'github',
   context: { parentField: 'sourcePrId', fields: ['repository'] },
   mapSizes: { defaultSize: 'small', sizes: {

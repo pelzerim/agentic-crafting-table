@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { COLUMN_ICON_LIMIT, columnBaseline, columnItems, metaText, plotMapOrder, projectColumn, projectTag, projectTags, projectsNewSince } from './project-column.ts';
+import { COLUMN_ICON_LIMIT, columnBaseline, columnItems, fitOrder, metaText, ORDER_LIMIT, plotMapOrder, projectColumn, projectTag, projectTags, projectsNewSince, reorder } from './project-column.ts';
 import type { ColumnKind, ProjectColumnSource } from './project-column.ts';
 import { projectDashboard } from './project-dashboard.ts';
 import type { GraphNode } from './graph.ts';
@@ -142,6 +142,27 @@ test('with Needs me rows in two or more plots the rows group by plot in map orde
   const [local] = projectColumn([{ id: 'shop', title: 'Shop', color: '', board: projectDashboard('shop', plotted, { plots: counted }) }], NOW).active;
   assert.deepEqual(local.groups.filter(group => group.plot).map(group => group.name).sort(), ['Refunds', 'Webhooks'], 'a local name drops its own item count; the header shows one');
   assert.deepEqual(local.plots.sort(), ['Refunds', 'Webhooks']);
+});
+
+test('a saved order wins over the automatic one; projects and plots it lacks go on top in automatic order, unknown ids are ignored', () => {
+  const model = projectColumn(sources(), NOW, { order: ['gone', 'deploy', 'runner', 'billing', 'empty', 'docs'] });
+  assert.deepEqual(model.active.map(row => row.id), ['infra', 'recent', 'deploy', 'runner', 'billing'], 'infra and recent are not saved, so they lead');
+  assert.deepEqual(model.quiet.map(row => row.id), ['empty', 'docs'], 'quiet projects keep the saved order inside their fold');
+  assert.deepEqual(model.icons.map(row => row.id), ['infra', 'recent', 'deploy', 'runner', 'billing', 'empty', 'docs']);
+  const extra = { id: 'labels', projectId: 'shop', memberIds: ['s5'], name: 'Labels', source: 'user', hidden: false } as never;
+  const board = projectDashboard('shop', plotted, { plots: [...shopPlots, extra] });
+  const [row] = projectColumn([{ id: 'shop', title: 'Shop', color: '', board, plotOrder: ['refunds', 'webhooks', 'labels'] }], NOW, { plotOrder: ['other-plot', 'webhooks', 'refunds'] }).active;
+  assert.deepEqual(row.plotIds, ['labels', 'webhooks', 'refunds']);
+  assert.deepEqual(row.groups.map(group => group.id), ['webhooks', 'refunds']);
+  // A move while one is muted keeps its saved place: [a, b, c], b muted, c before a, b unmuted reads c, a, b.
+  const moved = reorder(['a', 'b', 'c'], ['a', 'c'], 'c', 'a', '');
+  assert.deepEqual(moved, ['c', 'a', 'b']);
+  assert.deepEqual(reorder(moved, ['new', 'c', 'a', 'b'], 'new', null, 'b'), ['c', 'a', 'b', 'new'], 'an unsaved one is placed among the saved');
+  assert.deepEqual(reorder(['webhooks', 'other-plot', 'refunds'], ['webhooks', 'refunds'], 'webhooks', null, 'refunds'), ['other-plot', 'refunds', 'webhooks'], 'another project\'s plot stays');
+  // Gone ids drop before the cap; an order still too long is refused, never cut (a cut id would jump back to the top).
+  const ids = Array.from({ length: ORDER_LIMIT + 1 }, (_, index) => `p${index}`), live = new Set(ids);
+  assert.deepEqual(fitOrder(['gone', ...ids.slice(1)], live), ids.slice(1));
+  assert.equal(fitOrder(ids, live), undefined);
 });
 
 test('with Needs me rows in fewer than two plots there is one group without a header', () => {

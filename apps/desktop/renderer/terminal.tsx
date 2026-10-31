@@ -17,6 +17,8 @@ import { bindTerminalWheel } from './terminal-wheel.ts';
 import { bindTerminalIdentity } from './terminal-identity.ts';
 import { createTerminalRenderer } from './terminal-renderer.ts';
 import { useTerminalPreferences } from './terminal-preferences.ts';
+import { useColorScheme } from './color-scheme.ts';
+import { TERMINAL_THEMES } from './terminal-theme.ts';
 
 const WRITE_SLICE = 32 * 1024;
 
@@ -44,12 +46,13 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
   useEffect(() => { if (!active) { setLinkMenu(undefined); closeFind(); } }, [active]);
   const [mountId] = useState(() => crypto.randomUUID());
   const preferences = useTerminalPreferences(), preferencesRef = useRef(preferences); preferencesRef.current = preferences;
+  const scheme = useColorScheme(), schemeRef = useRef(scheme); schemeRef.current = scheme;
   useEffect(() => { if (active) return observeTerminalPerformance(); }, [active]);
   useLayoutEffect(() => {
     // Leave ordinary history on the native viewport default: xterm 6 smoothing
     // can retain an old bottom target after output arrives while reading history.
     // Search decorations use xterm's proposed decoration API.
-    const terminal = new Terminal({ allowProposedApi: true, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: Math.max(8, Math.min(32, Number(localStorage.getItem('craft.terminal.fontSize')) || 13)), cursorBlink: true, screenReaderMode: preferencesRef.current.screenReaderMode, scrollback: preferencesRef.current.scrollback, theme: { background: '#101612', foreground: '#dce8df', cursor: '#98d6ac' } });
+    const terminal = new Terminal({ allowProposedApi: true, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: Math.max(8, Math.min(32, Number(localStorage.getItem('craft.terminal.fontSize')) || 13)), cursorBlink: true, screenReaderMode: preferencesRef.current.screenReaderMode, scrollback: preferencesRef.current.scrollback, theme: TERMINAL_THEMES[schemeRef.current] });
     const fit = new FitAddon();
     const search = new SearchAddon();
     terminal.loadAddon(fit); terminal.loadAddon(search);
@@ -123,6 +126,12 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
     if (terminal.options.scrollback !== preferences.scrollback) terminal.options.scrollback = preferences.scrollback;
     container.current!.dataset.terminalScrollback = String(terminal.options.scrollback);
   }, [preferences, channel]);
+  useLayoutEffect(() => {
+    const terminal = instance.current?.terminal;
+    if (!terminal) return;
+    if (terminal.options.theme !== TERMINAL_THEMES[scheme]) terminal.options.theme = TERMINAL_THEMES[scheme];
+    container.current!.dataset.terminalTheme = scheme;
+  }, [scheme, channel]);
   useLayoutEffect(() => {
     const current = instance.current;
     if (!current) return;

@@ -1,6 +1,6 @@
 {
   "name": "agent-crafting-table",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "private": true,
   "description": "A spatial workspace for coding agents and their projects",
   "author": "Agentic Crafting Table contributors",

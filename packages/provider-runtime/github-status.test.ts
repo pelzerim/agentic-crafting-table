@@ -76,3 +76,19 @@ test('merged PR rollouts include closed-PR runs on the head commit, never pre-me
   assert.equal(isDeployRun(run({ name: 'CI', path: '.github/workflows/ci.yml' }), mergedAt), false);
   assert.equal(isDeployRun(run({ event: 'push', created_at: undefined })), true);
 });
+
+test('merge when ready shows as Merge when ready with its method, behind the queue and failing checks, ahead of review outcomes', () => {
+  const on = (method: 'SQUASH' | 'MERGE' | 'REBASE' | 'QUEUE' | null) => ({ queued: false, position: null, mergeWhenReady: { method, enabledAt: '2026-10-30T09:00:00Z' } });
+  const status = pullStatus({ ...pullFixture, state: 'open' }, [review(1, 'APPROVED')], [], [], on('SQUASH'));
+  assert.equal(status.state, 'merge-when-ready'); assert.equal(status.approved, false); assert.equal(status.attention, null);
+  assert.deepEqual(status.indicators[0], { id: 'review-state', label: 'Merge when ready (squash)', tone: 'amber', icon: 'git-merge' });
+  assert.equal(status.statusWithoutMergeWhenReady, 'approved');
+  for (const [method, label] of [['MERGE', 'Merge when ready (merge commit)'], ['REBASE', 'Merge when ready (rebase)'], ['QUEUE', 'Merge when ready (merge queue)'], [null, 'Merge when ready']] as const)
+    assert.equal(pullStatus({ ...pullFixture, state: 'open' }, [], [], [], on(method)).indicators[0].label, label);
+  assert.equal(pullStatus({ ...pullFixture, state: 'open' }, [review(1, 'CHANGES_REQUESTED')], [], [], on('SQUASH')).state, 'merge-when-ready');
+  assert.equal(pullStatus({ ...pullFixture, state: 'open' }, [], [], [], { ...on('QUEUE'), queued: true, position: 0 }).state, 'queued');
+  const failing = { ...on('SQUASH'), checks: { head: pullFixture.head.sha, failing: ['test'] } };
+  assert.equal(pullStatus({ ...pullFixture, state: 'open' }, [], [], [], failing).state, 'checks-failing');
+  assert.equal(pullStatus({ ...pullFixture, state: 'closed', merged: true }, [], [], [], on('SQUASH')).state, 'merged');
+  assert.equal(pullStatus({ ...pullFixture, state: 'open' }, [], [], [], null).statusWithoutMergeWhenReady, undefined);
+});

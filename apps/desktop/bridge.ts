@@ -10,6 +10,8 @@ export interface AppInfo {
 export interface DesktopBridge {
   windowFocused(): Promise<boolean>;
   onWindowFocus(listener: (focused: boolean) => void): () => void;
+  /** Light or dark, as main resolves Settings → General → Appearance; sent when it changes. */
+  onColorScheme(listener: (scheme: 'light' | 'dark') => void): () => void;
   appInfo(): Promise<AppInfo>;
   /** Whether a screen reader such as VoiceOver is running. */
   assistiveTechnology(): Promise<boolean>;

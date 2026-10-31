@@ -88,3 +88,27 @@ test('only the person’s writes declare an expected result', async () => {
   assert.deepEqual(declared, ['pr.merge', 'pr.state', 'pr.showShip']);
   for (const action of connector.actions!(resource).filter(action => action.optimistic)) assert.equal(action.humanOnly, true);
 });
+
+test('merge when ready shows its cue at once, confirmed by a read with merge when ready on; cancelling restores the status beneath it', async () => {
+  const { fixture, connector, snapshot, optimistic, read } = await setup(fixture => { fixture.mergeSettings = { ...fixture.mergeSettings, autoMergeAllowed: true, status: 'BLOCKED' }; });
+  const expected = optimistic('pr.merge', merge('SQUASH_WHEN_READY'))!;
+  assert.equal(expected.pending, 'Merge when ready · confirming'); assert.equal(expected.subject, 'Merge when ready for #42');
+  assert.deepEqual(cue(expected.snapshot), { id: 'review-state', label: 'Merge when ready (squash)', tone: 'amber', icon: 'git-merge' });
+  assert.equal(expected.snapshot.detail?.status, 'merge-when-ready'); assert.equal(pull(expected.snapshot).merged, false);
+  assert.equal(expected.landed(snapshot), false);
+  await connector.execute!(resource, 'pr.merge', signal(), merge('SQUASH_WHEN_READY'));
+  const on = await read();
+  assert.equal(expected.landed(on), true);
+  fixture.pull = { ...fixture.pull, state: 'closed', merged: true };
+  assert.equal(expected.landed(await read()), true, 'GitHub may already have merged it');
+  fixture.pull = { ...fixture.pull, state: 'open', merged: false };
+
+  const cancel = connector.actions!(resource).find(action => action.id === 'pr.merge')!.optimistic!(on, merge('CANCEL_WHEN_READY'))!;
+  assert.equal(cancel.pending, 'Open · confirming'); assert.equal(cancel.subject, 'Cancelling merge when ready for #42');
+  assert.deepEqual(cue(cancel.snapshot), { id: 'review-state', label: 'Open', tone: 'green', icon: 'git-pull-request' });
+  assert.equal(cancel.snapshot.detail?.mergeWhenReady, undefined);
+  assert.equal(cancel.landed(on), false);
+  await connector.execute!(resource, 'pr.merge', signal(), merge('CANCEL_WHEN_READY'));
+  assert.equal(cancel.landed(await read()), true);
+  assert.equal(optimistic('pr.merge', merge('CANCEL_WHEN_READY')), undefined, 'nothing to cancel in a read without merge when ready');
+});

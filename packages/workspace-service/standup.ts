@@ -18,7 +18,7 @@ import { inBackground } from '../provider-runtime/request-budget.ts';
 import { isArchived, isOffMap } from '../../src/graph/archive.ts';
 import { attentionItems } from '../../src/graph/attention.ts';
 import { todoList } from '../../src/graph/todos.ts';
-import { webLinkUrl } from '../../src/resource-plugins/define.ts';
+import { resourceWebPage } from '../../src/resource-plugins/web-page.ts';
 
 export const DIGEST_MODEL = 'haiku', REPORT_MODEL = 'sonnet';
 /** Background digests cover the days before today, this far back; digests are kept a week longer for Last week. */
@@ -234,7 +234,7 @@ export class StandupReports {
   private facts(state: WorkspaceState, window: StandupWindow, now: number): Fact[] {
     const facts: Fact[] = [], inRange = (at: number | undefined) => at !== undefined && at >= window.from && at < window.to;
     const projectOf = (nodeId?: string) => { const node = state.nodes.find(node => node.id === nodeId), project = node?.projectId && state.nodes.find(candidate => candidate.id === node.projectId); return project ? project.title : undefined; };
-    const urlOf = (resourceId?: string) => { const resource = state.resources.find(resource => resource.id === resourceId), link = resource && this.control.registry.get(resource.pluginId)?.webLink; return link ? webLinkUrl(link.template, resource!.data) : undefined; };
+    const urlOf = (resourceId?: string) => resourceWebPage(state.resources.find(resource => resource.id === resourceId), this.control.registry, nodeId => state.resources.find(resource => resource.id === state.nodes.find(node => node.id === nodeId)?.resourceId))?.url;
     const add = (fact: Fact) => { if (!facts.some(existing => existing.evidence.id === fact.evidence.id)) facts.push(fact); };
     for (const todo of state.todos) if (todo.completed && inRange(todo.doneAt ? Date.parse(todo.doneAt) : undefined) && !todo.archivedAt)
       add({ evidence: { id: `todo:${todo.id}`, kind: 'todo', label: `To-do · ${todo.title}` }, title: todo.title, text: `Done to-do: ${todo.title}`, state: 'done', open: false });

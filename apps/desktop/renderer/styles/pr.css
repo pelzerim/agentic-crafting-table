@@ -5,7 +5,7 @@
   display: flex;
   flex-direction: column;
   padding: 14px 20px;
-  color: #cfddd1;
+  color: var(--act-pr-ink);
   overflow: hidden;
 }
 
@@ -18,7 +18,7 @@
 }
 
 .pr-header a {
-  color: #9ebba5;
+  color: var(--act-pr-link);
   text-decoration: none;
   font-size: var(--act-fs-ui);
   overflow-wrap: anywhere;
@@ -45,7 +45,7 @@
 }
 
 .pr-reference {
-  color: #9ebba5;
+  color: var(--act-pr-link);
   font-size: var(--act-fs-ui);
   overflow-wrap: anywhere;
 }
@@ -64,12 +64,12 @@
 
 .pr-state[data-state="merged"] {
   color: var(--act-tone-violet);
-  background: #342942;
+  background: var(--act-pr-merged-bg);
 }
 
 .pr-state[data-state="closed"] {
-  color: #eab5ab;
-  background: #412a28;
+  color: var(--act-pr-closed);
+  background: var(--act-pr-closed-bg);
 }
 
 .pr-tabs {
@@ -100,7 +100,7 @@
 }
 
 .pr-refs {
-  color: #c1b0d7;
+  color: var(--act-pr-refs);
   font-size: 14px;
   margin: 18px 0 6px;
 }
@@ -162,7 +162,7 @@
 }
 
 .pr-comment-meta a {
-  color: #bdd9c6;
+  color: var(--act-pr-meta-link);
   text-decoration: none;
 }
 
@@ -308,7 +308,7 @@
 
 .pr-workflow-help {
   font-size: var(--act-fs-meta);
-  color: #cabb9e;
+  color: var(--act-pr-help);
 }
 
 .pr-workflow-help summary {
@@ -342,7 +342,7 @@
 
 .workflow-candidate {
   padding: 14px;
-  border: 1px solid #53674f;
+  border: 1px solid var(--act-pr-candidate-line);
   background: var(--act-raised);
   width: 100%;
 }
@@ -370,7 +370,7 @@
 
 .workflow-candidate-actions a {
   font-size: var(--act-fs-ui);
-  color: #b4d5be;
+  color: var(--act-link-text);
 }
 
 .live-workspace .workflow-confirm-absent {
@@ -452,7 +452,7 @@
   line-height: 1.6;
   margin: 0;
   padding: 2px 6px;
-  background: #30383a;
+  background: var(--act-pr-refs-bg);
   border-radius: 3px;
   overflow-wrap: anywhere;
 }
@@ -535,7 +535,7 @@
   gap: 12px;
   padding: 16px;
   background: var(--act-control);
-  border: 1px solid #4d705c;
+  border: 1px solid var(--act-pr-comment-line);
   border-left: 3px solid var(--act-accent);
   border-image: var(--pixel-control-border) 5 / 5px / 0 stretch;
   clip-path: var(--pixel-control-shape);
@@ -545,7 +545,7 @@
 .pr-desk .pr-comment[data-reply=true] {
   margin: 8px 0 0 28px;
   background: var(--act-panel);
-  border-color: #3f5948;
+  border-color: var(--act-pr-reply-line);
   box-shadow: inset 2px 0 var(--act-line-strong);
 }
 
@@ -580,7 +580,7 @@
   height: 26px;
   font-size: var(--act-fs-caps);
   color: var(--act-ink-soft);
-  border: 1px solid #405b49;
+  border: 1px solid var(--act-pr-avatar-line);
   border-radius: 3px;
   background: var(--act-panel);
 }
@@ -615,12 +615,12 @@
   padding: 3px 0;
   min-height: 24px;
   font-size: var(--act-fs-meta);
-  color: #a8c4b3;
+  color: var(--act-pr-control);
 }
 
 .pr-desk .pr-comment-quick button:hover,
 .pr-desk .pr-comment-controls button:hover {
-  color: #ddf5e7;
+  color: var(--act-pr-control-hover);
   text-decoration: underline;
 }
 
@@ -652,7 +652,7 @@
 }
 
 .pr-desk .pr-comment-preview:hover {
-  color: #f1fff6;
+  color: var(--act-pr-preview-hover);
 }
 
 .pr-desk .pr-comment-preview[hidden] {
@@ -673,14 +673,14 @@
 }
 
 .pr-desk .pr-comment-state[data-state=DISMISSED] {
-  color: #a7aaa5;
+  color: var(--act-pr-dismissed);
 }
 
 .pr-desk .pr-thread-context,
 .pr-desk .pr-thread-path {
   display: block;
   font-size: var(--act-fs-meta);
-  color: #b5b2d7;
+  color: var(--act-pr-thread-path);
   padding: 0 0 8px;
   overflow-wrap: anywhere;
 }
@@ -692,7 +692,7 @@
 }
 
 .pr-desk .pr-seen>summary {
-  color: #a9bfb0;
+  color: var(--act-pr-seen);
   font-size: var(--act-fs-ui);
   cursor: pointer;
   padding: 4px 0 14px;
@@ -740,9 +740,9 @@
   min-width: 0;
   padding: 12px;
   text-align: left;
-  background: #25302d;
+  background: var(--act-pr-linked-bg);
   color: var(--act-ink-soft);
-  border: 1px solid #526358;
+  border: 1px solid var(--act-pr-linked-line);
   border-image: var(--pixel-control-border) 5 / 5px / 0 stretch;
   clip-path: var(--pixel-control-shape);
   white-space: normal;
@@ -762,11 +762,11 @@
 .pr-desk .pr-linked-state,
 .pr-desk .pr-linked-revision {
   font-size: var(--act-fs-caps);
-  color: #adc4b5;
+  color: var(--act-pr-linked-revision);
 }
 
 .pr-desk .pr-linked-review[data-revision=stale] .pr-linked-revision {
-  color: #ecc186;
+  color: var(--act-pr-stale);
 }
 
 .pr-desk .pr-linked-review:hover {
@@ -785,7 +785,7 @@
   font-size: var(--act-fs-ui);
   padding: 12px;
   background: var(--act-control);
-  border: 1px solid #526358;
+  border: 1px solid var(--act-pr-linked-line);
 }
 
 .pr-desk .pr-filter-options label {
@@ -809,7 +809,7 @@
 .pr-desk>.pr-review-status:not(:empty) {
   margin: 0;
   padding: 8px 20px;
-  background: #342d21;
+  background: var(--act-pr-status-bg);
 }
 
 @container (max-width:540px) {

@@ -6,10 +6,12 @@ import { PULL_LIFECYCLES, PULL_STATE_CHANGES, PULL_STATE_DONE, pullStateChoices 
 import { pullLifecycle } from '../../../../packages/provider-runtime/github.ts';
 import type { PullLifecycle, PullStateChange } from '../../../../packages/provider-runtime/github.ts';
 import type { ResourceFields, ResourcePluginConnector, ResourceRecord, JsonValue } from '../../types.ts';
-import { mergeChoices, mergeReadiness, pullKey } from '../../../../packages/provider-runtime/github.ts';
+import { mergeChoices, mergeReadiness, pullKey, WHEN_READY_SUFFIX } from '../../../../packages/provider-runtime/github.ts';
 import type { GitHubClient, GitHubWorkflowRun, PullIdentity, PullMergeMethod } from '../../../../packages/provider-runtime/github.ts';
 import { isDeployRun, MERGE_ROLLOUT_WINDOW_MS, pullStatus, rolloutDiscoveryKey } from '../../../../packages/provider-runtime/github-status.ts';
 
+const MERGE_METHODS = ['SQUASH', 'MERGE', 'REBASE', 'QUEUE'];
+const MERGE_CHOICES = [...MERGE_METHODS, ...MERGE_METHODS.map(method => `${method}${WHEN_READY_SUFFIX}`), 'CANCEL_WHEN_READY'];
 const STATE_FIELDS: ResourceFields = { ...Object.fromEntries(['value', 'pullRequestId', 'expectedState', 'sourceResourceId', 'requestId'].map(key => [key, { label: key, kind: 'text' as const, required: true }])),
   comment: { label: 'Comment posted before closing', kind: 'text', required: false, multiline: true } };
 
@@ -57,7 +59,8 @@ export function githubPullRequestConnector(clientFor: (resource: ResourceRecord)
       // Deploys chained after a merge start later; keep looking for them promptly, then less often.
       return { ...(discovered.length ? { discovered } : {}), ...(recentlyMerged ? { pollWithinMs: now - mergedAt < 3_600_000 ? 60_000 : 300_000 } : {}), title: pull.title, activity: pull.state === 'closed' ? 'complete' : 'idle', attention: 'none', connection: 'connected',
         label: status.label, indicators: status.indicators, attentionReason: status.attention, ...(status.attentionNote ? { attentionNote: status.attentionNote } : {}), ...(status.attentionEventId ? { attentionEventId: status.attentionEventId } : {}),
-        observedAt: new Date().toISOString(), detail: { pull, status: status.state, ...(queue?.queued ? { queuePosition: queue.position } : {}), ...(status.failingChecks ? { failingChecks: status.failingChecks.slice(0, 20) } : {}), comments: status.comments, ...discussion, ...(login ? { viewer: login } : {}) } };
+        observedAt: new Date().toISOString(), detail: { pull, status: status.state, ...(queue?.queued ? { queuePosition: queue.position } : {}),
+          ...(queue?.mergeWhenReady ? { mergeWhenReady: { ...queue.mergeWhenReady, statusWithout: status.statusWithoutMergeWhenReady ?? status.state } } : {}), ...(status.failingChecks ? { failingChecks: status.failingChecks.slice(0, 20) } : {}), comments: status.comments, ...discussion, ...(login ? { viewer: login } : {}) } };
     },
     actions: () => [
       { id: 'reply', label: 'Reply to comment', readOnly: false, updatesSnapshot: true, inputFields: Object.fromEntries(['kind', 'commentId', 'body', 'sourceResourceId', 'requestId'].map(key => [key, { kind: 'text' as const, label: key, required: true }])) },
@@ -65,7 +68,7 @@ export function githubPullRequestConnector(clientFor: (resource: ResourceRecord)
       { id: 'pr.merge.options', label: 'Merge options', readOnly: true, heedsBlockers: true, cacheChoices: true },
       { id: 'pr.mergeReadiness', label: 'Merge readiness', readOnly: true, description: 'GitHub\'s merge state, review decision and head check rollup of the pull request.' },
       { id: 'pr.merge', label: 'Merge pull request', readOnly: false, updatesSnapshot: true, humanOnly: true, heedsBlockers: true, optimistic: mergeOptimism,
-        description: 'Merge the pull request or add it to its merge queue on GitHub. Only a person can confirm this in the app.',
+        description: 'Merge the pull request or add it to its merge queue on GitHub, now or when ready (auto-merge), or cancel merge when ready. Only a person can confirm this in the app.',
         inputFields: Object.fromEntries(['value', 'pullRequestId', 'expectedHeadOid', 'sourceResourceId', 'requestId'].map(key => [key, { label: key, kind: 'text' as const, required: true }])) },
       { id: 'pr.state.options', label: 'Pull request state options', readOnly: true, cacheChoices: true },
       { id: 'pr.state', label: 'Change pull request state', readOnly: false, updatesSnapshot: true, humanOnly: true, optimistic: stateOptimism,
@@ -93,11 +96,14 @@ export function githubPullRequestConnector(clientFor: (resource: ResourceRecord)
       if (action === 'pr.mergeReadiness') return mergeReadiness(await client.mergeState(key, signal)) as unknown as JsonValue;
       if (action === 'pr.merge') {
         if (input?.sourceResourceId !== resource.id) throw new Error('This merge belongs to another item. Review the pull request again.');
-        const method = String(input.value), pullRequestId = String(input.pullRequestId), expectedHeadOid = String(input.expectedHeadOid);
-        if (!['SQUASH', 'MERGE', 'REBASE', 'QUEUE'].includes(method) || !/^[A-Za-z0-9_=-]{1,200}$/.test(pullRequestId) || !/^[a-f0-9]{40,64}$/i.test(expectedHeadOid)) throw new Error('This merge is incomplete. Review the pull request again.');
-        await client.merge(key, { pullRequestId, expectedHeadOid, method: method as PullMergeMethod }, signal);
+        const choice = String(input.value), pullRequestId = String(input.pullRequestId), expectedHeadOid = String(input.expectedHeadOid);
+        if (!MERGE_CHOICES.includes(choice) || !/^[A-Za-z0-9_=-]{1,200}$/.test(pullRequestId) || !/^[a-f0-9]{40,64}$/i.test(expectedHeadOid)) throw new Error('This merge is incomplete. Review the pull request again.');
+        const cancel = choice === 'CANCEL_WHEN_READY', whenReady = !cancel && choice.endsWith(WHEN_READY_SUFFIX), method = (whenReady ? choice.slice(0, -WHEN_READY_SUFFIX.length) : choice) as PullMergeMethod;
+        if (cancel) await client.cancelMergeWhenReady(key, pullRequestId, signal);
+        else await client.merge(key, { pullRequestId, expectedHeadOid, method, ...(whenReady ? { whenReady: true } : {}) }, signal);
+        const done = cancel ? 'Merge when ready cancelled' : whenReady ? 'Merge when ready turned on' : method === 'QUEUE' ? 'Added to the merge queue' : 'Merged';
         try { return { snapshot: await connector.load!(resource, signal) } as unknown as JsonValue; }
-        catch { throw Object.assign(new Error(`${method === 'QUEUE' ? 'Added to the merge queue' : 'Merged'}, but refresh failed. Check GitHub before trying again.`), { outcomeUnknown: true }); }
+        catch { throw Object.assign(new Error(`${done}, but refresh failed. Check GitHub before trying again.`), { outcomeUnknown: true }); }
       }
       if (action === 'pr.state.options') {
         const pull = (await client.mergeState(key, signal)).pullRequest, choices = pullStateChoices(pull);

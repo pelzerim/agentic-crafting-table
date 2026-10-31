@@ -27,7 +27,7 @@ export interface ProjectColumnMeta { todos: { open: number; first?: string }; wo
 /** `count` belongs to `mark`; `next` and `status` exist only when the summary model wrote them. */
 /** `items` replaces `groups` in the panel when Needs me is unticked. */
 export interface ProjectColumnRow { id: string; title: string; tag: string; color: string; mark: ColumnMark; count: number; tiers: DashboardTiers; working: number; todos: number; age: string; lastActivityAt?: string;
-  next?: string; status?: string; needs: ProjectColumnNeed[]; groups: ProjectColumnGroup[]; items?: ProjectColumnItemGroup[]; meta: ProjectColumnMeta; plots: string[] }
+  next?: string; status?: string; needs: ProjectColumnNeed[]; groups: ProjectColumnGroup[]; items?: ProjectColumnItemGroup[]; meta: ProjectColumnMeta; plots: string[]; /** Every plot of the project in panel order. */ plotIds: string[] }
 export interface ProjectColumnModel { icons: ProjectColumnRow[]; more: number; active: ProjectColumnRow[]; quiet: ProjectColumnRow[] }
 
 /** The Projects panel's type chips (MAP-22); a plugin not named here is Other. */
@@ -72,8 +72,30 @@ export function plotMapOrder(plots: readonly Pick<PlotView, 'id' | 'memberIds'>[
   return places.sort((a, b) => (a.band - b.band || 0) || (a.left - b.left || 0) || a.id.localeCompare(b.id)).map(place => place.id);
 }
 
+/** `auto` with a saved order over it: ids the saved list lacks first in `auto` order, then the saved ones in saved order; saved ids not in `auto` are ignored. */
+export function arrange(auto: readonly string[], saved: readonly string[] = []) {
+  const known = new Set(auto), kept = new Set(saved);
+  return [...auto.filter(id => !kept.has(id)), ...[...kept].filter(id => known.has(id))];
+}
+
+/** The saved order after moving `id` before `before` (or after `last` when null) among the `shown` ids; saved ids not shown (muted, hidden) keep their place. */
+export function reorder(saved: readonly string[], shown: readonly string[], id: string, before: string | null, last: string) {
+  const kept = new Set(saved), full = [...shown.filter(entry => !kept.has(entry)), ...kept], rest = full.filter(entry => entry !== id);
+  const at = before ? rest.indexOf(before) : rest.indexOf(last) + 1;
+  return at < 0 || (!before && rest.indexOf(last) < 0) ? full : [...rest.slice(0, at), id, ...rest.slice(at)];
+}
+
+/** Most places a saved project or plot order keeps (the view schema's cap). */
+export const ORDER_LIMIT = 500;
+
+/** A saved order without ids that no longer exist; undefined when it still exceeds ORDER_LIMIT, so the move is refused rather than cut. */
+export function fitOrder(order: readonly string[], known: ReadonlySet<string>) {
+  const kept = order.filter(id => known.has(id));
+  return kept.length > ORDER_LIMIT ? undefined : kept;
+}
+
 /** A plot's name without the “· N items” a local name ends in, since the header counts its items itself. */
-const plotName = (name: string) => name.replace(/\s*·\s*\d+ items?$/, '') || name;
+export const plotName = (name: string) => name.replace(/\s*·\s*\d+ items?$/, '') || name;
 const rank = (row: ProjectColumnRow) => row.tiers.asking ? 0 : row.tiers.turn ? 1 : row.working ? 2 : 3;
 const needOf = (row: DashboardRow, now: number, seen = false): ProjectColumnNeed => ({ id: row.id, title: row.title, reason: row.detail, tier: row.tier ?? 'turn', age: attentionAge(row.since, now), key: `${row.id}:${row.version ?? 0}`, ...(seen ? { seen } : {}) });
 /** Unseen alerts first, then items still waiting after their alert was seen. */
@@ -113,12 +135,17 @@ export function columnItems(projectId: string, nodes: readonly GraphNode[], boar
   return items;
 }
 
+/** The board's plots in `order`; plots it leaves out keep their dashboard order after it. */
+function boardPlots(board: ProjectDashboard, order: readonly string[]) {
+  const place = (id: string) => { const index = order.indexOf(id); return index < 0 ? order.length : index; };
+  return board.plots.map((plot, index) => ({ plot, index })).sort((a, b) => place(a.plot.id) - place(b.plot.id) || a.index - b.index).map(entry => entry.plot);
+}
+
 const waitsOnMe = (item: ProjectColumnItem) => item.state !== undefined && item.state !== 'working';
 /** Items by plot in `order`, every plot with items under its own header, the rest loose; Needs me items first, then by title. */
 function itemGroups(items: readonly ProjectColumnItem[], board: ProjectDashboard, order: readonly string[]): ProjectColumnItemGroup[] {
   const sorted = [...items].sort((a, b) => Number(waitsOnMe(b)) - Number(waitsOnMe(a)) || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
-  const place = (id: string) => { const index = order.indexOf(id); return index < 0 ? order.length : index; };
-  const plots = board.plots.map((plot, index) => ({ plot, index })).sort((a, b) => place(a.plot.id) - place(b.plot.id) || a.index - b.index).map(entry => entry.plot);
+  const plots = boardPlots(board, order);
   const known = new Set(plots.map(plot => plot.id));
   const groups: ProjectColumnItemGroup[] = plots.map(plot => ({ id: plot.id, plot: true, name: plotName(plot.name), ...(plot.color ? { color: plot.color } : {}), entries: sorted.filter(item => item.plot === plot.id) }));
   groups.push({ id: LOOSE_BLOCK, plot: false, name: 'Loose', entries: sorted.filter(item => !item.plot || !known.has(item.plot)) });
@@ -132,15 +159,15 @@ export function metaText(meta: ProjectColumnMeta) {
   return [meta.todos.open ? `${meta.todos.open} ${meta.todos.open === 1 ? 'to-do' : 'to-dos'}` : '', meta.working ? `${meta.working} working` : ''].filter(Boolean).join(' · ');
 }
 
-/** The corner's project column (MAP-22): every project that is not muted, most urgent first.
+/** The corner's project column (MAP-22): every project that is not muted, most urgent first unless the person's `order` and `plotOrder` say otherwise.
  * `filters` shape only the panel's rows; icons, counts and what is new always see everything. */
-export function projectColumn(sources: readonly ProjectColumnSource[], now: number, view: { filters?: ColumnFilters; kindOf?(id: string): ColumnKind } = {}): ProjectColumnModel {
+export function projectColumn(sources: readonly ProjectColumnSource[], now: number, view: { filters?: ColumnFilters; kindOf?(id: string): ColumnKind; order?: readonly string[]; plotOrder?: readonly string[] } = {}): ProjectColumnModel {
   const off = new Set(view.filters?.off ?? []), shownKind = (kind: ColumnKind) => !off.has(kind);
   const keep = (group: ProjectColumnGroup) => off.size && view.kindOf ? { ...group, entries: group.entries.filter(need => shownKind(view.kindOf!(need.id))) } : group;
   const rows: { row: ProjectColumnRow; at: string; quiet: boolean }[] = [];
   const shown = sources.filter(source => !source.muted && !source.board.muted), tags = projectTags(shown);
   for (const source of shown) {
-    const board = source.board;
+    const board = source.board, order = arrange(boardPlots(board, source.plotOrder ?? []).map(plot => plot.id), view.plotOrder);
     const tiers = { asking: board.counts.asking, turn: board.counts.turn, finished: board.counts.finished }, working = board.working.length;
     const mark: ColumnMark = tiers.asking ? 'asking' : tiers.turn ? 'turn' : 'idle';
     const count = mark === 'idle' ? 0 : tiers[mark];
@@ -148,16 +175,16 @@ export function projectColumn(sources: readonly ProjectColumnSource[], now: numb
     const row: ProjectColumnRow = { id: source.id, title: source.title, tag: tags.get(source.id)!, color: source.color, mark, count, tiers, working, todos: board.todos.open.length, age: attentionAge(board.lastActivityAt, now),
       ...(board.lastActivityAt ? { lastActivityAt: board.lastActivityAt } : {}),
       ...(next ? { next } : {}), ...(status ? { status } : {}),
-      needs: needRows(board.needsYou, board.waiting, now), groups: groupsOf(board, source.plotOrder ?? [], now).map(keep), meta: metaOf(board),
-      ...(view.filters?.needsMe === false && source.items ? { items: itemGroups(source.items.filter(item => shownKind(item.kind)), board, source.plotOrder ?? []) } : {}),
-      plots: (board.blocks ? plotBlocks(board.blocks, source.plotOrder ?? []) : board.plots).map(plot => plotName(plot.name)) };
+      needs: needRows(board.needsYou, board.waiting, now), groups: groupsOf(board, order, now).map(keep), meta: metaOf(board),
+      ...(view.filters?.needsMe === false && source.items ? { items: itemGroups(source.items.filter(item => shownKind(item.kind)), board, order) } : {}),
+      plots: (board.blocks ? plotBlocks(board.blocks, order) : boardPlots(board, order)).map(plot => plotName(plot.name)), plotIds: order };
     const last = Date.parse(board.lastActivityAt ?? '');
     rows.push({ row, at: board.lastActivityAt ?? '', quiet: !board.needsYou.length && !working && !(now - last < QUIET_AFTER_MS) });
   }
   rows.sort((a, b) => Number(a.quiet) - Number(b.quiet) || rank(a.row) - rank(b.row) || b.at.localeCompare(a.at) || a.row.title.localeCompare(b.row.title) || a.row.id.localeCompare(b.row.id));
-  const ordered = rows.map(entry => entry.row);
-  return { icons: ordered.slice(0, COLUMN_ICON_LIMIT), more: Math.max(0, ordered.length - COLUMN_ICON_LIMIT),
-    active: rows.filter(entry => !entry.quiet).map(entry => entry.row), quiet: rows.filter(entry => entry.quiet).map(entry => entry.row) };
+  const byId = new Map(rows.map(entry => [entry.row.id, entry.row])), list = (quiet: boolean) => arrange(rows.filter(entry => entry.quiet === quiet).map(entry => entry.row.id), view.order).map(id => byId.get(id)!);
+  const active = list(false), quiet = list(true), ordered = [...active, ...quiet];
+  return { icons: ordered.slice(0, COLUMN_ICON_LIMIT), more: Math.max(0, ordered.length - COLUMN_ICON_LIMIT), active, quiet };
 }
 
 /** What the column showed when it was last unfolded: its Needs me rows and each project's last activity. */

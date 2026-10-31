@@ -47,7 +47,7 @@
 }
 
 .inline-title-editor input[aria-invalid=true] {
-  border-color: #e6aa95;
+  border-color: var(--act-invalid-line-soft);
 }
 
 .map-card:has(.inline-title-editor) .connect-handle {

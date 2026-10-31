@@ -10,14 +10,17 @@ import type { GitHubTransport, PullIdentity, PullMergeRequest } from './github.t
 
 /** REST pull requests no longer carry `merge_commit_sha` from API version 2026-03-10; GraphQL still reports it. */
 const MERGE_COMMIT_QUERY = 'query PullRequestMergeCommit($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { mergeCommit { oid } } } }';
-const MERGE_QUEUE_QUERY = 'query MergeQueueState($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { isInMergeQueue mergeQueueEntry { position } headRefOid commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) { nodes { __typename ... on CheckRun { name status conclusion isRequired(pullRequestNumber: $number) } ... on StatusContext { context state isRequired(pullRequestNumber: $number) } } } } } } } } } }';
-export const MERGE_OPTIONS_QUERY = 'query PullRequestMergeOptions($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed viewerDefaultMergeMethod pullRequest(number: $number) { id number title state isDraft merged headRefOid baseRefName mergeStateStatus isMergeQueueEnabled isInMergeQueue reviewDecision commits(last: 1) { nodes { commit { oid statusCheckRollup { state } } } } } } }';
+export const MERGE_QUEUE_QUERY = 'query MergeQueueState($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { isMergeQueueEnabled isInMergeQueue mergeQueueEntry { position } autoMergeRequest { enabledAt mergeMethod } headRefOid commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) { nodes { __typename ... on CheckRun { name status conclusion isRequired(pullRequestNumber: $number) } ... on StatusContext { context state isRequired(pullRequestNumber: $number) } } } } } } } } } }';
+export const MERGE_OPTIONS_QUERY = 'query PullRequestMergeOptions($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed viewerDefaultMergeMethod autoMergeAllowed pullRequest(number: $number) { id number title state isDraft merged headRefOid baseRefName mergeStateStatus isMergeQueueEnabled isInMergeQueue reviewDecision commits(last: 1) { nodes { commit { oid statusCheckRollup { state } } } } autoMergeRequest { enabledAt mergeMethod } } } }';
 export const MERGE_MUTATION = 'mutation MergePullRequest($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!, $expectedHeadOid: GitObjectID!) { mergePullRequest(input: { pullRequestId: $pullRequestId, mergeMethod: $mergeMethod, expectedHeadOid: $expectedHeadOid }) { pullRequest { id merged } } }';
 export const ENQUEUE_MUTATION = 'mutation EnqueuePullRequest($pullRequestId: ID!, $expectedHeadOid: GitObjectID!) { enqueuePullRequest(input: { pullRequestId: $pullRequestId, expectedHeadOid: $expectedHeadOid }) { mergeQueueEntry { position pullRequest { id } } } }';
+export const ENABLE_AUTO_MERGE_MUTATION = 'mutation EnablePullRequestAutoMerge($pullRequestId: ID!, $expectedHeadOid: GitObjectID!, $mergeMethod: PullRequestMergeMethod!) { enablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId, expectedHeadOid: $expectedHeadOid, mergeMethod: $mergeMethod }) { pullRequest { id autoMergeRequest { enabledAt mergeMethod } } } }';
+export const ENABLE_AUTO_MERGE_QUEUE_MUTATION = 'mutation EnablePullRequestAutoMergeQueue($pullRequestId: ID!, $expectedHeadOid: GitObjectID!) { enablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId, expectedHeadOid: $expectedHeadOid }) { pullRequest { id autoMergeRequest { enabledAt mergeMethod } } } }';
+export const DISABLE_AUTO_MERGE_MUTATION = 'mutation DisablePullRequestAutoMerge($pullRequestId: ID!) { disablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId }) { pullRequest { id autoMergeRequest { enabledAt } } } }';
 export const READY_MUTATION = 'mutation MarkPullRequestReady($pullRequestId: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $pullRequestId }) { pullRequest { id isDraft } } }';
 export const DRAFT_MUTATION = 'mutation ConvertPullRequestToDraft($pullRequestId: ID!) { convertPullRequestToDraft(input: { pullRequestId: $pullRequestId }) { pullRequest { id isDraft } } }';
 const NODE_ID = /^[A-Za-z0-9_=-]{1,200}$/, OID = /^[a-f0-9]{40,64}$/i;
-/** Exactly the merge and draft/ready GraphQL documents this app sends, with their variables' shapes. */
+/** Exactly the merge, merge-when-ready and draft/ready GraphQL documents this app sends, with their variables' shapes. */
 export function mergeDocument(payload: object): 'read' | 'write' | undefined {
   const { query, variables, ...extra } = payload as { query?: unknown; variables?: Record<string, unknown> };
   if (Object.keys(extra).length || !variables || typeof variables !== 'object' || Array.isArray(variables)) return;
@@ -29,7 +32,9 @@ export function mergeDocument(payload: object): 'read' | 'write' | undefined {
   const ids = typeof variables.pullRequestId === 'string' && NODE_ID.test(variables.pullRequestId) && typeof variables.expectedHeadOid === 'string' && OID.test(variables.expectedHeadOid);
   if (query === MERGE_MUTATION && keys === 'expectedHeadOid,mergeMethod,pullRequestId' && ids && ['MERGE', 'SQUASH', 'REBASE'].includes(variables.mergeMethod as string)) return 'write';
   if (query === ENQUEUE_MUTATION && keys === 'expectedHeadOid,pullRequestId' && ids) return 'write';
-  if ((query === READY_MUTATION || query === DRAFT_MUTATION) && keys === 'pullRequestId' && typeof variables.pullRequestId === 'string' && NODE_ID.test(variables.pullRequestId)) return 'write';
+  if (query === ENABLE_AUTO_MERGE_MUTATION && keys === 'expectedHeadOid,mergeMethod,pullRequestId' && ids && ['MERGE', 'SQUASH', 'REBASE'].includes(variables.mergeMethod as string)) return 'write';
+  if (query === ENABLE_AUTO_MERGE_QUEUE_MUTATION && keys === 'expectedHeadOid,pullRequestId' && ids) return 'write';
+  if ((query === READY_MUTATION || query === DRAFT_MUTATION || query === DISABLE_AUTO_MERGE_MUTATION) && keys === 'pullRequestId' && typeof variables.pullRequestId === 'string' && NODE_ID.test(variables.pullRequestId)) return 'write';
 }
 /** The only PATCH: one pull request's title, with exactly { title } within GitHub's 256-character limit. */
 export function titleUpdate(path: string, payload: object) {
@@ -158,7 +163,10 @@ function transport(login: string, credentials: GitHubCredentials = githubCredent
     return this.request('/graphql', signal, 'POST', { query: MERGE_OPTIONS_QUERY, variables: { owner: identity.owner, repo: identity.repo, number: identity.number } });
   }, merge(request: PullMergeRequest, signal: AbortSignal) {
     const variables = { pullRequestId: request.pullRequestId, expectedHeadOid: request.expectedHeadOid };
+    if (request.whenReady) return this.request('/graphql', signal, 'POST', request.method === 'QUEUE' ? { query: ENABLE_AUTO_MERGE_QUEUE_MUTATION, variables } : { query: ENABLE_AUTO_MERGE_MUTATION, variables: { ...variables, mergeMethod: request.method } });
     return this.request('/graphql', signal, 'POST', request.method === 'QUEUE' ? { query: ENQUEUE_MUTATION, variables } : { query: MERGE_MUTATION, variables: { ...variables, mergeMethod: request.method } });
+  }, disableAutoMerge(pullRequestId: string, signal: AbortSignal) {
+    return this.request('/graphql', signal, 'POST', { query: DISABLE_AUTO_MERGE_MUTATION, variables: { pullRequestId } });
   }, setTitle(identity: PullIdentity, title: string, signal: AbortSignal) {
     pullKey(identity);
     return this.request(`/repos/${identity.owner}/${identity.repo}/pulls/${identity.number}`, signal, 'PATCH', { title });
@@ -205,12 +213,13 @@ export function githubCommentTransport(login: string, credentials: GitHubCredent
 }
 
 /** Pull request reader with comment replies, one merge capability (the fixed
- * merge-options read plus the fixed merge or enqueue mutation), the PR title and
+ * merge-options read plus the fixed merge or enqueue mutation, or the fixed
+ * enable/disable auto-merge mutations for merge when ready), the PR title and
  * state updates (PATCH of exactly { title } or { state }) and the fixed draft/ready
  * mutations, nothing else. */
 export function githubMergeTransport(login: string, credentials: GitHubCredentials = githubCredentials(), fetcher: typeof fetch = fetch): GitHubTransport {
   const api = transport(login, credentials, fetcher, false, false, true, false, true, true);
   return { get: (path, signal) => api.request(path, signal), mergeCommit: (identity, signal) => api.mergeCommit(identity, signal), mergeQueue: (identity, signal) => api.mergeQueue(identity, signal), postComment: (path, body, signal) => api.request(path, signal, 'POST', { body }),
-    mergeOptions: (identity, signal) => api.mergeOptions(identity, signal), merge: (request, signal) => api.merge(request, signal), setTitle: (identity, title, signal) => api.setTitle(identity, title, signal),
+    mergeOptions: (identity, signal) => api.mergeOptions(identity, signal), merge: (request, signal) => api.merge(request, signal), disableAutoMerge: (pullRequestId, signal) => api.disableAutoMerge(pullRequestId, signal), setTitle: (identity, title, signal) => api.setTitle(identity, title, signal),
     setState: (identity, state, signal) => api.setState(identity, state, signal), setDraft: (pullRequestId, draft, signal) => api.setDraft(pullRequestId, draft, signal) };
 }

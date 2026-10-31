@@ -87,6 +87,25 @@ test('outline is only removed where the same control draws a visible replacement
   assert.deepEqual(bare, [], 'A rule that sets outline: none/0 must draw a focus replacement (outline, box-shadow or border-image) with var(--act-focus) on the same control.');
 });
 
+const LIGHT = ':root[data-theme="light"]';
+/** Custom properties declared directly in the first top-level `selector` rule of `css`. */
+function declared(css: string, selector: string) {
+  const values = new Map<string, string>();
+  const rule = rules(css).find(found => found.selector === selector);
+  for (const declaration of rule?.body.split(';') ?? []) {
+    const colon = declaration.indexOf(':'); const name = declaration.slice(0, colon).trim();
+    if (name.startsWith('--')) values.set(name, declaration.slice(colon + 1).trim());
+  }
+  return values;
+}
+
+test('the light theme redeclares every colour token whose dark value is a literal, and nothing else', () => {
+  const css = source(tokensFile), dark = declared(css, ':root'), light = declared(css, LIGHT);
+  const literal = [...dark].filter(([, value]) => /#[0-9a-fA-F]{3,8}\b/.test(value)).map(([name]) => name);
+  assert.deepEqual(literal.filter(name => !light.has(name)), [], `Give each colour token a light value in the ${LIGHT} rule of tokens.css.`);
+  assert.deepEqual([...light.keys()].filter(name => !dark.has(name)), [], 'The light block only overrides tokens the dark :root declares.');
+});
+
 test('the hex guard reads literals, not encoded data URIs or comments', () => {
   assert.deepEqual(hexLiterals(strip('a{color:#ABC;background:url("data:%23fff")}/* #123456 */')), { '#aabbcc': 1 });
   assert.deepEqual(rules('@media (x){a:focus{outline:0}}b{color:red}').map(rule => rule.selector), ['a:focus', 'b']);

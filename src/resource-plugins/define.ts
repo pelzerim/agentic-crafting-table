@@ -77,14 +77,14 @@ export function defineResourcePlugin(
 }
 
 /** Fills a plugin's web link template from item data. Every part must be a present,
- * non-empty string or number and is encoded, except a template that is a single field,
+ * non-empty string or number and is encoded (`{field:digits}` keeps only its digits), except a template that is a single field,
  * which holds a whole URL. The result must stay an https URL. */
 export function webLinkUrl(template: string | readonly string[], data: JsonObject): string | undefined {
   if (typeof template !== 'string') return template.map(each => webLinkUrl(each, data)).find(Boolean);
   let missing = false;
   const whole = /^\{[A-Za-z]\w*\}$/.test(template);
-  const url = template.replace(/\{([A-Za-z][\w]*)\}/g, (_, field: string) => {
-    const value = data[field];
+  const url = template.replace(/\{([A-Za-z][\w]*)(:digits)?\}/g, (_, field: string, digits?: string) => {
+    const raw = data[field], value = digits && (typeof raw === 'string' || typeof raw === 'number') ? String(raw).replace(/\D/g, '') : raw;
     if ((typeof value !== 'string' || !value) && typeof value !== 'number') { missing = true; return ''; }
     return whole ? String(value) : encodeURIComponent(String(value));
   });

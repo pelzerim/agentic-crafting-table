@@ -109,3 +109,27 @@ test('a project sent below lands clear of other projects below and surfaces with
   assert.deepEqual(node(state, 'q').position, original.q); assert.deepEqual(node(state, 'q1').position, original.q1);
   assert.equal(node(state, 'q1').mapPosition, undefined);
 });
+
+test('a note shown as a badge goes below with the items it badges, once none of them stays on the map', async () => {
+  const f = await setup();
+  const note = (id: string, x: number, text = 'Blocked') => ({ type: 'item.add', id, resourceId: `${id}-r`, pluginId: 'workspace.note', title: text, data: { text }, projectId: 'p', position: { x, y: 600 } });
+  const link = (id: string, sourceId: string, targetId: string) => ({ type: 'link.save', link: { id, sourceId, targetId, kind: 'reference', label: '' } });
+  await f.apply(note('only-a', 0)); await f.apply(link('l1', 'only-a', 'a'));
+  await f.apply(note('both', 800, 'Urgent')); await f.apply(link('l2', 'both', 'a')); await f.apply(link('l3', 'both', 'b'));
+  await f.apply(note('paper', 1600, 'A longer note that stays paper')); await f.apply(link('l4', 'paper', 'a'));
+  let state = await f.apply({ type: 'node.below', id: 'a' });
+  assert.ok(node(state, 'only-a').belowAt, 'a badge on only that item goes with it');
+  assert.equal(node(state, 'both').belowAt, undefined, 'a badge also on an item still on the map stays');
+  assert.equal(node(state, 'paper').belowAt, undefined, 'a note drawn as paper is not a badge and stays');
+  state = await f.apply({ type: 'node.below', id: 'b' });
+  assert.ok(node(state, 'both').belowAt, 'once none of its items is on the map, it follows them');
+});
+
+test('a selection sent below takes the badges of its items with it', async () => {
+  const f = await setup();
+  await f.apply({ type: 'item.add', id: 'tag', resourceId: 'tag-r', pluginId: 'workspace.note', title: 'Urgent', data: { text: 'Urgent' }, projectId: 'p', position: { x: 800, y: 600 } });
+  await f.apply({ type: 'link.save', link: { id: 'l1', sourceId: 'tag', targetId: 'a', kind: 'reference', label: '' } });
+  await f.apply({ type: 'link.save', link: { id: 'l2', sourceId: 'tag', targetId: 'b', kind: 'reference', label: '' } });
+  const state = await f.apply({ type: 'nodes.action', ids: ['a', 'b'], action: 'below' });
+  assert.ok(node(state, 'tag').belowAt);
+});

@@ -15,7 +15,7 @@ import { formatWhen } from '../../format-when.ts';
 import { emptyState, mountViewHeader, skeleton, staleNotice } from '../../view-header.ts';
 import { autoValidates, pullHeader, pullViewIdentity } from './header.ts';
 import type { JsonObject, ResourcePluginViews, ResourceSnapshot, RelatedResourceItem } from '../../types.ts';
-import type { GitHubPullRequest } from '../../../../packages/provider-runtime/github.ts';
+import type { GitHubPullRequest, MergeWhenReady } from '../../../../packages/provider-runtime/github.ts';
 
 export const githubPullRequestViews: ResourcePluginViews = {
   runContextAction: runReviewContextAction,
@@ -398,7 +398,8 @@ export const githubPullRequestViews: ResourcePluginViews = {
     async function display(snapshot: ResourceSnapshot, current: number, savedPreview = false) {
       if (disposed || current !== generation) return;
       pull = snapshot.detail?.pull as unknown as GitHubPullRequest;
-      const state = pullHeader(pull, typeof snapshot.detail?.status === 'string' ? snapshot.detail.status : undefined, repository);
+      const whenReady = snapshot.detail?.mergeWhenReady as { method?: MergeWhenReady['method'] } | undefined;
+      const state = pullHeader(pull, typeof snapshot.detail?.status === 'string' ? snapshot.detail.status : undefined, repository, Date.now(), whenReady?.method ?? null);
       header.update({ status: state.chip && snapshot.pending ? { ...state.chip, pending: true } : state.chip, meta: state.meta, link }); root.dataset.state = String(snapshot.detail?.status ?? pull?.state);
       root.toggleAttribute('data-pending', Boolean(snapshot.pending));
       // A change that was taken back says why once, then stays like any action notice.
@@ -409,7 +410,7 @@ export const githubPullRequestViews: ResourcePluginViews = {
       const unsure = snapshot.stale || savedPreview ? 'GitHub state may be out of date — GitHub may decline' : '';
       const blocked = !pull ? 'Pull request content is unavailable.' : pull.merged ? 'Already merged' : '';
       const doubt = !pull || pull.merged ? '' : pull.state === 'closed' ? 'Closed — GitHub may decline' : pull.draft ? 'Draft — GitHub may decline'
-        : snapshot.detail?.status === 'queued' ? 'Already in the merge queue — GitHub may decline' : unsure;
+        : snapshot.detail?.status === 'queued' ? 'Already in the merge queue — GitHub may decline' : whenReady ? 'Merge when ready is on' : unsure;
       if (merge.getAttribute('aria-expanded') !== 'true') merge.disabled = Boolean(blocked);
       if (blocked) { merge.title = blocked; closeMerge?.(); } else merge.title = doubt || 'Merge on GitHub';
       const tag = pull ? titleTag(pull.title).tag : '', untaggable = !pull ? 'Pull request content is unavailable.' : '';

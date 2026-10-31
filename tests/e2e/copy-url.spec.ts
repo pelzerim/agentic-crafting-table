@@ -99,3 +99,24 @@ test('the app\'s own pages may write text to the clipboard, but never read it', 
     expect(await page.evaluate(async () => { try { await navigator.clipboard.readText(); return 'read'; } catch { return 'refused'; } })).toBe('refused');
   });
 });
+
+test('a Slack message copies its permalink and a code review copies its pull request\'s URL', async ({ visual: { app, page } }) => {
+  const SLACK_URL = 'https://acme.slack.com/archives/C024BE91L/p1730190000123456';
+  await page.evaluate(async () => {
+    const { state } = await window.craftingTable.workspaceRead();
+    await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: state.revision, actor: { kind: 'user', id: 'fixture' }, commands: [
+      { type: 'item.add', id: 'slack', resourceId: 'slack-resource', pluginId: 'slack.message', title: 'Launch thread', data: { workspaceHost: 'acme.slack.com', channelId: 'C024BE91L', messageTs: '1730190000.123456', scope: 'message' }, projectId: 'billing', position: { x: 300, y: 520 } },
+      { type: 'item.create', id: 'review', projectId: 'billing', position: { x: 300, y: 660 }, resource: { id: 'review-resource', pluginId: 'code.review', schemaVersion: 1, title: 'Review of the plan switcher', data: { provider: 'claude', model: 'opus', sourcePrId: 'pr', sessionId: 'fixture-only', headSha: 'a'.repeat(40), baseSha: 'b'.repeat(40), baseTipSha: 'c'.repeat(40) } } },
+    ] as never });
+  });
+  await withClipboard(app, [SLACK_URL, PR_URL], async () => {
+    await card(page, 'Launch thread').click({ button: 'right' });
+    await expect(menu(page).getByRole('menuitem', { name: 'Open in Slack', exact: true })).toBeVisible();
+    await menu(page).getByRole('menuitem', { name: 'Copy URL', exact: true }).click();
+    await expect.poll(() => clipboardText(app)).toBe(SLACK_URL);
+    await card(page, 'Review of the plan switcher').click({ button: 'right' });
+    await expect(menu(page).getByRole('menuitem', { name: 'Open pull request', exact: true })).toBeVisible();
+    await menu(page).getByRole('menuitem', { name: 'Copy URL', exact: true }).click();
+    await expect.poll(() => clipboardText(app)).toBe(PR_URL);
+  });
+});

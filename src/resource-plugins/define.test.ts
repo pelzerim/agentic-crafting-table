@@ -4,7 +4,7 @@ import { webLinkUrl } from './define.ts';
 import { githubPullRequest } from './items/github-pull-request/definition.ts';
 
 test('web link templates fill encoded fields and refuse incomplete or non-https links', () => {
-  const template = githubPullRequest.webLink!.template;
+  const template = githubPullRequest.webLink!.template!;
   assert.equal(webLinkUrl(template, { owner: 'acme', repo: 'app', number: 42 }), 'https://github.com/acme/app/pull/42');
   assert.equal(webLinkUrl(template, { owner: 'acme', repo: 'app' }), undefined);
   assert.equal(webLinkUrl(template, { owner: '', repo: 'app', number: 1 }), undefined);
@@ -19,7 +19,7 @@ test('item types with a canonical web page build it from stored fields only', as
   const { notionPage } = await import('./items/notion-page/definition.ts');
   const { webLink } = await import('./items/web-link/definition.ts');
   const { bookmark } = await import('./items/bookmark/definition.ts');
-  const url = (plugin: { webLink?: { template: string | readonly string[] } }, data: Record<string, string | number>) => webLinkUrl(plugin.webLink!.template, data);
+  const url = (plugin: { webLink?: { template?: string | readonly string[] } }, data: Record<string, string | number>) => webLinkUrl(plugin.webLink!.template!, data);
   assert.equal(linearTicket.webLink?.label, 'Open on Linear');
   assert.equal(url(linearTicket, { issueId: 'BIL-128', workspaceKey: 'acme' }), 'https://linear.app/acme/issue/BIL-128');
   assert.equal(url(linearTicket, { issueId: 'BIL-128' }), undefined, 'no workspace saved');
@@ -52,4 +52,9 @@ test('multiselect settings fields default to a copy of their list and accept onl
   for (const [change, on] of [[{ options: [] }], [{ default: ['z'] }], [{ default: 'a' }], [{ enabledBy: 'missing' }], [{}, { label: 'On', kind: 'text', default: '' }]] as [object, object?][])
     assert.throws(() => new ResourcePluginRegistry().registerSettings('acme', section(change, on)), /multiselect|enabledBy/i, JSON.stringify(change));
   assert.throws(() => defineResourcePlugin({ id: 'acme.item', apiVersion: 1, schemaVersion: 1, name: 'Acme', icon: 'box', fields: { picks: fields.picks } } as never), /settings/i);
+});
+
+test('a template field with :digits keeps only its digits', () => {
+  assert.equal(webLinkUrl('https://acme.slack.com/archives/C1/p{ts:digits}', { ts: '1730190000.123456' }), 'https://acme.slack.com/archives/C1/p1730190000123456');
+  assert.equal(webLinkUrl('https://acme.slack.com/archives/C1/p{ts:digits}', { ts: '.' }), undefined, 'nothing left is missing');
 });

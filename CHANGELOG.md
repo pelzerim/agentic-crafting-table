@@ -3,7 +3,7 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
-## Unreleased
+## 0.11.0 — 2026-10-30
 
 ### Agents
 - **Codex defaults**: new Codex sessions and reviews start on the newest Sol model the installed CLI offers, at high effort. The version comes from the catalog, so a newer Sol needs no update here; a catalog without Sol uses Codex's own default. Resumed conversations keep their model and effort. (#5, @timohuovinen)
@@ -17,6 +17,26 @@ their pull request and author.
 - **Cut**: Ctrl+X (Cmd+X on macOS) cuts a selection. In an agent view, text selected in the message box is copied and removed; text selected anywhere else is copied only, because a terminal can remove only what the agent is editing. With nothing selected the key reaches the terminal as before. (#6, @timohuovinen)
 - **Right click in an open view**: Settings → General → Mouse behavior chooses whether a right click closes an open agent or terminal view anywhere, as before, or only outside it. (#5, @timohuovinen)
 - Review findings longer than 64 KiB now reach the agent instead of failing. (#5, @timohuovinen)
+- Reopening a long Codex or Claude session redraws its screen at once, instead of showing stray colour codes until new output arrives.
+
+### Map
+- **Move the map with an item open**: drag, scroll or pinch the board around an open item to look at what is next to it. The item stays where it is and keeps its own scrolling, and Back leaves the map where you moved it. (#3, @shiini2)
+- **Order the Projects panel**: drag a project row, or a plot header within its project, to where you want it; a line shows where it lands and Esc cancels. Alt+↑ and Alt+↓ move the focused row. The order is saved, new projects and plots appear on top, and the folded column's icons follow it. (#3, @shiini2)
+- **Where an item lives**: an open item names its project and plot above its title; click either to close the item and fly there. **Show on map**, the crosshair beside the close X, closes the item and centres the map on it. The trail at the top left now reads Project / Plot / Item. (#3, @shiini2)
+- **Projects panel type**: project rows are larger and bold, plot headers are small upper-case labels, and item rows sit indented in regular weight with their reasons and states smaller, so the panel reads as a tree. (#3, @shiini2)
+- With Solid collisions and Snap to grid, a dropped item stays where the drag showed it, instead of jumping back toward where it came from.
+- A note shown as a badge goes to the Undermap with the items it badges, once none of them stays on the map.
+
+### Appearance
+- **Light mode.** Settings → General → Appearance chooses **System** (default: follows macOS and switches with it), Light or Dark. Cards, panels, settings, the map, the terminal and its ⌘F highlights all have light colours; amber still means Needs me. On System, test launches stay dark unless `ACT_TEST_APPEARANCE` pins light. (#4, @MegaMaddin)
+
+### Pull requests
+- **Merge when ready**: while GitHub cannot merge a pull request yet (reviews or checks missing, still checking), Merge offers “… when ready” through GitHub’s auto-merge, or “Add to merge queue when ready”. The card shows it, Cancel merge when ready turns it off, and Auto deploy waits for GitHub instead of merging again.
+- **Copy URL** on Slack messages (their permalink), code reviews and workflow reviews (their pull request).
+
+### Rollouts
+- The phase track keeps build → dev → staging → production in order when a staging job finishes after production waits at its gate, and its cells widen to show a phase’s full name.
+- When Auto deploy cannot request a validation, its halt message keeps the reason instead of cutting it off after a long list of jobs.
 
 ## 0.10.0 — 2026-10-29
 
@@ -35,6 +55,12 @@ their pull request and author.
 
 ### Rollouts
 - A finished rollout's open view has a purple **Send to Undermap** X at its top right.
+
+### Map
+- **Move the map with an item open**: drag, scroll or pinch the board around an open item to look at what is next to it. The item stays where it is and keeps its own scrolling, and Back leaves the map where you moved it.
+- **Order the Projects panel**: drag a project row, or a plot header within its project, to where you want it; a line shows where it lands and Esc cancels. Alt+↑ and Alt+↓ move the focused row. The order is saved, new projects and plots appear on top, and the folded column's icons follow it.
+- **Where an item lives**: an open item names its project and plot above its title; click either to close the item and fly there. The trail at the top left now reads Project / Plot / Item.
+- **Projects panel type**: project rows are larger and bold, plot headers are small upper-case labels, and item rows sit indented in regular weight with their reasons and states smaller, so the panel reads as a tree.
 
 ## 0.9.0 — 2026-10-28
 

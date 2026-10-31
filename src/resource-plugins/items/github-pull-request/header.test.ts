@@ -22,6 +22,13 @@ test('one primary action follows the pull request state', () => {
   assert.deepEqual(pullHeader(undefined, undefined, 'fixture/billing', now), { chip: undefined, meta: ['fixture/billing'], primary: undefined });
 });
 
+test('merge when ready shows on the meta line with its method and takes the primary action away, like the merge queue', () => {
+  const header = pullHeader(pull(), 'merge-when-ready', 'fixture/billing', now, 'SQUASH');
+  assert.deepEqual(header.meta, ['#42', 'fixture/billing', 'Merge when ready (squash)', '1 file +24 −6', 'updated 2 min ago']); assert.equal(header.primary, undefined);
+  assert.equal(pullHeader(pull(), 'merge-when-ready', 'r', now, 'QUEUE').meta[2], 'Merge when ready (merge queue)');
+  assert.equal(pullHeader(pull(), 'merge-when-ready', 'r', now).meta[2], 'Merge when ready');
+});
+
 test('Auto validate is on unless the pull request stores autoValidate: false, and toggling it keeps the open view mounted', () => {
   const record = (data: Record<string, unknown> = {}) => ({ id: 'pr', pluginId: 'github.pull-request', schemaVersion: 1, title: 'PR', connectionId: 'github', data: { owner: 'acme', repo: 'app', number: 42, ...data } });
   assert.equal(autoValidates(record()), true);

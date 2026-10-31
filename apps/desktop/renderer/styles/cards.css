@@ -162,7 +162,7 @@
   display: flex;
   flex-direction: column;
   background: var(--act-surface);
-  box-shadow: 0 12px 36px #0005;
+  box-shadow: 0 12px 36px var(--act-shade-soft);
   padding: 12px;
 }
 
@@ -1214,6 +1214,7 @@
 }
 
 .item-close svg,
+.item-locate svg,
 .item-seen svg,
 .item-seen-close svg,
 .item-keep svg,
@@ -1338,6 +1339,7 @@
 }
 
 .map-card .item-close,
+.map-card .item-locate,
 .map-card .item-seen,
 .map-card .item-seen-close,
 .map-card .item-keep,
@@ -1425,6 +1427,61 @@
 
 .expanded .card-heading :is(button,input,select,label,summary,[role=button],[role=menuitem]) {
   cursor: default;
+}
+
+.expanded .item-location {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: -6px 0 6px;
+  color: var(--act-ink-dim);
+  font-size: var(--act-fs-meta);
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: grab;
+}
+
+.expanded .item-location button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  flex: 0 1 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.expanded .item-location button:hover span {
+  color: var(--act-ink);
+  text-decoration: underline;
+}
+
+.expanded .item-location button:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: 2px;
+}
+
+.expanded .item-location :is(span,.item-location-floating) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.expanded .item-location i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+}
+
+.expanded .item-location b {
+  flex: none;
+  font-weight: var(--act-fw-regular);
+  color: var(--act-ink-faint);
 }
 
 .map-trail .connected-items button {
@@ -1561,12 +1618,12 @@
 }
 
 .map-card .item-open-icon:hover {
-  background: #b7d4ff22;
+  background: var(--act-card-open-hover);
   outline: 1px solid var(--tone);
 }
 
 .map-card .item-open-icon:focus-visible {
-  background: #b7d4ff22;
+  background: var(--act-card-open-hover);
   outline: var(--act-focus-ring);
   outline-offset: 2px;
 }
@@ -1730,6 +1787,7 @@
     order: 2;
     flex: 1 0 100%;
   }
+  .expanded .item-locate,
   .expanded .item-seen,
   .expanded .item-seen-close,
   .expanded .item-keep,

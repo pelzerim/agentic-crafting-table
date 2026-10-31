@@ -86,6 +86,17 @@ class NativeChannel implements TerminalChannel {
     }
   }
   resize(cols: number, rows: number) { this.size = { cols, rows }; clearTimeout(this.resizeTimer); this.resizeTimer = setTimeout(() => { if (this.running) void window.craftingTable.sessionResize(this.id, cols, rows).catch(error => this.error(error.message)); }, 80); }
+  /** Asks a running full-screen program to redraw: one row shorter, then back. A replay that skipped earlier output cannot rebuild
+   * a screen drawn by cursor moves (Codex, Claude Code); their redraw on the size change can. */
+  repaint() {
+    const size = this.size;
+    if (!this.running || !size || size.rows < 2) return;
+    clearTimeout(this.resizeTimer);
+    void window.craftingTable.sessionResize(this.id, size.cols, size.rows - 1)
+      .then(() => new Promise(resolve => setTimeout(resolve, 120)))
+      .then(() => window.craftingTable.sessionResize(this.id, size.cols, size.rows))
+      .catch(error => this.error((error as Error).message));
+  }
   dispose() { clearTimeout(this.resizeTimer); }
 }
 
@@ -175,7 +186,7 @@ function NativeTerminal({ sessionId, active, options }: { sessionId: string; act
   }, [sessionId]);
   useEffect(() => {
     if (!active) return;
-    let cancelled = false, timer: ReturnType<typeof setTimeout>, idleReads = 0, reading = false, interactiveUntil = 0, caughtUp = false, again = false, watched = false;
+    let cancelled = false, repainted = false, timer: ReturnType<typeof setTimeout>, idleReads = 0, reading = false, interactiveUntil = 0, caughtUp = false, again = false, watched = false;
     // A retained view missed output while inactive. Catch up page by page, but
     // once the backlog exceeds a fresh view's replay, restart from that replay.
     let behind = channel.sequence > 0 ? 0 : undefined;
@@ -199,7 +210,7 @@ function NativeTerminal({ sessionId, active, options }: { sessionId: string; act
         const encoded = JSON.stringify(snapshot.session);
         if (encoded !== metadata.current) { metadata.current = encoded; setSession(snapshot.session); }
         setTruncated(snapshot.truncated);
-        if (snapshot.replayFrom) setSkipped(true);
+        if (snapshot.replayFrom) { setSkipped(true); if (!repainted) { repainted = true; setTimeout(() => channel.repaint(), 300); } }
         idleReads = snapshot.chunks.length ? 0 : idleReads + 1;
         if (behind !== undefined) behind += snapshot.chunks.reduce((total, chunk) => total + chunk.data.length, 0);
         if (behind !== undefined && snapshot.hasMore && behind > replayTail()) { behind = undefined; await channel.restart(); more = true; }
