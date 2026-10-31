@@ -115,6 +115,20 @@ words on click, and a setting to turn badges off.
 when a position is decided, so connections run straight or at even angles; off by
 default. The rule and its settings switch are SETTINGS-SNAP-GRID.
 
+**MAP-31 — Off-screen attention.** Each item that counts in Needs me (STATE-02) with no part
+inside the view raises a solid circle 18 px across on the edge of the view, in the frame's amber
+for its tier. It stands where the straight line from the centre of the view to the item crosses
+the edge, so it says which way the item lies and slides along the edge as the board moves. The
+tool rail moves the left edge in to its right side; other chrome (the zoom bar, the corner panel,
+an open sheet, a notice) pushes a circle along the edge, round a corner if need be, to the nearest
+clear place, and with none clear it keeps the crossing. There can be one circle per direction:
+items whose circles would stand within 56 px of each other share one, at the spot of the item
+nearest the centre of the view, in the highest tier among them, with their number inside (9+ above
+nine). A resource counts once, and not at all with a card in view. A click centres the nearest item
+of that circle at the current zoom; it does not open the item or mark it seen. Items in muted
+projects (MAP-25) raise none, Finished raises one only when counted, and none show while an item
+is open or below (MAP-18), where Needs me pauses.
+
 **MAP-19 — Independent expanded-view movement.** Drag anywhere on the expanded item's menu bar (including status, directory, provider/model text and empty space; excluding buttons and other interactive controls)
 to move its open view in screen space, without moving or resizing the map bubble,
 rewriting graph/camera state, rearranging neighbors or changing its connections.
