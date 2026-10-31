@@ -43,4 +43,5 @@ try {
     if (process.platform === 'darwin') assert.equal(result.window.dockVisible, false);
   }
   console.log(`Packaged app passed: Electron ${result.versions.electron}, background Node ${result.runtimeNode}; real PTY input, resize and exit.`);
-} finally { await rm(directory, { recursive: true, force: true }); }
+// Windows refuses to delete a database until the background services have closed it.
+} finally { await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 }); }
