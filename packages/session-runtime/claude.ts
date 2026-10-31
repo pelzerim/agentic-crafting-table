@@ -3,10 +3,10 @@ import { readAgentPlan, RECOVERY_PROMPT } from './agent-plan.ts';
 export { readAgentPlan as readClaudePlan } from './agent-plan.ts';
 import { settingsSchema } from '../core/settings.ts';
 import type { AppSettings } from '../core/settings.ts';
-import { sessionPath } from './shell-path.ts';
+import { envCommand, findExecutable, sessionPath } from '../platform/shell.ts';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { accessSync, constants, mkdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -29,8 +29,7 @@ export function supportsClaudeAutoMode(help: string) {
 export function probeClaude(): Promise<ClaudeCapability> {
   if (!capability) capability = (async () => {
     const env = { ...process.env, PATH: await sessionPath() };
-    const candidates = [...env.PATH.split(':').filter(Boolean).map(path => join(path, 'claude')), join(homedir(), '.local/bin/claude'), '/opt/homebrew/bin/claude', '/usr/local/bin/claude'];
-    const executable = candidates.find(path => { try { accessSync(path, constants.X_OK); return statSync(path).isFile(); } catch { return false; } });
+    const executable = findExecutable('claude', env.PATH, [join(homedir(), '.local/bin'), '/opt/homebrew/bin', '/usr/local/bin']);
     if (!executable) throw new Error('Claude Code is not installed. Install and sign in to the Claude CLI, then retry.');
     const exec = promisify(execFile);
     const [version, help] = await Promise.all([exec(executable, ['--version'], { timeout: 5000, env }), exec(executable, ['--help'], { timeout: 5000, env })]);
@@ -80,12 +79,12 @@ export function prepareClaude(input: ClaudePreparation): PreparedSession {
     ...(runtime.electronRuntime ? { ELECTRON_RUN_AS_NODE: '1' } : {}), ACT_DATA_DIR: input.directory, ACT_NODE_ID: nodeId, ACT_WORKSPACE_ID: workspaceId, ...(projectId ? { ACT_PROJECT_ID: projectId } : {}),
   } } } });
   save(join(launchDirectory, 'plugin', '.claude-plugin', 'plugin.json'), { name: 'agent-crafting-table', version: '0.1.0', description: 'Keep this native Claude session in sync with its crafting table.' });
-  const hookArguments = [...(runtime.electronRuntime ? ['ELECTRON_RUN_AS_NODE=1'] : []), runtime.executable, join(runtimeDirectory, 'agent-hook.cjs'), input.directory, nodeId, request.requestId, nativeSessionId];
+  const hookCommand = envCommand(runtime.electronRuntime ? ['ELECTRON_RUN_AS_NODE=1'] : [], [runtime.executable, join(runtimeDirectory, 'agent-hook.cjs'), input.directory, nodeId, request.requestId, nativeSessionId]);
   // WorktreeCreate is left out on purpose: Claude Code hands the creation of the worktree to whoever registers it.
   const events = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PermissionRequest', 'Notification', 'Stop', 'StopFailure', 'SessionEnd', 'SubagentStop', 'TeammateIdle',
     'SubagentStart', 'PreCompact', 'PostCompact', 'PostToolUseFailure', 'PermissionDenied', 'TaskCreated', 'TaskCompleted', 'PostModelSwitch'];
   // A session-local plugin adds hooks without rewriting user/project settings.
-  save(join(launchDirectory, 'plugin', 'hooks', 'hooks.json'), { hooks: Object.fromEntries(events.map(event => [event, [{ hooks: [{ type: 'command', command: '/usr/bin/env', args: hookArguments, timeout: 5 }] }]])) });
+  save(join(launchDirectory, 'plugin', 'hooks', 'hooks.json'), { hooks: Object.fromEntries(events.map(event => [event, [{ hooks: [{ type: 'command', ...hookCommand, timeout: 5 }] }]])) });
   const launchSettings = input.settings ?? settingsSchema.parse({}).claude;
   if (launchSettings.remoteControl && capability.remoteControl === false) throw new Error('This Claude Code version does not support Remote Control. Update Claude or turn it off in Settings.');
   const permission = claudePermissionSettings(launchSettings);
