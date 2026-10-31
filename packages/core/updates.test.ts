@@ -39,6 +39,7 @@ test('Update and restart is offered only for an app installed in its own checkou
   for (const path of ['/Applications/Agentic Crafting Table.app/Contents/MacOS/Agentic Crafting Table', '/Users/me/act/release/staged/mac-arm64/Agentic Crafting Table.app/Contents/MacOS/Agentic Crafting Table',
     '/Users/me/act/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron', '/release/mac-arm64/Agentic Crafting Table.app/Contents/MacOS/Agentic Crafting Table']) assert.equal(checkoutOfExecutable(path, mac), undefined, path);
   assert.equal(checkoutOfExecutable('/home/me/act/release/linux-x64/Agentic Crafting Table/Contents/agentic-crafting-table', linux), '/home/me/act');
+  assert.equal(checkoutOfExecutable('C:\\Users\\me\\act\\release\\win-x64\\Agentic Crafting Table\\Contents\\agentic-crafting-table.exe', bundleLayout('win32', 'x64')), 'C:/Users/me/act');
   for (const path of ['/home/me/act/release/staged/linux-x64/Agentic Crafting Table/Contents/agentic-crafting-table', '/home/me/act/release/linux-x64/Agentic Crafting Table/Contents/chrome-sandbox',
     '/home/me/act/node_modules/electron/dist/electron']) assert.equal(checkoutOfExecutable(path, linux), undefined, path);
   const newer = { current: '0.6.0', latest: 'v0.7.0', available: true, checkedAt: 100 };

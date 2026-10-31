@@ -5,9 +5,10 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { findExecutable, resolveShellPath } from './shell.ts';
+import { defaultShell, envCommand, executableName, findExecutable, isShadowedPath, resolveShellPath, terminalShellArgs } from './shell.ts';
 
-test('Dock-style launch finds hook runtimes in the login shell PATH without importing shell output', async () => {
+const posixOnly = { skip: process.platform === 'win32' };
+test('Dock-style launch finds hook runtimes in the login shell PATH without importing shell output', posixOnly, async () => {
   const home = await mkdtemp(join(tmpdir(), 'craft-shell-path-'));
   try {
     const shell = join(home, 'shell'), node = join(home, 'node');
@@ -28,7 +29,7 @@ test('Dock-style launch finds hook runtimes in the login shell PATH without impo
   } finally { await rm(home, { recursive: true, force: true }); }
 });
 
-test('findExecutable takes the first executable file on the path, then the fallback directories', async () => {
+test('findExecutable takes the first executable file on the path, then the fallback directories', posixOnly, async () => {
   const root = await mkdtemp(join(tmpdir(), 'craft-find-executable-'));
   try {
     const plain = join(root, 'plain'), folder = join(root, 'folder'), first = join(root, 'first'), second = join(root, 'second'), fallback = join(root, 'fallback');
@@ -41,4 +42,25 @@ test('findExecutable takes the first executable file on the path, then the fallb
     assert.equal(findExecutable('tool', ['', plain, second].join(delimiter), [fallback]), join(second, 'tool'));
     assert.equal(findExecutable('missing', second, [fallback]), undefined);
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('Windows starts PowerShell unless a Windows shell is configured', () => {
+  assert.match(defaultShell(undefined, 'win32'), /System32\\WindowsPowerShell\\v1\.0\\powershell\.exe$/);
+  assert.match(defaultShell('/usr/bin/bash', 'win32'), /powershell\.exe$/);
+  assert.equal(defaultShell('C:\\Program Files\\PowerShell\\7\\pwsh.exe', 'win32'), 'C:\\Program Files\\PowerShell\\7\\pwsh.exe');
+  assert.deepEqual(terminalShellArgs('win32'), []);
+});
+
+test('Windows assigns variables through cmd.exe and refuses words cmd.exe would read as syntax', () => {
+  assert.deepEqual(envCommand(['ELECTRON_RUN_AS_NODE=1'], ['C:\\App Dir\\act.exe', 'hook.cjs'], 'win32'), { command: 'cmd.exe', args: ['/d', '/c', 'set', 'ELECTRON_RUN_AS_NODE=1&&', 'C:\\App Dir\\act.exe', 'hook.cjs'] });
+  assert.deepEqual(envCommand([], ['C:\\node.exe', 'hook.cjs'], 'win32'), { command: 'C:\\node.exe', args: ['hook.cjs'] });
+  assert.throws(() => envCommand(['ELECTRON_RUN_AS_NODE=1'], ['C:\\A&B\\act.exe'], 'win32'), /cmd\.exe/);
+});
+
+test('Windows looks only for real executables and treats Path as a duplicate of PATH', () => {
+  assert.equal(executableName('claude', 'win32'), 'claude.exe');
+  assert.equal(executableName('claude', 'linux'), 'claude');
+  assert.equal(isShadowedPath('Path', 'win32'), true);
+  assert.equal(isShadowedPath('PATH', 'win32'), false);
+  assert.equal(isShadowedPath('Path', 'linux'), false);
 });

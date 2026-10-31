@@ -4,13 +4,14 @@ import { join, resolve } from 'node:path';
 import { LINUX_BUNDLE_INFO, stagedBundle } from './local-bundle.mjs';
 
 /** `npm run package` (after the build): stage an unsigned local bundle for this machine in release/staged. */
-const builder = resolve('node_modules/.bin/electron-builder');
+const builder = args => execFileSync(process.execPath, [resolve('node_modules/electron-builder/cli.js'), ...args], { stdio: 'inherit' });
 if (process.platform === 'darwin') {
-  execFileSync(builder, ['--dir', '--mac', '--arm64'], { stdio: 'inherit' });
+  builder(['--dir', '--mac', '--arm64']);
 } else {
-  execFileSync(builder, ['--dir', '--linux', `--${process.arch}`], { stdio: 'inherit' });
+  const windows = process.platform === 'win32', prefix = windows ? 'win' : 'linux';
+  builder(['--dir', windows ? '--win' : '--linux', `--${process.arch}`]);
   // Wrap electron-builder's flat directory like a macOS bundle, so the installer can swap `Contents` in place.
-  const unpacked = resolve('release/staged', process.arch === 'x64' ? 'linux-unpacked' : `linux-${process.arch}-unpacked`);
+  const unpacked = resolve('release/staged', process.arch === 'x64' ? `${prefix}-unpacked` : `${prefix}-${process.arch}-unpacked`);
   rmSync(stagedBundle, { recursive: true, force: true });
   mkdirSync(stagedBundle, { recursive: true });
   renameSync(unpacked, join(stagedBundle, 'Contents'));
