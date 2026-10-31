@@ -456,6 +456,50 @@
 }
 
 
+/* MAP-31: the frame's colour, as solid circles on the edge of the view. Under every panel, which they go around. */
+.offscreen-attention-layer {
+  display: contents;
+}
+
+.live-workspace .offscreen-attention {
+  position: absolute;
+  z-index: 105;
+  display: grid;
+  place-items: center;
+  color: var(--act-sunken);
+  font-size: var(--act-fs-meta);
+  font-weight: 700;
+  line-height: 1;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  background: var(--act-attention);
+  border: 2px solid var(--act-sunken);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--act-attention);
+  cursor: pointer;
+}
+
+.live-workspace .offscreen-attention[data-tier=asking] {
+  background: var(--act-attention-asking);
+  box-shadow: 0 0 0 1px var(--act-attention-asking);
+}
+
+.live-workspace .offscreen-attention[data-tier=finished] {
+  background: var(--act-attention-finished);
+  box-shadow: 0 0 0 1px var(--act-attention-finished);
+}
+
+.live-workspace .offscreen-attention:is(:hover,:focus-visible) {
+  background: var(--act-ink-bright);
+}
+
+.live-workspace .offscreen-attention:focus-visible {
+  outline: var(--act-focus-ring);
+  outline-offset: 2px;
+}
+
 /* React Flow's stylesheet loads later and paints edges from these variables. */
 .map-area {
   --xy-edge-stroke: var(--act-link);

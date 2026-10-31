@@ -64,6 +64,17 @@ place line flying to its plot and project, `mapCorner: 'atlas'` and the Undermap
 pans and zooms the board around an open item while the item stays put. Atlas specs and the shared visual fixture
 choose `mapCorner: 'atlas'`; `map-performance.spec.ts` keeps the default column. No model is called.
 
+Off-screen attention coverage (MAP-31): `src/graph/offscreen-attention.test.ts` covers the items and
+their spots as pure functions (a part in view counts as shown, nearest first, the camera and zoom, a
+resource counted once, the crossing on each edge and on a diagonal, a left inset, chrome pushing a spot
+along an edge and round a corner, chrome over the whole edge, a mark per direction, grouping by spot with
+the nearest first and the highest tier, including marks chrome pushed together). `offscreen-attention.spec.ts`
+drives the app on the fixture workspace: a circle's tier, colour and count, beside the rail, moving with
+the board, circles in two directions, a click sliding to the item at the same zoom without opening it or
+changing state, staying clear of the zoom bar, the corner panel and a sheet opened with the camera still,
+hidden while an item is open and for a muted project. It presses the board, so a local run on Linux needs
+`ACT_TEST_SHOW_WINDOW=1`.
+
 Rail menus coverage (MAP-21): `rail-menus.spec.ts` drives the hidden app.
 It reads the rail's buttons by position and asserts the order Needs me, To-dos, GitHub
 inbox, Undermap, Settings, one column inside the frame, Settings below the divider,
