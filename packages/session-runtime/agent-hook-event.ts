@@ -1,5 +1,5 @@
-import { closeSync, openSync, readSync, statSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
+import { closeSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { findClaudeArtifactUrls, parseClaudeArtifactUrl } from '../../src/resource-plugins/items/claude-artifact/url.ts';
 import { extractPageTitle } from '../../src/resource-plugins/items/web-link/metadata.ts';
 import type { ConversationSwitch } from './protocol.ts';
@@ -56,6 +56,16 @@ export function localArtifactTitle(path: string): string | undefined {
     const buffer = Buffer.alloc(Math.min(stat.size, TITLE_READ_BYTES)), read = readSync(descriptor, buffer, 0, buffer.length, 0);
     return extractPageTitle(buffer.subarray(0, read).toString('utf8'))?.slice(0, 200);
   } catch { return undefined; } finally { if (descriptor !== undefined) closeSync(descriptor); }
+}
+
+const followedPath = (directory: string, processSessionId: string) => join(directory, 'agent-launches', processSessionId, 'conversation');
+/** Hooks are bound to the conversation their process launched on; this names the one it moved to in place (AGENT-04a). */
+export function followConversation(directory: string, processSessionId: string, nativeSessionId: string) {
+  mkdirSync(dirname(followedPath(directory, processSessionId)), { recursive: true, mode: 0o700 });
+  writeFileSync(followedPath(directory, processSessionId), nativeSessionId, { mode: 0o600 });
+}
+export function followedConversation(directory: string, processSessionId: string) {
+  try { return readFileSync(followedPath(directory, processSessionId), 'utf8') || undefined; } catch { return undefined; }
 }
 
 /** How Claude Code names the start of a conversation it moved to while running. Compaction keeps its session id. */

@@ -1,4 +1,5 @@
 import { stopClaudeBackground, probeClaude, prepareClaude } from '../session-runtime/claude.ts';
+import { followConversation } from '../session-runtime/agent-hook-event.ts';
 import type { AgentCapability, AgentPreparation } from '../session-runtime/agent-plan.ts';
 import type { PreparedSession } from './sessions.ts';
 import { discoverClaudeSessions, resolveClaudeSession } from '../session-runtime/saved-sessions.ts';
@@ -19,13 +20,15 @@ export interface AgentProvider {
   resolve(id: string): Promise<{ nativeSessionId: string; cwd: string }>;
   /** Frees a fork the CLI keeps running on its own, so that an item can open it. */
   releaseFork?(id: string): Promise<void>;
+  /** Keeps a running process's item bound to it when the process moved on from an empty conversation. Codex does this in its driver. */
+  followConversation?(directory: string, processSessionId: string, id: string): void;
   models(): Promise<{ options: string[]; default: string }>;
   skills(cwd: string): Promise<ProjectSkillCatalog>;
   skillPrompt(skill: ProjectSkill, argumentsText: string): string;
 }
 let modelCache: { time: number; value: { options: string[]; default: string } } | undefined;
 export const agentProviders: Readonly<Record<string, AgentProvider>> = {
-  claude: { name: 'Claude', probe: probeClaude, prepare: (input, settings) => prepareClaude({ ...input, settings: settings.claude }), discover: discoverClaudeSessions, resolve: resolveClaudeSession, releaseFork: stopClaudeBackground,
+  claude: { name: 'Claude', probe: probeClaude, prepare: (input, settings) => prepareClaude({ ...input, settings: settings.claude }), discover: discoverClaudeSessions, resolve: resolveClaudeSession, releaseFork: stopClaudeBackground, followConversation,
     async models() { return { options: ['opus', 'fable', 'sonnet', 'haiku'], default: 'opus' }; },
     skills: discoverClaudeSkills, skillPrompt: (skill, text) => '/' + skill.name + (text ? ' ' + text : '') },
   codex: { name: 'Codex', probe: probeCodex, prepare: input => prepareCodex(input), discover: (state, query, _offset, cursor) => discoverCodexSessions(state, query, cursor), resolve: resolveCodexSession,

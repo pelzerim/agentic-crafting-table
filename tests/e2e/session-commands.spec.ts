@@ -1,7 +1,7 @@
 import { exitWithoutShutdown } from './exit-without-shutdown.ts';
 import { test, expect, _electron as electron } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -73,6 +73,61 @@ test('/clear in an open agent opens a new session beside it and moves the view t
   });
 });
 
+test('/clear in an agent that never had a prompt changes nothing on the map, and its hooks keep working', async () => {
+  test.setTimeout(60_000);
+  await withApp(async (app, directory, repo) => {
+    const page = await app.firstWindow();
+    await createProject(page, repo);
+    await page.getByLabel('Title', { exact: true }).fill('Claude session');
+    await page.getByRole('button', { name: 'Start Claude', exact: true }).click();
+    await page.getByRole('article', { name: 'Claude session' }).click();
+    await expect(page.locator('.xterm-accessibility')).toContainText('NATIVE_IDLE:');
+    const agents = () => page.evaluate(async () => {
+      const { state } = await window.craftingTable.workspaceRead();
+      return state.nodes.filter(node => node.resourceId).map(node => ({ attention: node.attention, ...state.resources.find(resource => resource.id === node.resourceId)!.data }));
+    }) as Promise<{ attention: string; sessionId: string; nativeSessionId: string }[]>;
+    const [source] = await agents();
+
+    await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.type('clear-command\n');
+    await expect(page.locator('.xterm-accessibility')).toContainText('CONVERSATION_CLEARED');
+
+    await expect.poll(async () => (await agents())[0].nativeSessionId).not.toBe(source.nativeSessionId);
+    const after = await agents();
+    expect(after).toHaveLength(1);
+    expect(after[0].sessionId, 'the same process stays').toBe(source.sessionId);
+    await expect(page.getByRole('region', { name: 'Claude session', exact: true }).locator('.native-terminal')).toHaveAttribute('data-session-state', 'running');
+    await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.type('wait-for-input\n');
+    await expect.poll(async () => (await agents())[0].attention).toBe('input');
+  });
+});
+
+test('/new in a Codex agent that never had a prompt changes nothing on the map', async () => {
+  test.setTimeout(60_000);
+  await withApp(async (app, _directory, repo) => {
+    const page = await app.firstWindow();
+    await createProject(page, repo);
+    await page.getByRole('radio', { name: 'Codex', exact: true }).check();
+    await page.getByLabel('Title', { exact: true }).fill('Codex session');
+    await page.getByRole('button', { name: 'Start Codex', exact: true }).click();
+    await page.getByRole('article', { name: 'Codex session', exact: true }).click();
+    await expect(page.locator('.xterm-accessibility')).toContainText('NATIVE_READY:');
+    const session = () => page.evaluate(async () => {
+      const { state } = await window.craftingTable.workspaceRead();
+      return state.resources.filter(resource => resource.pluginId === 'agent.session').map(resource => ({ sessionId: String(resource.data.sessionId), nativeSessionId: String(resource.data.nativeSessionId) }));
+    });
+    const [source] = await session();
+
+    await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.type('new-command\n');
+
+    await expect.poll(async () => (await session())[0].nativeSessionId).not.toBe(source.nativeSessionId);
+    const after = await session();
+    expect(after).toHaveLength(1);
+    expect(after[0].sessionId, 'the same process stays').toBe(source.sessionId);
+    await expect.poll(async () => JSON.parse(await readFile(join(repo, 'native-codex.json'), 'utf8')).contextThread, 'the guide reaches the new thread').toBe(after[0].nativeSessionId);
+    await expect(page.getByRole('region', { name: 'Codex session', exact: true }).locator('.native-terminal')).toHaveAttribute('data-session-state', 'running');
+  });
+});
+
 test('/new in an open Codex agent moves the view to a new session', async () => {
   test.setTimeout(60_000);
   await withApp(async (app, directory, repo) => {
@@ -89,7 +144,9 @@ test('/new in an open Codex agent moves the view to a new session', async () => 
     });
     const [source] = await session();
 
-    await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.type('new-command\n');
+    await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.type('work\n');
+    await page.keyboard.type('done\n');
+    await page.keyboard.type('new-command\n');
 
     const opened = page.getByRole('region', { name: 'New session', exact: true });
     await expect(opened).toBeVisible({ timeout: 15_000 });

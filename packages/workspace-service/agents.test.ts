@@ -9,6 +9,7 @@ import { WorkspaceControl, MemoryStore } from '../core/control.ts';
 import { SqliteStore } from './sqlite-store.ts';
 import { attentionItems, attentionReceipt } from '../../src/graph/attention.ts';
 import { TEAMMATE_QUIET_MS } from './agent-background.ts';
+import { followedConversation } from '../session-runtime/agent-hook-event.ts';
 
 test('Claude completed turns become unread once; replay, session closure and restart do not revive a seen turn', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'craft-agent-finished-'));
@@ -797,6 +798,7 @@ test('conversation switches open the right item, and a moved process hands its c
     const coordinator = new AgentCoordinator(directory, {} as any, control, { runtime } as any, {} as any, async () => {}, store);
     const created: { request: any; blank: boolean }[] = [];
     let failure: Error | undefined;
+    (coordinator as any).isSaved = async () => true;
     coordinator.create = (async (request: any, blank = false) => { calls.push('create'); if (failure) throw failure; created.push({ request, blank }); }) as any;
     coordinator.resume = (async (nodeId: string) => { calls.push(`resume:${nodeId}`); }) as any;
     coordinator.onSwitched = (from, to) => switched.push([from, to]);
@@ -811,7 +813,7 @@ test('conversation switches open the right item, and a moved process hands its c
     assert.equal(created[0].request.placedBy, 'agent');
     assert.equal(created[0].request.data.model, '', 'an imported model name is not a launch model');
     assert.deepEqual(switched, [['agent', created[0].request.nodeId]]);
-    assert.ok(!calls.includes('resume:agent'), 'a conversation with no transcript stays ended');
+    assert.ok(calls.includes('resume:agent'), 'the item goes back to its own conversation');
 
     calls.length = 0; created.length = 0; switched.length = 0;
     const fork = randomUUID();
@@ -831,5 +833,35 @@ test('conversation switches open the right item, and a moved process hands its c
     assert.equal(agent.attention, 'error');
     assert.equal(agent.attentionNote, 'Session switch failed');
     assert.deepEqual(switched, []);
+  } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('/clear in a conversation that never had a prompt keeps the item on its process and follows the new id', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-agent-empty-switch-'));
+  const store = new SqliteStore(join(directory, 'workspace.sqlite')), control = new WorkspaceControl(store);
+  try {
+    const processSessionId = randomUUID(), nativeSessionId = randomUUID(), next = randomUUID();
+    await control.apply({ type: 'item.add', id: 'agent', resourceId: 'conversation', pluginId: 'agent.session', title: 'Claude', position: { x: 0, y: 0 }, data: { provider: 'claude', sessionId: processSessionId, nativeSessionId, model: 'opus', cwd: directory } }, (await control.read()).revision);
+    const calls: string[] = [], switched: [string, string][] = [];
+    const runtime = { call: async (method: string) => { calls.push(method); return { session: { state: 'exited' } }; } };
+    const coordinator = new AgentCoordinator(directory, {} as any, control, { runtime } as any, {} as any, async () => {}, store);
+    (coordinator as any).isSaved = async () => false;
+    coordinator.create = (async () => { calls.push('create'); }) as any;
+    coordinator.resume = (async () => { calls.push('resume'); }) as any;
+    coordinator.onSwitched = (from, to) => switched.push([from, to]);
+    const settled = async () => { await new Promise(resolve => setTimeout(resolve)); while ((coordinator as any).switching.size) await new Promise(resolve => setTimeout(resolve, 10)); };
+    const hook = (fields: Record<string, unknown>) => coordinator.hook({ nodeId: 'agent', processSessionId, nativeSessionId, observedAt: Date.now(), ...fields });
+    const before = (await control.read()).nodes.find(node => node.id === 'agent')!;
+
+    await hook({ event: 'SessionEnd', endReason: 'clear' }); await hook({ event: 'SessionStart', switched: { kind: 'new', nativeSessionId: next } }); await settled();
+
+    assert.deepEqual(calls, [], 'nothing stops, opens or resumes');
+    assert.deepEqual(switched, [], 'the view stays');
+    const state = await control.read(), node = state.nodes.find(node => node.id === 'agent')!, resource = state.resources.find(resource => resource.id === 'conversation')!;
+    assert.equal(state.nodes.length, 1);
+    assert.equal(resource.data.sessionId, processSessionId);
+    assert.equal(resource.data.nativeSessionId, next);
+    assert.equal(node.summary, before.summary, 'the conversation did not close');
+    assert.equal(followedConversation(directory, processSessionId), next, 'later hooks speak for the new id');
   } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
 });

@@ -1877,6 +1877,7 @@ acted, and never parses keystrokes. The item where it was typed keeps its conver
 | Typed | Result |
 |---|---|
 | `/new`, `/clear` | A new empty session beside the item, with no first prompt |
+| `/new`, `/clear` in an item with no conversation yet | Nothing: the item keeps its process and the view stays |
 | `/fork`, `/branch` | A new session beside the item, holding the forked conversation |
 | `/resume` of a conversation on the map | That item, reattached or resumed |
 | `/resume` of a conversation not on the map | The same item becomes that conversation |
@@ -1884,8 +1885,11 @@ acted, and never parses keystrokes. The item where it was typed keeps its conver
 The session view moves to the result only while the item where it was typed is open.
 A new conversation gets its own process because hooks and the MCP server are bound to one
 item at launch. When the CLI left the item's conversation, the table stops that process and
-resumes the conversation in the item. A conversation with no transcript cannot be resumed,
-so its item stays ended. A failure shows as an error on the item.
+resumes the conversation in the item. An item has no conversation yet while nothing was said
+in it: no Claude transcript, or no Codex prompt or turn since launch. The CLI still takes a new
+id for `/new` and `/clear`, so the item follows that id on the same process. Any other command
+that leaves such an item ends it, because a conversation with no transcript cannot be resumed.
+A failure shows as an error on the item.
 Codex refuses to open a conversation that is live in another process and asks to close it
 there, so `/resume` of a Codex item that is still running changes nothing until that item stops.
 

@@ -22,17 +22,17 @@ export function codexStatus(event: { method: string; params?: unknown }, nativeI
 }
 const startedThread = z.object({ thread: z.object({ id: z.string().uuid(), forkedFromId: z.string().nullish(), parentThreadId: z.string().nullish(), source: z.unknown() }) });
 /** The conversation Codex's terminal moved to. A subagent's thread also starts on this server, and is noted so that its status is not read as a resume. */
-export function codexSwitch(event: { method: string; params?: unknown }, nativeId: string, subagents: Set<string>): ConversationSwitch | undefined {
+export function codexSwitch(event: { method: string; params?: unknown }, nativeId: string, ignored: Set<string>): ConversationSwitch | undefined {
   if (event.method === 'thread/started') {
     const parsed = startedThread.safeParse(event.params);
     if (!parsed.success || parsed.data.thread.id === nativeId) return;
     const { id, forkedFromId, parentThreadId, source } = parsed.data.thread;
-    if (parentThreadId || (source !== null && typeof source === 'object')) { subagents.add(id); return; }
+    if (parentThreadId || (source !== null && typeof source === 'object')) { ignored.add(id); return; }
     return { kind: forkedFromId ? 'fork' : 'new', nativeSessionId: id };
   }
   if (event.method !== 'thread/status/changed') return;
   const parsed = notice.safeParse(event.params);
-  if (!parsed.success || parsed.data.threadId === nativeId || subagents.has(parsed.data.threadId)) return;
+  if (!parsed.success || parsed.data.threadId === nativeId || ignored.has(parsed.data.threadId)) return;
   return { kind: 'resume', nativeSessionId: parsed.data.threadId };
 }
 export function codexInput(event: { method: string; params?: unknown }, nativeId: string): NativeAgentState['input'] {

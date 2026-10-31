@@ -53,7 +53,7 @@ if (args.includes('app-server')) {
         if (!thread || thread.id !== params.threadId) throw new Error('Native conversation is missing');
         if (params.config) thread.config = params.config;
         subscriber = socket; if (!process.env.CODEX_FIXTURE_QUIET_RESUME) notify('thread/started', { thread }); break;
-      case 'thread/inject_items': thread.context = params.items; thread.injections = (thread.injections ?? 0) + 1; save(); break;
+      case 'thread/inject_items': thread.context = params.items; thread.contextThread = params.threadId; thread.injections = (thread.injections ?? 0) + 1; save(); break;
       case 'thread/unsubscribe': if (subscriber === socket) subscriber = undefined; break;
       case 'fixture/input':
         if (params.data === 'work') { status('active'); const tool = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' }); writeFileSync(join(process.cwd(), 'native-tool.pid'), String(tool.pid)); }
@@ -62,7 +62,7 @@ if (args.includes('app-server')) {
         if (params.data === 'sync') await sync(socket);
         if (params.data === 'disconnect') for (const client of clients) client.terminate?.();
         // What the real TUI's `/new` sends to the server's other connections.
-        if (params.data === 'new-command') notify('thread/started', { thread: { id: randomUUID(), forkedFromId: null, source: 'vscode' } });
+        if (params.data === 'new-command') { notify('thread/started', { thread: { id: randomUUID(), forkedFromId: null, source: 'vscode' } }); notify('thread/status/changed', { threadId: thread.id, status: { type: 'notLoaded' } }); }
         break;
     }
     if (input.method === 'thread/start' || input.method === 'thread/resume') result = { thread };

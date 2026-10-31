@@ -257,6 +257,8 @@ export class AgentCoordinator {
       const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
       if (!node || !resource || resource.data.sessionId !== processSessionId || typeof resource.data.nativeSessionId !== 'string') return;
       const provider = String(resource.data.provider), left = resource.data.nativeSessionId, isMoved = this.moved.delete(processSessionId);
+      // `/new` or `/clear` with nothing said yet changes nothing for a person, so the item stays and only follows the id.
+      if (switched.kind === 'new' && agentProvider(provider).followConversation && !await this.isSaved(provider, left)) { await this.follow(nodeId, processSessionId, provider, switched.nativeSessionId); return; }
       const target = state.nodes.find(node => state.resources.some(resource => resource.id === node.resourceId && resource.data.provider === provider && resource.data.nativeSessionId === switched.nativeSessionId));
       // Two processes on one conversation would interleave its transcript.
       if (isMoved) await this.stopProcess(processSessionId);
@@ -294,10 +296,17 @@ export class AgentCoordinator {
     await applyAtHead(this.control, { commandId: randomUUID(), actor: { kind: 'system', id: 'agent-switch' }, commands: [{ type: 'item.update', id: nodeId, data: { ...resource.data, nativeSessionId, cwd: native.cwd } }] });
     await this.resume(nodeId, randomUUID());
   }
+  private async follow(nodeId: string, processSessionId: string, provider: string, nativeSessionId: string) {
+    agentProvider(provider).followConversation?.(this.directory, processSessionId, nativeSessionId);
+    const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+    if (!resource) return;
+    await applyAtHead(this.control, { commandId: randomUUID(), actor: { kind: 'system', id: 'agent-switch' }, commands: [{ type: 'item.update', id: nodeId, data: { ...resource.data, nativeSessionId, nativeStartedAt: new Date().toISOString() } }] });
+    await this.changed();
+  }
+  private isSaved(provider: string, nativeSessionId: string) { return agentProvider(provider).resolve(nativeSessionId).then(() => true, () => false); }
   /** A conversation left before its first prompt has no transcript to return to, so its item stays ended. */
   private async reopen(nodeId: string, provider: string, nativeSessionId: string) {
-    const isSaved = await agentProvider(provider).resolve(nativeSessionId).then(() => true, () => false);
-    if (isSaved) await this.resume(nodeId, randomUUID());
+    if (await this.isSaved(provider, nativeSessionId)) await this.resume(nodeId, randomUUID());
   }
   private waitingInBackground(sessionId: string, at: number) {
     const background = this.observations.agentBackground(sessionId);
@@ -386,7 +395,8 @@ export class AgentCoordinator {
   async hook(input: unknown) {
     const event = hookSchema.parse(input);
     // Claude Code ends the old conversation first only when its own process moves; a `/fork` leaves it where it is.
-    if (event.event === 'SessionEnd' && ['clear', 'resume'].includes(event.endReason ?? '')) this.moved.add(event.processSessionId);
+    // The process lives on, so this is not the item's conversation closing.
+    if (event.event === 'SessionEnd' && ['clear', 'resume'].includes(event.endReason ?? '')) { this.moved.add(event.processSessionId); return {}; }
     if (event.switched) { void this.followSwitch(event.nodeId, event.processSessionId, event.switched); return {}; }
     const noted = (NOTED as readonly string[]).includes(event.event), result = noted ? {} : await this.observed(event);
     const happened = event.event === 'PostToolUseFailure' && !event.interrupt ? 'stumble' : event.event === 'PermissionDenied' ? 'bump' : undefined;

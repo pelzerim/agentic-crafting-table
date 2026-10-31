@@ -46,13 +46,14 @@ const conversations = [...history.conversations ?? [], ...(history.nativeId ? [h
 if (resumed) assert.ok(conversations.includes(nativeId));
 else await writeFile(historyPath, JSON.stringify({ nativeId, conversations }));
 const hooks = JSON.parse(await readFile(join(value('--plugin-dir'), 'hooks/hooks.json'), 'utf8')).hooks;
+let conversationId = nativeId;
 async function hook(event, payload = {}) {
   const command = hooks[event][0].hooks[0];
   return await new Promise((resolve, reject) => {
     const child = spawn(command.command, command.args, { stdio: ['pipe', 'pipe', 'pipe'] });
     let output = '';
     child.on('error', reject); child.on('close', code => code === 0 ? resolve(output) : reject(new Error(`Hook failed: ${code}`)));
-    child.stdout.on('data', chunk => { output += chunk; }); child.stderr.resume(); child.stdin.end(JSON.stringify({ session_id: nativeId, hook_event_name: event, ...payload }));
+    child.stdout.on('data', chunk => { output += chunk; }); child.stderr.resume(); child.stdin.end(JSON.stringify({ session_id: conversationId, hook_event_name: event, ...payload }));
   });
 }
 const openingHook = await hook('SessionStart');
@@ -146,7 +147,7 @@ for await (const line of lines) {
   }
   // A slash command's dialog: shown after the turn ended, with no main-thread hook once it is answered.
   // The hooks Claude Code sends, in order, when `/clear` moves its process to a new conversation.
-  if (line === 'clear-command') { await hook('SessionEnd', { reason: 'clear' }); await hook('SessionStart', { session_id: randomUUID(), source: 'clear' }); console.log('CONVERSATION_CLEARED'); continue; }
+  if (line === 'clear-command') { await hook('SessionEnd', { reason: 'clear' }); const next = randomUUID(); await hook('SessionStart', { session_id: next, source: 'clear' }); conversationId = next; console.log('CONVERSATION_CLEARED'); continue; }
   if (line === 'permission-after-stop') { await hook('Notification', { notification_type: 'permission_prompt' }); console.log('PERMISSION_DIALOG'); continue; }
   if (line === 'subagent-tool') { await hook('PostToolUse', { agent_id: 'fixture-fork', tool_name: 'Read' }); console.log('SUBAGENT_TOOL'); continue; }
   if (line === 'wait-for-input') { await hook('PermissionRequest'); console.log('WAITING_FOR_INPUT'); continue; }
