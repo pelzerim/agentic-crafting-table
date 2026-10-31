@@ -123,6 +123,10 @@ export function attentionRestorable(nodes: readonly AttentionNode[], receipt: { 
   return tier ? { tier } : undefined;
 }
 
+/** Its process went with a restart: no attention of its own, only resuming brings it back. Only a lost session has
+ * ended without a known outcome; an exit leaves the item idle or complete. */
+export const sessionLost = (node: { activity?: string; pose?: string }) => node.activity === 'unknown' && node.pose === 'ended';
+
 /** The tier one node shows on its own card, with its reason in words and since when. */
 export function nodeAttention(node: AttentionNode): { tier: AttentionTier; reasons: AttentionReason[]; detail: string; details: string[]; since?: string } | undefined {
   const reasons = nodeAttentionReasons(node), tier = attentionTier(reasons);

@@ -103,6 +103,19 @@ test('an idle agent beside a watcher shows a pinwheel, an ended one tall grass, 
   await expect(mark(page, 'pr')).toHaveCount(0); await expect(mark(page, 'ticket')).toHaveCount(0);
 });
 
+test('a session lost to a restart wears a muted frame, never amber, and a tier on the item wins', async ({ visual: { page } }) => {
+  const edge = () => card(page).evaluate(element => getComputedStyle(element, '::after').backgroundColor);
+  await update(page, { activity: 'unknown', attention: 'none', pose: 'ended', summary: 'Supervisor stopped' });
+  await expect(card(page)).toHaveAttribute('data-session-lost', 'true'); await expect(card(page)).not.toHaveAttribute('data-tier', /.*/);
+  await expect(mark(page)).toHaveAccessibleName('Session ended');
+  expect(await edge()).toBe(await token(page, '--act-session-lost-edge'));
+  await update(page, { activity: 'unknown', attention: 'error', attentionNote: 'Agent stopped unexpectedly', pose: 'none' });
+  await expect(card(page)).not.toHaveAttribute('data-session-lost', /.*/); await expect(card(page)).toHaveAttribute('data-tier', 'asking');
+  expect(await edge()).toBe(await token(page, '--act-attention-asking'));
+  await update(page, { activity: 'idle', attention: 'none', pose: 'ended' });
+  await expect(card(page)).not.toHaveAttribute('data-session-lost', /.*/);
+});
+
 test('a helper that finished trots out past the right edge once; an old moment is not replayed', async ({ visual: { page } }) => {
   await update(page, { activity: 'working', attention: 'none', summary: 'Waiting on 2 subagents', helpers: 2 });
   await expect(mark(page).locator('> i')).toHaveCount(3); await expect(mark(page).locator('> b')).toHaveCount(0);

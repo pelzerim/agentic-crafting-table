@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Agents
+- **After a restart**: sessions a reboot ended no longer fill Needs me or turn every card amber. They show as ended, with a muted grey frame, until you resume them. A session that really failed still asks. (#8, @timohuovinen)
+
 ## 0.11.0 — 2026-10-30
 
 ### Agents

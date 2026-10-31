@@ -200,14 +200,16 @@ export class SessionCoordinator {
       const failed = Boolean(session.error) || ['lost', 'failed'].includes(session.state) || (session.state === 'exited' && session.exitCode !== 0 && !session.stopRequestedAt);
       const review = resource.data.launchMode === 'review';
       const activity = review && failed ? 'unknown' : session.state === 'running' ? (review ? 'working' : 'idle') : session.state === 'exited' ? (node.acceptsContext ? 'idle' : 'complete') : 'unknown';
-      const attention = failed ? 'error' : 'none';
-      const attentionNote = !failed ? undefined : review ? 'Review failed' : `${node.acceptsContext ? 'Agent' : 'Terminal'} ${session.state === 'exited' ? 'exited with an error' : 'stopped unexpectedly'}`;
+      // A restart ends every process at once. That is no failure to fix, so it raises nothing: the item shows it has ended.
+      const lost = session.state === 'lost', broke = failed && !lost;
+      const attention = broke ? 'error' : 'none';
+      const attentionNote = !broke ? undefined : review ? 'Review failed' : `${node.acceptsContext ? 'Agent' : 'Terminal'} ${session.state === 'exited' ? 'exited with an error' : 'stopped unexpectedly'}`;
       const findings = resource.data.findings as { sessionId?: unknown; summary?: unknown } | undefined;
       const finished = findings?.sessionId === session.id && typeof findings.summary === 'string' ? findings.summary : 'Review complete';
       const summary = session.error ?? (session.state === 'running' ? (review ? 'Reviewing changes' : 'Terminal running') : session.state === 'exited' ? (review && !failed ? finished : `Exited · ${session.exitCode ?? 'unknown'}`) : session.state);
-      // An agent whose session is not running has ended, or fallen if it ended badly; plain terminals carry no pose. It travels
-      // with the status and never causes a write of its own.
-      const pose = node.acceptsContext && session.state !== 'running' ? failed ? 'fallen' : 'ended' : undefined;
+      // An agent whose session is not running has ended, or fallen if it ended badly; plain terminals carry no pose unless the
+      // session was lost, which every item shows alike. It travels with the status and never causes a write of its own.
+      const pose = lost ? 'ended' : node.acceptsContext && session.state !== 'running' ? broke ? 'fallen' : 'ended' : undefined;
       if (node.activity !== activity || node.attention !== attention || node.attentionNote !== attentionNote || (session.state !== 'running' && node.summary !== summary)) commands.push({ type: 'node.update', id: node.id, activity, attention, ...(attentionNote ? { attentionNote } : {}), summary, pose: pose ?? 'none' });
       if (!node.acceptsContext && session.state === 'exited' && !failed && !session.stopRequestedAt) commands.push(...completionAttention(node, `session:${session.id}`, review ? 'Review ready' : 'Terminal finished'));
     }

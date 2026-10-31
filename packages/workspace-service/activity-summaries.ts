@@ -9,6 +9,7 @@ import { nativeSummaryClient, summaryEvidence } from '../session-runtime/activit
 import { createActivitySummarizer } from '../../src/agents/activity-summary.ts';
 import type { ActivitySample, ActivitySummaryClient } from '../../src/agents/activity-summary.ts';
 import { isOffMap } from '../../src/graph/archive.ts';
+import { sessionLost } from '../../src/graph/attention.ts';
 
 type Source = { nodeId: string; resourceId: string; sessionId: string; status: ActivitySample['status']; activity: string; attention: string; summary: string };
 function sources(state: WorkspaceState): Source[] {
@@ -16,7 +17,7 @@ function sources(state: WorkspaceState): Source[] {
     const node = state.nodes.find(node => node.resourceId === resource.id && !isOffMap(node, state.nodes));
     if (!node) return [];
     return [{ nodeId: node.id, resourceId: resource.id, sessionId: String(resource.data.sessionId), activity: node.activity, attention: node.attention, summary: node.summary,
-      status: node.attention === 'input' ? 'waiting' : node.attention === 'error' ? 'disconnected' : node.activity === 'working' ? 'working' : node.activity === 'complete' ? 'complete' : 'idle' }];
+      status: node.attention === 'input' ? 'waiting' : node.attention === 'error' || sessionLost(node) ? 'disconnected' : node.activity === 'working' ? 'working' : node.activity === 'complete' ? 'complete' : 'idle' }];
   });
 }
 const identity = (source: Source) => canonical([source.sessionId, source.activity, source.attention, source.summary]);

@@ -17,7 +17,7 @@ import type { MapCollisions } from '../../../src/graph/spatial.ts';
 import { isArchived } from '../../../src/graph/archive.ts';
 import { blockerList, blockerName, blockingState } from '../../../src/graph/blocking.ts';
 import './blocking.css';
-import { attentionAge, attentionCountText, attentionDetails, attentionLabel, attentionTierInfo, memberAttentionCounts, nodeAttention } from '../../../src/graph/attention.ts';
+import { attentionAge, attentionCountText, attentionDetails, attentionLabel, attentionTierInfo, memberAttentionCounts, nodeAttention, sessionLost } from '../../../src/graph/attention.ts';
 import { useNow } from './use-now.ts';
 import { cardReference } from '../../../src/graph/reference.ts';
 import type { AttentionCounting, AttentionCounts, AttentionTier } from '../../../src/graph/attention.ts';
@@ -326,7 +326,7 @@ function CardFace({ data }: { data: CardData }) {
   const paper = data.paper !== undefined && !expanded, paperColor = paper ? paperPaint(data.paper) : undefined;
   return <><article ref={surface} className={`map-card tone-${data.tone} ${paper ? 'paper-card' : ''} ${working ? 'working-card' : ''} ${data.tiny && !expanded ? 'tiny-card' : ''} ${data.showFullTitle ? 'full-title-card' : ''} ${data.mapSize && data.mapSize.height > 48 ? 'map-profile-card' : ''} ${expanded ? 'expanded' : ''} ${item.completedAt && !expanded ? 'done-card' : ''} ${compact ? 'compact' : data.height < 65 ? 'small-card' : ''}`}
     role={data.viewSurface ? "region" : undefined} aria-label={paper ? `${data.typeName}: ${item.title}` : data.badges?.length ? `${item.title}, badges ${data.badges.map(entry => entry.text).join(', ')}` : item.title} title={marked && markTitle !== 'Working' ? markTitle : undefined} data-paper={paper ? data.paper : undefined} data-paper-tone={paperColor?.dark ? 'dark' : undefined} data-writer={paper && data.paperWriter ? 'agent' : undefined} data-item-id={data.viewSurface ? undefined : item.id} data-expanded-item-id={data.viewSurface ? item.id : undefined} data-view-open={data.viewOpen || undefined} data-world-x={item.position.x} data-world-y={item.position.y}
-    data-tight-title={data.height < 60 || undefined} data-preview="false" data-resizing={data.resizing} data-dragging={data.dragging} data-completed={Boolean(item.completedAt)} data-map-size={data.mapSize?.size} data-blocked={data.blocked ? true : undefined} data-link-end={data.linkEnd || undefined} data-selected={data.selected || undefined} data-tier={need && !expanded ? need.tier : undefined} data-takeover={need && compact && !expanded && data.takeover || undefined}
+    data-tight-title={data.height < 60 || undefined} data-preview="false" data-resizing={data.resizing} data-dragging={data.dragging} data-completed={Boolean(item.completedAt)} data-map-size={data.mapSize?.size} data-blocked={data.blocked ? true : undefined} data-link-end={data.linkEnd || undefined} data-selected={data.selected || undefined} data-tier={need && !expanded ? need.tier : undefined} data-session-lost={sessionLost(item) || undefined} data-takeover={need && compact && !expanded && data.takeover || undefined}
     data-dimmed={data.far && !expanded && !attention && (Boolean(item.completedAt) || cue?.stage === 'done') || undefined}
     onMouseDown={event => { if (event.button === 1 && (!data.viewSurface || data.needsMe)) event.preventDefault(); }}
     onAuxClick={event => {

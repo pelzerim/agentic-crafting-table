@@ -115,6 +115,7 @@
   --act-pending-line: #6c5a2c;
   --act-needs-me-fill: #3b3222;
   --act-needs-me-edge: #967d4d;
+  --act-session-lost-edge: #6f7785;
   --act-error: #f0b8a1;
   --act-error-bg: #402225;
   --act-bad: #ff9d98;
@@ -490,6 +491,7 @@
   --act-pending-line: #d6bd84;
   --act-needs-me-fill: #f7ecd0;
   --act-needs-me-edge: #c7a35c;
+  --act-session-lost-edge: #a4abb8;
   --act-error: #9e3720;
   --act-error-bg: #f9e2dc;
   --act-bad: #bd332c;
