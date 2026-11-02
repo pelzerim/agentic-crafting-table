@@ -3,7 +3,7 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
-## Unreleased
+## 0.15.0 — 2026-11-02
 
 ### Platform
 - **Windows**: Codex sessions no longer open an extra console window beside the app. (#14, @timohuovinen)
