@@ -3,7 +3,7 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
-## Unreleased
+## 0.14.0 — 2026-11-02
 
 ### Platform
 - **Windows, early**: Windows x64 support from a checkout, with PowerShell terminals, Credential Manager and the standalone Claude and Codex installs. Basic functionality is confirmed on Windows. (#11, @timohuovinen)
