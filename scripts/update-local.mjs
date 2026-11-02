@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { UpdateRefused, planUpdate } from '../packages/desktop-update/release.ts';
 import { installedBundle, isRunningFrom, stagedBundle } from './local-bundle.mjs';
+import { UPDATE_REFUSED } from './update-restart-check.mjs';
 
 /** `npm run update`: move this checkout to the newest release tag, then build and install the app in place.
  * Refuses while the app runs or the checkout has local changes; `--dry-run` only prints the plan. */
@@ -24,6 +25,6 @@ try {
   run('npm', ['run', 'install:local']);
   console.log(`Updated to ${plan.tag}. Launch Agentic Crafting Table from the Dock.`);
 } catch (error) {
-  if (error instanceof UpdateRefused) { console.error(error.message); process.exit(1); }
+  if (error instanceof UpdateRefused) { console.error(`${UPDATE_REFUSED}${error.message}`); process.exit(1); }
   throw error;
 }

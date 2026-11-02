@@ -8,6 +8,9 @@ their pull request and author.
 ### Map
 - **Off-screen attention**: a new setting, off by default, in Settings → Map. With it on, when something that needs you is outside the view, a solid amber circle on the edge of the map points towards it and moves as you pan. There can be one in each direction, and close ones group into one with a count. Click one to slide to its nearest item at the same zoom; nothing opens or is marked seen. It stays clear of the rail, the zoom bar and open panels. (#12, @timohuovinen)
 
+### Updates
+- **Update and restart**: a refused update now says why in Settings. With more than 11 changed files, the reason was lost and About showed only a list of file names. (#13, @timohuovinen)
+
 ## 0.12.0 — 2026-11-02
 
 ### Agents
