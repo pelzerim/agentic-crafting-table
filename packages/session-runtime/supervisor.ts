@@ -1,6 +1,7 @@
 import { prepareNativeDriver } from './native-driver.ts';
 import type { NativeDriver } from './native-driver.ts';
-import { sessionPath } from '../platform/shell.ts';
+import { isShadowedPath, sessionPath } from '../platform/shell.ts';
+import { killPty } from '../platform/process-tree.ts';
 import { terminalLocale } from './terminal-locale.ts';
 import { logPolicySchema, publishLogPolicy } from '../core/log-policy.ts';
 import { spawn } from 'node-pty';
@@ -123,7 +124,7 @@ export async function startSupervisor(directory: string) {
       // Freeze the readable screen before native CLI teardown clears its alternate buffer.
       emitState(journal.update(id, { displayThroughSequence: bufferFor(id).sequence }));
       flush(id);
-      running.stopping = stopProcessTree({ pid: running.pty.pid, kill: signal => { if (live.has(id)) running.pty.kill(signal); } }, [process.pid, ...preservePids]);
+      running.stopping = stopProcessTree({ pid: running.pty.pid, kill: signal => { if (live.has(id)) killPty(running.pty, signal); } }, [process.pid, ...preservePids]);
     }
     return journal.get(id);
   };
@@ -194,7 +195,7 @@ export async function startSupervisor(directory: string) {
           // profile. Resolve its potentially slow PATH only for a fresh launch.
           const environment = terminalLocale({ ...process.env, PATH: await sessionPath() });
           signal.throwIfAborted();
-          for (const key of Object.keys(environment)) if (key.startsWith('ACT_') || ['ELECTRON_RUN_AS_NODE', 'NO_COLOR', 'FORCE_COLOR', 'CLICOLOR', 'CLICOLOR_FORCE'].includes(key)) delete environment[key];
+          for (const key of Object.keys(environment)) if (key.startsWith('ACT_') || ['ELECTRON_RUN_AS_NODE', 'NO_COLOR', 'FORCE_COLOR', 'CLICOLOR', 'CLICOLOR_FORCE'].includes(key) || isShadowedPath(key)) delete environment[key];
           Object.assign(environment, request.bindings, { TERM: 'xterm-256color', COLORTERM: 'truecolor' });
           native = await prepareNativeDriver(request, environment,
             state => { if (!signal.aborted) emitState(journal.update(request.sessionId, { native: state })); },

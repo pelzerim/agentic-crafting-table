@@ -5,7 +5,7 @@ commands. Written so a person or an agent can follow it top to bottom; every ste
 ends with a check. If you would rather hand the whole thing to an agent, give it
 [the setup prompt](setup-prompt.md).
 
-The steps are for a Mac; [On Linux](#on-linux) lists what differs. On a Mac nothing
+The steps are for a Mac; [On Linux](#on-linux) and [On Windows](#on-windows) list what differs. On a Mac nothing
 needs `sudo`. Sign-ins are interactive (a browser or a prompt) and
 cannot be scripted; an agent should run them and hand control to the person when
 the tool asks.
@@ -209,6 +209,23 @@ secret-tool store --label 'Agentic Crafting Table Slack' service dev.agentcrafti
 
 Check with `secret-tool lookup service dev.agentcraftingtable.linear account default >/dev/null && echo linear ok`;
 the redirect keeps the key off the screen.
+
+## On Windows
+
+Windows 10 1809 or later on x64, built from a checkout. This support is early: the
+Windows code has unit tests and a cross-built bundle, but no one has run the whole app
+on Windows yet. Everything above applies, with these differences:
+
+| Instead of | On Windows |
+| --- | --- |
+| Xcode Command Line Tools, Homebrew | [Git for Windows](https://git-scm.com/download/win) and the [Node installer](https://nodejs.org); `node-pty` brings prebuilt Windows binaries |
+| `zsh` in new terminals | Windows PowerShell; set a `SHELL` environment variable to a full Windows path to use another shell |
+| a Claude or Codex install from npm | the standalone install, which provides `claude.exe` or `codex.exe`. The app does not start `.cmd` shims, because their arguments cannot be quoted safely |
+| the macOS Keychain | Windows Credential Manager: `cmdkey /generic:dev.agentcraftingtable.linear /user:default /pass` |
+
+Services talk over per-user named pipes. Codex listens on a loopback port with a token
+that only its launch knows. Windows has no stop request, so a stopped session ends at
+once, without the grace period it gets elsewhere.
 
 ## What the app never does
 

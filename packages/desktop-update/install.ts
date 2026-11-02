@@ -1,6 +1,6 @@
 import { cp, lstat, mkdir, realpath, rename, rm, rmdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import { InstallJournal } from './journal.ts';
 import type { FileIdentity, InstallIntent } from './journal.ts';
 import { inspectBundle, sameBundle, requireCopyCapacity, volumeCapacity } from './bundle.ts';
@@ -82,7 +82,7 @@ export async function recoverBundle(destination: string, assertStopped: () => Pr
  * Intent is committed before copying/moving files; retry recovers before validation. */
 export async function installBundle(source: string, destination: string, assertStopped: () => Promise<void>, options: InstallOptions = {}) {
   source = resolve(source); destination = resolve(destination);
-  if (source === destination || source.startsWith(destination + '/') || destination.startsWith(source + '/')) throw new Error('Build and installed app must use separate directories');
+  if (source === destination || source.startsWith(destination + sep) || destination.startsWith(source + sep)) throw new Error('Build and installed app must use separate directories');
   await assertStopped();
   const ctx = await context(destination), journal = ctx.journal;
   destination = ctx.destination;
@@ -90,7 +90,7 @@ export async function installBundle(source: string, destination: string, assertS
     const recovery = await recover(journal, assertStopped);
     if (!await directory(source) || !await directory(join(source, 'Contents'))) throw new Error('Staged app has no Contents directory');
     source = await realpath(source);
-    if (source === destination || source.startsWith(destination + '/') || destination.startsWith(source + '/')) throw new Error('Build and installed app must use separate directories');
+    if (source === destination || source.startsWith(destination + sep) || destination.startsWith(source + sep)) throw new Error('Build and installed app must use separate directories');
     const existing = await directory(destination), contents = existing && await directory(join(destination, 'Contents'));
     if (existing && !contents) throw new Error('Installed app has no Contents and no recovery record');
     const stagedBundle = await inspectBundle(join(source, 'Contents'));

@@ -459,7 +459,7 @@ async function main() {
     });
     if (terminal.session.state !== 'running') throw new Error('Packaged terminal did not start');
     await runtime.call('sessions.resize', { sessionId: requestId, cols: 76, rows: 29 });
-    await runtime.call('sessions.input', { sessionId: requestId, data: "printf 'PACKAGED_TERMINAL_OK\\n'\r" });
+    await runtime.call('sessions.input', { sessionId: requestId, data: `${process.platform === 'win32' ? "Write-Output 'PACKAGED_TERMINAL_OK'" : "printf 'PACKAGED_TERMINAL_OK\\n'"}\r` });
     let nativeTerminal: import('../../packages/session-runtime/protocol.ts').SessionSnapshot | undefined;
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
@@ -467,7 +467,7 @@ async function main() {
       if (nativeTerminal!.chunks.map(chunk => chunk.data).join('').includes('PACKAGED_TERMINAL_OK')) break;
       await new Promise(resolve => setTimeout(resolve, 50));
     }
-    if (!nativeTerminal?.chunks.some(chunk => chunk.data.includes('PACKAGED_TERMINAL_OK'))) throw new Error('Packaged terminal input failed');
+    if (!nativeTerminal?.chunks.map(chunk => chunk.data).join('').includes('PACKAGED_TERMINAL_OK')) throw new Error('Packaged terminal input failed');
     const window = BrowserWindow.getAllWindows()[0];
     await writeFile(report, JSON.stringify({ packaged: app.isPackaged, versions: process.versions, ...probe, workspace: snapshot, savedSessions,
       window: { bounds: window.getNormalBounds(), visible: window.isVisible(), focused: window.isFocused(), focusable: window.isFocusable(), dockVisible: app.dock?.isVisible() },

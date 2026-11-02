@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { LINUX_EXECUTABLE, bundleLayout } from '../packages/core/bundle-layout.ts';
 
 /** The local app bundle on this machine: built by `npm run package`, installed by `npm run install:local`.
@@ -9,27 +9,28 @@ import { LINUX_EXECUTABLE, bundleLayout } from '../packages/core/bundle-layout.t
 export const layout = bundleLayout(process.platform, process.arch);
 export const stagedBundle = resolve(layout.staged), installedBundle = resolve(layout.installed);
 export const executableIn = bundle => join(bundle, layout.executable);
-/** Linux has no Info.plist, so `npm run package` writes the two fields the installer and updater read. */
+/** Only macOS has an Info.plist, so `npm run package` writes the two fields the installer and updater read. */
 export const LINUX_BUNDLE_INFO = 'Contents/bundle-info.json';
 
 /** `{ identifier, version }` of a built bundle; throws when it has none. */
 export function bundleInfo(bundle) {
-  if (process.platform === 'linux') return JSON.parse(readFileSync(join(bundle, LINUX_BUNDLE_INFO), 'utf8'));
+  if (process.platform !== 'darwin') return JSON.parse(readFileSync(join(bundle, LINUX_BUNDLE_INFO), 'utf8'));
   const field = key => execFileSync('/usr/bin/plutil', ['-extract', key, 'raw', '-o', '-', join(bundle, 'Contents/Info.plist')], { encoding: 'utf8' }).trim();
   return { identifier: field('CFBundleIdentifier'), version: field('CFBundleShortVersionString') };
 }
 
 /** Executables of the person's running processes; Linux `ps` truncates `comm`, so read `/proc` instead. */
 function runningExecutables() {
+  if (process.platform === 'win32') return execFileSync(join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'), ['-NoProfile', '-NonInteractive', '-Command', 'Get-Process | ForEach-Object Path'], { encoding: 'utf8', windowsHide: true }).split(/\r?\n/).map(path => path.trim().toLowerCase());
   if (process.platform !== 'linux') return execFileSync('/bin/ps', ['-ax', '-o', 'comm='], { encoding: 'utf8' }).split('\n').map(command => command.trim());
   return readdirSync('/proc').filter(name => /^\d+$/.test(name)).flatMap(pid => {
     try { return [readlinkSync(`/proc/${pid}/exe`)]; } catch { return []; } // Exited, or another user's process.
   });
 }
-export const isRunningFrom = bundles => runningExecutables().some(executable => bundles.some(bundle => executable.startsWith(bundle + '/')));
+export const isRunningFrom = bundles => runningExecutables().some(executable => bundles.some(bundle => executable.startsWith((process.platform === 'win32' ? bundle.toLowerCase() : bundle) + sep)));
 
 export function openBundle(bundle) {
-  if (process.platform !== 'linux') { execFileSync('/usr/bin/open', [bundle]); return; }
+  if (process.platform === 'darwin') { execFileSync('/usr/bin/open', [bundle]); return; }
   spawn(executableIn(bundle), [], { detached: true, stdio: 'ignore' }).unref();
 }
 
