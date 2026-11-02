@@ -1,10 +1,11 @@
 import { connectWorkspace } from '../workspace-service/client.ts';
-import { hookFields, localArtifactTitle } from './agent-hook-event.ts';
+import { followedConversation, hookFields, localArtifactTitle } from './agent-hook-event.ts';
 
 async function main() {
   const observedAt = Date.now();
-  const [directory, nodeId, processSessionId, nativeSessionId] = process.argv.slice(2);
-  if (!directory || !nodeId || !processSessionId || !nativeSessionId) throw new Error('Missing hook binding');
+  const [directory, nodeId, processSessionId, launchedOn] = process.argv.slice(2);
+  if (!directory || !nodeId || !processSessionId || !launchedOn) throw new Error('Missing hook binding');
+  const nativeSessionId = followedConversation(directory, processSessionId) ?? launchedOn;
   const chunks: Buffer[] = []; let bytes = 0;
   for await (const chunk of process.stdin) { bytes += chunk.length; if (bytes > 1024 * 1024) return; chunks.push(chunk); }
   const event = JSON.parse(Buffer.concat(chunks).toString('utf8')), fields = hookFields(event, nativeSessionId);

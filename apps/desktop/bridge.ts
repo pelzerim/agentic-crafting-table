@@ -72,6 +72,7 @@ export interface DesktopBridge {
   remindersSnooze(id: string, minutes: typeof import('../../packages/core/reminders.ts').SNOOZE_MINUTES[number]): Promise<import('../../packages/core/reminders.ts').RemindersSnapshot>;
   /** A reminder came due (also after a snooze), whatever the notification preference. */
   onReminderDue(listener: (event: import('../../packages/core/reminders.ts').ReminderDue) => void): () => void;
+  onSessionSwitched(listener: (event: { fromNodeId: string; toNodeId: string }) => void): () => void;
   retryRecovery(): Promise<import('../../packages/workspace-service/lifecycle.ts').RecoveryState>;
   resourceOptions(pluginId: string, field: string, values: import('../../src/resource-plugins/types.ts').JsonObject): Promise<import('../../src/resource-plugins/types.ts').ResourceOptions>;
   resourceSessions(pluginId: string, query?: string, offset?: number, options?: { provider?: string; cursor?: string }): Promise<import('../../src/resource-plugins/types.ts').SavedSessionPage>;

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -139,4 +140,15 @@ test('Stop forwards the last assistant message, bounded; other events never carr
   assert.deepEqual(hookFields({ session_id: native, hook_event_name: 'Stop', last_assistant_message: 42 }, native), { event: 'Stop' });
   assert.deepEqual(hookFields({ session_id: native, hook_event_name: 'PostToolUse', tool_name: 'Bash', last_assistant_message: 'text' }, native), { event: 'PostToolUse', toolName: 'Bash' });
   assert.deepEqual(hookFields({ session_id: native, hook_event_name: 'SubagentStop', agent_id: 'sub', last_assistant_message: 'text' }, native), { event: 'SubagentStop', agentId: 'sub' });
+});
+
+test('a main session starting under another id is a switch of conversation, by the source Claude names', () => {
+  const other = randomUUID(), start = (source: string, fields = {}) => hookFields({ session_id: other, hook_event_name: 'SessionStart', source, ...fields }, native);
+  assert.deepEqual(start('clear'), { event: 'SessionStart', switched: { kind: 'new', nativeSessionId: other } });
+  assert.deepEqual(start('fork')?.switched, { kind: 'fork', nativeSessionId: other });
+  assert.deepEqual(start('resume')?.switched, { kind: 'resume', nativeSessionId: other });
+  assert.equal(start('compact'), undefined);
+  assert.equal(start('clear', { agent_id: 'sub' }), undefined);
+  assert.equal(hookFields({ session_id: native, hook_event_name: 'SessionStart', source: 'resume' }, native)?.switched, undefined);
+  assert.equal(hookFields({ session_id: native, hook_event_name: 'SessionEnd', reason: 'clear' }, native)?.endReason, 'clear');
 });

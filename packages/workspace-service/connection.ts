@@ -53,6 +53,7 @@ export class WorkspaceConnection extends EventEmitter {
         if (value.event === 'settings') this.emit('settings', value.settings);
         if (value.event === 'recording-deleted') this.emit('recording-deleted', value.sessionId);
         if (value.event === 'reminder-due') this.emit('reminder-due', { reminder: value.reminder, day: value.day });
+        if (value.event === 'session-switched') this.emit('session-switched', { fromNodeId: value.fromNodeId, toNodeId: value.toNodeId });
       });
       client.once('disconnected', (error?: Error) => { disconnected = true; if (this.client === client) this.client = undefined; this.scheduleReconnect(error?.message ?? 'closed'); });
       try {

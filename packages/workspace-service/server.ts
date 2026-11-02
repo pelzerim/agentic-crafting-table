@@ -215,6 +215,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
     return logPolicySync;
   };
   const agents = terminals && runtimeOptions ? new AgentCoordinator(directory, runtimeOptions, control, terminals, context, broadcast, store) : undefined;
+  if (agents) agents.onSwitched = (fromNodeId, toNodeId) => { for (const subscriber of subscribers.keys()) send(subscriber, { event: 'session-switched', fromNodeId, toNodeId }, 'session-switched'); };
   // An injected provider set is isolated: omitted capabilities must never fall
   // through to a real account or native provider during fixture execution.
   const reviewSources = providers ? providers.reviews ?? {} : nativeReviewSources(connections);

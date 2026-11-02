@@ -136,7 +136,8 @@ export interface ProjectMapProps {
   /** `origin: 'program'` marks a reveal the app made on its own rather than a person's choice. */
   /** `select` names the items a map reveal leaves selected. */
   /** `map` centres the item without opening it; `centred` centres it at the current zoom, then opens it. */
-  reveal?: { nodeId: string; nonce: number; mode?: 'map' | 'centred'; origin?: 'program'; select?: readonly string[] };
+  /** `from` opens the item only while that item is the one open: a session switch follows the person's view and never takes it. */
+  reveal?: { nodeId: string; nonce: number; mode?: 'map' | 'centred'; origin?: 'program'; select?: readonly string[]; from?: string };
   /** A reveal is a one-time request: the host drops it so a remounted map (layer travel) does not repeat it. */
   onRevealed?(reveal: NonNullable<ProjectMapProps['reveal']>): void;
   /** Transient external inspection; never changes selection, layout or read state. */
@@ -1045,6 +1046,7 @@ function MapCanvas(props: ProjectMapProps) {
     const item = props.nodes.find(node => node.id === props.reveal!.nodeId && !isArchived(node, props.nodes));
     if (!item) return;
     props.onRevealed?.(props.reveal);
+    if (props.reveal.from && props.reveal.from !== focus) return;
     if (props.reveal.mode === 'centred') {
       const point = projects.find(project => project.id === item.id)?.center ?? item.position, origin = props.reveal.origin ?? 'user';
       void setCenter(point.x, point.y, { zoom: viewport.zoom, duration: duration() }).then(() => open(item.id, origin));

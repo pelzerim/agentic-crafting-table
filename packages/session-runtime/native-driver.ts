@@ -1,6 +1,6 @@
 import type { LaunchRequest, NativeAgentState } from './protocol.ts';
 import { openCodexTerminalServer } from './codex-transport.ts';
-import { codexInput, codexStatus, codexThreadStatus, nativeInput, nativeStatus } from './codex-status.ts';
+import { codexInput, codexStatus, codexSwitch, codexThreadStatus, nativeInput, nativeStatus } from './codex-status.ts';
 import * as z from 'zod/v4';
 import { randomUUID } from 'node:crypto';
 
@@ -13,9 +13,22 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
   let closing = false;
   try {
     let state: NativeAgentState | undefined;
-    const notified: { method: string; params?: any }[] = [];
+    const notified: { method: string; params?: any }[] = [], ignored = new Set<string>();
+    const deliverContext = (threadId: string) => server.rpc.request('thread/inject_items', { threadId, items: [{ type: 'message', role: 'developer', content: [{ type: 'input_text', text: native.instructions }] }, { type: 'message', role: 'user', content: [{ type: 'input_text', text: native.context }] }] });
+    // A launch with a prompt or an earlier conversation has one already; otherwise the first turn shows it.
+    let talked = Boolean(native.nativeSessionId || native.initialPrompt);
     const apply = (event: { method: string; params?: any }, current: NativeAgentState) => {
+      const switched = current.switched ? undefined : codexSwitch(event, current.nativeSessionId, ignored);
+      // `/new` with nothing said yet changes nothing for a person: the item stays on this process and follows the thread (AGENT-04a).
+      if (switched?.kind === 'new' && !talked) {
+        ignored.add(current.nativeSessionId);
+        state = { ...current, nativeSessionId: switched.nativeSessionId, observedAt: new Date().toISOString() }; observe(state);
+        void deliverContext(switched.nativeSessionId).catch(() => {}); // The tools still work without the guide; the next launch delivers it.
+        return;
+      }
+      if (switched) { state = { ...current, switched, observedAt: new Date().toISOString() }; observe(state); return; }
       const status = codexStatus(event, current.nativeSessionId);
+      if (status === 'working' || status === 'input') talked = true;
       const started = event.method === 'thread/started' && event.params?.thread?.id === current.nativeSessionId;
       if (status === undefined && !started) return;
       const input = status === 'input' ? codexInput(event, current.nativeSessionId) : undefined;
@@ -41,7 +54,7 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
     state = seeded; observe(seeded); // Journal the returned identity before any subsequent external action.
     for (const event of notified.splice(0)) apply(event, state);
     // This persists an otherwise empty conversation without submitting a task or model turn.
-    if (!native.contextDelivered) await server.rpc.request('thread/inject_items', { threadId: seeded.nativeSessionId, items: [{ type: 'message', role: 'developer', content: [{ type: 'input_text', text: native.instructions }] }, { type: 'message', role: 'user', content: [{ type: 'input_text', text: native.context }] }] });
+    if (!native.contextDelivered) await deliverContext(seeded.nativeSessionId);
     signal?.throwIfAborted();
     // The real terminal becomes the turn subscriber and owns native approvals/input.
     await server.rpc.request('thread/unsubscribe', { threadId: seeded.nativeSessionId });
