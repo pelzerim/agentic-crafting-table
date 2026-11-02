@@ -58,6 +58,12 @@ If someone else's tag landed first, take the next number instead of replacing th
   until it is closed or another item replaces it. Do not add a second open view, split
   panes, tabs of open items or pop-out windows; opening another item takes the place of
   the current one.
+- **Quiet by default.** Anything that adds visual noise to the app, such as a new mark on
+  the map, a badge, a counter, an overlay or an animation that shows without being asked
+  for, may be added, but behind a setting that is off by default. Name the setting in the
+  specification next to the rule it switches, and put it in the Settings section of the
+  surface it changes. The radial menu on right click and the off-screen attention circles
+  on the edge of the map are examples.
 - **Icons are pixel glyphs, never emoji.** Every icon is a glyph in
   `src/resource-plugins/pixel-glyphs.ts`, drawn as rows of `X` and `.`: 12×12 for item
   types and controls, 8×8 for status cues and small marks. Draw with one-pixel strokes in

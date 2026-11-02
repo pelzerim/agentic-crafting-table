@@ -31,6 +31,7 @@ async function openCodex(run: (app: ElectronApplication, page: Page, received: (
     await openProjectPicker(page, 'Paste project');
     await page.getByRole('button', { name: 'Agent session', exact: true }).click();
     await page.getByRole('radio', { name: 'Codex', exact: true }).check();
+    await expect(page.getByLabel('Model', { exact: true })).not.toHaveValue('');
     await page.getByLabel('Title', { exact: true }).fill('Paste Codex');
     await page.getByRole('button', { name: 'Start Codex', exact: true }).click();
     await page.getByRole('article', { name: 'Paste Codex', exact: true }).click();
@@ -48,14 +49,14 @@ async function openCodex(run: (app: ElectronApplication, page: Page, received: (
   }
 }
 
-test('Ctrl+V pastes a large block of text into Codex as one complete bracketed paste', async () => {
+test('the paste key pastes a large block of text into Codex as one complete bracketed paste', async () => {
   test.setTimeout(60_000);
   await openCodex(async (app, page, received) => {
     // Larger than one terminal write, with a numbered line to catch reordering.
     const text = Array.from({ length: 12_000 }, (_, line) => `line ${String(line).padStart(5, '0')} of a pasted block`).join('\n');
     expect(text.length).toBeGreaterThan(256 * 1024);
     await app.evaluate(async ({ clipboard }, value) => { await clipboard.writeText(value); }, text);
-    await page.keyboard.press('Control+v');
+    await page.keyboard.press('ControlOrMeta+v');
     await expect.poll(async () => (await received()).includes(END), { timeout: 15_000 }).toBe(true);
     const input = await received();
     expect(input).not.toContain('\x16');
@@ -64,11 +65,11 @@ test('Ctrl+V pastes a large block of text into Codex as one complete bracketed p
   });
 });
 
-test('Ctrl+V with a screenshot on the clipboard gives Codex a local image path', async () => {
+test('the paste key with a screenshot on the clipboard gives Codex a local image path', async () => {
   test.setTimeout(60_000);
   await openCodex(async (app, page, received) => {
     await app.evaluate(async ({ clipboard, ClipboardItem }, png) => { await clipboard.write([new ClipboardItem({ 'image/png': new Blob([Buffer.from(png, 'base64')], { type: 'image/png' }) })]); }, PNG);
-    await page.keyboard.press('Control+v');
+    await page.keyboard.press('ControlOrMeta+v');
     await expect.poll(async () => (await received()).includes(END), { timeout: 15_000 }).toBe(true);
     const input = await received();
     expect(input).not.toContain('\x16');
@@ -81,6 +82,7 @@ test('Ctrl+V with a screenshot on the clipboard gives Codex a local image path',
 });
 
 test('Ctrl+Shift+V pastes through the same path, and an empty clipboard sends nothing', async () => {
+  test.skip(process.platform === 'darwin', 'macOS leaves Ctrl+V to the agent and has no Ctrl+Shift+V paste');
   test.setTimeout(60_000);
   await openCodex(async (app, page, received) => {
     await app.evaluate(async ({ clipboard }) => { await clipboard.writeText('short text'); });
