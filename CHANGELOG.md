@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Platform
+- **Linux**: A maximized window at 125% text scaling no longer shows a stray row of pixels under the menu bar. (#15, @timohuovinen)
+
 ## 0.15.0 — 2026-11-02
 
 ### Platform
