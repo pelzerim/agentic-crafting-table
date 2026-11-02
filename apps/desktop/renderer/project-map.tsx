@@ -17,7 +17,7 @@ import type { MapCollisions } from '../../../src/graph/spatial.ts';
 import { isArchived } from '../../../src/graph/archive.ts';
 import { blockerList, blockerName, blockingState } from '../../../src/graph/blocking.ts';
 import './blocking.css';
-import { attentionAge, attentionCountText, attentionDetails, attentionLabel, attentionTierInfo, memberAttentionCounts, nodeAttention, sessionLost } from '../../../src/graph/attention.ts';
+import { attentionAge, attentionCountText, attentionDetails, attentionLabel, attentionTierInfo, countsAsNeedsMe, memberAttentionCounts, nodeAttention, sessionLost } from '../../../src/graph/attention.ts';
 import { useNow } from './use-now.ts';
 import { cardReference } from '../../../src/graph/reference.ts';
 import type { AttentionCounting, AttentionCounts, AttentionTier } from '../../../src/graph/attention.ts';
@@ -29,6 +29,8 @@ import { moveItems, resizeItem, solidDropPosition } from '../../../src/graph/mov
 import { snapPosition, snapStep } from '../../../src/graph/snap.ts';
 import { ItemIcon, StatusGlyph } from './icons.tsx';
 import { ZoomBar } from './zoom-bar.tsx';
+import { OffscreenAttention } from './offscreen-attention.tsx';
+import type { WaitingBox } from './offscreen-attention.tsx';
 import type { Badge } from '../../../src/graph/badges.ts';
 import { WorkingAnimalContext, WorkingMark, workingMarkStyle } from './working-mark.tsx';
 import type { WorkingMarkSettings } from '../../../packages/core/settings.ts';
@@ -218,6 +220,8 @@ export interface ProjectMapProps {
   collisions?: MapCollisions;
   /** Whether Finished joins the Needs me number on dashboards (Settings → Notifications). */
   attentionCounting?: AttentionCounting;
+  /** Circles on the edge of the view for waiting items outside it (MAP-32). */
+  offscreenAttention?: boolean;
   /** Mute or unmute a project (MAP-25). Without it no project is drawn covered. */
   onMute?(projectId: string, muted: boolean): void;
   /** The Undermap's mirror layout (MAP-18): areas, month lines and far plates come from these computed boxes, the
@@ -832,6 +836,12 @@ function MapCanvas(props: ProjectMapProps) {
   const nodes = projected.length === previousNodes.current.length && projected.every((node, index) => node === previousNodes.current[index]) ? previousNodes.current : projected;
   // Detail surfaces are screen-space siblings, never graph nodes or edge endpoints.
   const needsMe = useMemo(() => needsMeIds(props.nodes), [props.nodes]);
+  // MAP-32 follows the Needs me number: Finished only when counted, nothing from muted projects or below, where Needs me pauses.
+  const waiting = useMemo<WaitingBox[]>(() => props.layer === 'below' ? [] : allBoxes.flatMap(({ item, x, y, width, height }) => {
+    const tier = needsMe.get(item.id);
+    if (!tier || !item.resourceId || !countsAsNeedsMe(tier, props.attentionCounting) || item.projectId && mutedProjects.has(item.projectId)) return [];
+    return [{ id: item.id, resourceId: item.resourceId, x, y, width, height, title: item.title, tier, label: attentionLabel(tier, attentionDetails([item]).details[0]) }];
+  }), [allBoxes, needsMe, mutedProjects, props.layer, props.attentionCounting]);
   // The open item's project and plot as the map shows them; a key keeps the object stable while they stay the same.
   const placeKey = useMemo(() => {
     const item = focus ? props.nodes.find(node => node.id === focus) : undefined, project = item?.projectId ? props.nodes.find(node => node.id === item.projectId) : undefined;
@@ -1549,6 +1559,7 @@ function MapCanvas(props: ProjectMapProps) {
     </nav>}
     {plotMenu && <CanvasMenu screen={plotMenu.screen} actions={plotMenuActions(props.plotNaming ?? true, plotOf(plotMenu.id), plotNeighborhoods.get(plotOf(plotMenu.id)?.projectId ?? ''), props.plotTargets && props.onMoveItems && plotOf(plotMenu.id) ? props.plotTargets(plotOf(plotMenu.id)!.memberIds) : undefined)} act={plotMenuAct} close={() => setPlotMenu(undefined)} />}
     <ZoomBar zoom={viewport.zoom} dashboards={dashboardSetting} zoomTo={zoom => void zoomTo(zoom)} />
+    {!focus && props.offscreenAttention && <OffscreenAttention boxes={waiting} camera={viewport} screen={size} go={box => { clearInspection(); void setCenter(box.x, box.y, { zoom: viewport.zoom, duration: duration() }); }} />}
   </div></WorkingAnimalContext.Provider></DetailContext.Provider>;
 }
 
