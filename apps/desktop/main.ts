@@ -459,7 +459,7 @@ async function main() {
     });
     if (terminal.session.state !== 'running') throw new Error('Packaged terminal did not start');
     await runtime.call('sessions.resize', { sessionId: requestId, cols: 76, rows: 29 });
-    await runtime.call('sessions.input', { sessionId: requestId, data: "printf 'PACKAGED_TERMINAL_OK\\n'\r" });
+    await runtime.call('sessions.input', { sessionId: requestId, data: `${process.platform === 'win32' ? "Write-Output 'PACKAGED_TERMINAL_OK'" : "printf 'PACKAGED_TERMINAL_OK\\n'"}\r` });
     let nativeTerminal: import('../../packages/session-runtime/protocol.ts').SessionSnapshot | undefined;
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
