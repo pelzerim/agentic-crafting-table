@@ -1552,7 +1552,10 @@ brighten the 1 px edge; selection stays the separate light rectangle.
 `--act-attention-asking` (brighter) and `--act-attention-finished` (dim). Provider cues
 that a plugin tones `amber` (Queued, Changes requested, Waiting approval, Updates paused),
 stale-data marks, remote-menu marks, the to-do pin and group count and the unblocked
-notice draw in neutral or info. **Wording:** “Needs me” is the one umbrella phrase;
+notice draw in neutral or info. A session lost to a restart is not in Needs me: a reboot
+or supervisor stop ends every process at once and nothing is wrong with the work, so the
+item keeps its unknown activity, shows it has ended and wears a muted grey 1 px frame
+(`--act-session-lost-edge`) until it is resumed. A tier on the same item wins. **Wording:** “Needs me” is the one umbrella phrase;
 tiers are named “Asking me”, “My turn”, “Finished”, and counts read “N asking · N my turn
 · N finished · N working”. “Needs you”, “need you”, “N need”, “N waiting” and “need me”
 are retired. A broken provider connection says “Not connected”, never “Needs attention”.
@@ -2106,7 +2109,8 @@ PostToolUseFailure that is not an interrupt) and `bump` (PermissionDenied) are w
 most once every four seconds. A task list starts with the first TaskCreated, or the first
 one after every task of the previous list was completed; subagents' and teammates' tasks
 are not counted. The first model is the one SessionStart reports. SessionEnd sets
-`ended`, as does an agent item whose session is not running; the next hook of a live
+`ended`, as does an agent item whose session is not running and any item whose session
+was lost; the next hook of a live
 session removes it. Hooks forward ids, counts and flags only: no tool input, error text,
 task subject or path leaves the session. WorktreeCreate is not registered, because Claude
 Code lets that hook replace how a worktree is made. Codex sessions get `asking`, `fallen`

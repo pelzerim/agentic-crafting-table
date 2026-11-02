@@ -11,7 +11,7 @@ import { prepareWorkspace } from './paths.ts';
 import { serveLocal } from './local-rpc.ts';
 import { connectSupervisor } from '../session-runtime/client.ts';
 import type { LaunchRequest, SessionSnapshot } from '../session-runtime/protocol.ts';
-import { attentionItems, attentionReceipt } from '../../src/graph/attention.ts';
+import { attentionItems, attentionReceipt, sessionLost } from '../../src/graph/attention.ts';
 
 function deferred() { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; }
 async function within<T>(promise: Promise<T>): Promise<T> {
@@ -88,6 +88,23 @@ test('Codex reporting an error is not a disconnect, and a stop during preparatio
   try {
     await update({ id: 'session-0', nodeId: 'item-0', state: 'exited', stopRequestedAt: '2026-10-30' });
     assert.notEqual((await f.control.read()).nodes.find(node => node.id === 'item-0')!.attention, 'error');
+  } finally { await f.close(); }
+});
+
+test('a session lost to a restart asks nothing of the person, and an item that was already raised for it settles', async () => {
+  const f = await fixture(1), coordinator = f.coordinator(), update = (session: unknown) => (coordinator as unknown as { updateSession(session: unknown): Promise<boolean> }).updateSession(session);
+  const node = async () => (await f.control.read()).nodes.find(node => node.id === 'item-0')!;
+  const lost = { id: 'session-0', nodeId: 'item-0', state: 'lost', error: 'Supervisor stopped; the process can no longer be attached.' };
+  try {
+    await f.control.dispatch({ commandId: 'raised', expectedRevision: (await f.control.read()).revision, actor: { kind: 'system', id: 'sessions' }, commands: [{ type: 'node.update', id: 'item-0', activity: 'unknown', attention: 'error', attentionNote: 'Terminal stopped unexpectedly', pose: 'fallen' }] });
+    await update(lost);
+    const item = await node();
+    assert.deepEqual([item.activity, item.attention, item.attentionNote, item.pose], ['unknown', 'none', undefined, 'ended']);
+    assert.equal(sessionLost(item), true);
+    assert.deepEqual(attentionItems((await f.control.read()).nodes), []);
+    assert.equal(await update(lost), false, 'the settled item is not written again');
+    await update({ ...lost, state: 'failed', error: 'Could not start' });
+    assert.deepEqual([(await node()).attention, sessionLost(await node())], ['error', false], 'a real failure still asks');
   } finally { await f.close(); }
 });
 

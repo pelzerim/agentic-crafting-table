@@ -1278,6 +1278,15 @@
   box-shadow: inset 0 0 0 calc(1px / var(--map-zoom)) var(--act-attention);
 }
 
+/* A session lost to a restart: a quiet grey frame, never amber. It asks nothing, so any tier on the item wins. */
+.map-card[data-session-lost]:not(.expanded):not([data-tier=asking],[data-tier=turn]) {
+  --card-edge: var(--act-session-lost-edge);
+}
+
+.map-card.compact[data-session-lost]:not([data-tier=asking],[data-tier=turn],[data-takeover]) {
+  box-shadow: inset 0 0 0 calc(1px / var(--map-zoom)) var(--act-session-lost-edge);
+}
+
 /* A ticket's reference, moved out of the title: a quiet tag at the left of the status row, never shortened. */
 .item-indicators>.card-reference {
   flex: none;
