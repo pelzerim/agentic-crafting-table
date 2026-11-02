@@ -3,10 +3,11 @@ import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { devNull } from 'node:os';
 import { join } from 'node:path';
 import * as z from 'zod/v4';
 import { canonical } from '../core/control.ts';
-import { sessionPath } from '../session-runtime/shell-path.ts';
+import { sessionPath } from '../platform/shell.ts';
 import { pullKey } from './github.ts';
 
 const sha = z.string().regex(/^[a-f0-9]{40}$/i);
@@ -68,11 +69,11 @@ export async function captureGitComparison(directory: string, requestId: string,
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   signal.throwIfAborted(); await mkdir(folder, { recursive: true, mode: 0o700 }); await mkdir(cacheParent, { recursive: true, mode: 0o700 });
   const environment: NodeJS.ProcessEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
-  Object.assign(environment, { PATH: await sessionPath(), GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0', GIT_LFS_SKIP_SMUDGE: '1' });
+  Object.assign(environment, { PATH: await sessionPath(), GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: devNull, GIT_TERMINAL_PROMPT: '0', GIT_LFS_SKIP_SMUDGE: '1' });
   const runner = (directory: string, base: NodeJS.ProcessEnv, flags: string[]): GitCommand => async (args, extra = {}) => {
     signal.throwIfAborted();
     try {
-      return (await promisify(execFile)('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'core.autocrlf=false', '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always', '-c', 'credential.helper=', ...flags, ...args],
+      return (await promisify(execFile)('git', ['-c', `core.hooksPath=${devNull}`, '-c', 'core.autocrlf=false', '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always', '-c', 'credential.helper=', ...flags, ...args],
         { cwd: directory, env: { ...environment, ...base, ...extra }, signal, timeout: 120_000, maxBuffer: MAX_DIFF + 64 * 1024 })).stdout;
     } catch (error) {
       signal.throwIfAborted();

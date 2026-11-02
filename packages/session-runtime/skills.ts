@@ -2,7 +2,7 @@ import * as z from 'zod/v4';
 import { openCodexMetadata } from './codex-client.ts';
 import { probeCodex } from './codex.ts';
 import { probeClaude } from './claude.ts';
-import { sessionPath } from './shell-path.ts';
+import { sessionPath } from '../platform/shell.ts';
 import type { ProjectSkill, ProjectSkillCatalog } from '../core/skills.ts';
 
 const commandSchema = z.object({ name: z.string().min(1).max(200), description: z.string().max(16_000), argumentHint: z.string().max(2000).default(''), builtin: z.boolean().optional() });

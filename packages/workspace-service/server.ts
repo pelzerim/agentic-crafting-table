@@ -8,7 +8,6 @@ import { migratePluginResources } from './plugin-migrations.ts';
 import { savedSessionsSchema, creationOptionsSchema } from '../session-runtime/saved-sessions.ts';
 import { createServer } from 'node:net';
 import type { Socket } from 'node:net';
-import { chmodSync, rmSync } from 'node:fs';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { WorkspaceControl } from '../core/control.ts';
 import type { CommandResult, WorkspaceState } from '../core/control.ts';
@@ -18,6 +17,7 @@ import { trustClaudeFolder } from '../session-runtime/claude-trust.ts';
 import { applyAtHead } from './apply-at-head.ts';
 import { SqliteStore } from './sqlite-store.ts';
 import { prepareWorkspace } from './paths.ts';
+import { listenOnEndpoint, removeEndpoint } from '../platform/local-endpoint.ts';
 import { MAX_FRAME_BYTES, PROTOCOL_VERSION, serializeError } from './protocol.ts';
 import type { ResponseFrame } from './protocol.ts';
 import { FrameWriter, encodeFrame } from './local-rpc.ts';
@@ -554,7 +554,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
       await new Promise<void>(resolve => server.close(() => resolve()));
       // Remove our socket while still holding ownership: a successor must not have
       // its newly created socket removed by this process during shutdown.
-      rmSync(paths.socket, { force: true }); store.releaseService(instanceId); useValidatorStore(); store.close();
+      removeEndpoint(paths.socket); store.releaseService(instanceId); useValidatorStore(); store.close();
     })();
     return shutdown;
   }
@@ -564,9 +564,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
     applySettingsPresets(store, control.registry);
     assertStarting();
     // Only the process holding the SQLite ownership record can remove a stale socket.
-    rmSync(paths.socket, { force: true });
-    await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(paths.socket, () => { server.removeListener('error', reject); resolve(); }); });
-    chmodSync(paths.socket, 0o600);
+    await listenOnEndpoint(server, paths.socket);
     health.start();
     store.recoverInterruptedJobs();
     await configureLogs();

@@ -6,6 +6,7 @@ import { accessSync, constants, mkdirSync, readFileSync, realpathSync, statSync,
 import { createHash, randomUUID } from 'node:crypto';
 import { completionAttention } from '../core/completion-attention.ts';
 import { canonical } from '../core/control.ts';
+import { defaultShell, terminalShellArgs } from '../platform/shell.ts';
 import { SupervisorConnection } from '../session-runtime/client.ts';
 import type { RuntimeOptions } from '../session-runtime/client.ts';
 import type { LaunchRequest, NativeAgentState, SessionRecord, SessionSnapshot } from '../session-runtime/protocol.ts';
@@ -72,10 +73,10 @@ export class SessionCoordinator {
       if (typeof inherited !== 'string' || !isAbsolute(inherited) || !statSync(inherited).isDirectory()) throw new Error();
       cwd = realpathSync(inherited);
     } catch { throw new Error('Choose an existing working directory for this terminal or its project'); }
-    const shell = process.env.SHELL || '/bin/zsh';
+    const shell = defaultShell(process.env.SHELL);
     if (!isAbsolute(shell)) throw new Error('The configured shell must be an absolute path'); accessSync(shell, constants.X_OK);
     const workspaceId = `local:${createHash('sha256').update(cwd).digest('hex').slice(0, 24)}`;
-    const launch: LaunchRequest = { sessionId: request.sessionId, requestId: request.requestId, nodeId: request.nodeId, workspaceId, executable: shell, args: ['-l'], cwd, cols: 100, rows: 30 };
+    const launch: LaunchRequest = { sessionId: request.sessionId, requestId: request.requestId, nodeId: request.nodeId, workspaceId, executable: shell, args: terminalShellArgs(), cwd, cols: 100, rows: 30 };
     const plan: PreparedSession = { requestId: request.requestId, expectedRevision: request.expectedRevision, nodeId: request.nodeId, action: 'terminal.create', launch, commands: [{
       type: 'item.add', id: request.nodeId, resourceId: request.resourceId, pluginId: 'terminal.session', title: request.title,
       data: { sessionId: request.sessionId, workspaceId, shell, cwd }, projectId: request.projectId, position: request.position, ...creationNear(request),
@@ -131,11 +132,11 @@ export class SessionCoordinator {
       persist({ nodeId, requestId, kind: 'attach', sessionId: existing.id });
       return this.runtime.call('sessions.read', { sessionId: existing.id });
     }
-    const cwd = String(resource.data.cwd), shell = String(resource.data.shell ?? process.env.SHELL ?? '/bin/zsh');
+    const cwd = String(resource.data.cwd), shell = String(resource.data.shell ?? defaultShell(process.env.SHELL));
     if (!isAbsolute(cwd) || !statSync(cwd).isDirectory()) throw new Error('The terminal working directory is unavailable');
     accessSync(shell, constants.X_OK);
     const plan: PreparedSession = { requestId, nodeId, expectedRevision: state.revision, action: 'terminal.resume',
-      launch: { sessionId: requestId, requestId, nodeId, predecessorId: String(resource.data.sessionId), workspaceId: String(resource.data.workspaceId), executable: shell, args: ['-l'], cwd, cols: 100, rows: 30 },
+      launch: { sessionId: requestId, requestId, nodeId, predecessorId: String(resource.data.sessionId), workspaceId: String(resource.data.workspaceId), executable: shell, args: terminalShellArgs(), cwd, cols: 100, rows: 30 },
       commands: [{ type: 'item.update', id: nodeId, data: { ...resource.data, sessionId: requestId } }],
     };
     persist({ nodeId, requestId, kind: 'launch', plan });

@@ -8,7 +8,7 @@ function processes() {
 }
 
 /** Stop tools and shell jobs belonging to this PTY, including separate job-control groups. */
-export function stopDescendants(parent: number, preservePids: number[] = []) {
+function stopDescendants(parent: number, preservePids: number[] = []) {
   const all = processes(), owned = new Set([parent]);
   for (let changed = true; changed;) {
     changed = false;
@@ -25,4 +25,17 @@ export function stopDescendants(parent: number, preservePids: number[] = []) {
   };
   signal('SIGTERM');
   return () => signal('SIGKILL');
+}
+
+const STOP_GRACE_MS = 1000;
+export interface ProcessTreeStop { settle(): void }
+
+/** Asks a process and its descendants to stop, and forces them after a grace period. Call `settle` once the process has exited. */
+export function stopProcessTree(target: { pid: number; kill(signal: NodeJS.Signals): void }, preservePids: number[] = []): ProcessTreeStop {
+  // Failing to list descendants must not leave the process itself running.
+  let finish = () => {};
+  try { finish = stopDescendants(target.pid, preservePids); } catch { /* The process is still stopped below. */ }
+  target.kill('SIGTERM');
+  const force = setTimeout(() => { finish(); target.kill('SIGKILL'); }, STOP_GRACE_MS);
+  return { settle() { clearTimeout(force); finish(); } };
 }
