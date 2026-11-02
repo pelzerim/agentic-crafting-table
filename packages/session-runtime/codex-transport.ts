@@ -38,8 +38,8 @@ export async function openCodexTerminalServer(executable: string, options: { cwd
   const address = await serverAddress(options.listener ?? (process.platform === 'win32' ? 'websocket' : 'unix'), directory);
   const args = [...options.arguments ?? [], 'app-server', '--listen', ...address.listen];
   const child = options.owner ? spawn(options.owner.executable, [options.owner.entrypoint, JSON.stringify({ executable, args, cwd: options.cwd })], {
-    cwd: options.cwd, env: { ...options.env, ...(options.owner.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}) }, stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
-  }) : spawn(executable, args, { cwd: options.cwd, env: options.env, stdio: ['ignore', 'ignore', 'pipe'] });
+    cwd: options.cwd, env: { ...options.env, ...(options.owner.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}) }, stdio: ['ignore', 'ignore', 'pipe', 'ipc'], windowsHide: true,
+  }) : spawn(executable, args, { cwd: options.cwd, env: options.env, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
   child.stderr!.resume();
   let failed: Error | undefined, socket: WebSocket | undefined, connecting: WebSocket | undefined, rpc: CodexRpc | undefined, closing: Promise<void> | undefined;
   const exited = new Promise<void>(resolve => { child.once('exit', () => resolve()); child.once('error', error => { failed = error; resolve(); }); });

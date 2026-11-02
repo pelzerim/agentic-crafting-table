@@ -93,7 +93,7 @@ export class CodexMetadata {
 }
 /** Dedicated metadata process, never the user's shared daemon. No turns are started. */
 export async function openCodexMetadata(executable: string, options: { env?: NodeJS.ProcessEnv; prefixArgs?: string[]; timeout?: number } = {}) {
-  const child = spawn(executable, [...options.prefixArgs ?? [], 'app-server', '--stdio'], { env: options.env ?? process.env, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(executable, [...options.prefixArgs ?? [], 'app-server', '--stdio'], { env: options.env ?? process.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
   child.stderr.resume(); // Native diagnostics may contain private paths; do not expose them as metadata.
   const rpc = new CodexRpc(child.stdout, child.stdin, () => {
     child.stdin.end(); child.kill('SIGTERM');

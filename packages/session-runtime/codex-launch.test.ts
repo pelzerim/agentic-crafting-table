@@ -1,11 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import childProcess, { spawnSync } from 'node:child_process';
+import type { SpawnOptions } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, realpath, rm, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, readFile, writeFile } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WorkspaceControl, MemoryStore, canonical } from '../core/control.ts';
+import { openCodexMetadata } from './codex-client.ts';
 import { prepareCodex, nativeConfigArguments } from './codex-launch.ts';
+import { openCodexTerminalServer } from './codex-transport.ts';
 import { readAgentPlan } from './agent-plan.ts';
 import { buildAgentToolContext } from '../../src/agents/tool-context.ts';
 
@@ -108,5 +114,34 @@ test('a new Codex session without a folder uses the launch fallback only after t
     assert.throws(() => prepareCodex({ request: request('bare'), state, directory, runtime, capability }), /working directory/);
     assert.equal(prepareCodex({ request: request('bare'), state, directory, runtime, capability, fallbackDirectory: fallback }).launch.cwd, await realpath(fallback));
     assert.equal(prepareCodex({ request: request('owned'), state, directory, runtime, capability, fallbackDirectory: fallback }).launch.cwd, await realpath(project));
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('Codex server launches hide the console window Windows would otherwise open', async () => {
+  const launches: SpawnOptions[] = [], realSpawn = childProcess.spawn, exit = ['-e', 'process.exit(0)'];
+  const directory = await mkdtemp(join(tmpdir(), 'act-codex-hide-')), entrypoint = join(directory, 'owner.cjs');
+  await writeFile(entrypoint, 'process.exit(0)');
+  childProcess.spawn = ((file: string, args: string[], options: SpawnOptions) => { launches.push(options); return realSpawn(file, args, options); }) as typeof childProcess.spawn;
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(openCodexMetadata(process.execPath, { prefixArgs: exit, timeout: 2000 }));
+    await assert.rejects(openCodexTerminalServer(process.execPath, { cwd: directory, env: process.env, arguments: exit }));
+    await assert.rejects(openCodexTerminalServer(process.execPath, { cwd: directory, env: process.env, owner: { executable: process.execPath, entrypoint, electron: false } }));
+  } finally {
+    childProcess.spawn = realSpawn; syncBuiltinESMExports();
+    await rm(directory, { recursive: true, force: true });
+  }
+  assert.deepEqual(launches.map(options => options.windowsHide), [true, true, true]);
+});
+
+test('the process owner hides the console window of the Codex server it starts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'act-codex-owner-')), hook = join(directory, 'record.cjs'), record = join(directory, 'spawn.json');
+  await writeFile(hook, `const childProcess = require('node:child_process'), real = childProcess.spawn;
+childProcess.spawn = (file, args, options) => { require('node:fs').writeFileSync(${JSON.stringify(record)}, JSON.stringify(options)); return real(file, args, options); };
+require('node:module').syncBuiltinESMExports();`);
+  try {
+    const owner = fileURLToPath(new URL('./native-process-owner.ts', import.meta.url));
+    spawnSync(process.execPath, ['--require', hook, owner, JSON.stringify({ executable: process.execPath, args: ['-e', 'process.exit(0)'], cwd: directory })], { timeout: 10_000 });
+    assert.equal(JSON.parse(await readFile(record, 'utf8')).windowsHide, true);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

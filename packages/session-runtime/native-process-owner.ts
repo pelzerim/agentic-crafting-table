@@ -6,7 +6,7 @@ import type { ProcessTreeStop } from '../platform/process-tree.ts';
 // IPC disconnect is an OS-owned lifetime signal, not a timer or PID-name heuristic.
 const request = JSON.parse(process.argv[2]) as { executable: string; args: string[]; cwd: string };
 const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
-const child = spawn(request.executable, request.args, { cwd: request.cwd, env, stdio: ['ignore', 'ignore', 'inherit'] });
+const child = spawn(request.executable, request.args, { cwd: request.cwd, env, stdio: ['ignore', 'ignore', 'inherit'], windowsHide: true });
 let stopping = false, tree: ProcessTreeStop | undefined;
 const stop = () => {
   if (stopping) return; stopping = true;
