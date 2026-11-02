@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { parseArgs } from 'node:util';
-import { afterUpdate } from './update-restart-check.mjs';
+import { afterUpdate, failureReason } from './update-restart-check.mjs';
 import { bundleInfo, installedBundle, isRunningFrom, openBundle, stagedBundle } from './local-bundle.mjs';
 
 // Sent first: the app quits only once the helper is running.
@@ -14,8 +14,6 @@ const { values } = parseArgs({ options: { failure: { type: 'string' }, tag: { ty
 if (!values.failure) throw new Error('Usage: node scripts/update-restart.mjs --failure <file> [--tag vX.Y.Z] [--dry-run]');
 const app = installedBundle, installed = [stagedBundle, app];
 const running = () => isRunningFrom(installed);
-// The thrown error's line, not its stack; refusals print their message alone.
-const reason = stderr => { const lines = stderr.trim().split('\n'), error = lines.findLastIndex(line => /^\w*Error: /.test(line)); return error >= 0 ? lines[error].replace(/^\w*Error: /, '') : lines.slice(-12).join('\n'); };
 const version = () => { try { return bundleInfo(app).version; } catch { return undefined; } };
 const tagsAtHead = () => execFileSync('git', ['tag', '--points-at', 'HEAD'], { encoding: 'utf8' }).split('\n');
 const plan = [`wait until nothing runs from ${installed.join(' or ')} (every 500 ms, at most 2 minutes)`, 'node scripts/update-local.mjs',
@@ -31,7 +29,7 @@ try {
   }
   const update = spawnSync(process.execPath, ['scripts/update-local.mjs'], { stdio: ['ignore', 'inherit', 'pipe'], encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
   process.stderr.write(update.stderr ?? '');
-  if (update.status !== 0) throw new Error(reason(update.stderr ?? '') || `npm run update exited with ${update.status ?? update.signal}`);
+  if (update.status !== 0) throw new Error(failureReason(update.stderr ?? '') || `npm run update exited with ${update.status ?? update.signal}`);
   if (values.tag) {
     // An earlier run may have checked the tag out but failed to build or install it.
     if (afterUpdate({ tag: values.tag, installed: version(), tagsAtHead: tagsAtHead() }) === 'rebuild') for (const args of [['ci'], ['run', 'package'], ['run', 'install:local']]) execFileSync('npm', args, { stdio: ['ignore', 'inherit', 'inherit'] });

@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Updates
+- **Update and restart**: a refused update now says why in Settings. With more than 11 changed files, the reason was lost and About showed only a list of file names. (#13, @timohuovinen)
+
 ## 0.12.0 — 2026-11-02
 
 ### Agents
