@@ -732,6 +732,10 @@ and across a direct edge: no map preview, connector, background highlight or
 connection tooltip may appear. Outside dismissal does not activate the underlying
 item; hover returns after closing, with graph state unchanged.
 
+With Right-click opens the radial menu on, a ground right click opens the ring with
+no context menu, the ground's other entries run from the ring, up to ten choices stay
+apart and on screen, and the Undermap keeps its menu.
+
 The radial picker hides All when every non-project type is already in the quick
 ring, both inside and outside a project. Removing a quick type restores All and
 keeps that type reachable. Keyboard End targets the real final choice; the amber

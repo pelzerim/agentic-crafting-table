@@ -11,6 +11,9 @@ their pull request and author.
 ### Terminals
 - **Cut**: Ctrl+X (Cmd+X on macOS) cuts selected text in every editable input. In a terminal that means the line being edited: an agent's prompt or a shell's command line. Text selected anywhere else in a terminal is copied, because a terminal can remove only what is being edited. With nothing selected the key reaches the terminal as before. (#6, @timohuovinen)
 
+### Map
+- **Radial menu on right click**: a new setting, off by default, in Settings → Map. Right-clicking the empty map opens the radial menu directly, with Mute project, Open archive and the other entries of the usual right-click menu among its items. (#10, @timohuovinen)
+
 ## 0.11.0 — 2026-10-30
 
 ### Agents
