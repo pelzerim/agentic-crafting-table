@@ -2096,9 +2096,3 @@
 
 .badge-chip[data-paper-tone=dark] { color: var(--act-paper-slate-ink); }
 
-.item-emoji {
-  font-size: 1em;
-  line-height: 1;
-  text-align: center;
-}
-

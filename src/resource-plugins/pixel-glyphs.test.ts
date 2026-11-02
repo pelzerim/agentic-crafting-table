@@ -41,3 +41,22 @@ test('the plot pin is an 8×8 glyph of its own, symmetric like a push pin', () =
   assert.deepEqual(mirror(pin), pin);
   for (const [name, rows] of Object.entries(glyphs)) if (name !== 'pin') assert.notDeepEqual(pin, rows, `pin differs from ${name}`);
 });
+
+test('the agent is a 12×12 glyph of its own, a symmetric head with an antenna, drawn like the other item icons', () => {
+  const agent: readonly string[] = (PIXEL_GLYPHS[12] as Record<string, readonly string[]>).agent;
+  assert.ok(agent, 'PIXEL_GLYPHS[12].agent exists');
+  assert.equal(agent.length, 12);
+  assert.ok(agent.every(row => row.length === 12 && /^[.X]+$/.test(row)));
+  assert.deepEqual(mirror(agent), agent);
+  for (const [name, rows] of Object.entries(PIXEL_GLYPHS[12])) if (name !== 'agent') assert.notDeepEqual(rows, agent, `agent differs from ${name}`);
+});
+
+test('the interface draws pixel glyphs, never emoji', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { readFileSync } = await import('node:fs');
+  const files = execFileSync('git', ['ls-files', 'apps/desktop/renderer', 'src/resource-plugins', 'packages/plugin-sdk'], { encoding: 'utf8' }).split('\n')
+    .filter(file => /\.(tsx?|css|mjs)$/.test(file) && !file.includes('.test.'));
+  const emoji = /[\u{1F000}-\u{1FAFF}]|️/u;
+  const found = files.flatMap(file => readFileSync(file, 'utf8').split('\n').flatMap((line, index) => emoji.test(line) ? [`${file}:${index + 1}`] : []));
+  assert.deepEqual(found, [], 'draw icons as glyphs in src/resource-plugins/pixel-glyphs.ts; see the design guide in AGENTS.md');
+});

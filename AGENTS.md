@@ -51,6 +51,26 @@ Any maintainer may cut a release once `main` is green:
 
 If someone else's tag landed first, take the next number instead of replacing theirs.
 
+## Design guide
+
+- **One open item at a time.** Opening an item gives it the whole view: its frame, its
+  controls and the map behind it. This is deliberate, so attention stays on one thing
+  until it is closed or another item replaces it. Do not add a second open view, split
+  panes, tabs of open items or pop-out windows; opening another item takes the place of
+  the current one.
+- **Icons are pixel glyphs, never emoji.** Every icon is a glyph in
+  `src/resource-plugins/pixel-glyphs.ts`, drawn as rows of `X` and `.`: 12×12 for item
+  types and controls, 8×8 for status cues and small marks. Draw with one-pixel strokes in
+  the occupied rows 1–10, keep the glyph symmetric when the object is, and leave colour
+  to `currentColor`. To add one: draw it there, map the icon name to it in
+  `apps/desktop/renderer/icons.tsx`, and add a test beside the others in
+  `pixel-glyphs.test.ts` (its size, its symmetry, and that it differs from every other
+  glyph). Do not use emoji or Unicode symbols (✓, ✕, →, ⋯) as icons; a test fails on
+  emoji in interface code. Provider logos (GitHub, Linear, Slack, …) are the only
+  non-pixel marks.
+- **Colours are tokens.** Use the roles in `docs/design-tokens.md`; never add a new hex
+  colour in CSS. Every colour needs its light and dark value.
+
 ## Working agreement
 
 - Read `docs/specification.md`, `docs/architecture.md` and `docs/testing.md` before changing
