@@ -467,7 +467,7 @@ async function main() {
       if (nativeTerminal!.chunks.map(chunk => chunk.data).join('').includes('PACKAGED_TERMINAL_OK')) break;
       await new Promise(resolve => setTimeout(resolve, 50));
     }
-    if (!nativeTerminal?.chunks.some(chunk => chunk.data.includes('PACKAGED_TERMINAL_OK'))) throw new Error('Packaged terminal input failed');
+    if (!nativeTerminal?.chunks.map(chunk => chunk.data).join('').includes('PACKAGED_TERMINAL_OK')) throw new Error('Packaged terminal input failed');
     const window = BrowserWindow.getAllWindows()[0];
     await writeFile(report, JSON.stringify({ packaged: app.isPackaged, versions: process.versions, ...probe, workspace: snapshot, savedSessions,
       window: { bounds: window.getNormalBounds(), visible: window.isVisible(), focused: window.isFocused(), focusable: window.isFocusable(), dockVisible: app.dock?.isVisible() },
