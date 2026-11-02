@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useState } from 'react';
 import type { ServiceHealthReport } from '../../../packages/workspace-service/service-health.ts';
+import type { CpuProfileRecording } from '../../../packages/workspace-service/cpu-profile.ts';
 import type { DesktopBridge } from '../bridge.ts';
 import { downloadJson } from './performance-diagnostics.tsx';
 import { SettingRow } from './settings-ui.tsx';
@@ -9,10 +10,19 @@ interface Health { service: ServiceHealthReport; connection: Awaited<ReturnType<
 
 const bytes = (value: number) => value >= 1024 * 1024 ? `${(value / 1024 / 1024).toFixed(1)} MB` : value >= 1024 ? `${(value / 1024).toFixed(1)} KB` : `${value} B`;
 const time = (iso: string) => new Date(iso).toLocaleTimeString();
+const PROFILE_MS = 15_000;
+const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
 /** The local service's lag, snapshot traffic and dropped clients, and this app's disconnects with their reasons. */
 export function ServiceHealthDiagnostics() {
   const [open, setOpen] = useState(false), [health, setHealth] = useState<Health>(), [status, setStatus] = useState<RowStatus>(), heading = useId();
+  const [profile, setProfile] = useState<CpuProfileRecording>(), [profiling, setProfiling] = useState(false);
+  const recordProfile = async () => {
+    setProfiling(true); setProfile(undefined);
+    try { setProfile(await window.craftingTable.serviceCpuProfile(PROFILE_MS)); setStatus(undefined); }
+    catch (error) { setStatus({ tone: 'error', text: (error as Error).message }); }
+    finally { setProfiling(false); }
+  };
   const refresh = useCallback(async () => {
     try {
       const [service, connection] = await Promise.all([window.craftingTable.serviceHealth(), window.craftingTable.connectionEvents()]);
@@ -30,6 +40,15 @@ export function ServiceHealthDiagnostics() {
       <button type="button" aria-label="Refresh service health" onClick={() => void refresh()}>Refresh</button>
       <button type="button" aria-label="Download service health" onClick={() => void download()}>Download</button>
     </SettingRow>
+    {open && <SettingRow label="CPU profile" description={`Records which functions the workspace service spends its time in for ${PROFILE_MS / 1000} seconds, and saves the profile in the app's diagnostics folder. Function and file names only.`}>
+      <button type="button" disabled={profiling} onClick={() => void recordProfile()}>{profiling ? 'Recording CPU profile…' : 'Record CPU profile'}</button>
+    </SettingRow>}
+    {open && profile && <div className="performance-diagnostics">
+      <p>Saved {fileName(profile.file)} · {bytes(profile.bytes)} · {profile.durationMs} ms</p>
+      <table aria-label="Busiest functions"><thead><tr><th>Function</th><th>File</th><th>Own time</th></tr></thead><tbody>
+        {profile.top.slice(0, 15).map(entry => <tr key={`${entry.name}-${entry.file}-${entry.line}`}><td>{entry.name}</td><td>{entry.file}:{entry.line}</td><td>{entry.selfMs} ms · {Math.round(entry.share * 100)}%</td></tr>)}
+      </tbody></table>
+    </div>}
     {open && health && recent && <div className="performance-diagnostics">
       <p>Event-loop lag: max {recent.lagMaxMs} ms · p95 {recent.lagP95Ms} ms</p>
       <p>Snapshots: {recent.snapshotsPerMinute} per minute · {bytes(recent.snapshotBytesPerMinute)} per minute</p>

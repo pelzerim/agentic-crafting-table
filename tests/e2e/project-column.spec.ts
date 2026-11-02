@@ -460,6 +460,22 @@ test('an open item names its project and plot above its title; the plot closes t
   }, { state: plotProject, prepare: store => store.writeView('desktop', { camera: { x: 80, y: 70, zoom: .8 } }) });
 });
 
+test('Settings → Corners chooses the corner: the project overview by default, or the minimap', async () => {
+  await launch(async page => {
+    await expect(page.locator('.map-locator.project-column')).toBeVisible();
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('treeitem', { name: 'Corners', exact: true }).click();
+    const corner = page.getByRole('radiogroup', { name: 'Bottom-right corner' });
+    await expect(corner.getByRole('radio', { name: 'Project overview' })).toHaveAttribute('aria-checked', 'true');
+    await corner.getByRole('radio', { name: 'Minimap' }).click();
+    await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+    await expect.poll(() => page.evaluate(async () => (await window.craftingTable.settingsRead()).value.mapCorner)).toBe('atlas');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.map-locator.atlas')).toBeVisible();
+    await expect(page.locator('.project-column')).toHaveCount(0);
+  });
+});
+
 test('with mapCorner set to atlas the corner is the Atlas, and on the Undermap the project column is not shown', async () => {
   await launch(async page => {
     const atlas = page.locator('.map-locator.atlas');

@@ -76,7 +76,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
   const updateRow = appUpdateRow({ app: updates?.app, checkout: Boolean(appInfo?.updateRestart), failure: restartError ? { at: Infinity, message: restartError } : appInfo?.updateFailure });
   const updateAndRestart = () => { setRestartError(undefined); window.craftingTable.updatesRestart().catch(error => setRestartError(error.message)); };
   useEffect(() => { let mounted = true; window.craftingTable.appInfo().then(info => { if (mounted) setAppInfo(info); }).catch(error => { if (mounted) setInfoError(String(error)); }); return () => { mounted = false; }; }, []);
-  const sections = ['Connections', 'Items', 'Map', 'Notifications', 'AI features', 'General', 'Plugins', 'Data & diagnostics'] as const;
+  const sections = ['Connections', 'Items', 'Map', 'Corners', 'Notifications', 'AI features', 'General', 'Plugins', 'Data & diagnostics'] as const;
   const [section, setSection] = useState<string>(installRequest ? 'Plugins' : initialSessionView ? 'Data & diagnostics' : initialSection ?? 'Connections');
   useEffect(() => { if (initialSessionView) setSection('Data & diagnostics'); }, [initialSessionView, sessionRequestId]);
   useEffect(() => { if (installRequest) setSection('Plugins'); }, [installRequest?.id]);
@@ -110,7 +110,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
   }, [section, advanced]);
   const [itemMapSizes, setItemMapSizes] = useState<AppSettings['itemMapSizes']>({});
   const [conversation, setConversation] = useState<AppSettings['pullRequestConversation']>({ comments: true, threads: true, reviewBodies: true, bots: false, activity: false });
-  const [warnBeforeClosing, setWarnBeforeClosing] = useState(true), [doubleClickOpensWeb, setDoubleClickOpensWeb] = useState(false), [snapToGrid, setSnapToGrid] = useState(false), [groundRightClickRing, setGroundRightClickRing] = useState(false), [offscreenAttention, setOffscreenAttention] = useState(false), [mapCollisions, setMapCollisions] = useState<AppSettings['mapCollisions']>('shove'), [appearance, setAppearance] = useState<AppSettings['appearance']>('system'), [itemDelete, setItemDelete] = useState(false), [autoReview, setAutoReview] = useState<AppSettings['autoReview']>({ enabled: false, agents: ['claude'] }), [mapPlots, setMapPlots] = useState(true), [hideImpliedLinks, setHideImpliedLinks] = useState(true);
+  const [warnBeforeClosing, setWarnBeforeClosing] = useState(true), [doubleClickOpensWeb, setDoubleClickOpensWeb] = useState(false), [snapToGrid, setSnapToGrid] = useState(false), [groundRightClickRing, setGroundRightClickRing] = useState(false), [offscreenAttention, setOffscreenAttention] = useState(false), [mapCorner, setMapCorner] = useState<AppSettings['mapCorner']>('projects'), [mapCollisions, setMapCollisions] = useState<AppSettings['mapCollisions']>('shove'), [appearance, setAppearance] = useState<AppSettings['appearance']>('system'), [itemDelete, setItemDelete] = useState(false), [autoReview, setAutoReview] = useState<AppSettings['autoReview']>({ enabled: false, agents: ['claude'] }), [mapPlots, setMapPlots] = useState(true), [hideImpliedLinks, setHideImpliedLinks] = useState(true);
   const [itemViews, setItemViews] = useState<AppSettings['itemViews']>({});
   const [pluginSettings, setPluginSettings] = useState<AppSettings['plugins']>({}), pluginPages = useMemo(() => pluginSettingsPages(plugins), [plugins]);
   const [quickIds, setQuickIds] = useState<string[]>([]), [menus, setMenus] = useState<AppSettings['menus']>({ order: {}, layout: {}, hidden: {} });
@@ -127,7 +127,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
     window.craftingTable.settingsRead().then(snapshot => {
       if (!mounted) return;
       setWarnBeforeClosing(snapshot.value.warnBeforeClosing); setConversation(snapshot.value.pullRequestConversation); setDiagnostics(snapshot.value.diagnostics); setItemViews(snapshot.value.itemViews); setItemMapSizes(snapshot.value.itemMapSizes); setPluginSettings(snapshot.value.plugins);
-      setNeighborhood(snapshot.value.neighborhoodAppearance); setBelowAnimation(snapshot.value.belowAnimation); setUndermapLayout(snapshot.value.undermapLayout); setWorkingMark(snapshot.value.workingMark); setMapDashboards(snapshot.value.mapDashboards); setMapPlots(snapshot.value.mapPlots); setHideImpliedLinks(snapshot.value.hideImpliedLinks); setDoubleClickOpensWeb(snapshot.value.doubleClickOpensWeb); setSnapToGrid(snapshot.value.snapToGrid); setGroundRightClickRing(snapshot.value.groundRightClickRing); setOffscreenAttention(snapshot.value.offscreenAttention); setMapCollisions(snapshot.value.mapCollisions); setAppearance(snapshot.value.appearance); setItemDelete(snapshot.value.itemDelete); setAutoReview(snapshot.value.autoReview); setTerminal(snapshot.value.terminal);
+      setNeighborhood(snapshot.value.neighborhoodAppearance); setBelowAnimation(snapshot.value.belowAnimation); setUndermapLayout(snapshot.value.undermapLayout); setWorkingMark(snapshot.value.workingMark); setMapDashboards(snapshot.value.mapDashboards); setMapPlots(snapshot.value.mapPlots); setHideImpliedLinks(snapshot.value.hideImpliedLinks); setDoubleClickOpensWeb(snapshot.value.doubleClickOpensWeb); setSnapToGrid(snapshot.value.snapToGrid); setGroundRightClickRing(snapshot.value.groundRightClickRing); setOffscreenAttention(snapshot.value.offscreenAttention); setMapCorner(snapshot.value.mapCorner); setMapCollisions(snapshot.value.mapCollisions); setAppearance(snapshot.value.appearance); setItemDelete(snapshot.value.itemDelete); setAutoReview(snapshot.value.autoReview); setTerminal(snapshot.value.terminal);
       setAutoMode(snapshot.value.claude.autoMode); setNotifications(snapshot.value.notifications);
       setQuickIds(snapshot.value.quickItemTypes); setMenus(snapshot.value.menus); setDefaultDirectory(snapshot.value.defaultWorkingDirectory); setSummaries(snapshot.value.summaries); setPadding(String(snapshot.value.neighborhoodPadding)); setSaved(snapshot); setRemote(snapshot.value.claude.remoteControl); setAwake(snapshot.value.keepAwake); setUpdateCheck(snapshot.value.updates.check); setArgumentsText(snapshot.value.claude.arguments.join('\n'));
     }).catch(error => { if (mounted) setError(error.message); });
@@ -136,7 +136,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
   const limited = Boolean(summaries && (summaries.enabled || summaries.agentTitles || summaries.attachTitles || summaries.plotNames || summaries.projectSummaries || (STANDUP_ENABLED && summaries.standupDigests)));
   const claude = { remoteControl: remote, autoMode, arguments: argumentsText.split(/\r?\n/).map(value => value.trim()).filter(Boolean) };
   const permission = claudePermissionSettings(claude);
-  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, pullRequestConversation: conversation, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, groundRightClickRing, offscreenAttention, mapCollisions, appearance, itemDelete, autoReview, terminal, keepAwake: awake, claude, updates: { check: updateCheck } };
+  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, pullRequestConversation: conversation, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, groundRightClickRing, offscreenAttention, mapCorner, mapCollisions, appearance, itemDelete, autoReview, terminal, keepAwake: awake, claude, updates: { check: updateCheck } };
   const changes = useMemo(() => saved ? draftChanges(saved.value, draft!, pluginPages) : [], [saved, JSON.stringify(draft)]);
   const dirty = changes.length > 0, [discarding, setDiscarding] = useState(false);
   const requestClose = () => { if (dirty) setDiscarding(true); else close(); };
@@ -318,6 +318,16 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
             setRepairing(true); setMapStatus(undefined);
             try { await clearOverlaps(); setMapStatus({ tone: 'ok', text: 'Overlaps cleared.' }); } catch (error) { setMapStatus({ tone: 'error', text: (error as Error).message }); } finally { setRepairing(false); setConfirmRepair(false); }
           }} />}
+        </SettingsSection>
+      </SettingsPage>
+      <SettingsPage id="Corners" title="Corners" description="What the corners of the map show." hidden={section !== 'Corners'}>
+        <SettingsSection label="Bottom-right">
+          <SettingRow label="Bottom-right corner" description="What the corner of the map shows. M unfolds it either way." meta="Default Project overview">
+            <Segmented label="Bottom-right corner" value={mapCorner} change={corner => setMapCorner(corner)} options={[
+              { value: 'projects', label: 'Project overview', help: 'One icon per project with what waits there; unfolded, a row per project.' },
+              { value: 'atlas', label: 'Minimap', help: 'The whole map in miniature with the view outlined; unfolded, a larger overview.' },
+            ]} />
+          </SettingRow>
         </SettingsSection>
       </SettingsPage>
       <NotificationSettings value={notifications} change={setNotifications} plugins={plugins} hidden={section !== 'Notifications'} />

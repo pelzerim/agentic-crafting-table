@@ -82,7 +82,8 @@ import { resolveMapSize, sizeAsDefault } from '../../../packages/core/item-map-s
 import { resourceWebPage } from '../../../src/resource-plugins/web-page.ts';
 import { SNAP_PITCH } from '../../../src/graph/snap.ts';
 import { LARGE_ITEM_WIDTH } from '../../../src/graph/footprints.ts';
-import { UndermapSearch } from './undermap-search.tsx';
+import { FindField, UndermapSearch } from './undermap-search.tsx';
+import { recentOnMap, rememberOpened, searchMap } from '../../../src/graph/map-search.ts';
 import type { UndermapSearchHandle } from './undermap-search.tsx';
 
 type Anchor = Parameters<NonNullable<ProjectMapProps['onContext']>>[0];
@@ -359,6 +360,9 @@ export function WorkspaceMap() {
   }, [mirrorBelow]);
   const searchBelow = useCallback((query: string) => mirrorBelow ? searchUndermap(mirrorBelow, snapshotRef.current?.state.nodes ?? [], query, Infinity) : [], [mirrorBelow]);
   const flyBelow = (match: UndermapMatch) => { setEditor(undefined); setFoundBelow(match.id); revealNode(match.id, 'map'); };
+  const [mapFindOpen, setMapFindOpen] = useState(false);
+  const searchOnMap = useCallback((query: string) => searchMap(snapshotRef.current?.state.nodes ?? [], query, Infinity).map(match => ({ id: match.id, title: match.title, detail: match.project })), []);
+  const recentlyOpened = useMemo(() => ({ label: 'Recently opened', matches: () => recentOnMap(snapshotRef.current?.state.nodes ?? [], viewRef.current?.recentItems ?? []).map(match => ({ id: match.id, title: match.title, detail: match.project })) }), []);
   /** Plots exist on the map layer only; hidden plots and projects that turned plots off are left out. */
   const plots = useMemo(() => {
     const value = snapshot?.plots;
@@ -428,7 +432,12 @@ export function WorkspaceMap() {
     const type = resourceId ? state?.resources.find(resource => resource.id === resourceId)?.pluginId : undefined;
     return seenOnOpen(type, settingsRef.current?.value.notifications ?? { seenOnOpen: [] }, context);
   }, []);
-  const { acknowledge, notices, opened, view: viewing, kept, restore } = useAttention(snapshot, accept, setError, seenOnOpenFor);
+  const { acknowledge, notices, opened: attentionOpened, view: viewing, kept, restore } = useAttention(snapshot, accept, setError, seenOnOpenFor);
+  const opened = (id: string, origin: 'user' | 'program' = 'user') => {
+    attentionOpened(id, origin);
+    const recent = viewRef.current?.recentItems;
+    if (origin === 'user' && viewRef.current && recent?.[0] !== id) saveView({ recentItems: rememberOpened(recent, id) });
+  };
   // Panels that name items anywhere (Needs me's Earlier, the session list, the standup, the editor) read the Undermap once while open.
   const withUndermap = useUndermapWhile(attentionOpen || settingsOpen || standupOpen || Boolean(editor && editor.mode !== 'menu'), snapshot);
   const withUndermapRef = useRef(withUndermap); withUndermapRef.current = withUndermap;
@@ -745,6 +754,11 @@ export function WorkspaceMap() {
   useWorkspaceShortcuts({
     'rail.undermap': travelLayer, 'layer.toggle': travelLayer,
     'undermap.search': () => { if (!below || !mirrorBelow || travelling) return false; rail.clear(); undermapSearch.current?.focus(); },
+    'map.find': () => {
+      if (!snapshot || travelling) return false;
+      rail.clear();
+      if (below) { if (!mirrorBelow) return false; undermapSearch.current?.focus(); } else setMapFindOpen(true);
+    },
     'settings.open': () => { setSessionListView(undefined); setSettingsOpen(true); },
     'rail.settings': () => { setSessionListView(undefined); setSettingsOpen(true); },
     'shortcuts.help': () => { setControlsOpen(old => !old); },
@@ -822,6 +836,9 @@ export function WorkspaceMap() {
     </div>
     {snapshot && below && <div className="below-bar"><span role="status">Undermap · {layerGraph.belowCount.toLocaleString('en-US')} {layerGraph.belowCount === 1 ? 'item' : 'items'}</span>
       {mirrorBelow && <UndermapSearch ref={undermapSearch} shortcut={shortcutKey('undermap.search')} search={searchBelow} pick={flyBelow} />}<button type="button" onClick={() => setArchiveOpen(true)}>Archive</button><button type="button" onClick={() => { void travel('map'); }}>↑ Back to map</button></div>}
+    {snapshot && !below && mapFindOpen && <div className="below-bar map-find-bar"><FindField label="Find on map" listLabel="Items on map" placeholder="Find an item and open it…"
+      empty={query => `Nothing on the map matches “${query}”.`} shortcut={shortcutKey('map.find')} search={searchOnMap}
+      pick={id => { setEditor(undefined); revealNode(id, 'centred'); }} idle={recentlyOpened} transient={{ close: () => setMapFindOpen(false) }} /></div>}
     {snapshot && below && !layerGraph.nodes.length && <div className="map-message below-empty"><p>Undermap is empty. Right-click an item on the map and choose <b>Send to Undermap</b>.</p></div>}
     {below && riseCharge > 0 && <div className="below-rise" aria-hidden="true"><span>Keep zooming out to rise to the map</span><i style={{ width: `${riseCharge * 100}%` }} /></div>}
     {snapshot && !below && !snapshot.state.nodes.length && !snapshot.layers?.below.items && <div className="map-message"><span className="eyebrow">YOUR WORKSPACE</span><h1>A place for every project.</h1><p>Double-click anywhere to add an item · right-click for more</p><button onClick={createProject}>Create your first project</button>

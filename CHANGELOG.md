@@ -3,6 +3,15 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## 0.16.0 — 2026-11-02
+
+### Diagnostics
+- **CPU profile**: Settings → Data & diagnostics → Service health can record what the workspace service spends its time on for 15 seconds, save the profile and list the busiest functions.
+
+### Map
+- **Find an item**: ⌘F on the map opens a find bar in the map's colours. Before you type it lists the items you opened last. Pick one and the map slides to it, then opens it; Escape closes the view again.
+- **Minimap back as a choice**: Settings → Corners → Bottom-right corner chooses between the project overview, the default, and the minimap.
+
 ## 0.15.0 — 2026-11-02
 
 ### Platform

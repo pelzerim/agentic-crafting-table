@@ -36,6 +36,7 @@ const bridge: DesktopBridge = {
   settingsRead: () => invoke('settings.read'),
   diagnosticsReport: () => invoke('diagnostics.report'),
   serviceHealth: () => invoke('diagnostics.health'),
+  serviceCpuProfile: (ms: number) => invoke('diagnostics.cpuProfile', { ms }),
   connectionEvents: () => ipcRenderer.invoke('app:connection-events'),
   reportError: entry => ipcRenderer.send('app:renderer-error', entry),
   openLogs: () => ipcRenderer.invoke('app:open-logs'),

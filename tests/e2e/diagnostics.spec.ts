@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron } from '@playwright/test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startWorkspaceService } from '../../packages/workspace-service/server.ts';
@@ -66,5 +66,25 @@ test('service health shows lag, snapshot rates, disconnects and the slowest oper
     expect(report.service.operationCounts.broadcast.count).toBeGreaterThanOrEqual(3);
     expect(report.connection.events.map((event: { status: string }) => event.status)).toContain('connected');
     expect(text).not.toMatch(/PRIVATE_/);
+  } finally { await exitWithoutShutdown(app); await service.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('service health records a CPU profile of the workspace service and lists its busiest functions', async () => {
+  test.setTimeout(60_000);
+  const directory = await mkdtemp(join(tmpdir(), 'craft-cpu-profile-'));
+  const service = await startWorkspaceService(directory, undefined, undefined, {});
+  const app = await electron.launch({ args: ['.'], env: { ...process.env, ACT_TEST_DATA_DIR: directory } });
+  try {
+    const page = await app.firstWindow(); await resize(app, page, 1100, 800); await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.getByRole('button', { name: 'Settings', exact: true }).click(); await page.getByRole('treeitem', { name: 'Data & diagnostics', exact: true }).click();
+    const health = page.getByRole('region', { name: 'Service health' });
+    await health.getByRole('button', { name: 'Show service health', exact: true }).click();
+    await health.getByRole('button', { name: 'Record CPU profile', exact: true }).click();
+    await expect(health.getByRole('button', { name: 'Recording CPU profile…', exact: true })).toBeDisabled();
+    const busiest = health.getByRole('table', { name: 'Busiest functions' });
+    await expect(busiest.getByRole('row')).not.toHaveCount(0, { timeout: 30_000 });
+    await expect(health).toContainText(/Saved workspace-service-[\dT-]+Z\.cpuprofile/);
+    const [saved] = (await readdir(join(directory, 'diagnostics'))).filter(name => name.endsWith('.cpuprofile'));
+    expect(JSON.parse(await readFile(join(directory, 'diagnostics', saved), 'utf8')).nodes.length).toBeGreaterThan(0);
   } finally { await exitWithoutShutdown(app); await service.close(); await rm(directory, { recursive: true, force: true }); }
 });

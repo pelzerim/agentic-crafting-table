@@ -129,6 +129,8 @@ export const viewSchema = z.object({
   projectsPanel: z.object({ width: z.number().min(260).max(900).optional(), height: z.number().min(160).max(1000).optional(), folded: z.array(id).max(500).optional(),
     order: z.array(id).max(500).optional(), plotOrder: z.array(id).max(500).optional(),
     filters: z.object({ needsMe: z.boolean().optional(), off: z.array(z.enum(COLUMN_KINDS)).max(COLUMN_KINDS.length).optional() }).optional(), pinned: z.boolean().optional() }).optional(),
+  /** The items the person opened last, newest first (MAP-33). */
+  recentItems: z.array(id).max(20).optional(),
   /** Update offers the person closed, by subject (`app` or `plugin:<id>`) and the tag dismissed; a newer tag is offered again. */
   dismissedUpdates: z.record(z.string().regex(/^(app|plugin:[A-Za-z0-9._-]{1,80})$/), z.string().max(80)).optional(),
 });

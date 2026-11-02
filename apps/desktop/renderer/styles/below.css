@@ -481,3 +481,20 @@
 .undermap-search-count {
   border-top: 1px solid var(--act-undermap-edge);
 }
+
+.undermap-search-results .undermap-search-heading {
+  border-bottom: 1px solid var(--act-undermap-edge);
+  font-size: var(--act-fs-caps);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.map-find-bar {
+  --act-undermap: var(--act-sunken);
+  --act-undermap-bar: color-mix(in srgb, var(--act-panel) 90%, transparent);
+  --act-undermap-surface: var(--act-surface);
+  --act-undermap-edge: var(--act-line);
+  --act-undermap-ink: var(--act-ink);
+  --act-undermap-ink-dim: var(--act-ink-dim);
+  --act-undermap-accent: var(--act-accent);
+}

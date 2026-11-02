@@ -9,6 +9,8 @@ import { savedSessionsSchema, creationOptionsSchema } from '../session-runtime/s
 import { createServer } from 'node:net';
 import type { Socket } from 'node:net';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { WorkspaceControl } from '../core/control.ts';
 import type { CommandResult, WorkspaceState } from '../core/control.ts';
 import { revisionGuard } from '../core/revision-policy.ts';
@@ -25,6 +27,7 @@ import type { EncodedFrame } from './local-rpc.ts';
 import { presentLayer } from '../../src/graph/layers.ts';
 import type { MapLayer } from '../../src/graph/layers.ts';
 import { ServiceHealth } from './service-health.ts';
+import { CPU_PROFILE_RANGE_MS, recordCpuProfile } from './cpu-profile.ts';
 import { AgentRecaps } from './agent-recaps.ts';
 import type { ResourcePluginRegistry } from '../../src/resource-plugins/registry.ts';
 import { SessionCoordinator } from './sessions.ts';
@@ -388,6 +391,11 @@ export async function startWorkspaceService(directory: string, registry?: Resour
             result = supportReport(await control.read(), store.readSettings().value, store.listJobs(), sessions, health.report()); break;
           }
           case 'diagnostics.health': result = health.report(); break;
+          case 'diagnostics.cpuProfile': {
+            const { ms } = z.object({ ms: z.number().int().min(CPU_PROFILE_RANGE_MS.min).max(CPU_PROFILE_RANGE_MS.max) }).strict().parse(args);
+            const directory = join(paths.dataDirectory, 'diagnostics'); await mkdir(directory, { recursive: true, mode: 0o700 });
+            result = await recordCpuProfile(ms, directory); break;
+          }
           case 'settings.write': case 'connections.select': {
             let write = args;
             if (request.method === 'connections.select') {

@@ -134,6 +134,17 @@ of that circle at the current zoom; it does not open the item or mark it seen. I
 projects (MAP-25) raise none, Finished raises one only when counted, and none show while an item
 is open or below (MAP-18), where Needs me pauses.
 
+**MAP-33 — Find an item.** ⌘F on the map (not in a focused terminal, which keeps its
+own find) opens a find bar at the bottom centre in the Undermap find field's shape,
+focused, in the map's colours for the current light or dark theme. Before anything is
+typed it lists, under "Recently opened", the items on the map the person opened last,
+newest first, from the twenty the map view keeps (`view.recentItems`). Typing lists the items on the map, not projects and nothing below, archived or
+hidden, whose title and project title hold every word, titles that start with the query
+first, eight at a time with a count of the rest; each row shows the title and its
+project. Arrows and Enter or a click pick one: the bar closes, the map slides to the item
+at the current zoom and only then opens it, and Escape then closes the view as usual. Escape or leaving the field
+closes the bar without opening anything. On the Undermap ⌘F focuses its own find field.
+
 **MAP-19 — Independent expanded-view movement.** Drag anywhere on the expanded item's menu bar (including status, directory, provider/model text and empty space; excluding buttons and other interactive controls)
 to move its open view in screen space, without moving or resizing the map bubble,
 rewriting graph/camera state, rearranging neighbors or changing its connections.
@@ -451,7 +462,7 @@ nags and nothing carries over. Nothing fires for a reminder disabled at its time
 
 **MAP-22 — Project column, Atlas and map overview.** The bottom-right corner shows
 the **project column** by default; `mapCorner: 'projects' | 'atlas'` (Settings value, default
-`projects`, no Settings row yet) switches it to the Atlas described below, which behaves as before.
+`projects`, chosen in Settings → Corners as SETTINGS-MAP-CORNER) switches it to the Atlas described below, which behaves as before.
 The folded column (44 px wide, pixel panel, growing upward) has one 32 × 32 icon per project on the
 Map that is not muted (MAP-25), in the project's colour with its **tag**: the initials of a name of two
 or more words (first letters, at most three) or the first three letters of a one-word name, upper case;
@@ -2504,6 +2515,12 @@ Map, section **Needs me**, has the switch **Circles for items outside the view**
 default; additive boolean `offscreenAttention`, older settings read off). When off, no
 circle shows and the Needs me number and frames are unchanged.
 
+**SETTINGS-MAP-CORNER — Bottom-right corner (MAP-22).** Settings → **Corners**, its own
+page after Map, section **Bottom-right**, has the choice **Bottom-right corner**: **Project overview** (default) or
+**Minimap**, stored as `mapCorner` `projects` or `atlas`. Project overview is the project
+column; Minimap is the Atlas and its map overview. Saving switches the corner at once; M
+unfolds whichever is shown.
+
 **SETTINGS-ITEM-DELETE — Delete in item menus.** Settings → Map, section **Removing
 items**, has the switch **Delete in item menus** (off by default; additive boolean
 `itemDelete`, older settings read off). When on, every item's right-click menu (map and
@@ -2641,7 +2658,13 @@ and keeps the 20 slowest snapshot deliveries (parse plus forward to the windows)
 Settings → Data & diagnostics → Support → **Service health** shows lag max and p95,
 snapshots and bytes per minute, coalesced and dropped counts over the last 10 minutes,
 the last disconnects with their reasons and the slowest operations, with Refresh and
-a Download of the health JSON.
+a Download of the health JSON. Below it, **Record CPU profile** asks the service
+(`diagnostics.cpuProfile`, 1 ms to 120 s; the app asks for 15 s) to sample its own CPU
+through the in-process inspector, without a debugging port, and save a `.cpuprofile`
+readable by the owner only in `diagnostics/` in the data directory. The row then names
+the saved file and lists the busiest functions by own time with their script file name
+and line; the profile holds function and file names, never workspace content. One
+recording runs at a time.
 
 **SAFETY-01 — Crash and load failure.** A top-level error boundary and per-view
 boundaries (terminals, plugin views) replace a blank window. A render crash or a

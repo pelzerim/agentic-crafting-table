@@ -15,6 +15,7 @@ export const WORKSPACE_SHORTCUTS = [
   { id: 'map.overview', label: 'Toggle map overview', key: 'm', group: 'Map' },
   { id: 'layer.toggle', label: 'Undermap and back', key: 'u', group: 'Map' },
   { id: 'undermap.search', label: 'Find in Undermap', key: '/', group: 'Map' },
+  { id: 'map.find', label: 'Find an item and open it', key: 'f', meta: true, display: '⌘F', group: 'Map' },
   { id: 'project.mute', label: 'Mute focused project', key: 'm', shift: true, display: '⇧M', group: 'Map' },
   { id: 'map.zoomIn', label: 'Zoom in', key: '+', aliases: ['='], group: 'Map' },
   { id: 'map.zoomOut', label: 'Zoom out', key: '-', group: 'Map' },

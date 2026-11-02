@@ -27,6 +27,7 @@ export interface DesktopBridge {
   diagnosticsReport(): Promise<import('../../packages/diagnostics/support-report.ts').SupportReport>;
   /** The workspace service's event-loop lag, operations, broadcasts, dropped clients and memory. */
   serviceHealth(): Promise<import('../../packages/workspace-service/service-health.ts').ServiceHealthReport>;
+  serviceCpuProfile(ms: number): Promise<import('../../packages/workspace-service/cpu-profile.ts').CpuProfileRecording>;
   /** This app's last 50 workspace connection changes with their reasons, and the 20 slowest snapshot deliveries. */
   connectionEvents(): Promise<{ events: import('../../packages/workspace-service/connection.ts').ConnectionEvent[]; slowestSnapshots: import('../../packages/workspace-service/connection.ts').SnapshotDelivery[] }>;
   /** Appends a bounded renderer failure to the local renderer.log; never uploaded. */
