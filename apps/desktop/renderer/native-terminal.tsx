@@ -280,7 +280,7 @@ function NativeTerminal({ sessionId, active, options }: { sessionId: string; act
     </div>}
     {(error || readError || promptError) && <div className="terminal-error" role="alert">{error || readError || promptError}</div>}
     {promptStatus && ['queued', 'acknowledged'].includes(promptStatus.state) && <div className="terminal-prompt-status" role="status">{promptStatus.message}</div>}
-    <div className="terminal-content" aria-busy={replaying || undefined}><TerminalSurface channel={channel} active={active} nativeShiftEnter={options.agentMenu} nativePaste={options.nativePaste} readOnly={Boolean(session?.readOnly) || session?.state !== 'running'} /></div>
+    <div className="terminal-content" aria-busy={replaying || undefined}><TerminalSurface channel={channel} active={active} nativeShiftEnter={options.agentMenu} nativePaste={options.nativePaste} selectionCut={options.selectionCut} readOnly={Boolean(session?.readOnly) || session?.state !== 'running'} /></div>
   </div>;
 }
 

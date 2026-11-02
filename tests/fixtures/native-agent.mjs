@@ -1,5 +1,6 @@
 // Deterministic native-CLI contract fixture. It never calls a model or GitHub.
 import assert from 'node:assert/strict';
+import { appendFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -116,6 +117,7 @@ if (resumed && args.includes('--')) { assert.ok(args.at(-1).includes('reopened')
 await hook('Stop');
 console.log(`NATIVE_${resumed ? 'RESUMED' : idle ? 'IDLE' : 'READY'}:${nativeId}`);
 if (idle) assert.ok(['opus', 'fable'].includes(value('--model')));
+if (process.env.AGENT_FIXTURE_INPUT_LOG) { process.stdin.setRawMode(true); process.stdout.write(`\x1b[?1002h\x1b[?1006h${process.env.AGENT_FIXTURE_DRAFT}`); process.stdin.on('data', data => appendFileSync(process.env.AGENT_FIXTURE_INPUT_LOG, data)); }
 process.on('SIGTERM', async () => { process.stdout.write('\x1b[?1049l\x1b[2J\x1b[HCLI_TEARDOWN'); await client.close(); process.exit(0); });
 const lines = createInterface({ input: process.stdin });
 async function submit() {

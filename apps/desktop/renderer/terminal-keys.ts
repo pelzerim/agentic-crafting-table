@@ -4,7 +4,7 @@ const CMD_LINE_KEYS: Record<string, string> = { Backspace: '\x15', ArrowLeft: '\
 
 /** Agents interpret the modified key themselves. Shell line editors receive a
  * bracketed newline so neither line executes until ordinary Enter. */
-export function terminalKey(terminal: Pick<Terminal, 'options' | 'paste' | 'input' | 'hasSelection'> & { modes: Pick<Terminal['modes'], 'bracketedPasteMode' | 'mouseTrackingMode'> }, event: KeyboardEvent, agent = false, find?: () => void, browserPaste = false) {
+export function terminalKey(terminal: Pick<Terminal, 'options' | 'paste' | 'input' | 'hasSelection'> & { modes: Pick<Terminal['modes'], 'bracketedPasteMode' | 'mouseTrackingMode'> }, event: KeyboardEvent, agent = false, find?: () => void, browserPaste = false, cut?: () => boolean) {
   // An IME composition keeps every key.
   if (event.isComposing || event.keyCode === 229) return true;
   if (event.key === 'f' && event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
@@ -16,6 +16,12 @@ export function terminalKey(terminal: Pick<Terminal, 'options' | 'paste' | 'inpu
   if (agent && event.key === 'c' && event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && terminal.modes.mouseTrackingMode !== 'none' && !terminal.hasSelection()) {
     event.preventDefault(); event.stopPropagation();
     if (event.type === 'keydown' && !terminal.options.disableStdin) terminal.input('\x1b[99;9u', true);
+    return false;
+  }
+  // Ctrl+X on macOS and Cmd+X elsewhere stay what they are; without a selection so does the cut key, a prefix in shells and agents.
+  const cutKey = /Mac/.test(navigator.platform) ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+  if (cut && cutKey && event.type === 'keydown' && event.key.toLowerCase() === 'x' && !event.altKey && !event.shiftKey && cut()) {
+    event.preventDefault(); event.stopPropagation();
     return false;
   }
   // Sending Ctrl+V as a key would make the agent read the desktop clipboard itself, which fails on text.

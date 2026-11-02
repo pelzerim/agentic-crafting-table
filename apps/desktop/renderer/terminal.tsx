@@ -1,4 +1,6 @@
+import type { NativeTerminalOptions } from '../../../src/resource-plugins/types.ts';
 import { pastedImage, pastedPath } from './terminal-input.ts';
+import { TuiDrag, dragIsEditable, dragText, lineDeletion } from './terminal-selection.ts';
 import { terminalKey } from './terminal-keys.ts';
 import { bindTerminalLinks } from './terminal-links.ts';
 import type { TerminalLink } from './terminal-links.ts';
@@ -30,7 +32,7 @@ export interface TerminalChannel {
 }
 
 /** A view only: unmounting never stops the underlying session. */
-export function TerminalSurface({ channel, active, readOnly = false, nativeShiftEnter = false, nativePaste = false }: { channel: TerminalChannel; active: boolean; readOnly?: boolean; nativeShiftEnter?: boolean; nativePaste?: boolean }) {
+export function TerminalSurface({ channel, active, readOnly = false, nativeShiftEnter = false, nativePaste = false, selectionCut }: { channel: TerminalChannel; active: boolean; readOnly?: boolean; nativeShiftEnter?: boolean; nativePaste?: boolean; selectionCut?: NativeTerminalOptions['selectionCut'] }) {
   const container = useRef<HTMLDivElement>(null), host = useRef<HTMLDivElement>(null);
   const instance = useRef<{ terminal: Terminal; fit: FitAddon; search: SearchAddon; renderer: ReturnType<typeof createTerminalRenderer>; wheel: ReturnType<typeof bindTerminalWheel> } | null>(null);
   const [linkMenu, setLinkMenu] = useState<TerminalLink>();
@@ -38,6 +40,7 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
   const activeRef = useRef(active); activeRef.current = active;
   const nativeKeyRef = useRef(nativeShiftEnter); nativeKeyRef.current = nativeShiftEnter;
   const nativePasteRef = useRef(nativePaste); nativePasteRef.current = nativePaste;
+  const selectionCutRef = useRef(selectionCut); selectionCutRef.current = selectionCut;
   const findRef = useRef(find); findRef.current = find;
   const closeFind = () => { if (findRef.current) { instance.current?.search.clearDecorations(); instance.current?.terminal.clearSelection(); } setFind(undefined); };
   useEffect(() => { if (!active) { setLinkMenu(undefined); closeFind(); } }, [active]);
@@ -58,7 +61,28 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
     setFind(undefined);
     const openFind = () => { const selected = terminal.getSelection(); setFind(old => ({ query: selected && !selected.includes('\n') ? selected : old?.query ?? '', request: (old?.request ?? 0) + 1 })); };
     // On macOS Ctrl+V pastes nothing in the browser, and the agent's own clipboard read works there.
-    terminal.attachCustomKeyEventHandler(event => terminalKey(terminal, event, nativeKeyRef.current, openFind, nativePasteRef.current && !navigator.platform.startsWith('Mac')));
+    const tuiDrag = new TuiDrag();
+    const copied = (text: string, then?: () => void) => void navigator.clipboard.writeText(text).then(then, error => window.craftingTable.reportError({ kind: 'recoverable', message: `Cut failed: ${(error as Error).message}` }));
+    /** A terminal can only remove the line being edited; anything else on screen is copied. */
+    const cut = () => {
+      if (terminal.hasSelection()) {
+        const text = terminal.getSelection(), buffer = terminal.buffer.active, position = terminal.getSelectionPosition();
+        // A full-screen program that is not an agent would read these keys as commands.
+        const editable = position && !terminal.options.disableStdin && (selectionCutRef.current || buffer.type === 'normal');
+        const arrow = terminal.modes.applicationCursorKeysMode ? '\x1bO' : '\x1b[';
+        const keys = editable ? lineDeletion(buffer, position, text, { left: `${arrow}D`, right: `${arrow}C` }) : undefined;
+        terminal.clearSelection(); copied(text, keys ? () => terminal.input(keys, true) : undefined);
+        return true;
+      }
+      const drag = selectionCutRef.current ? tuiDrag.selection : undefined;
+      if (!drag) return false;
+      const buffer = terminal.buffer.active, text = dragText(buffer, drag, selectionCutRef.current === 'end-included'), editable = dragIsEditable(buffer, drag);
+      // The TUI deletes its own selection on Backspace, but its copy key would end that selection first.
+      copied(text, editable ? () => terminal.input('\x7f', true) : undefined);
+      return true;
+    };
+    const dragInput = terminal.onData(data => tuiDrag.input(data));
+    terminal.attachCustomKeyEventHandler(event => terminalKey(terminal, event, nativeKeyRef.current, openFind, nativePasteRef.current && !navigator.platform.startsWith('Mac'), cut));
     // Before xterm's handler, which reads text only: an image reaches the agent as a local path it can attach.
     const pasteImage = (event: ClipboardEvent) => {
       if (!nativePasteRef.current || event.clipboardData?.getData('text/plain')) return;
@@ -100,7 +124,7 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
     if (active && host.current!.clientWidth > 0 && host.current!.clientHeight > 0) fit.fit();
     terminal.write(channel.history);
     instance.current = { terminal, fit, search, renderer, wheel: input };
-    return () => { element.removeEventListener('paste', pasteImage, true); unsubscribe(); reset?.(); input.dispose(); identity.dispose(); links(); resize.dispose(); renderer.dispose(); terminal.dispose(); for (const resolve of pending) resolve(); pending.clear(); instance.current = null; };
+    return () => { dragInput.dispose(); element.removeEventListener('paste', pasteImage, true); unsubscribe(); reset?.(); input.dispose(); identity.dispose(); links(); resize.dispose(); renderer.dispose(); terminal.dispose(); for (const resolve of pending) resolve(); pending.clear(); instance.current = null; };
   }, [channel]);
   useLayoutEffect(() => {
     const terminal = instance.current?.terminal;
