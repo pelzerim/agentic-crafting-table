@@ -10,6 +10,10 @@ async function apply(page: Page, commands: WorkspaceCommand[]) {
   await page.evaluate(async encoded => { const commands = JSON.parse(encoded) as WorkspaceCommand[]; const { state } = await window.craftingTable.workspaceRead(); await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: state.revision, actor: { kind: 'provider', id: 'offscreen-fixture' }, commands }); }, JSON.stringify(commands));
 }
 const mark = (page: Page) => page.locator('.offscreen-attention');
+const circlesOn = (page: Page) => page.evaluate(async () => {
+  const saved = await window.craftingTable.settingsRead();
+  await window.craftingTable.settingsWrite({ expectedRevision: saved.revision, value: { ...saved.value, offscreenAttention: true } });
+});
 const camera = (page: Page) => page.locator('.react-flow__viewport').evaluate(element => new DOMMatrix(getComputedStyle(element).transform));
 /** Drags the empty board, in strokes short enough to start and end inside the window. */
 async function pan(page: Page, x: number, y: number) {
@@ -33,7 +37,20 @@ async function expectClear(marks: Locator, chrome: Locator) {
 }
 const shot = (page: Page, info: TestInfo, name: string) => page.screenshot({ path: info.outputPath(`${name}.png`) });
 
+test('the setting is off by default and turned on in Settings → Map', async ({ visual: { page } }) => {
+  await pan(page, -1300, 0);
+  await expect(mark(page)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'Map', exact: true }).click();
+  await page.getByRole('switch', { name: 'Circles for items outside the view' }).click();
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+  await expect.poll(() => page.evaluate(async () => (await window.craftingTable.settingsRead()).value.offscreenAttention)).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(mark(page)).toHaveCount(1);
+});
+
 test('a circle on the edge points at the nearest waiting item outside the view and slides to it', async ({ visual: { page } }, testInfo) => {
+  await circlesOn(page);
   await expect(mark(page)).toHaveCount(0);
   // Everything leaves through the left edge, so the two waiting items share a circle, led by the nearer Plan switcher.
   await pan(page, -1300, 0);
@@ -63,6 +80,7 @@ test('a circle on the edge points at the nearest waiting item outside the view a
 });
 
 test('items in different directions get a circle each, and each slides to its own', async ({ visual: { page } }, testInfo) => {
+  await circlesOn(page);
   await apply(page, [{ type: 'node.move', id: 'agent', position: { x: 4000, y: 240 } }, { type: 'node.move', id: 'pr', position: { x: -3000, y: 300 } }]);
   await expect(mark(page)).toHaveCount(2);
   const left = page.locator('[data-offscreen-target="pr"]'), right = page.locator('[data-offscreen-target="agent"]');
@@ -77,6 +95,7 @@ test('items in different directions get a circle each, and each slides to its ow
 });
 
 test('the circle stays out from under map chrome and open panels', async ({ visual: { page } }, testInfo) => {
+  await circlesOn(page);
   // The straight line to the items leaves the view under the zoom bar.
   await pan(page, -1120, 900);
   await expect(mark(page).first()).toBeVisible();
@@ -91,6 +110,7 @@ test('the circle stays out from under map chrome and open panels', async ({ visu
 });
 
 test('an open item hides the circle, and a muted project raises none', async ({ visual: { page } }) => {
+  await circlesOn(page);
   await apply(page, [{ type: 'node.move', id: 'agent', position: { x: 4000, y: 240 } }]);
   await expect(mark(page)).toHaveAttribute('data-offscreen-target', 'agent');
   await expect(mark(page)).toHaveAttribute('data-tier', 'asking');

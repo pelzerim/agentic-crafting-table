@@ -128,6 +128,9 @@ test('the ground ring on right click is off by default and only accepts a boolea
   assert.equal(settingsSchema.parse({}).groundRightClickRing, false);
   assert.equal(settingsSchema.parse({ groundRightClickRing: true }).groundRightClickRing, true);
   for (const value of ['yes', 1, null]) assert.equal(settingsSchema.safeParse({ groundRightClickRing: value }).success, false, String(value));
+  assert.equal(settingsSchema.parse({}).offscreenAttention, false);
+  assert.equal(settingsSchema.parse({ offscreenAttention: true }).offscreenAttention, true);
+  for (const value of ['yes', 1, null]) assert.equal(settingsSchema.safeParse({ offscreenAttention: value }).success, false, String(value));
 });
 
 test('Delete in item menus is off by default and only accepts a boolean', () => {

@@ -69,7 +69,7 @@ their spots as pure functions (a part in view counts as shown, nearest first, th
 resource counted once, the crossing on each edge and on a diagonal, a left inset, chrome pushing a spot
 along an edge and round a corner, chrome over the whole edge, a mark per direction, grouping by spot with
 the nearest first and the highest tier, including marks chrome pushed together). `offscreen-attention.spec.ts`
-drives the app on the fixture workspace: a circle's tier, colour and count, beside the rail, moving with
+drives the app on the fixture workspace: the setting off by default and turned on in Settings → Map, a circle's tier, colour and count, beside the rail, moving with
 the board, circles in two directions, a click sliding to the item at the same zoom without opening it or
 changing state, staying clear of the zoom bar, the corner panel and a sheet opened with the camera still,
 hidden while an item is open and for a muted project. It presses the board, so a local run on Linux needs

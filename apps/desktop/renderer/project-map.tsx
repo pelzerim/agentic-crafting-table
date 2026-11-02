@@ -220,6 +220,8 @@ export interface ProjectMapProps {
   collisions?: MapCollisions;
   /** Whether Finished joins the Needs me number on dashboards (Settings → Notifications). */
   attentionCounting?: AttentionCounting;
+  /** Circles on the edge of the view for waiting items outside it (MAP-32). */
+  offscreenAttention?: boolean;
   /** Mute or unmute a project (MAP-25). Without it no project is drawn covered. */
   onMute?(projectId: string, muted: boolean): void;
   /** The Undermap's mirror layout (MAP-18): areas, month lines and far plates come from these computed boxes, the
@@ -1557,7 +1559,7 @@ function MapCanvas(props: ProjectMapProps) {
     </nav>}
     {plotMenu && <CanvasMenu screen={plotMenu.screen} actions={plotMenuActions(props.plotNaming ?? true, plotOf(plotMenu.id), plotNeighborhoods.get(plotOf(plotMenu.id)?.projectId ?? ''), props.plotTargets && props.onMoveItems && plotOf(plotMenu.id) ? props.plotTargets(plotOf(plotMenu.id)!.memberIds) : undefined)} act={plotMenuAct} close={() => setPlotMenu(undefined)} />}
     <ZoomBar zoom={viewport.zoom} dashboards={dashboardSetting} zoomTo={zoom => void zoomTo(zoom)} />
-    {!focus && <OffscreenAttention boxes={waiting} camera={viewport} screen={size} go={box => { clearInspection(); void setCenter(box.x, box.y, { zoom: viewport.zoom, duration: duration() }); }} />}
+    {!focus && props.offscreenAttention && <OffscreenAttention boxes={waiting} camera={viewport} screen={size} go={box => { clearInspection(); void setCenter(box.x, box.y, { zoom: viewport.zoom, duration: duration() }); }} />}
   </div></WorkingAnimalContext.Provider></DetailContext.Provider>;
 }
 

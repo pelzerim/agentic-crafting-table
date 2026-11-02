@@ -23,6 +23,7 @@ test('the double-click web setting belongs to the Map page', () => {
   assert.deepEqual(draftChanges(saved, { ...saved, hideImpliedLinks: false }), ['Map']);
   assert.deepEqual(draftChanges(saved, { ...saved, snapToGrid: true }), ['Map']);
   assert.deepEqual(draftChanges(saved, { ...saved, groundRightClickRing: true }), ['Map']);
+  assert.deepEqual(draftChanges(saved, { ...saved, offscreenAttention: true }), ['Map']);
 });
 
 test('package settings belong to the item page that shows them, compared with their defaults filled in', () => {

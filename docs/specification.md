@@ -119,7 +119,8 @@ default. The rule and its settings switch are SETTINGS-SNAP-GRID.
 context menu; off by default. The rule and its settings switch are
 SETTINGS-GROUND-RING.
 
-**MAP-32 — Off-screen attention.** Each item that counts in Needs me (STATE-02) with no part
+**MAP-32 — Off-screen attention.** An optional reminder, off by default; its settings switch
+is SETTINGS-OFFSCREEN-ATTENTION. Each item that counts in Needs me (STATE-02) with no part
 inside the view raises a solid circle 18 px across on the edge of the view, in the frame's amber
 for its tier. It stands where the straight line from the centre of the view to the item crosses
 the edge, so it says which way the item lies and slides along the edge as the board moves. The
@@ -2497,6 +2498,11 @@ choice; it is added, opening the project form, only when Project is not a quick 
 The ring is a wider oval while it holds these entries, so up to ten choices stay apart.
 A right click on an item, project, line or plot keeps its menu, and so does the
 Undermap, where nothing is created. Right click or Escape still dismisses the ring.
+
+**SETTINGS-OFFSCREEN-ATTENTION — Circles for items outside the view (MAP-32).** Settings →
+Map, section **Needs me**, has the switch **Circles for items outside the view** (off by
+default; additive boolean `offscreenAttention`, older settings read off). When off, no
+circle shows and the Needs me number and frames are unchanged.
 
 **SETTINGS-ITEM-DELETE — Delete in item menus.** Settings → Map, section **Removing
 items**, has the switch **Delete in item menus** (off by default; additive boolean
