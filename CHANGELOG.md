@@ -3,9 +3,10 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
-## Unreleased
+## 0.12.0 — 2026-11-02
 
 ### Agents
+- **Session commands**: `/new`, `/clear`, `/fork`, `/branch` and `/resume` typed in a Claude or Codex terminal now follow the CLI on the map. New and forked conversations open in their own session beside the item, `/resume` goes to the item that holds the conversation, and the session view moves with you. The item where you typed keeps its conversation. `/new` and `/clear` do nothing in a session that has no conversation yet. (#9, @timohuovinen)
 - **After a restart**: sessions a reboot ended no longer fill Needs me or turn every card amber. They show as ended, with a muted grey frame, until you resume them. A session that really failed still asks. (#8, @timohuovinen)
 
 ### Terminals
@@ -13,8 +14,7 @@ their pull request and author.
 
 ### Map
 - **Radial menu on right click**: a new setting, off by default, in Settings → Map. Right-clicking the empty map opens the radial menu directly, with Mute project, Open archive and the other entries of the usual right-click menu among its items. (#10, @timohuovinen)
-
-- **Session commands**: `/new`, `/clear`, `/fork`, `/branch` and `/resume` typed in a Claude or Codex terminal now follow the CLI on the map. New and forked conversations open in their own session beside the item, `/resume` goes to the item that holds the conversation, and the session view moves with you. The item where you typed keeps its conversation. `/new` and `/clear` do nothing in a session that has no conversation yet. (#9, @timohuovinen)
+- The radial menu's agent entry shows a pixel agent instead of the robot emoji.
 
 ## 0.11.0 — 2026-10-30
 

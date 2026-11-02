@@ -39,10 +39,10 @@ test('the cut key cuts selected text in the app\'s text fields', async () => {
     await page.getByRole('button', { name: 'Create your first project' }).click();
     for (const [label, text] of [['Title', 'a single line'], ['Project summary', 'several words\non two lines']]) {
       const field = page.getByLabel(label, { exact: true });
-      await field.fill(text); await field.press('Control+a'); await field.press('Control+x');
+      await field.fill(text); await field.press('ControlOrMeta+a'); await field.press('ControlOrMeta+x');
       await expect(field).toHaveValue('');
       await expect.poll(() => clipboard(app)).toBe(text);
-      await field.press('Control+v');
+      await field.press('ControlOrMeta+v');
       await expect(field).toHaveValue(text);
     }
     await page.getByLabel('Project working directory', { exact: true }).fill(directory);
@@ -54,7 +54,7 @@ test('the cut key cuts selected text in the app\'s text fields', async () => {
     await page.locator('.paper-face').click();
     const editor = page.getByRole('textbox', { name: 'Note text' });
     await expect(editor).toHaveValue('note text');
-    await editor.press('Control+a'); await editor.press('Control+x');
+    await editor.press('ControlOrMeta+a'); await editor.press('ControlOrMeta+x');
     await expect(editor).toHaveValue('');
     await expect.poll(() => clipboard(app)).toBe('note text');
   });
@@ -86,7 +86,7 @@ test('in a shell the cut key removes a selection from the command line and only 
     await page.keyboard.type('echo hello brave world');
     await expect(tree).toContainText('world');
     await select('echo hello', 'brave');
-    await page.keyboard.press('Control+x');
+    await page.keyboard.press('ControlOrMeta+x');
     await expect.poll(() => clipboard(app)).toBe('brave');
     await expect.poll(async () => (await tree.textContent())!.replaceAll(' ', ' ')).toContain('echo hello  world');
     await page.keyboard.press('Enter');
@@ -94,7 +94,7 @@ test('in a shell the cut key removes a selection from the command line and only 
 
     await expect.poll(() => page.evaluate(() => [...document.querySelectorAll('.xterm-accessibility-tree > div')].some(line => line.textContent?.replaceAll('\u00a0', ' ').trim() === 'hello world'))).toBe(true);
     await select('hello world', 'hello');
-    await page.keyboard.press('Control+x');
+    await page.keyboard.press('ControlOrMeta+x');
     await expect.poll(() => clipboard(app)).toBe('hello');
     await page.keyboard.type('still typing');
     await expect(tree).toContainText('still typing');

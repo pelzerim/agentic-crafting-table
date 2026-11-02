@@ -36,6 +36,8 @@ for (const { provider, name, fixture, endCol } of [
     await openProjectPicker(page, 'Cut project');
     await page.getByRole('button', { name: 'Agent session', exact: true }).click();
     await page.getByRole('radio', { name, exact: true }).check();
+    // Start is held back until Codex has listed its models.
+    if (provider === 'codex') await expect(page.getByLabel('Model', { exact: true })).not.toHaveValue('');
     await page.getByLabel('Title', { exact: true }).fill('Cut agent');
     await page.getByRole('button', { name: `Start ${name}`, exact: true }).click();
     await page.getByRole('article', { name: 'Cut agent', exact: true }).click();
@@ -54,10 +56,10 @@ for (const { provider, name, fixture, endCol } of [
     };
 
     await drag(await rowOf('NATIVE_'), 1, endCol);
-    await page.keyboard.press('Control+x');
+    await page.keyboard.press('ControlOrMeta+x');
     await expect.poll(clipboard).toBe('NATIVE');
     await drag(await rowOf('cut me here'), 1, endCol);
-    await page.keyboard.press('Control+x');
+    await page.keyboard.press('ControlOrMeta+x');
     await expect.poll(clipboard).toBe('cut me');
     await expect.poll(received).toContain('\x7f');
     expect((await received()).split('\x7f')).toHaveLength(2);
@@ -66,13 +68,15 @@ for (const { provider, name, fixture, endCol } of [
     await expect.poll(received).toContain('\x18');
     expect(await clipboard()).toBe('cut me');
 
-    // Shift+drag makes a terminal selection even while the agent owns the mouse.
+    // Off macOS, Shift+drag makes a terminal selection even while the agent owns the mouse:
+    // the cut deletes it key by key. On macOS xterm leaves a Shift+drag to the agent, which
+    // deletes its own selection on one Backspace.
     await page.keyboard.down('Shift');
     await drag(await rowOf('cut me here'), 8, 12);
     await page.keyboard.up('Shift');
-    await page.keyboard.press('Control+x');
+    await page.keyboard.press('ControlOrMeta+x');
     await expect.poll(clipboard).toBe('here');
-    await expect.poll(async () => (await received()).split('\x7f').length).toBe(6);
+    await expect.poll(async () => (await received()).split('\x7f').length).toBe(process.platform === 'darwin' ? 3 : 6);
     await expect(page.locator('.terminal-error')).toHaveCount(0);
   } finally {
     await app.evaluate(async ({ clipboard }) => { await clipboard.write((globalThis as any).clipboardBeforeTest); }).catch(() => {});

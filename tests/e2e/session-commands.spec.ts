@@ -107,6 +107,7 @@ test('/new in a Codex agent that never had a prompt changes nothing on the map',
     const page = await app.firstWindow();
     await createProject(page, repo);
     await page.getByRole('radio', { name: 'Codex', exact: true }).check();
+    await expect(page.getByLabel('Model', { exact: true })).not.toHaveValue('');
     await page.getByLabel('Title', { exact: true }).fill('Codex session');
     await page.getByRole('button', { name: 'Start Codex', exact: true }).click();
     await page.getByRole('article', { name: 'Codex session', exact: true }).click();
@@ -134,6 +135,7 @@ test('/new in an open Codex agent moves the view to a new session', async () => 
     const page = await app.firstWindow();
     await createProject(page, repo);
     await page.getByRole('radio', { name: 'Codex', exact: true }).check();
+    await expect(page.getByLabel('Model', { exact: true })).not.toHaveValue('');
     await page.getByLabel('Title', { exact: true }).fill('Codex session');
     await page.getByRole('button', { name: 'Start Codex', exact: true }).click();
     await page.getByRole('article', { name: 'Codex session', exact: true }).click();
