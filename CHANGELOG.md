@@ -6,7 +6,7 @@ their pull request and author.
 ## Unreleased
 
 ### Pull requests
-- **Inline images**: screenshots and other images attached on GitHub now show inside the description and comments of a pull request once you open them, instead of disappearing. Other images stay links.
+- **Inline images**: screenshots and other images attached on GitHub now show inside the description and comments of a pull request once you open them, instead of disappearing. Other images stay links. (#17, @MegaMaddin)
 
 ## 0.16.0 — 2026-11-02
 
