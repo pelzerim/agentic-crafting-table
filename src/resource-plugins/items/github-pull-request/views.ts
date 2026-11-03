@@ -4,6 +4,7 @@ import { findingGlyph, reviewGlyph } from '../code-review/desk.ts';
 import { DEFAULT_CONVERSATION, visibleComments, conversationThreads, commentPreview } from './discussion.ts';
 import type { PullComment } from './discussion.ts';
 import { renderMarkdown } from '../../markdown-view.ts';
+import { isAttachment, loadImages } from './inline-images.ts';
 import { mountWorkflowAction } from '../github-review-run/action.ts';
 import { runArchitectureAction, runReviewContextAction } from './context-actions.ts';
 import { openResourceChoices } from '../../choices.ts';
@@ -40,6 +41,7 @@ export const githubPullRequestViews: ResourcePluginViews = {
     const description = element('div', '', 'pr-description markdown-content');
     const descriptionPanel = element('details', '', 'pr-description-panel'), descriptionSummary = element('summary', 'Description');
     descriptionPanel.append(descriptionSummary, meta, description, commits);
+    descriptionPanel.addEventListener('toggle', () => { if (descriptionPanel.open) loadImages(description, { kind: 'description' }, services); });
     const tools = element('div', '', 'pr-tools'), primary = element('div', '', 'pr-primary-actions');
     const merge = element('button', 'Merge', 'pr-merge'); merge.type = 'button'; merge.setAttribute('aria-label', 'Merge'); merge.disabled = true; merge.setAttribute('aria-expanded', 'false'); merge.dataset.irreversible = '';
     let closeMerge: (() => void) | undefined;
@@ -221,7 +223,7 @@ export const githubPullRequestViews: ResourcePluginViews = {
           const fresh = element('span', 'New', 'act-chip pr-comment-new'); fresh.dataset.tone = 'info'; fresh.title = 'Not marked seen yet';
           meta.append(link, fresh, cue, date);
           if (comment.kind === 'review') meta.append(element('small', '', 'pr-comment-revision'));
-          const content = element('div', '', 'markdown-content'); renderMarkdown(content, comment.body, { allowHtml: true });
+          const content = element('div', '', 'markdown-content'); renderMarkdown(content, comment.body, { allowHtml: true, images: isAttachment });
           const controls = element('div', '', 'pr-comment-controls'), feedback = element('small', '', 'pr-comment-feedback'); feedback.setAttribute('role', 'status');
           const seenButton = element('button'), expand = element('button', 'Expand comment');
           const preview = element('button', '', 'pr-comment-preview');
@@ -231,7 +233,7 @@ export const githubPullRequestViews: ResourcePluginViews = {
           preview.setAttribute('aria-label', `Expand comment by ${comment.author}`);
           content.id = `pr-comment-body-${resource.id}-${id}`; preview.setAttribute('aria-controls', content.id); expand.setAttribute('aria-controls', content.id);
           content.hidden = true; preview.setAttribute('aria-expanded', 'false'); expand.setAttribute('aria-expanded', 'false');
-          expand.onclick = preview.onclick = () => { content.hidden = !content.hidden; preview.hidden = !content.hidden; expand.textContent = content.hidden ? 'Expand comment' : 'Collapse comment'; expand.setAttribute('aria-expanded', String(!content.hidden)); preview.setAttribute('aria-expanded', String(!content.hidden)); if (preview.hidden) expand.focus(); };
+          expand.onclick = preview.onclick = () => { content.hidden = !content.hidden; if (!content.hidden) loadImages(content, { kind: comment.kind, commentId: comment.id }, services); preview.hidden = !content.hidden; expand.textContent = content.hidden ? 'Expand comment' : 'Collapse comment'; expand.setAttribute('aria-expanded', String(!content.hidden)); preview.setAttribute('aria-expanded', String(!content.hidden)); if (preview.hidden) expand.focus(); };
           seenButton.onclick = async () => {
             seenButton.disabled = true;
             try { seen = await services.runAction('pr.comments', { operation: 'seen', sourceResourceId: resource.id, kind: comment.kind, id: comment.id, version, seen: !seen[id] }) as Record<string, boolean>; renderComments(latestComments, latestTotal); }
@@ -392,7 +394,8 @@ export const githubPullRequestViews: ResourcePluginViews = {
       author.textContent = `by ${pull.user.login}`;
       refs.textContent = `${pull.base.ref} ← ${pull.head.ref}`;
       commits.textContent = `Commits: ${pull.base.sha.slice(0, 12)} ← ${pull.head.sha.slice(0, 12)}`; commits.title = `${pull.base.sha} ← ${pull.head.sha}`;
-      renderMarkdown(description, pull.body || 'No description provided.', { allowHtml: true });
+      renderMarkdown(description, pull.body || 'No description provided.', { allowHtml: true, images: isAttachment });
+      if (descriptionPanel.open) loadImages(description, { kind: 'description' }, services);
       renderRelated();
     }
     async function display(snapshot: ResourceSnapshot, current: number, savedPreview = false) {

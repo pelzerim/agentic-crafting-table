@@ -1,4 +1,5 @@
 import * as z from 'zod/v4';
+import { attachmentId, IMAGE_BYTES, IMAGE_TYPES, signedImage } from './github-media.ts';
 
 /** Provider DTOs deliberately exclude tokens, arbitrary URL hosts and unknown API
  * fields. Markdown/patches are untrusted display content, never executable HTML. */
@@ -17,6 +18,7 @@ const pull = z.object({
 const file = z.object({ filename: short, previous_filename: short.optional(), status: short,
   additions: z.number().int().nonnegative(), deletions: z.number().int().nonnegative(), changes: z.number().int().nonnegative(), patch: text.optional() });
 const comment = z.object({ id: z.number().int().positive(), body: text, user: user.nullable(), created_at: short, updated_at: short, path: short.optional(), line: z.number().int().positive().nullable().optional(), original_line: z.number().int().positive().nullable().optional(), in_reply_to_id: z.number().int().positive().optional() });
+const renderedBody = z.object({ body_html: z.string().max(2_000_000).nullable().optional(), issue_url: short.optional(), pull_request_url: short.optional() });
 const review = z.object({ id: z.number().int().positive(), body: text.nullable(), user: user.nullable(), state: short, submitted_at: short.nullable(), commit_id: short.nullable() });
 const mergeCommit = z.object({ data: z.object({ repository: z.object({ pullRequest: z.object({ mergeCommit: z.object({ oid: z.string().regex(/^[a-f0-9]{40,64}$/i) }).nullable() }) }) }) });
 const mergeMethod = z.enum(['MERGE', 'SQUASH', 'REBASE']);
@@ -105,7 +107,9 @@ export interface PullChecks { head: string; failing: string[] }
 export interface MergeWhenReady { method: PullMergeMethod | null; enabledAt: string | null }
 /** The fixed queue read also carries the head commit's check rollup, when readable, and merge when ready while it is on. */
 export interface MergeQueueState { queued: boolean; position: number | null; checks?: PullChecks; mergeWhenReady?: MergeWhenReady }
-export interface GitHubTransport { postComment?(path: string, body: string, signal: AbortSignal): Promise<GitHubResponse>; get(path: string, signal: AbortSignal): Promise<GitHubResponse>; mergeCommit?(identity: PullIdentity, signal: AbortSignal): Promise<GitHubResponse>; mergeQueue?(identity: PullIdentity, signal: AbortSignal): Promise<GitHubResponse>;
+/** `html` reads GitHub's rendered HTML of one body; `image` fetches a signed attachment copy without credentials. */
+export interface GitHubTransport { postComment?(path: string, body: string, signal: AbortSignal): Promise<GitHubResponse>; get(path: string, signal: AbortSignal): Promise<GitHubResponse>;
+  html?(path: string, signal: AbortSignal): Promise<GitHubResponse>; image?(url: string, signal: AbortSignal): Promise<{ type: string; bytes: Uint8Array }>; mergeCommit?(identity: PullIdentity, signal: AbortSignal): Promise<GitHubResponse>; mergeQueue?(identity: PullIdentity, signal: AbortSignal): Promise<GitHubResponse>;
   mergeOptions?(identity: PullIdentity, signal: AbortSignal): Promise<GitHubResponse>; merge?(request: PullMergeRequest, signal: AbortSignal): Promise<GitHubResponse>;
   disableAutoMerge?(pullRequestId: string, signal: AbortSignal): Promise<GitHubResponse>;
   setTitle?(identity: PullIdentity, title: string, signal: AbortSignal): Promise<GitHubResponse>;
@@ -381,6 +385,28 @@ export class GitHubClient {
       if (!/(?:^|,)\s*<[^>]+>;\s*rel="next"/.test(response.headers.get('link') ?? '')) return values;
     }
     throw new GitHubError('GITHUB_CONTENT_LIMIT', 'This pull request exceeds the content limit. The response is incomplete and was not saved.');
+  }
+  /** An attachment of the description or one comment, as a data URL. The signed copy in the rendered
+   * body expires within minutes, so it is read when asked for and never kept. */
+  async attachment(identity: PullIdentity, target: { kind: 'description' | 'discussion' | 'inline' | 'review'; id?: number }, src: string, signal: AbortSignal): Promise<string> {
+    pullKey(identity);
+    const asset = attachmentId(src);
+    if (!asset) throw new GitHubError('GITHUB_INVALID_PATH', 'Only GitHub attachments can be shown inline.');
+    if (target.kind !== 'description' && (!Number.isSafeInteger(target.id) || target.id! < 1)) throw new GitHubError('GITHUB_INVALID_PATH', 'Choose the comment that holds this image.');
+    if (!this.transport.html || !this.transport.image) throw new GitHubError('GITHUB_UNAVAILABLE', 'Images cannot be loaded for this account.');
+    const repository = `/repos/${identity.owner}/${identity.repo}`, pullPath = `${repository}/pulls/${identity.number}`;
+    const path = target.kind === 'description' ? pullPath : target.kind === 'review' ? `${pullPath}/reviews/${target.id}` : `${repository}/${target.kind === 'inline' ? 'pulls' : 'issues'}/comments/${target.id}`;
+    signal.throwIfAborted();
+    const response = await this.transport.html(path, signal); signal.throwIfAborted();
+    const parsed = renderedBody.safeParse(checkedGitHubResponse(response, this.now()));
+    if (!parsed.success) throw new GitHubError('GITHUB_INVALID_RESPONSE', 'GitHub returned an unsupported response.');
+    const owner = parsed.data.issue_url ?? parsed.data.pull_request_url, expected = `https://api.github.com${repository}/${parsed.data.issue_url ? 'issues' : 'pulls'}/${identity.number}`;
+    if (owner !== undefined && owner.toLowerCase() !== expected.toLowerCase()) throw new GitHubError('GITHUB_INVALID_PATH', 'This comment belongs to another issue or pull request.');
+    const signed = parsed.data.body_html ? signedImage(parsed.data.body_html, asset) : undefined;
+    if (!signed) throw new GitHubError('GITHUB_UNAVAILABLE', 'GitHub no longer lists this image. Refresh and try again.');
+    const image = await this.transport.image(signed, signal); signal.throwIfAborted();
+    if (!IMAGE_TYPES.includes(image.type) || image.bytes.byteLength > IMAGE_BYTES) throw new GitHubError('GITHUB_INVALID_RESPONSE', 'This attachment is not an image that can be shown inline.');
+    return `data:${image.type};base64,${Buffer.from(image.bytes).toString('base64')}`;
   }
   async files(identity: PullIdentity, signal: AbortSignal) { pullKey(identity); return this.pages(`/repos/${identity.owner}/${identity.repo}/pulls/${identity.number}/files`, file, signal, 30); }
   async comments(identity: PullIdentity, signal: AbortSignal) { pullKey(identity); return this.pages(`/repos/${identity.owner}/${identity.repo}/issues/${identity.number}/comments`, comment, signal, 20); }

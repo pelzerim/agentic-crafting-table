@@ -10,6 +10,8 @@ import type { SqliteStore } from '../../packages/workspace-service/sqlite-store.
 export const pullFixture = { id: 124, number: 42, title: 'Make billing plan changes predictable', body: 'Preserve the current plan until the next billing cycle.\n\n<script>window.providerScriptExecuted=true</script>', state: 'open', draft: false, merged: false,
   user: { login: 'fixture-developer' }, head: { sha: 'a'.repeat(40), ref: 'billing/plan-changes', repo: { full_name: 'fixture/billing' } }, base: { sha: 'b'.repeat(40), ref: 'main', repo: { full_name: 'fixture/billing' } }, created_at: '2026-09-25T10:00:00Z', updated_at: '2026-09-25T11:00:00Z', additions: 24, deletions: 6, changed_files: 1,
   assignees: [{ login: 'fixture-developer' }], requested_reviewers: [], labels: [] };
+/** A 2×2 PNG, the attachment every fixture image resolves to. */
+export const FIXTURE_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGNwaDgARAwQCgAoDgYBQzpj2gAAAABJRU5ErkJggg==';
 /** Switches on the opt-in Show/Ship title tags, as in a workspace that already used them. */
 export function enableShowShip(store: Pick<SqliteStore, 'readSettings' | 'writeSettings'>) {
   const current = store.readSettings();
@@ -27,6 +29,7 @@ export function githubFixture(additionalPulls: typeof pullFixture[] = []) {
   let before: ((signal: AbortSignal) => Promise<void>) | undefined;
   /** Awaited before each merge, title, state and draft write, so a test can keep GitHub answering slowly. */
   let beforeWrite: (() => Promise<void>) | undefined;
+  const htmlReads: string[] = [], imageReads: string[] = [];
   const accounts = [{ id: 'github-fixture', providerId: 'github', account: 'fixture-developer', enabled: true, isDefault: true }];
   const connections = new ProviderConnections(() => accounts, [{ id: 'github', name: 'GitHub', setupHint: 'Fixture account', accounts: async () => [{ id: 'fixture-developer', label: 'fixture-developer', active: true, available: true, credentialSource: 'test fixture' }] }]);
   const posts: { path: string; body: string }[] = [], merges: PullMergeRequest[] = [];
@@ -103,6 +106,17 @@ export function githubFixture(additionalPulls: typeof pullFixture[] = []) {
     const entry = { id: 1000 + posts.length, body, user: { login: 'fixture-developer' }, created_at: '2026-09-28', updated_at: '2026-09-28' };
     if (path.includes('/replies')) inline.push(entry); else comments.push(entry);
     return { status: 201, body: entry, headers: new Headers() };
+  }, async html(path) {
+    /** GitHub's rendered body: each attachment address becomes its short-lived signed copy. */
+    const id = Number(path.split('/').pop()), source = path.includes('/issues/comments/') ? comments.find(entry => entry.id === id)?.body : path.includes('/pulls/comments/') ? inline.find(entry => entry.id === id)?.body
+      : path.includes('/reviews/') ? reviews.find(entry => entry.id === id)?.body : pull.body;
+    if (source === undefined) return { status: 404, headers: new Headers(), body: { message: 'Not Found' } };
+    htmlReads.push(path);
+    return { status: 200, headers: new Headers(), body: { body_html: (source ?? '').replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, '<img alt="$1" src="$2">').replace(/https:\/\/github\.com\/user-attachments\/assets\/([0-9a-f-]{36})/g, 'https://private-user-images.githubusercontent.com/1/2-$1.png?jwt=fixture') } };
+  }, async image(url) {
+    imageReads.push(url);
+    if (url.includes('00000000-')) return { type: 'image/svg+xml', bytes: new Uint8Array() };
+    return { type: 'image/png', bytes: new Uint8Array(Buffer.from(FIXTURE_PNG, 'base64')) };
   }, async get(path, signal) {
     requests++; await before?.(signal); signal.throwIfAborted();
     const body = path.includes('/actions/runs?head_sha=') ? { workflow_runs: structuredClone(runs) } : path.includes('/files?') ? [{ filename: 'src/billing/plans.ts', status: 'modified', additions: 24, deletions: 6, changes: 30, patch: '@@ -12,1 +12,1 @@\n-applyNow(plan)\n+scheduleNextCycle(plan)' }]
@@ -110,7 +124,7 @@ export function githubFixture(additionalPulls: typeof pullFixture[] = []) {
         : path.includes('/reviews?') ? structuredClone(reviews) : structuredClone(additionalPulls.find(candidate => path.endsWith(`/pulls/${candidate.number}`)) ?? pull);
     return { status, body, headers: new Headers(headers) };
   } });
-  return { connections, accounts, client, posts, merges, mergeCancels, get autoMerge() { return autoMerge; }, set autoMerge(value) { autoMerge = value; }, get mergeCommit() { return mergeCommit; }, set mergeCommit(value) { mergeCommit = value; }, get mergeCommitReads() { return mergeCommitReads; }, get mergeSettings() { return mergeSettings; }, set mergeSettings(value) { mergeSettings = value; }, replyToMerge(reply: typeof mergeReply) { mergeReply = reply; }, titles, replyToTitle(reply: typeof titleReply) { titleReply = reply; }, writes, states, drafts, replyToState(reply: typeof stateReply) { stateReply = reply; }, replyToDraft(reply: typeof draftReply) { draftReply = reply; }, get comments() { return comments; }, set comments(value) { comments = value; }, get inline() { return inline; }, set inline(value) { inline = value; }, get reviewEntries() { return reviews; }, set reviewEntries(value) { reviews = value; }, get requests() { return requests; }, get pull() { return pull; }, set pull(value) { pull = value; }, get runs() { return runs; }, set runs(value) { runs = value; }, get queue() { return queue; }, set queue(value) { queue = value; }, get checks() { return checks; }, set checks(value) { checks = value; },
+  return { connections, accounts, client, posts, htmlReads, imageReads, merges, mergeCancels, get autoMerge() { return autoMerge; }, set autoMerge(value) { autoMerge = value; }, get mergeCommit() { return mergeCommit; }, set mergeCommit(value) { mergeCommit = value; }, get mergeCommitReads() { return mergeCommitReads; }, get mergeSettings() { return mergeSettings; }, set mergeSettings(value) { mergeSettings = value; }, replyToMerge(reply: typeof mergeReply) { mergeReply = reply; }, titles, replyToTitle(reply: typeof titleReply) { titleReply = reply; }, writes, states, drafts, replyToState(reply: typeof stateReply) { stateReply = reply; }, replyToDraft(reply: typeof draftReply) { draftReply = reply; }, get comments() { return comments; }, set comments(value) { comments = value; }, get inline() { return inline; }, set inline(value) { inline = value; }, get reviewEntries() { return reviews; }, set reviewEntries(value) { reviews = value; }, get requests() { return requests; }, get pull() { return pull; }, set pull(value) { pull = value; }, get runs() { return runs; }, set runs(value) { runs = value; }, get queue() { return queue; }, set queue(value) { queue = value; }, get checks() { return checks; }, set checks(value) { checks = value; },
     fail(code: number, extra: Record<string, string> = {}) { status = code; headers = extra; }, delay(callback: typeof before) { before = callback; }, holdWrites(gate: typeof beforeWrite) { beforeWrite = gate; },
     host(registry: ResourcePluginRegistry) { const host = new ResourcePluginHost(registry); host.register('github.pull-request', githubPullRequestConnector(resource => { connections.resolve('github', resource.connectionId); return client; }, { viewer: resource => resource.connectionId ? connections.resolve('github', resource.connectionId).account : undefined })); host.present('github.pull-request', pullRequestPresentation); return host; },
   };

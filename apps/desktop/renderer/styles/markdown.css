@@ -168,3 +168,12 @@
   border-top: 1px solid var(--act-line);
   margin: 24px 0;
 }
+
+/* GitHub attachments loaded by the view; GitHub's own width and height give the size before the data arrives. */
+.markdown-content img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 10px 0 16px;
+  border: 1px solid var(--act-line);
+}

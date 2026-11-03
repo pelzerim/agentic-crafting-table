@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Pull requests
+- **Inline images**: screenshots and other images attached on GitHub now show inside the description and comments of a pull request once you open them, instead of disappearing. Other images stay links.
+
 ## 0.16.0 — 2026-11-02
 
 ### Diagnostics
