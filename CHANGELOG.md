@@ -6,7 +6,7 @@ their pull request and author.
 ## Unreleased
 
 ### Map
-- **Readable location trail**: the Project / Item trail above an open item now sits on a solid plate with the cards' pixel corners, so cards scrolling under it no longer show through its text.
+- **Readable location trail**: the Project / Item trail above an open item now sits on a solid plate with the cards' pixel corners, so cards scrolling under it no longer show through its text. (#16, @MegaMaddin)
 
 ## 0.16.0 — 2026-11-02
 
