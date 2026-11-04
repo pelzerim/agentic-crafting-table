@@ -26,19 +26,28 @@ export interface AgentProvider {
   skills(cwd: string): Promise<ProjectSkillCatalog>;
   skillPrompt(skill: ProjectSkill, argumentsText: string): string;
 }
-let modelCache: { time: number; value: { options: string[]; default: string } } | undefined;
+type ModelChoice = { options: string[]; default: string };
+/** Codex lists its models through a server started for the purpose, which takes up to a second. A list older than
+ * `maxAge` is still returned at once while one shared refresh replaces it; only the first list is waited for. */
+export function staleWhileRefreshing<T>(load: () => Promise<T>, maxAge = 60_000, now = Date.now) {
+  let cache: { time: number; value: T } | undefined, refresh: Promise<T> | undefined;
+  return (): Promise<T> => {
+    if (!cache || now() - cache.time >= maxAge) refresh ??= load().then(value => { cache = { time: now(), value }; return value; }).finally(() => { refresh = undefined; });
+    if (cache) { refresh?.catch(() => {}); return Promise.resolve(cache.value); }
+    return refresh!;
+  };
+}
+const codexModelChoice = staleWhileRefreshing<ModelChoice>(async () => {
+  const { models } = await codexModels(), options = models.map(model => model.model);
+  if (!options.length) throw new Error('The installed Codex CLI returned no available models.');
+  return { options, default: latestSolModel(options) ?? models.find(model => model.isDefault)?.model ?? options[0] };
+});
 export const agentProviders: Readonly<Record<string, AgentProvider>> = {
   claude: { name: 'Claude', probe: probeClaude, prepare: (input, settings) => prepareClaude({ ...input, settings: settings.claude }), discover: discoverClaudeSessions, resolve: resolveClaudeSession, releaseFork: stopClaudeBackground, followConversation,
     async models() { return { options: ['opus', 'fable', 'sonnet', 'haiku'], default: 'opus' }; },
     skills: discoverClaudeSkills, skillPrompt: (skill, text) => '/' + skill.name + (text ? ' ' + text : '') },
   codex: { name: 'Codex', probe: probeCodex, prepare: input => prepareCodex(input), discover: (state, query, _offset, cursor) => discoverCodexSessions(state, query, cursor), resolve: resolveCodexSession,
-    async models() {
-      if (modelCache && Date.now() - modelCache.time < 60_000) return modelCache.value;
-      const { models } = await codexModels(), options = models.map(model => model.model);
-      if (!options.length) throw new Error('The installed Codex CLI returned no available models.');
-      const value = { options, default: latestSolModel(options) ?? models.find(model => model.isDefault)?.model ?? options[0] };
-      modelCache = { time: Date.now(), value }; return value;
-    }, skills: discoverCodexSkills, skillPrompt: (skill, text) => '$' + skill.name + (text ? ' ' + text : '') },
+    models: codexModelChoice, skills: discoverCodexSkills, skillPrompt: (skill, text) => '$' + skill.name + (text ? ' ' + text : '') },
 };
 export function agentProvider(id: unknown = 'claude') {
   const provider = typeof id === 'string' && Object.hasOwn(agentProviders, id) ? agentProviders[id] : undefined;
