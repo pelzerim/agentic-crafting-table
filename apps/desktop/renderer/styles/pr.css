@@ -1019,6 +1019,102 @@
   background: var(--act-control-hover);
 }
 
+/* “N actions” unfolds what auto deploy did in place under its status line: newest last, the current step washed blue, a halt amber. */
+.pr-desk .pr-auto-deploy-toggle,
+.pr-desk .pr-auto-deploy-link {
+  flex: none;
+  min-height: 0;
+  font: inherit;
+  color: var(--act-accent);
+  background: transparent;
+  border: 0;
+  border-image: none;
+  clip-path: none;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.pr-desk .pr-auto-deploy-link {
+  padding: 0;
+  border-bottom: 1px dotted var(--act-line-strong);
+}
+
+.pr-auto-deploy-toggle::after {
+  content: ' ▾';
+}
+
+.pr-auto-deploy-toggle[hidden] {
+  display: none;
+}
+
+.pr-desk>.pr-auto-deploy-actions {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 4px 14px 8px;
+  list-style: none;
+  font-size: var(--act-fs-meta);
+  background: var(--act-sunken);
+  border-bottom: 1px solid var(--act-line);
+}
+
+.pr-desk>.pr-auto-deploy-actions[hidden] {
+  display: none;
+}
+
+.pr-auto-deploy-action {
+  display: grid;
+  grid-template-columns: 44px 10px 1fr;
+  gap: var(--act-sp-2);
+  align-items: baseline;
+  padding: 3px 6px;
+  color: var(--act-ink);
+}
+
+.pr-auto-deploy-action time {
+  color: var(--act-ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.pr-auto-deploy-action .act-glyph {
+  width: 9px;
+  height: 9px;
+  color: var(--act-info);
+  align-self: center;
+}
+
+.pr-auto-deploy-action[data-tone=claude] .act-glyph {
+  color: var(--act-agent-claude);
+}
+
+.pr-auto-deploy-action[data-tone=mint] .act-glyph {
+  color: var(--act-tone-green);
+}
+
+.pr-auto-deploy-action[data-tone=amber] {
+  color: var(--act-pending);
+  background: var(--act-pending-bg);
+}
+
+.pr-auto-deploy-action[data-tone=amber] .act-glyph {
+  color: var(--act-pending);
+}
+
+.pr-auto-deploy-action[data-now] {
+  background: var(--act-info-bg);
+}
+
+.pr-auto-deploy-action-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pr-auto-deploy-group {
+  padding: 8px 6px 3px;
+  font-size: var(--act-fs-caps);
+  color: var(--act-ink-dim);
+}
+
 /* Auto validate sits in the frame bar, left of Actions. */
 .view-header .pr-auto-validate {
   display: inline-flex;

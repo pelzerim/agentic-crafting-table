@@ -151,7 +151,11 @@ rewriting graph/camera state, rearranging neighbors or changing its connections.
 The original bubble remains rendered at its saved position and size, with a subtle
 open-item highlight. Connections continue terminating at that bubble. The open
 surface still grows from that bubble on entry and shrinks from its current screen
-position back to the bubble on close; reduced motion settles immediately.
+position back to the bubble on close; reduced motion settles immediately. Double-clicking the menu
+bar where it drags fills the map with the view, right of the rail and within the margins;
+double-clicking it again puts the view back at the size and place it had. A filled view
+is an ordinary size and place: it is kept across reloads, and dragging or resizing it
+makes it an unfilled view again.
 
 Respect a small movement threshold; controls, links, native terminal input and
 text selection keep their normal interactions. The heading also supports arrow
@@ -3645,10 +3649,10 @@ non-empty `title` of at most 256 characters. The action is `humanOnly`.
 Actions ▾ (after Merge) and in the PR's right-click menu arms one auto deploy for the
 pull request. The menu asks “Deploy #42 automatically?” and its one entry, **Start auto
 deploy**, asks again in place: “Auto deploy #42 “Batch exports”?” with what will happen
-(“Tags it [ship], merges it into main once ready (an agent fixes failing CI, twice at
-most), validates every rollout phase and approves the next one only after a pass. Any
-doubt halts.”; without Show/Ship turned on it starts “Merges it …” and the title is left
-alone), Back and **Start auto deploy**. A closed pull request offers the entry disabled with
+(“Tags it [ship], rebases it onto main when needed, has an agent fix blocking Claude review
+findings and failing CI, merges it into main once ready, validates every rollout phase and
+approves the next one only after a pass. Any doubt halts.”; without Show/Ship turned on it
+starts “Rebases it …” and the title is left alone), Back and **Start auto deploy**. A closed pull request offers the entry disabled with
 the reason; a merged one does too (“Already merged.”) unless a rollout its merge discovered is
 on the map and still running (see “From here” below). Arming is the person's standing consent for the service to
 write and to spend agent tokens for this one pull request; it is human-only, while agents
@@ -3665,24 +3669,47 @@ so aliases share it and it survives restarts; no table or migration):
 
 1. **Tag.** With Show/Ship on and the title not tagged [ship], one PR-SHOW-SHIP write
    (`pr.showShip`, value `ship`) with the title it read.
-2. **Wait until mergeable.** The read-only `pr.mergeReadiness` action reads the same fixed
+2. **Rebase onto the base.** Out of date without a merge queue (`BEHIND`) and no conflicts:
+   one GitHub write, the connector action `pr.updateBranch` (GraphQL
+   `updatePullRequestBranch(input: { pullRequestId, expectedHeadOid, updateMethod: REBASE })`,
+   human-only like `pr.merge`, journaled), sent once per base head (`pr.mergeReadiness` reads
+   `baseRefOid`; “updating the branch from main”). Conflicts (`DIRTY`): the fixer agent (chosen
+   as for Fix CI below: the agent auto deploy asked last or a ready agent connected to the pull
+   request, else a new Claude session beside it titled “Rebase · <title>”) is asked to rebase
+   the branch onto the base's current head, resolve the conflicts, run the checks it can and
+   push with `--force-with-lease`, without merging, approving, retitling or closing (“rebasing
+   onto main (1/2) · Claude · impl”). One request per head, at most two. A rebase that dismisses
+   approvals then halts as a missing required review.
+3. **Fix blocking review findings, once.** The newest code review linked to the pull request
+   (a direct review, PR-02, `sourcePrId`; a review loop's later rounds are newer) is read
+   through the findings operation `list`. While it runs, auto deploy waits (“waiting for the
+   Claude review”). Blocking findings are the review loop's (`blocking()`): open bugs of
+   severity critical or high and every security finding, minus ignored or already fixed ones.
+   They go to the fixer once per review through the findings `send` path (or `spawn`, a new
+   Claude agent beside the review), under a send id derived from the record and the review,
+   with a note naming the branch and saying not to merge, approve or close. It then waits
+   until the fixer reported all of them fixed (`workspace_report_review_fixes`, “Claude · impl
+   is fixing 3 findings”) and the head moved (“waiting for Claude · impl to push”), and goes on
+   to checks; no review runs again. Medium, low, hardening and questions are never sent; the
+   status line ends “· 2 medium, 1 low left for you” until the merge.
+4. **Wait until mergeable.** The read-only `pr.mergeReadiness` action reads the same fixed
    GraphQL merge-options query, which also carries `reviewDecision` and the head commit's
    check rollup (`commits(last: 1) { … statusCheckRollup { state } }`; a rollup of another
    commit counts as pending), at most once a minute. Pending checks or an UNKNOWN merge
    state wait (“waiting for checks”); GitHub may report BLOCKED for a while after checks
    pass, so BLOCKED waits too, for up to 10 minutes.
-3. **Fix CI.** Failing checks send one request per failing head commit to an agent: the
+5. **Fix CI.** Failing checks send one request per failing head commit to an agent: the
    agent of the previous fix or another ready agent connected to the pull request gets it
    as a prompt; otherwise a new Claude session starts beside the pull request (titled “Fix
    CI · <title>”, in its project's folder, linked to it, not hidden). The request names the
    pull request, its branch, the head commit and the failing checks, and asks to fix the
    cause and push to the same branch without skipping checks, merging, approving,
    retitling or closing. A new head's checks are then waited for. At most two attempts.
-4. **Merge** with one PR-MERGE write (`pr.merge`) at the head it read: the viewer's default
+6. **Merge** with one PR-MERGE write (`pr.merge`) at the head it read: the viewer's default
    method, or Add to merge queue on a queued base branch (blockers, LINK-04, are not
    acknowledged, so GitHub's or the table's refusal halts it). In the queue it waits; with
    merge when ready on (PR-MERGE-WHEN-READY) it sends no merge and waits for GitHub's.
-5. **Follow the rollouts** the merge discovers (PR-05). Phases: with a stage rule for the
+7. **Follow the rollouts** the merge discovers (PR-05). Phases: with a stage rule for the
    workflow (Staged runs), each stage is a phase, validated once its environment finished
    and its `delayMinutes` passed (“waiting out live · 7 min”); without one, each set of
    deployment gates that waits after something ran is a phase boundary, and the whole run
@@ -3693,7 +3720,7 @@ so aliases share it and it survives restarts; no table or migration):
    apply (region-2))”) and approved on its own. A rollout without gates is one phase,
    validated once at the end. A gate waiting before anything ran is approved without a
    validation.
-6. **Validate** each phase exactly as Trigger validation does (journaled request,
+8. **Validate** each phase exactly as Trigger validation does (journaled request,
    `V<n>`, hidden validation agent rules, reuse instead of repeat): the rollout's validation
    agent (Validate in one click), which starts hidden when there is none; an agent connected
    to the rollout or this pull request is never asked. Each request is
@@ -3703,28 +3730,34 @@ so aliases share it and it survives restarts; no table or migration):
    approval phase … this one covers before production (…): judge what these jobs
    deployed: …; earlier phases were validated separately and stay final”). A newer final
    validation of the same attempt answers for it.
-7. **Approve** the waiting gates the signed-in account may approve, only after every phase
+9. **Approve** the waiting gates the signed-in account may approve, only after every phase
    before them passed, with one rollout Approve write (`rollout.approve`) after re-reading
    the approval options; gates that changed are read again on the next pass. A gate only
    someone else may approve is waited on.
-8. **Done** once every followed rollout finished successfully and its last phase passed.
+10. **Done** once every followed rollout finished successfully and its last phase passed.
 
 Each write is sent exactly once and never retried: its request id is derived from the
 record and the step, the record is saved as `sending` before it goes out, and its outcome
 is read from the job journal. After a restart a `sending` write the journal confirms
 counts as sent, one the journal never recorded was never sent and is decided again, and
 anything else (interrupted, outcome unknown) halts. A validation request whose reply was
-lost is asked again with the same journaled request, which never sends twice.
+lost is asked again with the same journaled request, which never sends twice. A findings
+send left `sending` counts as sent when the send journal (`review_sends`) has its id, and is sent
+again under the same id when it does not, which the findings path delivers at most once.
 
 **Any doubt halts.** The record ends `halted` with a reason, raises Needs me (“Action
 required”, note “Auto deploy halted”, source `auto-deploy`) on the pull request and writes
 nothing more; nothing is rolled back. It halts when: a validation fails, finds concerns, is
 inconclusive, sends no report or has no verdict within an hour; checks still fail after
-two fix attempts, or a fixing agent pushes no new commit within 45 minutes; a required
-review is missing or changes were requested (only a person can resolve that); the branch
-has merge conflicts, is out of date without a merge queue, or stays blocked; the pull
+two fix attempts, or a fixing agent pushes no new commit within 45 minutes; the branch still
+has merge conflicts after two rebase attempts, the agent asked to rebase (or GitHub's branch
+update) brings no new head within 45 minutes, or GitHub declines the update; the fixer sent
+review findings reports none fixed within 45 minutes, reports them fixed but pushes nothing
+within 45 minutes, or leaves some unreported (named: “Claude · impl did not report F2 “Token
+leaks into logs” fixed.”), or the send fails or is cancelled; a required review is missing or
+changes were requested (only a person can resolve that); the branch stays blocked; the pull
 request is a draft or closed; GitHub or the table
-declines a write; a write's or a fix request's outcome is unknown; no agent can be asked
+declines a write; a write's, a fix or rebase request's or a findings send's outcome is unknown; no agent can be asked
 (none ready and Claude cannot start, or a validation request fails); a deploy run or job
 fails or is cancelled; no deploy run appears within 30 minutes of the merge. Waiting is not
 doubt: pending checks, the merge queue, running jobs and a gate someone else approves wait.
@@ -3734,11 +3767,25 @@ which counts as a person stopping it, and requeueing it by hand does not arm it 
 again starts a new record and withdraws the old reason.
 
 The PR view shows a status line under the frame bar while a record exists (not after
-Stop): “Auto deploy · waiting for checks”, “· fixing CI (1/2)”, “· merging”, “· in the merge
+Stop): “Auto deploy · updating the branch from main”, “· rebasing onto main (1/2) · Claude ·
+impl”, “· waiting for the Claude review”, “· Claude · impl is fixing 3 findings”, “· waiting for
+Claude · impl to push”, “· waiting for checks”, “· fixing CI (1/2)”, “· merging”, “· in the merge
 queue”, “· waiting for the deploy run”, “· deploying live”, “· waiting out live · 7 min”,
 “· validating preview”, “· approving live”, “· live waits for another approver”, “· done”
 or “· halted: <reason>” (amber), with **Stop** while armed; the Actions entry reads “Auto
-deploy · on”. A rollout the record follows shows the phase track (below) under its frame
+deploy · on”. The line ends with “N actions ▾”, which unfolds the list of what auto deploy did
+in place under it (collapsed by default; open or closed is the view's own state): one row per
+action, oldest first, with its time, a pixel glyph, the text and links to what it touched (the
+agent and the review open on the map, a commit on GitHub): armed, tagged, the branch updated or
+the rebase asked for and pushed, findings sent (with what is left for the person) and fixed, CI
+fix requests, merged; then, while the pull request is on the map, the rollout's actions under
+“On run #1842” (a link to the rollout): validations asked for and their verdicts, approvals,
+done or halted. While armed the newest row is the current step (washed blue); a halt is amber.
+The list is derived from the record (`rebases`, `findingSends`, `fixes`, `writes`, `checks`
+with each verdict noted when first seen final, the halt), all optional fields of a
+`version: 1` record, and `status` returns it as `events` for pull requests and rollouts alike,
+so agents read the same list. The rollout view's timeline shows the same actions as auto
+deploy entries (auto glyph, blue wash), the pull request's before the rollout's own. A rollout the record follows shows the phase track (below) under its frame
 bar. Auto validate (below) is unchanged and may validate the same rollout; auto deploy
 follows its own requests. Live GitHub writes and real agent sessions under auto deploy
 require human supervision; tests use fixtures only.
@@ -4628,7 +4675,9 @@ release as an info notice in the notice corner, "<name> vX.Y.Z is available", un
 person opens it or closes it; a closed notice stays closed for that version only
 (`view.dismissedUpdates`), a newer tag is offered again. For the app the notice opens
 Settings → General, whose About section shows the running version, the newest release,
-when it was checked or why it could not be, and the update command; for a pack it opens
+when it was checked or why it could not be, and the update command; a packaged app that
+was not installed from a checkout, such as one downloaded from a GitHub release, offers
+**Download** instead, which opens that release's page; for a pack it opens
 Settings → Plugins with the pack's source and new tag filled in for the usual review.
 Nothing is downloaded or installed by the check. `npm run update` in a checkout refuses
 while the app runs or tracked files have local changes, fetches tags, checks out the

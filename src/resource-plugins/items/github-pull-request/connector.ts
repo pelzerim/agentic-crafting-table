@@ -70,6 +70,9 @@ export function githubPullRequestConnector(clientFor: (resource: ResourceRecord)
       { id: 'pr.merge', label: 'Merge pull request', readOnly: false, updatesSnapshot: true, humanOnly: true, heedsBlockers: true, optimistic: mergeOptimism,
         description: 'Merge the pull request or add it to its merge queue on GitHub, now or when ready (auto-merge), or cancel merge when ready. Only a person can confirm this in the app.',
         inputFields: Object.fromEntries(['value', 'pullRequestId', 'expectedHeadOid', 'sourceResourceId', 'requestId'].map(key => [key, { label: key, kind: 'text' as const, required: true }])) },
+      { id: 'pr.updateBranch', label: 'Update branch', readOnly: false, updatesSnapshot: true, humanOnly: true,
+        description: 'Rebase the pull request\'s branch onto the current head of its base on GitHub, at the head commit it was read at. Only a person can confirm this in the app.',
+        inputFields: Object.fromEntries(['pullRequestId', 'expectedHeadOid', 'sourceResourceId', 'requestId'].map(key => [key, { label: key, kind: 'text' as const, required: true }])) },
       { id: 'pr.state.options', label: 'Pull request state options', readOnly: true, cacheChoices: true },
       { id: 'pr.state', label: 'Change pull request state', readOnly: false, updatesSnapshot: true, humanOnly: true, optimistic: stateOptimism,
         description: 'Mark the pull request ready for review, convert it to a draft, close it (posting an optional comment first) or reopen it on GitHub. Only a person can confirm this in the app.',
@@ -104,6 +107,14 @@ export function githubPullRequestConnector(clientFor: (resource: ResourceRecord)
         const done = cancel ? 'Merge when ready cancelled' : whenReady ? 'Merge when ready turned on' : method === 'QUEUE' ? 'Added to the merge queue' : 'Merged';
         try { return { snapshot: await connector.load!(resource, signal) } as unknown as JsonValue; }
         catch { throw Object.assign(new Error(`${done}, but refresh failed. Check GitHub before trying again.`), { outcomeUnknown: true }); }
+      }
+      if (action === 'pr.updateBranch') {
+        if (input?.sourceResourceId !== resource.id) throw new Error('This branch update belongs to another item. Review the pull request again.');
+        const pullRequestId = String(input.pullRequestId), expectedHeadOid = String(input.expectedHeadOid);
+        if (!/^[A-Za-z0-9_=-]{1,200}$/.test(pullRequestId) || !/^[a-f0-9]{40,64}$/i.test(expectedHeadOid)) throw new Error('This branch update is incomplete. Review the pull request again.');
+        await client.updateBranch(key, { pullRequestId, expectedHeadOid }, signal);
+        try { return { snapshot: await connector.load!(resource, signal) } as unknown as JsonValue; }
+        catch { throw Object.assign(new Error('Branch updated, but refresh failed. Check GitHub before trying again.'), { outcomeUnknown: true }); }
       }
       if (action === 'pr.state.options') {
         const pull = (await client.mergeState(key, signal)).pullRequest, choices = pullStateChoices(pull);

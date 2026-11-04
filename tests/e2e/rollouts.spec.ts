@@ -37,6 +37,8 @@ test('Rollout imports a job URL, syncs map approval/failure/completion, renders 
     providers.jobs[1].status = 'waiting'; await tick();
     await expect(card().locator('[data-indicator="rollout-state"]')).toHaveAttribute('aria-label', 'Waiting approval');
     await expect(page.getByRole('button', { name: 'Needs me: 1', exact: true })).toBeVisible();
+    const attention = await page.evaluate(() => { const probe = document.createElement('i'); probe.style.color = 'var(--act-attention)'; document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; });
+    await expect(card().locator('[data-indicator="rollout-state"]'), 'a gate waiting for you takes the Needs me amber').toHaveCSS('color', attention);
     await expect(card()).toHaveScreenshot('rollout-approval-card.png');
     await card().click(); await expect(page.locator('.rv-gate .rv-name')).toHaveText('production · approval gate');
     // Viewing a rollout does not acknowledge it; only continuing or Mark as seen does.

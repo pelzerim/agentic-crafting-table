@@ -1883,8 +1883,9 @@
   color: var(--act-cue-waiting);
 }
 
-/* A rollout verdict with concerns needs the person, so it takes the Needs me amber. */
-.item-indicators [data-indicator=rollout-verdict][data-tone=amber] {
+/* A rollout verdict with concerns, or a rollout waiting on an approval or stuck, needs the person: the Needs me amber. */
+.item-indicators [data-indicator=rollout-verdict][data-tone=amber],
+.item-indicators [data-indicator=rollout-state][data-tone=amber] {
   color: var(--act-attention);
 }
 

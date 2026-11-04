@@ -79,7 +79,11 @@ GitHub Actions (`.github/workflows/ci.yml`, macOS and Ubuntu) runs `check`, `tes
 
 A release is a tag `vX.Y.Z` on the public repository: bump `version` in `package.json`,
 commit, tag and push the tag. Installed apps look the tags up once a day and show a notice;
-`npm run update` moves a checkout to the newest tag and installs it. The desktop, visual and performance suites are local gates: their
+`npm run update` moves a checkout to the newest tag and installs it. The pushed tag runs
+`.github/workflows/release.yml`: it packages macOS arm64, Windows x64 and Linux x64 builds,
+runs `test:package` on each, and creates the GitHub release with the archives and the tag's
+CHANGELOG section as its notes (`scripts/release-notes.mjs`), then how to open the unsigned
+builds. The tag must match `package.json`'s version, and the CHANGELOG must have its section. The desktop, visual and performance suites are local gates: their
 screenshot baselines and frame budgets were recorded on a development Mac and do not match a
 hosted runner, and the full suite outlasts a job. Run them before packaging.
 

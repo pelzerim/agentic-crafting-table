@@ -43,6 +43,11 @@ export function clampItemViewPosition(position: { x: number; y: number }, view: 
     y: Math.max(12, Math.min(position.y, canvas.height - view.height - 12)) };
 }
 
+/** A view filling the map: everything right of `left` within the margins. */
+export function filledItemView(canvas: { width: number; height: number }, left: number) {
+  return { position: { x: left, y: 12 }, size: { width: canvas.width - left - 12, height: canvas.height - 24 } };
+}
+
 /** Resize a screen-space view from its fixed top-left. The preferred size is
  * retained by the caller, so shrinking a window doesn't erase a larger choice. */
 export function clampItemViewSize(desired: { width: number; height: number }, profile: Pick<ItemViewProfile, 'mode' | 'minWidth'>,
