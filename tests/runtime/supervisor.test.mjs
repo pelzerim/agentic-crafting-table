@@ -40,7 +40,7 @@ async function cleanup(service, directory) {
 test('a resumed Codex conversation takes its status from the response and keeps one copy of its guide', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'craft-codex-seeded-')), service = await start(directory, { CODEX_FIXTURE_QUIET_RESUME: '1' });
   const fixture = resolve('tests/fixtures/native-codex.mjs');
-  const launch = { ...request(directory, 'codex'), args: [fixture], native: { provider: 'codex', model: 'fixture', instructions: 'Trusted test guide', context: 'Untrusted project data', config: {}, serverArguments: [fixture] } };
+  const launch = { ...request(directory, 'codex'), args: [fixture], native: { provider: 'codex', model: 'fixture', instructions: 'Trusted test guide', context: 'Untrusted project data', config: { model_reasoning_effort: 'high' }, serverArguments: [fixture] } };
   try {
     await service.client.call('sessions.launch', launch);
     const started = await output(service.client, 'codex', 'NATIVE_READY:'), nativeId = started.session.native.nativeSessionId;
@@ -51,7 +51,30 @@ test('a resumed Codex conversation takes its status from the response and keeps 
     await service.client.call('sessions.launch', resumed);
     const ready = await output(service.client, 'resumed', 'NATIVE_READY:');
     assert.equal(ready.session.native.status, 'idle', 'no notification is needed'); assert.ok(ready.session.native.readyAt);
+    // The terminal's own resume would otherwise switch the conversation to the configured default model.
+    await output(service.client, 'codex', 'NATIVE_MODEL:fixture:model_reasoning_effort="high"');
+    await output(service.client, 'resumed', 'NATIVE_MODEL:fixture:model_reasoning_effort="high"');
     assert.equal(JSON.parse(await readFile(join(directory, 'native-codex.json'), 'utf8')).injections, 1);
+  } finally { service.process.kill('SIGKILL'); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('a Codex sub-agent working is not read as the terminal moving to another conversation; /resume is', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-codex-subagent-')), service = await start(directory);
+  const fixture = resolve('tests/fixtures/native-codex.mjs');
+  const launch = { ...request(directory, 'codex'), args: [fixture], native: { provider: 'codex', model: 'fixture', instructions: 'Trusted test guide', context: 'Untrusted project data', config: {}, serverArguments: [fixture] } };
+  try {
+    await service.client.call('sessions.launch', launch);
+    const started = await output(service.client, 'codex', 'NATIVE_READY:'), nativeId = started.session.native.nativeSessionId;
+    await service.client.call('sessions.input', { sessionId: 'codex', data: 'subagent-status\r' });
+    await output(service.client, 'codex', 'OTHER_THREAD:');
+    await new Promise(resolve => setTimeout(resolve, 500));
+    let session = (await service.client.call('sessions.read', { sessionId: 'codex', after: Number.MAX_SAFE_INTEGER })).session;
+    assert.equal(session.native.switched, undefined); assert.equal(session.native.nativeSessionId, nativeId);
+    await service.client.call('sessions.input', { sessionId: 'codex', data: 'resume-command\r' });
+    const text = (await until(async () => { const value = (await service.client.call('sessions.attach', { sessionId: 'codex' })).chunks.map(chunk => chunk.data).join(''); return value.split('OTHER_THREAD:').length > 2 && value; }));
+    const resumed = text.split('OTHER_THREAD:')[2].slice(0, 36);
+    session = await until(async () => { const value = (await service.client.call('sessions.read', { sessionId: 'codex', after: Number.MAX_SAFE_INTEGER })).session; return value.native.switched && value; });
+    assert.deepEqual(session.native.switched, { kind: 'resume', nativeSessionId: resumed });
   } finally { service.process.kill('SIGKILL'); await rm(directory, { recursive: true, force: true }); }
 });
 

@@ -1,6 +1,6 @@
 import type { LaunchRequest, NativeAgentState } from './protocol.ts';
 import { openCodexTerminalServer } from './codex-transport.ts';
-import { codexInput, codexStatus, codexSwitch, codexThreadStatus, nativeInput, nativeStatus } from './codex-status.ts';
+import { codexInput, codexStatus, codexSwitch, codexThreadStatus, isHelperThread, nativeInput, nativeStatus, readThread } from './codex-status.ts';
 import * as z from 'zod/v4';
 import { randomUUID } from 'node:crypto';
 
@@ -13,7 +13,7 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
   let closing = false;
   try {
     let state: NativeAgentState | undefined;
-    const notified: { method: string; params?: any }[] = [], ignored = new Set<string>();
+    const notified: { method: string; params?: any }[] = [], ignored = new Set<string>(), checking = new Set<string>();
     const deliverContext = (threadId: string) => server.rpc.request('thread/inject_items', { threadId, items: [{ type: 'message', role: 'developer', content: [{ type: 'input_text', text: native.instructions }] }, { type: 'message', role: 'user', content: [{ type: 'input_text', text: native.context }] }] });
     // A launch with a prompt or an earlier conversation has one already; otherwise the first turn shows it.
     let talked = Boolean(native.nativeSessionId || native.initialPrompt);
@@ -24,6 +24,20 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
         ignored.add(current.nativeSessionId);
         state = { ...current, nativeSessionId: switched.nativeSessionId, observedAt: new Date().toISOString() }; observe(state);
         void deliverContext(switched.nativeSessionId).catch(() => {}); // The tools still work without the guide; the next launch delivers it.
+        return;
+      }
+      if (switched?.kind === 'resume') {
+        // Only a conversation the terminal can show is a `/resume`. Following a sub-agent made the item resume a
+        // thread Codex refuses to load on its own.
+        if (checking.has(switched.nativeSessionId)) return;
+        checking.add(switched.nativeSessionId);
+        void server.rpc.request('thread/read', { threadId: switched.nativeSessionId, includeTurns: false }).then(response => {
+          const thread = readThread(response);
+          if (!thread || thread.id !== switched.nativeSessionId) return;
+          if (isHelperThread(thread)) { ignored.add(thread.id); return; }
+          if (closing || signal?.aborted || !state || state.switched || state.nativeSessionId !== current.nativeSessionId) return;
+          state = { ...state, switched, observedAt: new Date().toISOString() }; observe(state);
+        }, () => {}).finally(() => checking.delete(switched.nativeSessionId)); // Unreadable: the next status asks again.
         return;
       }
       if (switched) { state = { ...current, switched, observedAt: new Date().toISOString() }; observe(state); return; }
@@ -43,7 +57,7 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
       if (state) apply(event, state); else notified.push(event);
     });
     const method = native.nativeSessionId ? 'thread/resume' : 'thread/start';
-    const response = z.object({ thread: z.object({ id: z.string().uuid(), status: codexThreadStatus.optional() }) }).parse(await server.rpc.request(method, {
+    const response = z.object({ thread: z.object({ id: z.string().uuid(), status: codexThreadStatus.optional() }), model: z.string().min(1).max(100).optional().catch(undefined), reasoningEffort: z.string().regex(/^[a-z]{1,20}$/).nullish().catch(undefined) }).parse(await server.rpc.request(method, {
       ...(native.nativeSessionId ? { threadId: native.nativeSessionId, excludeTurns: true } : { ephemeral: false }),
       cwd: request.cwd, model: native.model, config: native.config,
     }));
@@ -61,6 +75,9 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
     signal?.throwIfAborted();
     server.rpc.once('closed', (error: Error) => { if (!closing && !signal?.aborted) disconnected(error); });
     Object.assign(env, server.terminal.environment);
-    return { args: [...request.args, '--remote', server.endpoint, ...server.terminal.arguments, 'resume', seeded.nativeSessionId, ...(native.initialPrompt ? ['--', native.initialPrompt] : [])], async close() { closing = true; await server.close(); } };
+    // The terminal resumes with its own configured model and effort unless told otherwise, which would switch
+    // a conversation away from the model chosen at launch or recorded in it, with a startup warning.
+    const kept = [...(response.model ? ['--model', response.model] : []), ...(response.reasoningEffort ? ['-c', `model_reasoning_effort=${JSON.stringify(response.reasoningEffort)}`] : [])];
+    return { args: [...request.args, '--remote', server.endpoint, ...server.terminal.arguments, ...kept, 'resume', seeded.nativeSessionId, ...(native.initialPrompt ? ['--', native.initialPrompt] : [])], async close() { closing = true; await server.close(); } };
   } catch (error) { closing = true; await server.close(); throw error; }
 }

@@ -32,5 +32,8 @@ test('Codex terminal commands read as switches, and a subagent thread never does
   assert.equal(status(current), undefined);
   assert.equal(started({ id: helper, parentThreadId: current, source: { subAgent: 'review' } }), undefined);
   assert.equal(status(helper), undefined);
+  const spawned = randomUUID();
+  assert.equal(started({ id: spawned, parentThreadId: null, source: 'cli', threadSource: 'subagent' }), undefined, 'marked a sub-agent by its source class only');
+  assert.equal(status(spawned), undefined);
   assert.equal(codexSwitch({ method: 'thread/goal/cleared', params: { threadId: other } }, current, subagents), undefined);
 });
