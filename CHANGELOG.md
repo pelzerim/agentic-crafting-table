@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Claude artifacts
+- **The page opens inside the item**: an open Claude artifact shows its claude.ai page in the item view. Sign in to claude.ai inside the item once; the sign-in is kept apart from the app and survives restarts. Links that open a new window go to your browser, and **Open in browser** is still in the header. Some sign-in methods, such as Google, may only work in your browser. (#19, @shiini2)
+
 ## 0.17.0 — 2026-11-04
 
 ### Auto deploy

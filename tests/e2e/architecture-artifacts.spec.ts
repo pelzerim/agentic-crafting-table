@@ -43,6 +43,8 @@ test('Explain architecture starts one connected Claude session whose published a
     const page = await app.firstWindow();
     await app.evaluate(({ shell }) => { (globalThis as any).openedUrls = []; shell.openExternal = async (url: string) => { (globalThis as any).openedUrls.push(url); }; });
     const opened = () => app.evaluate(() => (globalThis as any).openedUrls.slice() as string[]);
+    // The artifact view loads its page; the test serves it so nothing reaches claude.ai.
+    await app.evaluate(({ session }) => session.fromPartition('persist:claude-artifacts').protocol.handle('https', () => new Response('<!doctype html><title>Fixture artifact</title>', { headers: { 'content-type': 'text/html' } })));
     const read = () => service.control.read();
     const pr = page.getByRole('article', { name: fixture.pull.title, exact: true });
     await pr.click({ button: 'right' });
@@ -90,6 +92,7 @@ test('Explain architecture starts one connected Claude session whose published a
     await expect.poll(opened).toEqual([ARTIFACT_URL]);
     await card.click();
     const panel = page.getByRole('region', { name: 'Billing plan architecture', exact: true });
+    await expect(panel.locator('webview[data-site="claude"]')).toHaveAttribute('src', ARTIFACT_URL);
     await expect(panel.getByRole('button', { name: 'Pull request · ' + fixture.pull.title })).toBeVisible();
     await expect(panel.getByRole('button', { name: 'Agent · Architecture · #42' })).toBeVisible();
     await panel.getByRole('button', { name: 'Open in browser', exact: true }).click();

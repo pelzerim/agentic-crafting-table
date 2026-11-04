@@ -359,6 +359,9 @@ export interface ResourceViewServices {
   frameToolbar?(): HTMLElement | undefined;
   /** Opens a provider page in the browser, for links rendered outside the view body. */
   openUrl?(url: string): void;
+  /** Shows a page of a site the host embeds (such as `claude`) inside `container`, in that site's own signed-in
+   * session; new windows open in the browser. Undefined for a site the host does not embed; absent where it embeds none. */
+  mountWebPage?(container: HTMLElement, options: { site: string; url: string }): { dispose(): void } | undefined;
   /** The host owns session lifetime; disposing the view only detaches its UI. */
   attachTerminal(sessionId: string, container: HTMLElement, options?: NativeTerminalOptions): { dispose(): void; setActive?(active: boolean): void };
   /** Controls other packages add to this type's views (RendererHost.contributeViews). */

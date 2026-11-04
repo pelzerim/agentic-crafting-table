@@ -4,6 +4,7 @@ import type { DesktopAnnouncement, NotificationTarget } from './notifications.ts
 import type { WorkspaceSnapshot } from '../../packages/workspace-service/protocol.ts';
 import { isOffMap } from '../../src/graph/archive.ts';
 import { browserUrl, clipboardUrls } from './browser-url.ts';
+import { EMBEDDED_SITES, attachEmbeddedPage, embeddedNavigation, embeddedPermissionAllowed } from './embedded-sites.ts';
 import { savePastedImage } from './pasted-images.ts';
 import { pluginDiscoverySchema } from '../../src/resource-plugins/url-input.ts';
 import { createKeepAwake } from './keep-awake.ts';
@@ -121,6 +122,29 @@ async function main() {
   const clipboardWrite = (permission: string, url: string | undefined) => permission === 'clipboard-sanitized-write' && Boolean(url?.startsWith(origin + '/'));
   session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => callback(clipboardWrite(permission, details.requestingUrl ?? contents.getURL())));
   session.defaultSession.setPermissionCheckHandler((_contents, permission, requestingOrigin) => clipboardWrite(permission, `${requestingOrigin}/`));
+  const openOutside = (input: string) => {
+    let target: string | undefined;
+    try { target = browserUrl(input); } catch { target = undefined; }
+    if (target) void shell.openExternal(target).catch(() => {});
+  };
+  for (const site of EMBEDDED_SITES) {
+    const pages = session.fromPartition(site.partition);
+    pages.setPermissionRequestHandler((_contents, permission, callback) => callback(embeddedPermissionAllowed(permission)));
+    pages.setPermissionCheckHandler((_contents, permission) => embeddedPermissionAllowed(permission));
+    pages.on('will-download', (event, item) => { event.preventDefault(); openOutside(item.getURL()); });
+  }
+  // A site's page in an item view: popups go to the browser, top-level pages stay https, and it never hosts a webview.
+  app.on('web-contents-created', (_event, contents) => {
+    if (contents.getType() !== 'webview') return;
+    contents.on('will-attach-webview', event => event.preventDefault());
+    contents.on('select-bluetooth-device', (event, _devices, callback) => { event.preventDefault(); callback(''); });
+    contents.setWindowOpenHandler(({ url }) => { openOutside(url); return { action: 'deny' }; });
+    const keepHttps = (event: Electron.Event<{ url: string; isMainFrame: boolean }>) => {
+      if (embeddedNavigation(event.url, event.isMainFrame) === 'allow') return;
+      event.preventDefault(); openOutside(event.url);
+    };
+    contents.on('will-navigate', keepHttps); contents.on('will-redirect', keepHttps);
+  });
   ipcMain.handle('app:focused', event => { assertCaller(event); return backgroundTest || Boolean(BrowserWindow.fromWebContents(event.sender)?.isFocused()); });
   ipcMain.handle('app:info', async event => {
     assertCaller(event);
@@ -401,7 +425,7 @@ async function main() {
       ...placement.state.bounds, minWidth: placement.minWidth, minHeight: placement.minHeight,
       show: !backgroundTest, focusable: !backgroundTest,
       backgroundColor: WINDOW_BACKGROUND[colorScheme()], title: 'Agentic Crafting Table',
-      webPreferences: { preload: join(app.getAppPath(), 'dist', 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: !backgroundTest },
+      webPreferences: { preload: join(app.getAppPath(), 'dist', 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, webviewTag: true, backgroundThrottling: !backgroundTest },
     });
     // maximize() reveals a hidden window, so background tests retain normal bounds.
     if (placement.state.maximized && !backgroundTest) window.maximize();
@@ -416,13 +440,9 @@ async function main() {
     });
     const contentsId = window.webContents.id;
     window.webContents.on('destroyed', () => zoomTargets.delete(contentsId));
-    window.webContents.setWindowOpenHandler(({ url }) => {
-      let target: string | undefined;
-      try { target = browserUrl(url); } catch { target = undefined; }
-      if (target) void shell.openExternal(target).catch(() => {});
-      return { action: 'deny' };
-    });
+    window.webContents.setWindowOpenHandler(({ url }) => { openOutside(url); return { action: 'deny' }; });
     window.webContents.on('will-navigate', event => event.preventDefault());
+    window.webContents.on('will-attach-webview', (event, preferences, params) => { if (!attachEmbeddedPage(preferences, params)) event.preventDefault(); });
     const query = new URLSearchParams(spike ? { spike: '1' } : {}), pinnedStyle = neighborhoodStylePin(Boolean(testDirectory), process.env.ACT_TEST_NEIGHBORHOOD_STYLE);
     if (pinnedStyle) query.set(NEIGHBORHOOD_STYLE_PARAMETER, pinnedStyle);
     query.set(COLOR_SCHEME_PARAMETER, colorScheme());
