@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { armRecord, autoDeployEvents, decide, observe, phaseTrack, recordKey, seedCatchUp, settle, statusLine, takeoverRefusal, trackNext, FIX_ATTEMPTS, FIX_DEADLINE_MS, ROLLOUT_DEADLINE_MS, VALIDATION_DEADLINE_MS, BLOCKED_GRACE_MS } from './auto-deploy.ts';
+import { armRecord, autoDeployEvents, decide, observe, phaseTrack, recordKey, seedCatchUp, settle, statusLine, takeoverRefusal, trackNext, FINDINGS_DEADLINE_MS, FIX_ATTEMPTS, FIX_DEADLINE_MS, REBASE_ATTEMPTS, REBASE_DEADLINE_MS, ROLLOUT_DEADLINE_MS, VALIDATION_DEADLINE_MS, BLOCKED_GRACE_MS } from './auto-deploy.ts';
 import type { AutoDeployDecision, AutoDeployFacts, AutoDeployRecord, PhaseTrack, PullFacts, RolloutFacts } from './auto-deploy.ts';
 import { parseStageRules } from './stages.ts';
 import type { RolloutJob } from '../../../../packages/provider-runtime/github-rollout.ts';
+import type { LoopFinding } from '../code-review/review-loop.ts';
 
 const T0 = Date.parse('2026-10-08T10:00:00Z'), MIN = 60_000, head = 'a'.repeat(40);
 const pull = (over: Partial<PullFacts> = {}): PullFacts => ({ lifecycle: 'open', head, base: 'main', title: '[ship] Batch exports', tag: 'ship', mergeStateStatus: 'CLEAN', reviewDecision: 'APPROVED',
@@ -65,8 +66,6 @@ test('every doubt before the merge halts with its reason', () => {
   halts(decide(armed(), facts({ pull: pull({ lifecycle: 'draft' }) })), 'draft', /draft/);
   halts(decide(armed(), facts({ pull: pull({ reviewDecision: 'CHANGES_REQUESTED' }) })), 'changes-requested', /requested changes/);
   halts(decide(armed(), facts({ pull: pull({ reviewDecision: 'REVIEW_REQUIRED' }) })), 'review-required', /only a person/);
-  halts(decide(armed(), facts({ pull: pull({ mergeStateStatus: 'DIRTY' }) })), 'conflicts', /merge conflicts with main/);
-  halts(decide(armed(), facts({ pull: pull({ mergeStateStatus: 'BEHIND' }) })), 'behind', /out of date with main/);
   halts(decide(armed({ blockedSince: T0 - BLOCKED_GRACE_MS }), facts({ pull: pull({ mergeStateStatus: 'BLOCKED' }) })), 'blocked', /blocked/);
   halts(decide(armed({ writes: [{ key: 'merge', kind: 'merge', requestId: 'm', at: T0, state: 'sending' }] }), facts()), 'outcome-unknown', /merge.*could not be confirmed/i);
   halts(decide(merged({ writes: [{ key: 'approve:x', kind: 'approve', requestId: 'a', at: T0, state: 'sending' }] }), facts()), 'outcome-unknown', /approval.*could not be confirmed/i);
@@ -220,7 +219,7 @@ test('a record saved before takeovers existed still reads and decides', () => {
   assert.equal(recordKey(old), 'pr-r');
   const waiting = rollout({ gates: [gate(7, 'live')], validations: [{ label: 'V1', state: 'final', verdict: 'passed' }] });
   assert.equal(decide(old, facts({ rollouts: [waiting] })).kind, 'approve');
-  assert.deepEqual(autoDeployEvents(old).map(event => event.kind), ['armed', 'validate']);
+  assert.deepEqual(autoDeployEvents(old).map(event => event.kind), ['armed', 'merged', 'validate']);
 });
 
 test('a takeover is refused on a run that finished, failed or has not started', () => {
@@ -257,7 +256,7 @@ test('catching up by accepting: what deployed counts as accepted, the waiting ga
   assert.equal(decide(seeded, facts({ pull: undefined, rollouts: [takeoverRollout({ validations: [] })] })).kind, 'approve');
   const finished = takeoverRollout({ run: { id: 101, attempt: 1, status: 'completed', conclusion: 'success', headSha: head }, gates: [], validations: [], jobs: [job(1, 'build'), job(2, 'deploy-preview / ship'), job(3, 'deploy-staging / ship'), job(4, 'deploy-prod (eu-west)')] });
   assert.deepEqual(decide(seeded, facts({ pull: undefined, rollouts: [finished] })), { kind: 'validate', key: 'rollout:101:1:final', rolloutNodeId: 'rollout', label: 'whole run', jobs: [4] }, 'what deploys after arming is validated');
-  assert.deepEqual(autoDeployEvents(seeded)[0], { at: T0, kind: 'armed', text: 'armed by you from here · what already deployed counts as accepted' });
+  assert.deepEqual(autoDeployEvents(seeded)[0], { at: T0, kind: 'armed', part: 'rollout', text: 'armed by you from here · what already deployed counts as accepted' });
 });
 
 const shape = (track: PhaseTrack) => track.phases.map(phase => [phase.name, phase.state, phase.noCheck ? 'no check' : phase.check ? `${phase.check.id ?? ''} ${phase.check.state}${phase.check.seeded ? ' counts' : ''}`.trim() : '', phase.gate ? `${phase.gate.state}${phase.gate.by ? ` by ${phase.gate.by}` : ''}${phase.gate.after ? ` after ${phase.gate.after}` : ''}` : '']);
@@ -380,4 +379,141 @@ test('a pull request with merge when ready on is not merged a second time: Auto 
   const landed = facts({ pull: pull({ mergeWhenReady: true, lifecycle: 'merged' }) }), after = observe(armed(), landed);
   assert.equal(after.mergedAt, T0); waits(decide(after, landed), 'waiting-rollout');
   assert.equal(statusLine(settle(armed(), { kind: 'wait', step: 'merge-when-ready' }, T0)), 'Auto deploy · waiting for GitHub to merge when ready');
+});
+
+const moved = 'b'.repeat(40), baseHead = 'f'.repeat(40);
+const finding = (id: string, kind: 'bug' | 'security' | 'hardening' | 'question', severity?: 'critical' | 'high' | 'medium' | 'low', over: Partial<LoopFinding> = {}): LoopFinding =>
+  ({ id, kind, ...(severity ? { severity } : {}), title: `Finding ${id}`, status: 'open', ignored: false, ...over });
+const review = (findings: LoopFinding[], state: 'running' | 'findings' = 'findings') => ({ nodeId: 'review', title: 'Claude review', state, findings });
+
+test('an out-of-date branch without a merge queue is updated from its base once per base head, then checks are waited for', () => {
+  const behind = facts({ pull: pull({ mergeStateStatus: 'BEHIND', baseHead }) });
+  assert.deepEqual(decide(armed(), behind), { kind: 'update', pullRequestId: 'PR_node42', head, base: 'main', baseHead });
+  const sentOnce = armed({ rebases: [{ head, base: baseHead, at: T0, mode: 'update' }], writes: [{ key: `update:${baseHead}`, kind: 'update', requestId: 'u', at: T0, state: 'sent' }] });
+  waits(decide(sentOnce, behind), 'updating-branch', 'main');
+  halts(decide(sentOnce, { ...behind, now: T0 + REBASE_DEADLINE_MS }), 'rebase-stalled', /GitHub did not update the branch within 45 minutes/);
+  waits(decide(sentOnce, facts({ pull: pull({ head: moved, baseHead, checks: 'pending' }) })), 'waiting-checks');
+  const newer = 'e'.repeat(40);
+  assert.deepEqual(decide(sentOnce, facts({ pull: pull({ head: moved, mergeStateStatus: 'BEHIND', baseHead: newer }) })), { kind: 'update', pullRequestId: 'PR_node42', head: moved, base: 'main', baseHead: newer }, 'a base that moved again is a new update');
+  assert.equal(decide(armed(), facts({ pull: pull({ queueEnabled: true, mergeStateStatus: 'BEHIND', method: 'QUEUE' }) })).kind, 'merge', 'the merge queue keeps the branch current itself');
+  halts(decide(armed({ writes: [{ key: `update:${baseHead}`, kind: 'update', requestId: 'u', at: T0, state: 'sending' }] }), behind), 'outcome-unknown', /branch update could not be confirmed/);
+  assert.equal(statusLine(settle(armed(), decide(armed(), behind), T0)), 'Auto deploy · updating the branch from main');
+});
+
+test('conflicts ask the fixer agent to rebase, once per head and at most twice; no new head within 45 minutes halts', () => {
+  const dirty = facts({ pull: pull({ mergeStateStatus: 'DIRTY', checks: 'failing', failing: ['unit'] }) });
+  assert.deepEqual(decide(armed(), dirty), { kind: 'rebase', attempt: 1, head, base: 'main' }, 'rebasing comes before fixing CI');
+  const first = armed({ rebases: [{ head, base: 'main', at: T0, mode: 'agent', agentNodeId: 'impl', agentTitle: 'Claude · impl' }] });
+  waits(decide(first, dirty), 'rebasing', 'main (1/2) · Claude · impl');
+  assert.equal(statusLine(settle(first, decide(first, dirty), T0)), 'Auto deploy · rebasing onto main (1/2) · Claude · impl');
+  halts(decide(first, { ...dirty, now: T0 + REBASE_DEADLINE_MS }), 'rebase-stalled', /Claude · impl pushed no rebased branch within 45 minutes/);
+  assert.deepEqual(decide(first, facts({ pull: pull({ head: moved, mergeStateStatus: 'DIRTY' }) })), { kind: 'rebase', attempt: 2, head: moved, base: 'main' });
+  const second = armed({ rebases: [...first.rebases!, { head: moved, base: 'main', at: T0, mode: 'agent' }] });
+  halts(decide(second, facts({ pull: pull({ head: 'd'.repeat(40), mergeStateStatus: 'DIRTY' }) })), 'conflicts', new RegExp(`merge conflicts with main after ${REBASE_ATTEMPTS} rebase attempts`));
+  assert.equal(decide(second, facts({ pull: pull({ head: 'd'.repeat(40) }) })).kind, 'merge', 'a clean branch after the second rebase merges');
+  halts(decide(armed({ writes: [{ key: 'rebase:1', kind: 'rebase', requestId: 'r', at: T0, state: 'sending' }] }), dirty), 'outcome-unknown', /rebase request/);
+  halts(decide(second, facts({ pull: pull({ head: 'd'.repeat(40), reviewDecision: 'REVIEW_REQUIRED' }) })), 'review-required', /only a person/);
+});
+
+test('blocking findings of the linked review go to the fixer once; a running review is waited for; ignored, fixed, medium and low ones stay', () => {
+  waits(decide(armed(), facts({ review: review([], 'running') })), 'waiting-review', 'Claude review');
+  assert.equal(statusLine(settle(armed(), decide(armed(), facts({ review: review([], 'running') })), T0)), 'Auto deploy · waiting for the Claude review');
+  const findings = [finding('F1', 'bug', 'critical'), finding('F2', 'bug', 'high'), finding('F3', 'security'), finding('F4', 'bug', 'medium'), finding('F5', 'bug', 'low'), finding('F6', 'hardening'),
+    finding('F7', 'bug', 'high', { ignored: true }), finding('F8', 'security', undefined, { status: 'fixed' }), finding('F9', 'question')];
+  assert.deepEqual(decide(armed(), facts({ review: review(findings) })), { kind: 'send-findings', reviewNodeId: 'review', reviewTitle: 'Claude review', findingIds: ['F1', 'F2', 'F3'], head, counts: '1 critical, 1 high, 1 security' });
+  assert.equal(decide(armed(), facts({ review: review(findings.slice(3)) })).kind, 'merge', 'nothing blocking moves on');
+  assert.equal(observe(armed(), facts({ review: review(findings) })).reviewLeft, '1 medium, 1 low, 1 hardening, 1 question');
+  assert.equal(statusLine(settle(observe(armed(), facts({ review: review(findings), pull: pull({ checks: 'pending' }) })), { kind: 'wait', step: 'waiting-checks' }, T0)), 'Auto deploy · waiting for checks · 1 medium, 1 low, 1 hardening, 1 question left for you');
+  const dirty = facts({ review: review(findings), pull: pull({ mergeStateStatus: 'DIRTY' }) });
+  assert.equal(decide(armed(), dirty).kind, 'rebase', 'the branch is rebased before findings are sent');
+});
+
+test('after the findings are sent: wait for the report and the push, then go on to checks; every doubt halts', () => {
+  const findings = [finding('F1', 'bug', 'critical'), finding('F2', 'security')];
+  const sentRecord = armed({ findingSends: [{ reviewNodeId: 'review', reviewTitle: 'Claude review', sendId: 's1', findingIds: ['F1', 'F2'], head, at: T0, agentNodeId: 'impl', agentTitle: 'Claude · impl', counts: '1 critical, 1 security' }] });
+  const base = (send: AutoDeployFacts['send'], over: Partial<AutoDeployFacts> = {}) => facts({ review: review(findings.map(entry => ({ ...entry, status: 'sent' as const }))), send, ...over });
+  waits(decide(sentRecord, base({ state: 'queued', reported: [] })), 'fixing-findings', 'Claude · impl is fixing 2 findings');
+  assert.equal(statusLine(settle(sentRecord, decide(sentRecord, base({ state: 'sent', reported: [] })), T0)), 'Auto deploy · Claude · impl is fixing 2 findings');
+  waits(decide(sentRecord, base({ state: 'sent', reported: ['F1'] })), 'fixing-findings', 'Claude · impl is fixing 2 findings');
+  waits(decide(sentRecord, base({ state: 'sent', reported: ['F1', 'F2'] })), 'waiting-push', 'Claude · impl');
+  assert.equal(statusLine(settle(sentRecord, decide(sentRecord, base({ state: 'sent', reported: ['F1', 'F2'] })), T0)), 'Auto deploy · waiting for Claude · impl to push');
+  const pushed = base({ state: 'sent', reported: ['F1', 'F2'] }, { pull: pull({ head: moved, checks: 'pending' }) });
+  waits(decide(sentRecord, pushed), 'waiting-checks');
+  const seen = observe(sentRecord, pushed);
+  assert.deepEqual([seen.findingSends![0].pushed, seen.findingSends![0].pushedAt, seen.findingSends![0].fixed], [moved, T0, ['F1', 'F2']]);
+  assert.equal(decide(seen, facts({ pull: pull({ head: moved }), review: review(findings.map(entry => ({ ...entry, status: 'fixed' as const }))) })).kind, 'merge', 'once per review: no second send, no new review');
+  const late = { now: T0 + FINDINGS_DEADLINE_MS };
+  halts(decide(sentRecord, base({ state: 'sent', reported: [] }, late)), 'findings-stalled', /Claude · impl reported no fixes within 45 minutes/);
+  halts(decide(sentRecord, base({ state: 'sent', reported: ['F1', 'F2'] }, late)), 'findings-no-push', /reported the findings fixed but pushed no new commit within 45 minutes/);
+  halts(decide(sentRecord, base({ state: 'sent', reported: ['F1'], titles: { F2: 'Token leaks into logs' } }, late)), 'findings-unfixed', /did not report F2 “Token leaks into logs” fixed/);
+  halts(decide(sentRecord, base({ state: 'failed', error: 'Claude · impl was removed from the map before it could receive the findings.', reported: [] })), 'findings-failed', /removed from the map/);
+  halts(decide(sentRecord, base({ state: 'cancelled', reported: [] })), 'findings-failed', /cancelled/);
+  halts(decide(sentRecord, base({ state: 'uncertain', reported: [] })), 'outcome-unknown', /could not be confirmed/);
+  assert.deepEqual(decide(sentRecord, base({ state: 'missing', reported: [] })), { kind: 'send-findings', reviewNodeId: 'review', reviewTitle: 'Claude review', findingIds: ['F1', 'F2'], head, counts: '1 critical, 1 security' }, 'a send recorded but never journaled goes out again under its id');
+});
+
+test('a record saved before rebases and findings existed reads and decides unchanged', () => {
+  const old = JSON.parse(JSON.stringify({ version: 1, id: 'arm-1', pullResourceId: 'pr-r', pullNodeId: 'pr', armedAt: T0, updatedAt: T0, state: 'armed', step: 'fixing-ci', detail: '1/2',
+    writes: [{ key: 'tag', kind: 'tag', requestId: 't', at: T0, state: 'sent' }, { key: 'fix:1', kind: 'fix', requestId: 'f', at: T0, state: 'sent' }], fixes: [{ head, at: T0 }], checks: [] })) as AutoDeployRecord;
+  waits(decide(old, facts({ pull: pull({ checks: 'failing', failing: ['unit'] }) })), 'fixing-ci', '1/2');
+  assert.equal(decide(old, facts()).kind, 'merge');
+  assert.deepEqual(autoDeployEvents(old).map(event => event.kind), ['armed', 'tag', 'fix']);
+  assert.equal(statusLine(old), 'Auto deploy · fixing CI (1/2)');
+});
+
+test('the action list of a full run, in order, split into the pull request part and each rollout', () => {
+  const at = (minutes: number) => T0 + minutes * MIN;
+  const record: AutoDeployRecord = { ...armed(), state: 'done', step: 'done', updatedAt: at(80), base: 'main', mergedAt: at(30),
+    writes: [{ key: 'tag', kind: 'tag', requestId: 't', at: at(0), state: 'sent' }, { key: 'rebase:1', kind: 'rebase', requestId: 'r', at: at(1), state: 'sent' }, { key: 'findings:review', kind: 'findings', requestId: 's1', at: at(10), state: 'sent' },
+      { key: 'fix:1', kind: 'fix', requestId: 'f', at: at(20), state: 'sent' }, { key: 'merge', kind: 'merge', requestId: 'm', at: at(29), state: 'sent' },
+      { key: 'approve:rollout:101:1:7', kind: 'approve', requestId: 'a', at: at(50), state: 'sent', label: 'production' }],
+    rebases: [{ head, base: baseHead, at: at(1), mode: 'agent', agentNodeId: 'impl', agentTitle: 'Claude · impl', pushed: moved, pushedAt: at(9) }],
+    findingSends: [{ reviewNodeId: 'review', reviewTitle: 'Claude review', sendId: 's1', findingIds: ['F1', 'F2', 'F3'], head: moved, at: at(10), agentNodeId: 'impl', agentTitle: 'Claude · impl', counts: '1 critical, 1 high, 1 security', left: '4 medium', fixed: ['F1', 'F2', 'F3'], pushed: 'c'.repeat(40), pushedAt: at(18) }],
+    fixes: [{ head: 'c'.repeat(40), at: at(20), agentNodeId: 'impl', agentTitle: 'Claude · impl' }],
+    checks: [{ ...check('rollout:101:1:gate:7', 'V1', at(40), [1]), label: 'staging', verdict: 'passed', answeredAt: at(48) }, { ...check('rollout:101:1:final', 'V2', at(60)), label: 'whole run', verdict: 'passed', answeredAt: at(75) }] };
+  const events = autoDeployEvents(record);
+  assert.deepEqual(events.map(event => [event.part, event.kind, event.text]), [
+    ['pull', 'armed', 'armed by you'],
+    ['pull', 'tag', 'tagged the title [ship]'],
+    ['pull', 'rebase', 'asked Claude · impl to rebase onto main (1/2)'],
+    ['pull', 'rebased', 'Claude · impl rebased and pushed bbbbbbb'],
+    ['pull', 'findings', 'sent 3 findings of Claude review to Claude · impl · 1 critical, 1 high, 1 security · 4 medium left for you'],
+    ['pull', 'fixed', 'Claude · impl fixed 3 and pushed ccccccc'],
+    ['pull', 'fix', 'asked Claude · impl to fix CI (1/2)'],
+    ['pull', 'merged', 'merged into main'],
+    ['rollout', 'validate', 'asked Claude to validate staging · V1'],
+    ['rollout', 'verdict', 'V1 passed'],
+    ['rollout', 'approve', 'approved production'],
+    ['rollout', 'validate', 'asked Claude to validate whole run · V2'],
+    ['rollout', 'verdict', 'V2 passed'],
+    ['rollout', 'done', 'done'],
+  ]);
+  assert.deepEqual(events.find(event => event.kind === 'rebased'), { at: at(9), kind: 'rebased', part: 'pull', text: 'Claude · impl rebased and pushed bbbbbbb', agentNodeId: 'impl', commit: moved });
+  assert.deepEqual(events.find(event => event.kind === 'findings'), { at: at(10), kind: 'findings', part: 'pull', text: 'sent 3 findings of Claude review to Claude · impl · 1 critical, 1 high, 1 security · 4 medium left for you', agentNodeId: 'impl', reviewNodeId: 'review' });
+  assert.equal(events.find(event => event.kind === 'validate')?.rolloutNodeId, 'rollout');
+  const update = autoDeployEvents({ ...armed(), base: 'main', rebases: [{ head, base: baseHead, at: at(1), mode: 'update', pushed: moved, pushedAt: at(1) }], writes: [{ key: `update:${baseHead}`, kind: 'update', requestId: 'u', at: at(1), state: 'sent' }] });
+  assert.deepEqual(update.map(event => event.text), ['armed by you', 'updated the branch from main · bbbbbbb']);
+});
+
+test('the action list of a halt ends with the halt, on the pull request before the merge', () => {
+  const record: AutoDeployRecord = { ...armed(), state: 'halted', step: 'halted', base: 'main', updatedAt: T0 + 50 * MIN,
+    rebases: [{ head, base: 'main', at: T0 + MIN, mode: 'agent', agentTitle: 'Claude · impl' }, { head: moved, base: 'main', at: T0 + 2 * MIN, mode: 'agent', agentTitle: 'Claude · impl' }],
+    halt: { code: 'conflicts', reason: 'The branch still has merge conflicts with main after 2 rebase attempts.', at: T0 + 50 * MIN } };
+  assert.deepEqual(autoDeployEvents(record).map(event => [event.part, event.kind, event.text]), [['pull', 'armed', 'armed by you'], ['pull', 'rebase', 'asked Claude · impl to rebase onto main (1/2)'],
+    ['pull', 'rebase', 'asked Claude · impl to rebase onto main (2/2)'], ['pull', 'halted', 'halted: The branch still has merge conflicts with main after 2 rebase attempts.']]);
+});
+
+test('observe records each validation verdict once, when it is first seen final', () => {
+  const record = merged({ checks: [check('rollout:101:1:final', 'V1', T0, [1])] });
+  const finished = rollout({ run: { id: 101, attempt: 1, status: 'completed', conclusion: 'success', headSha: head } });
+  assert.equal(observe(record, facts({ pull: undefined, rollouts: [{ ...finished, validations: [{ label: 'V1', state: 'running' }] }] })).checks[0].verdict, undefined);
+  const seen = observe(record, facts({ now: T0 + 5 * MIN, pull: undefined, rollouts: [{ ...finished, validations: [{ label: 'V1', state: 'final', verdict: 'concerns' }] }] }));
+  assert.deepEqual([seen.checks[0].verdict, seen.checks[0].answeredAt], ['concerns', T0 + 5 * MIN]);
+  assert.equal(observe(seen, facts({ now: T0 + 9 * MIN, pull: undefined, rollouts: [{ ...finished, validations: [{ label: 'V1', state: 'final', verdict: 'concerns' }] }] })).checks[0].answeredAt, T0 + 5 * MIN);
+});
+
+test('a running group of jobs with no environment is named by what runs, never “other”', () => {
+  waits(decide(merged(), facts({ rollouts: [rollout({ jobs: [job(1, 'publish-image', 'in_progress', null), job(2, 'lint')] })] })), 'deploying', 'publish-image');
+  waits(decide(merged(), facts({ rollouts: [rollout({ jobs: [job(1, 'publish-image', 'in_progress', null), job(2, 'lint', 'in_progress', null), job(3, 'unit', 'in_progress', null)] })] })), 'deploying', '3 jobs');
+  waits(decide(merged(), facts({ rollouts: [rollout({ jobs: [job(1, 'lint'), job(2, 'publish-image', 'queued', null), job(3, 'release', 'queued', null)] })] })), 'deploying', '2 jobs');
 });

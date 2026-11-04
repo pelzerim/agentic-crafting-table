@@ -3,6 +3,7 @@ import { clip } from '../../../pull-requests/review-findings.ts';
 import type { RolloutObservation, RolloutJob, RolloutRun } from '../../../../packages/provider-runtime/github-rollout.ts';
 import { queueRef, queueWho } from './queue.ts';
 import { plainLine, reportText, splitLead } from './report-text.ts';
+import type { AutoDeployEventKind } from './auto-deploy.ts';
 
 /** Rollout validations:
  * the report an agent posts, the rules that make a verdict current, the stages of a
@@ -232,7 +233,7 @@ export type TimelineEntry = { key: string; at: number; rank: number; jobName?: s
   | { kind: 'run'; conclusion: string; done: number; total: number; duration?: number }
   | { kind: 'queued'; blockers: string[]; waited?: number }
   | { kind: 'validation'; validation: ValidationView; covered: string[] }
-  | { kind: 'auto'; what: 'armed' | 'validate' | 'approve' | 'halted' | 'done' | 'stopped'; text: string });
+  | { kind: 'auto'; what: AutoDeployEventKind; text: string });
 export interface TimelineGroup { runId: number; attempt: number; current: boolean; label: string; summary: string; jobs: SnapshotJob[]; entries: TimelineEntry[]; conclusion?: string }
 
 /** Job names a validation is about: its narrowed jobs, the jobs its checks read, or

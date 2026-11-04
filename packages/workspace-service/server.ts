@@ -247,7 +247,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
       if (closing) return; await workflows.recover();
     },
   });
-  servicePlugins.startWorkspace(pluginId => ({ directory, store, control, resources, terminals, agents: hostedAgents, storage: store.pluginStorage(pluginId), broadcast,
+  servicePlugins.startWorkspace(pluginId => ({ directory, store, control, resources, terminals, agents: hostedAgents, storage: store.pluginStorage(pluginId), broadcast, ...(findings ? { findings: { run: (nodeId, input) => findings.run(nodeId, input) } } : {}),
     allowed: () => !closing && lifecycle.allowsBackgroundWork, execute: work => lifecycle.execute(work) }));
   const operation = (id: string, handler: RuntimeOperationHandler, options?: RuntimeOperationOptions) => servicePlugins.registerOperation('host', id, handler, options);
   const requireResource = (context: RuntimeOperationContext) => { if (!context.resource) throw new Error('Node is not a resource item'); return context.resource; };

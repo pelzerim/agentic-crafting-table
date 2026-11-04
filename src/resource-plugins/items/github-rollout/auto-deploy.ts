@@ -4,9 +4,12 @@ import type { ValidationState, Verdict } from './validation.ts';
 import { environmentStates } from './stages.ts';
 import { stageOf } from './validation.ts';
 import type { StageRule } from './stages.ts';
+import { blocking, countText } from '../code-review/review-loop.ts';
+import type { LoopFinding } from '../code-review/review-loop.ts';
 
-/** Auto deploy: armed by a person on a pull request, the service tags it [ship], merges it once GitHub would, follows the
- * rollouts its merge starts, validates every phase and approves the next gate only after a passing validation.
+/** Auto deploy: armed by a person on a pull request, the service tags it [ship], rebases it onto its base when needed, has an agent
+ * fix blocking review findings and failing CI, merges it once GitHub would, follows the rollouts its merge starts, validates every
+ * phase and approves the next gate only after a passing validation.
  * Every write is sent once; any doubt halts, and nothing is ever rolled back. */
 export const AUTO_DEPLOY_OPERATION = 'github.rollout.autoDeploy';
 export const FIX_ATTEMPTS = 2;
@@ -14,24 +17,39 @@ export const FIX_ATTEMPTS = 2;
 export const VALIDATION_DEADLINE_MS = 60 * 60_000;
 /** An agent asked to fix CI that pushes no new commit this long halts. */
 export const FIX_DEADLINE_MS = 45 * 60_000;
+export const REBASE_ATTEMPTS = 2;
+/** A branch update or an agent asked to rebase that brings no new head commit this long halts. */
+export const REBASE_DEADLINE_MS = 45 * 60_000;
+/** A fixer sent review findings that has not reported them fixed and pushed this long halts. */
+export const FINDINGS_DEADLINE_MS = 45 * 60_000;
 /** A merge whose deploy run does not show up this long halts. */
 export const ROLLOUT_DEADLINE_MS = 30 * 60_000;
 /** GitHub's merge state lags behind green checks for a while; a block that outlasts this is a rule only a person can clear. */
 export const BLOCKED_GRACE_MS = 10 * 60_000;
 
 export type AutoDeployState = 'armed' | 'done' | 'halted' | 'stopped';
-export type AutoDeployStep = 'tagging' | 'waiting-checks' | 'fixing-ci' | 'merging' | 'merge-queue' | 'merge-when-ready' | 'waiting-rollout' | 'deploying' | 'delayed' | 'validating' | 'approving' | 'waiting-gate' | 'done' | 'halted' | 'stopped';
-export type HaltCode = 'closed' | 'draft' | 'changes-requested' | 'review-required' | 'conflicts' | 'behind' | 'blocked' | 'ci-failing' | 'fix-stalled' | 'declined' | 'outcome-unknown'
+export type AutoDeployStep = 'tagging' | 'updating-branch' | 'rebasing' | 'waiting-review' | 'fixing-findings' | 'waiting-push' | 'waiting-checks' | 'fixing-ci' | 'merging' | 'merge-queue' | 'merge-when-ready' | 'waiting-rollout' | 'deploying' | 'delayed' | 'validating' | 'approving' | 'waiting-gate' | 'done' | 'halted' | 'stopped';
+export type HaltCode = 'closed' | 'draft' | 'changes-requested' | 'review-required' | 'conflicts' | 'behind' | 'blocked' | 'ci-failing' | 'fix-stalled' | 'rebase-stalled' | 'findings-stalled' | 'findings-no-push'
+  | 'findings-unfixed' | 'findings-failed' | 'declined' | 'outcome-unknown'
   | 'no-rollout' | 'deploy-failed' | 'validation-failed' | 'validation-concerns' | 'validation-inconclusive' | 'no-verdict' | 'agent-unavailable' | 'error';
 
 /** A write is recorded `sending` before it goes out and `sent` once GitHub confirmed it; a `sending` one found later is never sent again.
  * `label` names what an approval opened, for the rollout's timeline. */
-export interface AutoDeployWrite { key: string; kind: 'tag' | 'merge' | 'approve' | 'fix'; requestId: string; at: number; state: 'sending' | 'sent'; label?: string }
+export interface AutoDeployWrite { key: string; kind: 'tag' | 'update' | 'rebase' | 'findings' | 'merge' | 'approve' | 'fix'; requestId: string; at: number; state: 'sending' | 'sent'; label?: string }
 /** One validation of a phase: `agent` is the trigger value it was asked with, so asking again after a restart is the same journaled request.
  * A check seeded when a running rollout was taken over either names a passing validation that already covered its jobs (`seeded`) or
  * counts what deployed before arming as accepted without a validation (`accepted`). */
-export interface AutoDeployCheck { key: string; rolloutNodeId: string; label: string; requestId: string; agent?: string; validationId?: string; requestedAt: number; jobs?: number[]; seeded?: true; accepted?: true }
-export interface AutoDeployFix { head: string; at: number; agentNodeId?: string }
+export interface AutoDeployCheck { key: string; rolloutNodeId: string; label: string; requestId: string; agent?: string; validationId?: string; requestedAt: number; jobs?: number[]; seeded?: true; accepted?: true; verdict?: Verdict; answeredAt?: number }
+export interface AutoDeployFix { head: string; at: number; agentNodeId?: string; agentTitle?: string }
+/** The branch brought onto its base: by GitHub's branch update (`base` is the base head it was updated from) or by an agent's rebase.
+ * `pushed` is the head commit seen after it. */
+export interface AutoDeployRebase { head: string; base: string; at: number; agentNodeId?: string; agentTitle?: string; mode: 'update' | 'agent'; pushed?: string; pushedAt?: number }
+/** Blocking findings of one review sent to the fixer through the findings send path under `sendId`; `fixed` are those it reported
+ * fixed and `pushed` the head commit seen after it, once all are. `left` counts what stays for the person. */
+export interface AutoDeployFindingSend {
+  reviewNodeId: string; reviewTitle?: string; sendId: string; findingIds: string[]; head: string; at: number; agentNodeId?: string; agentTitle?: string;
+  counts?: string; left?: string; fixed?: string[]; pushed?: string; pushedAt?: number;
+}
 /** How a takeover treats the phases that deployed before it was armed: validate those no passing validation covers, or accept them. */
 export type CatchUp = 'validate' | 'accept';
 /** Auto deploy armed on a rollout that was already running: the rollouts it follows, and which validations counted when it was armed. */
@@ -41,7 +59,9 @@ export interface AutoDeployRecord {
   version: 1; id: string; pullResourceId?: string; pullNodeId?: string; rolloutResourceId?: string; rolloutNodeId?: string; armedAt: number; updatedAt: number;
   state: AutoDeployState; step: AutoDeployStep; detail?: string;
   base?: string; mergedAt?: number; blockedSince?: number; takeover?: AutoDeployTakeover;
-  writes: AutoDeployWrite[]; fixes: AutoDeployFix[]; checks: AutoDeployCheck[];
+  writes: AutoDeployWrite[]; fixes: AutoDeployFix[]; checks: AutoDeployCheck[]; rebases?: AutoDeployRebase[]; findingSends?: AutoDeployFindingSend[];
+  /** Open findings of the linked review that are not sent to the fixer, for the person: “2 medium, 1 low”. */
+  reviewLeft?: string;
   halt?: { code: HaltCode; reason: string; at: number };
 }
 /** The storage key of a record: its pull request's resource, else its rollout's. */
@@ -51,7 +71,13 @@ export interface PullFacts extends Pick<PullMergeReadiness, 'head' | 'base' | 't
   lifecycle: PullLifecycle; tag: string; mergeStateStatus: PullMergeReadiness['mergeStateStatus']; checks: HeadChecks; failing: string[]; method: PullMergeMethod | null;
   /** GitHub will merge it when ready (auto-merge is on). */
   mergeWhenReady?: boolean;
+  /** The base branch's head commit. */
+  baseHead?: string;
 }
+/** The newest review linked to the pull request: still running, or finished with its findings and their statuses. */
+export interface LinkedReviewFacts { nodeId: string; title: string; state: 'running' | 'findings'; findings: LoopFinding[] }
+/** The last findings send as the send journal has it; `reported` are its findings reported fixed, `titles` names the others. */
+export interface FindingSendFacts { state: 'missing' | 'queued' | 'delivering' | 'sent' | 'failed' | 'cancelled' | 'uncertain'; error?: string; reported: string[]; titles?: Record<string, string> }
 /** A validation of the rollout: its run attempt and the jobs it was scoped to, when known, say what a passing one covers. */
 /** `environments` and `requestedAt` say what one scoped to environments, or to the whole run, is about. */
 export interface RolloutValidationFact { label: string; state: ValidationState; verdict?: Verdict; resolvedBy?: string; jobs?: number[]; environments?: string[]; runId?: number; attempt?: number; stale?: boolean; requestedAt?: number; finishedAt?: number }
@@ -62,11 +88,14 @@ export interface RolloutFacts {
   jobs: RolloutJob[]; gates: { id: number; name: string; approvable: boolean }[]; rule?: StageRule; validations: RolloutValidationFact[]; gateEnvironments?: string[];
   gateApprovals?: { environment: string; at: number }[]; autoValidate?: boolean;
 }
-export interface AutoDeployFacts { now: number; tagging: boolean; pull?: PullFacts; rollouts: RolloutFacts[] }
+export interface AutoDeployFacts { now: number; tagging: boolean; pull?: PullFacts; rollouts: RolloutFacts[]; review?: LinkedReviewFacts; send?: FindingSendFacts }
 
 export type AutoDeployDecision =
   | { kind: 'wait'; step: AutoDeployStep; detail?: string }
   | { kind: 'tag'; title: string }
+  | { kind: 'update'; pullRequestId: string; head: string; base: string; baseHead: string }
+  | { kind: 'rebase'; attempt: number; head: string; base: string }
+  | { kind: 'send-findings'; reviewNodeId: string; reviewTitle: string; findingIds: string[]; head: string; counts: string }
   | { kind: 'merge'; method: PullMergeMethod; pullRequestId: string; head: string }
   | { kind: 'fix'; attempt: number; head: string; failing: string[] }
   | { kind: 'validate'; key: string; rolloutNodeId: string; label: string; jobs: number[] }
@@ -131,7 +160,8 @@ const wait = (step: AutoDeployStep, detail?: string): AutoDeployDecision => ({ k
 const halt = (code: HaltCode, reason: string): AutoDeployDecision => ({ kind: 'halt', code, reason });
 export const sent = (record: AutoDeployRecord, key: string) => record.writes.some(write => write.key === key && write.state === 'sent');
 const UNCONFIRMED: Record<AutoDeployWrite['kind'], string> = {
-  tag: 'The [ship] tag could not be confirmed.', merge: 'The merge could not be confirmed.', approve: 'The approval could not be confirmed.', fix: 'The fix request to the agent could not be confirmed.',
+  tag: 'The [ship] tag could not be confirmed.', update: 'The branch update could not be confirmed.', rebase: 'The rebase request to the agent could not be confirmed.',
+  findings: 'The findings sent to the fixer could not be confirmed.', merge: 'The merge could not be confirmed.', approve: 'The approval could not be confirmed.', fix: 'The fix request to the agent could not be confirmed.',
 };
 const FAILED_JOB = new Set(['failure', 'timed_out', 'startup_failure', 'cancelled']);
 const ran = (job: RolloutJob) => !['skipped', 'cancelled', 'neutral'].includes(job.conclusion ?? '');
@@ -143,13 +173,34 @@ const minutes = (ms: number) => `${Math.max(1, Math.ceil(ms / 60_000))} min`;
 
 /** What the facts say happened since the last pass: the merge, and since when GitHub reports the pull request blocked. */
 export function observe(record: AutoDeployRecord, facts: AutoDeployFacts): AutoDeployRecord {
-  const pull = facts.pull;
-  if (!pull) return record;
-  const next = { ...record, base: pull.base };
+  const pull = facts.pull, answered = verdicts(record, facts);
+  if (!pull) return answered;
+  const next: AutoDeployRecord = { ...answered, base: pull.base };
+  if (next.rebases?.some(entry => !entry.pushed && entry.head !== pull.head)) next.rebases = next.rebases.map(entry => entry.pushed || entry.head === pull.head ? entry : { ...entry, pushed: pull.head, pushedAt: facts.now });
+  const send = next.findingSends?.at(-1), reported = facts.send?.reported ?? [];
+  if (send && !send.pushed && send.head !== pull.head && send.findingIds.every(id => reported.includes(id))) next.findingSends = next.findingSends!.map(entry => entry === send ? { ...entry, fixed: [...send.findingIds], pushed: pull.head, pushedAt: facts.now } : entry);
+  if (facts.review?.state === 'findings') {
+    const sent = new Set(next.findingSends?.filter(entry => entry.reviewNodeId === facts.review!.nodeId).flatMap(entry => entry.findingIds) ?? []), urgent = new Set(blocking(facts.review.findings, []).map(finding => finding.id));
+    const left = countText(facts.review.findings.filter(finding => finding.status !== 'fixed' && !finding.ignored && !urgent.has(finding.id) && !sent.has(finding.id)));
+    if (left) next.reviewLeft = left; else delete next.reviewLeft;
+  }
   if (pull.lifecycle === 'merged' && next.mergedAt === undefined) next.mergedAt = facts.now;
   if (pull.mergeStateStatus === 'BLOCKED' && pull.lifecycle === 'open') next.blockedSince ??= facts.now;
   else delete next.blockedSince;
   return next;
+}
+
+/** Each validation's verdict, noted once when it is first seen final, for the list of what auto deploy did. */
+function verdicts(record: AutoDeployRecord, facts: AutoDeployFacts): AutoDeployRecord {
+  if (!record.checks.some(check => check.validationId && !check.verdict && !check.accepted)) return record;
+  let changed = false;
+  const checks = record.checks.map(check => {
+    if (!check.validationId || check.verdict || check.accepted) return check;
+    const validation = facts.rollouts.find(rollout => rollout.nodeId === check.rolloutNodeId)?.validations.find(entry => entry.label === check.validationId);
+    if (validation?.state !== 'final') return check;
+    changed = true; return { ...check, verdict: validation.verdict ?? 'inconclusive', answeredAt: facts.now };
+  });
+  return changed ? { ...record, checks } : record;
 }
 
 /** The one next thing to do: a write, an agent request, a wait or a halt. Pure; the service performs it. */
@@ -170,7 +221,8 @@ function beforeMerge(record: AutoDeployRecord, facts: AutoDeployFacts): AutoDepl
   if (pull.mergeWhenReady) return wait('merge-when-ready');
   if (sent(record, 'merge')) return pull.queueEnabled ? { kind: 'stop', reason: 'The pull request was taken out of the merge queue.' } : wait('merging');
   if (pull.reviewDecision === 'CHANGES_REQUESTED') return halt('changes-requested', 'A reviewer requested changes; only a person can resolve that.');
-  if (pull.mergeStateStatus === 'DIRTY') return halt('conflicts', `The branch has merge conflicts with ${pull.base}.`);
+  const onBase = rebase(record, pull, facts.now) ?? findings(record, facts, pull);
+  if (onBase) return onBase;
   if (pull.checks === 'failing') {
     const current = record.fixes.find(fix => fix.head === pull.head);
     if (current) return facts.now - current.at >= FIX_DEADLINE_MS ? halt('fix-stalled', 'The agent fixing CI pushed no new commit within 45 minutes.') : wait('fixing-ci', `${record.fixes.length}/${FIX_ATTEMPTS}`);
@@ -179,11 +231,61 @@ function beforeMerge(record: AutoDeployRecord, facts: AutoDeployFacts): AutoDepl
   }
   if (pull.checks === 'pending' || pull.mergeStateStatus === 'UNKNOWN') return wait('waiting-checks');
   if (pull.reviewDecision === 'REVIEW_REQUIRED') return halt('review-required', 'A required review is missing; only a person can approve the pull request.');
-  if (pull.mergeStateStatus === 'BEHIND' && !pull.queueEnabled) return halt('behind', `The branch is out of date with ${pull.base}.`);
   if (pull.mergeStateStatus === 'BLOCKED') return record.blockedSince !== undefined && facts.now - record.blockedSince >= BLOCKED_GRACE_MS
     ? halt('blocked', 'GitHub still reports the pull request blocked by a rule other than checks and reviews.') : wait('waiting-checks');
   if (!pull.method) return halt('declined', 'GitHub offers no way to merge this pull request.');
   return { kind: 'merge', method: pull.method, pullRequestId: pull.pullRequestId, head: pull.head };
+}
+
+/** Brings the branch onto its base: conflicts go to the fixer agent to rebase (per head, at most twice); an out-of-date branch
+ * without a merge queue is updated by GitHub once per base head. Undefined when the branch is on its base. */
+function rebase(record: AutoDeployRecord, pull: PullFacts, now: number): AutoDeployDecision | undefined {
+  const rebases = record.rebases ?? [], agents = rebases.filter(entry => entry.mode === 'agent');
+  if (pull.mergeStateStatus === 'DIRTY') {
+    const current = agents.find(entry => entry.head === pull.head), who = current?.agentTitle ?? 'The agent';
+    if (current) return now - current.at >= REBASE_DEADLINE_MS ? halt('rebase-stalled', `${who} pushed no rebased branch within 45 minutes.`)
+      : wait('rebasing', `${pull.base} (${agents.length}/${REBASE_ATTEMPTS})${current.agentTitle ? ` · ${current.agentTitle}` : ''}`);
+    if (agents.length >= REBASE_ATTEMPTS) return halt('conflicts', `The branch still has merge conflicts with ${pull.base} after ${REBASE_ATTEMPTS} rebase attempts.`);
+    return { kind: 'rebase', attempt: agents.length + 1, head: pull.head, base: pull.base };
+  }
+  if (pull.mergeStateStatus !== 'BEHIND' || pull.queueEnabled) return undefined;
+  const baseHead = pull.baseHead ?? pull.base, current = rebases.find(entry => entry.mode === 'update' && entry.base === baseHead);
+  if (!current && !sent(record, `update:${baseHead}`)) return { kind: 'update', pullRequestId: pull.pullRequestId, head: pull.head, base: pull.base, baseHead };
+  return current && now - current.at >= REBASE_DEADLINE_MS ? halt('rebase-stalled', 'GitHub did not update the branch within 45 minutes.') : wait('updating-branch', pull.base);
+}
+
+/** Blocking findings of the newest linked review, sent to the fixer once per review; then the report and the push are waited for. */
+function findings(record: AutoDeployRecord, facts: AutoDeployFacts, pull: PullFacts): AutoDeployDecision | undefined {
+  const last = record.findingSends?.at(-1);
+  if (last && !last.pushed) {
+    const send = facts.send ?? { state: 'missing' as const, reported: [] }, who = last.agentTitle ?? 'The fixer', count = `${last.findingIds.length} finding${last.findingIds.length === 1 ? '' : 's'}`;
+    const again = (): AutoDeployDecision => ({ kind: 'send-findings', reviewNodeId: last.reviewNodeId, reviewTitle: last.reviewTitle ?? 'the review', findingIds: last.findingIds, head: last.head, counts: last.counts ?? '' });
+    if (send.state === 'missing') return again();
+    if (send.state === 'uncertain') return halt('outcome-unknown', `The findings sent to ${who} could not be confirmed. Check the agent; nothing more was sent.`);
+    if (send.state === 'failed') return halt('findings-failed', send.error ?? `The findings could not be sent to ${who}.`);
+    if (send.state === 'cancelled') return halt('findings-failed', `The findings sent to ${who} were cancelled.`);
+    const open = last.findingIds.filter(id => !send.reported.includes(id));
+    if (!open.length && pull.head !== last.head) return undefined;
+    if (facts.now - last.at >= FINDINGS_DEADLINE_MS) {
+      if (open.length === last.findingIds.length) return halt('findings-stalled', `${who} reported no fixes within 45 minutes.`);
+      if (!open.length) return halt('findings-no-push', `${who} reported the findings fixed but pushed no new commit within 45 minutes.`);
+      return halt('findings-unfixed', `${who} did not report ${open.map(id => send.titles?.[id] ? `${id} “${send.titles[id]}”` : id).join(', ')} fixed.`);
+    }
+    const name = last.agentTitle ?? 'the fixer';
+    return open.length ? wait('fixing-findings', `${name} is fixing ${count}`) : wait('waiting-push', name);
+  }
+  const review = facts.review;
+  if (!review) return undefined;
+  if (review.state === 'running') return wait('waiting-review', review.title);
+  if (record.findingSends?.some(entry => entry.reviewNodeId === review.nodeId)) return undefined;
+  const open = blocking(review.findings, []);
+  return open.length ? { kind: 'send-findings', reviewNodeId: review.nodeId, reviewTitle: review.title, findingIds: open.map(finding => finding.id), head: pull.head, counts: countText(open) } : undefined;
+}
+
+/** What a group of jobs without an environment is doing: the one job running, else how many run or wait. */
+function runningJobs(jobs: readonly RolloutJob[]) {
+  const running = jobs.filter(job => job.status === 'in_progress'), open = running.length ? running : jobs.filter(job => job.status !== 'completed');
+  return open.length === 1 ? open[0].name : `${open.length} jobs`;
 }
 
 const WAIT_ORDER: AutoDeployStep[] = ['validating', 'approving', 'delayed', 'waiting-gate', 'deploying', 'waiting-rollout'];
@@ -262,12 +364,12 @@ function phase(record: AutoDeployRecord, rollout: RolloutFacts, now: number): Au
   if (rollout.gates.length) return wait('waiting-gate', rollout.gates.map(gate => gate.name).join(', '));
   if (run.status !== 'completed') {
     const environments = environmentStates(rollout.jobs), current = environments.find(entry => entry.status === 'running') ?? environments.find(entry => entry.status === 'pending');
-    return wait('deploying', current?.name ?? rollout.title);
+    return wait('deploying', current?.name === 'other' ? runningJobs(current.jobs) : current?.name ?? rollout.title);
   }
   return { kind: 'done' };
 }
 
-const STEP_OF: Record<Exclude<AutoDeployDecision['kind'], 'wait' | 'halt' | 'stop' | 'done'>, AutoDeployStep> = { tag: 'tagging', merge: 'merging', fix: 'fixing-ci', validate: 'validating', approve: 'approving' };
+const STEP_OF: Record<Exclude<AutoDeployDecision['kind'], 'wait' | 'halt' | 'stop' | 'done'>, AutoDeployStep> = { tag: 'tagging', update: 'updating-branch', rebase: 'rebasing', 'send-findings': 'fixing-findings', merge: 'merging', fix: 'fixing-ci', validate: 'validating', approve: 'approving' };
 /** The record after a decision: the step and its detail for the status line; a halt, stop or done ends it. A stop is a person's
  * doing on GitHub, so it asks nothing of them. */
 export function settle(record: AutoDeployRecord, decision: AutoDeployDecision, now: number): AutoDeployRecord {
@@ -277,19 +379,24 @@ export function settle(record: AutoDeployRecord, decision: AutoDeployDecision, n
   if (decision.kind === 'stop') return { ...next, state: 'stopped', step: 'stopped', detail: decision.reason };
   if (decision.kind === 'done') return { ...next, state: 'done', step: 'done' };
   if (decision.kind === 'wait') return { ...next, step: decision.step, ...(decision.detail ? { detail: decision.detail } : {}) };
-  const detail = decision.kind === 'fix' ? `${decision.attempt}/${FIX_ATTEMPTS}` : decision.kind === 'validate' ? decision.label : decision.kind === 'approve' ? decision.names : undefined;
+  const detail = decision.kind === 'fix' ? `${decision.attempt}/${FIX_ATTEMPTS}` : decision.kind === 'validate' ? decision.label : decision.kind === 'approve' ? decision.names
+    : decision.kind === 'update' ? decision.base : decision.kind === 'rebase' ? `${decision.base} (${decision.attempt}/${REBASE_ATTEMPTS})`
+    : decision.kind === 'send-findings' ? `the fixer is fixing ${decision.findingIds.length} finding${decision.findingIds.length === 1 ? '' : 's'}` : undefined;
   return { ...next, step: STEP_OF[decision.kind], ...(detail ? { detail } : {}) };
 }
 
-/** “Auto deploy · validating preview”, as the pull request view and the rollout view show it. */
-export function statusLine(record: Pick<AutoDeployRecord, 'step' | 'detail' | 'halt'>): string {
+const BEFORE_MERGE = new Set<AutoDeployStep>(['tagging', 'updating-branch', 'rebasing', 'waiting-review', 'fixing-findings', 'waiting-push', 'waiting-checks', 'fixing-ci', 'merging', 'merge-queue', 'merge-when-ready']);
+/** “Auto deploy · validating preview”, as the pull request view and the rollout view show it. Before the merge it ends with the
+ * review findings left for the person. */
+export function statusLine(record: Pick<AutoDeployRecord, 'step' | 'detail' | 'halt'> & { reviewLeft?: string }): string {
   const detail = record.detail ?? '';
   const text: Record<AutoDeployStep, string> = {
-    tagging: 'tagging [ship]', 'waiting-checks': 'waiting for checks', 'fixing-ci': `fixing CI (${detail || `1/${FIX_ATTEMPTS}`})`, merging: 'merging', 'merge-queue': 'in the merge queue', 'merge-when-ready': 'waiting for GitHub to merge when ready',
+    tagging: 'tagging [ship]', 'updating-branch': `updating the branch from ${detail || 'its base'}`, rebasing: `rebasing onto ${detail || 'its base'}`, 'waiting-review': `waiting for the ${detail || 'review'}`,
+    'fixing-findings': detail || 'the fixer is fixing findings', 'waiting-push': `waiting for ${detail || 'the fixer'} to push`, 'waiting-checks': 'waiting for checks', 'fixing-ci': `fixing CI (${detail || `1/${FIX_ATTEMPTS}`})`, merging: 'merging', 'merge-queue': 'in the merge queue', 'merge-when-ready': 'waiting for GitHub to merge when ready',
     'waiting-rollout': 'waiting for the deploy run', deploying: detail ? `deploying ${detail}` : 'deploying', delayed: `waiting out ${detail}`, validating: detail ? `validating ${detail}` : 'validating',
     approving: detail ? `approving ${detail}` : 'approving', 'waiting-gate': `${detail || 'a gate'} waits for another approver`, done: 'done', halted: `halted: ${record.halt?.reason ?? 'stopped on a doubt'}`, stopped: 'stopped',
   };
-  return `Auto deploy · ${text[record.step]}`;
+  return `Auto deploy · ${text[record.step]}${record.reviewLeft && BEFORE_MERGE.has(record.step) ? ` · ${record.reviewLeft} left for you` : ''}`;
 }
 
 export type PhaseCheckState = 'passed' | 'running' | 'concerns' | 'failed' | 'accepted' | 'none';
@@ -505,16 +612,45 @@ export function trackNext(track: PhaseTrack): string {
   return next.gate && next.gate.state !== 'approved' ? `approve ${next.name}` : `deploy ${next.name}`;
 }
 
-export interface AutoDeployEvent { at: number; kind: 'armed' | 'validate' | 'approve' | 'halted' | 'done' | 'stopped'; text: string }
-/** What auto deploy did, oldest first, for the rollout's timeline: armed, each validation it asked for, each approval it sent, and how it ended. */
+export type AutoDeployEventKind = 'armed' | 'tag' | 'update' | 'rebase' | 'rebased' | 'findings' | 'fixed' | 'fix' | 'merged' | 'validate' | 'verdict' | 'approve' | 'halted' | 'done' | 'stopped';
+/** One thing auto deploy did. `part` says whether it happened on the pull request or on a rollout (`rolloutNodeId`); the other ids
+ * name what it touched, for links. */
+export interface AutoDeployEvent { at: number; kind: AutoDeployEventKind; text: string; part?: 'pull' | 'rollout'; agentNodeId?: string; reviewNodeId?: string; rolloutNodeId?: string; commit?: string }
+const short = (sha: string) => sha.slice(0, 7);
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
+/** What auto deploy did, oldest first, for the pull request view and the rollout's timeline: armed, the tag, each branch update or
+ * rebase, review findings sent and fixed, CI fix requests and the merge on the pull request; then each validation it asked for and
+ * its verdict and each approval it sent on the rollouts; and how it ended. */
 export function autoDeployEvents(record: AutoDeployRecord): AutoDeployEvent[] {
-  const takeover = record.takeover, counts = takeover?.counts ?? [];
+  const takeover = record.takeover, counts = takeover?.counts ?? [], base = record.base ?? 'its base';
   const caughtUp = takeover?.catchUp === 'accept' ? ' · what already deployed counts as accepted' : counts.length ? ` · ${counts.join(', ')} ${counts.length === 1 ? 'counts' : 'count'}` : '';
-  const events: AutoDeployEvent[] = [{ at: record.armedAt, kind: 'armed', text: `armed by you${takeover ? ' from here' : ''}${caughtUp}` }];
-  for (const check of record.checks) if (!check.seeded && !check.accepted) events.push({ at: check.requestedAt, kind: 'validate', text: `asked Claude to validate ${check.label}${check.validationId ? ` · ${check.validationId}` : ''}` });
-  for (const write of record.writes) if (write.kind === 'approve' && write.state === 'sent') events.push({ at: write.at, kind: 'approve', text: `approved ${write.label ?? 'the gate'}` });
-  if (record.state === 'halted') events.push({ at: record.halt?.at ?? record.updatedAt, kind: 'halted', text: `halted: ${record.halt?.reason ?? 'stopped on a doubt'}` });
-  if (record.state === 'done') events.push({ at: record.updatedAt, kind: 'done', text: 'done' });
-  if (record.state === 'stopped') events.push({ at: record.updatedAt, kind: 'stopped', text: `stopped${record.detail ? `: ${record.detail}` : ''}` });
+  const pull = (event: Omit<AutoDeployEvent, 'part'>): AutoDeployEvent => ({ ...event, part: 'pull' }), link = (key: 'agentNodeId' | 'reviewNodeId', value: string | undefined) => value ? { [key]: value } : {};
+  const events: AutoDeployEvent[] = [{ at: record.armedAt, kind: 'armed', part: takeover ? 'rollout' : 'pull', text: `armed by you${takeover ? ' from here' : ''}${caughtUp}` }];
+  const tag = record.writes.find(write => write.kind === 'tag' && write.state === 'sent');
+  if (tag) events.push(pull({ at: tag.at, kind: 'tag', text: 'tagged the title [ship]' }));
+  let attempt = 0;
+  for (const entry of record.rebases ?? []) {
+    const who = entry.agentTitle ?? 'the agent';
+    if (entry.mode === 'update') { events.push(pull({ at: entry.at, kind: 'update', text: `updated the branch from ${base}${entry.pushed ? ` · ${short(entry.pushed)}` : ''}`, ...(entry.pushed ? { commit: entry.pushed } : {}) })); continue; }
+    events.push(pull({ at: entry.at, kind: 'rebase', text: `asked ${who} to rebase onto ${base} (${++attempt}/${REBASE_ATTEMPTS})`, ...link('agentNodeId', entry.agentNodeId) }));
+    if (entry.pushed) events.push(pull({ at: entry.pushedAt ?? entry.at, kind: 'rebased', text: `${entry.agentTitle ?? 'The agent'} rebased and pushed ${short(entry.pushed)}`, ...link('agentNodeId', entry.agentNodeId), commit: entry.pushed }));
+  }
+  for (const entry of record.findingSends ?? []) {
+    const who = entry.agentTitle ?? 'the fixer', counts = [entry.counts, entry.left ? `${entry.left} left for you` : ''].filter(Boolean).join(' · ');
+    events.push(pull({ at: entry.at, kind: 'findings', text: `sent ${plural(entry.findingIds.length, 'finding')} of ${entry.reviewTitle ?? 'the review'} to ${who}${counts ? ` · ${counts}` : ''}`, ...link('agentNodeId', entry.agentNodeId), ...link('reviewNodeId', entry.reviewNodeId) }));
+    if (entry.pushed) events.push(pull({ at: entry.pushedAt ?? entry.at, kind: 'fixed', text: `${entry.agentTitle ?? 'The fixer'} fixed ${(entry.fixed ?? entry.findingIds).length} and pushed ${short(entry.pushed)}`, ...link('agentNodeId', entry.agentNodeId), ...link('reviewNodeId', entry.reviewNodeId), commit: entry.pushed }));
+  }
+  record.fixes.forEach((fix, index) => events.push(pull({ at: fix.at, kind: 'fix', text: `asked ${fix.agentTitle ?? 'an agent'} to fix CI (${index + 1}/${FIX_ATTEMPTS})`, ...link('agentNodeId', fix.agentNodeId) })));
+  if (record.mergedAt !== undefined && !takeover) events.push(pull({ at: record.mergedAt, kind: 'merged', text: `merged into ${base}` }));
+  for (const check of record.checks) {
+    if (check.seeded || check.accepted) continue;
+    events.push({ at: check.requestedAt, kind: 'validate', part: 'rollout', rolloutNodeId: check.rolloutNodeId, text: `asked Claude to validate ${check.label}${check.validationId ? ` · ${check.validationId}` : ''}` });
+    if (check.verdict) events.push({ at: check.answeredAt ?? check.requestedAt, kind: 'verdict', part: 'rollout', rolloutNodeId: check.rolloutNodeId, text: `${check.validationId ?? 'The validation'} ${check.verdict === 'concerns' ? 'found concerns' : check.verdict}` });
+  }
+  for (const write of record.writes) if (write.kind === 'approve' && write.state === 'sent') events.push({ at: write.at, kind: 'approve', part: 'rollout', text: `approved ${write.label ?? 'the gate'}`, ...(/^approve:([^:]+):/.exec(write.key) ? { rolloutNodeId: /^approve:([^:]+):/.exec(write.key)![1] } : {}) });
+  const end = record.mergedAt === undefined ? 'pull' : 'rollout';
+  if (record.state === 'halted') events.push({ at: record.halt?.at ?? record.updatedAt, kind: 'halted', part: end, text: `halted: ${record.halt?.reason ?? 'stopped on a doubt'}` });
+  if (record.state === 'done') events.push({ at: record.updatedAt, kind: 'done', part: end, text: 'done' });
+  if (record.state === 'stopped') events.push({ at: record.updatedAt, kind: 'stopped', part: end, text: `stopped${record.detail ? `: ${record.detail}` : ''}` });
   return events.map((event, index) => ({ event, index })).sort((a, b) => a.event.at - b.event.at || a.index - b.index).map(entry => entry.event);
 }

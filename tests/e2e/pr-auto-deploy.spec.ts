@@ -28,7 +28,7 @@ test('Auto deploy: armed from the PR view after a confirmation, its status line 
     await menu.getByRole('menuitem', { name: 'Start auto deploy', exact: true }).click();
     const confirm = menu.getByRole('group', { name: 'Start auto deploy' });
     await expect(confirm).toContainText('Auto deploy #42 “Make billing plan changes predictable”?');
-    await expect(confirm).toContainText('Merges it into main once ready');
+    await expect(confirm).toContainText('Rebases it onto main when needed, has an agent fix blocking Claude review findings and failing CI, merges it into main once ready');
     await expect(confirm).toContainText('approves the next one only after a pass. Any doubt halts.');
     expect(providers.merges).toHaveLength(0);
     await confirm.getByRole('menuitem', { name: 'Start auto deploy', exact: true }).click();

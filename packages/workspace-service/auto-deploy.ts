@@ -9,6 +9,7 @@ import { rolloutDiscoveryKey } from '../provider-runtime/github-status.ts';
 import { FROM_TABLE, promptAgent } from './agent-prompt.ts';
 import type { HostedAgents } from './agents.ts';
 import { discoveredLinkId, stableUuid } from './resources.ts';
+import { derivedId } from './review-findings.ts';
 import type { ResourceCoordinator } from './resources.ts';
 import { agentReadiness, autoValidatingPulls, connectedAgents } from './rollout-validation.ts';
 import type { SessionCoordinator } from './sessions.ts';
@@ -17,8 +18,9 @@ import { isOffMap } from '../../src/graph/archive.ts';
 import { clip } from '../../src/pull-requests/review-findings.ts';
 import { titleTag } from '../../src/resource-plugins/items/github-pull-request/show-ship.ts';
 import type { JsonObject, JsonValue } from '../../src/resource-plugins/types.ts';
-import { armRecord, autoDeployEvents, decide, FIX_ATTEMPTS, observe, phaseTrack, recordKey, seedCatchUp, settle, statusLine, takeoverRefusal, trackNext } from '../../src/resource-plugins/items/github-rollout/auto-deploy.ts';
-import type { AutoDeployDecision, AutoDeployFacts, AutoDeployRecord, CatchUp, PullFacts, RolloutFacts } from '../../src/resource-plugins/items/github-rollout/auto-deploy.ts';
+import { armRecord, autoDeployEvents, decide, FIX_ATTEMPTS, observe, REBASE_ATTEMPTS, phaseTrack, recordKey, seedCatchUp, settle, statusLine, takeoverRefusal, trackNext } from '../../src/resource-plugins/items/github-rollout/auto-deploy.ts';
+import type { AutoDeployDecision, AutoDeployFacts, AutoDeployRecord, CatchUp, FindingSendFacts, LinkedReviewFacts, PullFacts, RolloutFacts } from '../../src/resource-plugins/items/github-rollout/auto-deploy.ts';
+import type { FindingStatus, ReviewFindings } from '../../src/pull-requests/review-findings.ts';
 import { rolloutFactsOf } from '../../src/resource-plugins/items/github-rollout/rollout-facts.ts';
 import type { ListedEvent, ListedValidation } from '../../src/resource-plugins/items/github-rollout/rollout-facts.ts';
 import { stageRule } from '../../src/resource-plugins/items/github-rollout/stages.ts';
@@ -43,10 +45,15 @@ const clock = (at: number) => { const date = new Date(at); return `${String(date
 const STEPS_PER_PASS = 8;
 
 interface Validations { run(nodeId: string, input: JsonObject): Promise<unknown> }
+/** The review findings operation (`review.findings`) on a review item. */
+interface Findings { run(nodeId: string, input: JsonObject): Promise<unknown> }
+interface ListedFindings { state: 'running' | 'complete' | 'failed'; reviewSessionId: string; format?: 'findings' | 'text'; review?: ReviewFindings; statuses: Record<string, FindingStatus>; ignored: string[] }
 type Resources = Pick<ResourceCoordinator, 'cached' | 'execute' | 'writing' | 'refreshPresentation'>;
 type Node = WorkspaceState['nodes'][number];
 export interface AutoDeployOptions {
-  storage: PluginStorage; store: Pick<SqliteStore, 'listJobs' | 'readSettings' | 'agentObservation' | 'agentBackground'>; control: WorkspaceControl; resources: Resources; validations: Validations;
+  storage: PluginStorage; store: Pick<SqliteStore, 'listJobs' | 'readSettings' | 'agentObservation' | 'agentBackground' | 'reviewSend'>; control: WorkspaceControl; resources: Resources; validations: Validations;
+  /** Sends blocking review findings to the fixer; absent, a review with blocking findings halts. */
+  findings?: Findings;
   sessions?: SessionCoordinator; starter?: HostedAgents; changed: () => Promise<void>; now?: () => number; allowed?: () => boolean;
   stageRules?: () => readonly StageRule[]; tagging?: () => boolean; readinessEveryMs?: number;
 }
@@ -77,7 +84,7 @@ export class AutoDeploys {
     if (resource.pluginId === 'github.rollout') return this.runRollout(state, node, resource, args);
     if (resource.pluginId !== 'github.pull-request') throw new Error('Auto deploy starts from a pull request or a rollout.');
     const record = this.read(resource.id);
-    if (args.operation === 'status') return this.view(record);
+    if (args.operation === 'status') return { ...this.view(record), ...(record ? { events: await this.events(state, record) } : {}) };
     if (args.operation === 'options') return this.choices(state, node, resource, record);
     if (args.sourceResourceId !== resource.id) throw new Error('This auto deploy belongs to another item. Reopen the menu.');
     if (args.value === 'stop') return this.view(await this.stop(record));
@@ -132,11 +139,35 @@ export class AutoDeploys {
   private async rolloutStatus(state: WorkspaceState, node: Node, record: AutoDeployRecord | undefined) {
     if (record?.state !== 'armed' && record?.state !== 'halted') {
       const track = phaseTrack(undefined, { ...await this.rolloutFacts(node), autoValidate: autoValidatingPulls(state, node.id).length > 0 });
-      return { ...this.view(record), track };
+      return { ...this.view(record), track, ...(record?.state === 'done' ? { events: await this.events(state, record) } : {}) };
     }
     const pull = record.pullResourceId ? this.pullNode(state, record) : undefined, number = Number(state.resources.find(entry => entry.id === record.pullResourceId)?.data.number);
     const track = phaseTrack(record, await this.rolloutFacts(node));
-    return { ...this.view(record), ...(pull ? { pullNodeId: pull.id, pullTitle: pull.title, ...(Number.isSafeInteger(number) ? { pullNumber: number } : {}) } : {}), track, next: trackNext(track), events: autoDeployEvents(record) };
+    return { ...this.view(record), ...(pull ? { pullNodeId: pull.id, pullTitle: pull.title, ...(Number.isSafeInteger(number) ? { pullNumber: number } : {}) } : {}), track, next: trackNext(track), events: await this.events(state, record) };
+  }
+  /** What auto deploy did, with links to what each action touched (an agent, a review, a commit) and, for an action on a rollout,
+   * the run it belongs to (“On run #1842”). */
+  private async events(state: WorkspaceState, record: AutoDeployRecord) {
+    const pull = state.resources.find(entry => entry.id === record.pullResourceId)?.data, repository = pull ? `https://github.com/${String(pull.owner)}/${String(pull.repo)}` : undefined;
+    const item = (nodeId: string | undefined) => { const node = state.nodes.find(entry => entry.id === nodeId); return node?.resourceId && !isOffMap(node, state.nodes) ? { label: node.title, resourceId: node.resourceId } : undefined; };
+    const runs = new Map<string, { label: string; resourceId?: string }>();
+    const run = async (nodeId: string) => {
+      if (!runs.has(nodeId)) {
+        const node = state.nodes.find(entry => entry.id === nodeId), observation = (await this.options.resources.cached(nodeId).catch(() => null))?.detail as { run?: { run_number?: unknown } } | undefined;
+        const number = Number(observation?.run?.run_number);
+        runs.set(nodeId, { label: Number.isSafeInteger(number) && number > 0 ? `On run #${number}` : `On ${node?.title ?? 'the rollout'}`, ...(node?.resourceId ? { resourceId: node.resourceId } : {}) });
+      }
+      return runs.get(nodeId)!;
+    };
+    let rollout = this.followed(state, record)[0]?.id ?? record.checks[0]?.rolloutNodeId;
+    const events = [];
+    for (const event of autoDeployEvents(record)) {
+      const links = [item(event.agentNodeId), item(event.reviewNodeId), event.commit && repository ? { label: event.commit.slice(0, 7), url: `${repository}/commit/${event.commit}` } : undefined].filter(Boolean);
+      if (event.rolloutNodeId) rollout = event.rolloutNodeId;
+      const group = event.part === 'rollout' && rollout ? await run(rollout) : undefined;
+      events.push({ ...event, ...(links.length ? { links } : {}), ...(group ? { group } : {}) });
+    }
+    return events;
   }
   private async rolloutChoices(state: WorkspaceState, node: Node, resource: WorkspaceState['resources'][number], record: AutoDeployRecord | undefined) {
     const context = { sourceResourceId: resource.id, from: 'here' };
@@ -161,7 +192,7 @@ export class AutoDeploys {
       return { current: '', prompt, context: { ...context, from: 'here' }, options: [{ id: 'arm', label: running.length === 1 ? 'Auto deploy its rollout' : `Auto deploy its ${running.length} rollouts`, description: clip(runs.join(', '), 300), confirm }] };
     }
     const refusal = pull?.state === 'closed' ? 'The pull request is closed.' : undefined;
-    const steps = `${this.tagging() ? 'Tags it [ship], merges' : 'Merges'} it into ${base} once ready (an agent fixes failing CI, twice at most), validates every rollout phase and approves the next one only after a pass. Any doubt halts.`;
+    const steps = `${this.tagging() ? 'Tags it [ship], rebases' : 'Rebases'} it onto ${base} when needed, has an agent fix blocking Claude review findings and failing CI, merges it into ${base} once ready, validates every rollout phase and approves the next one only after a pass. Any doubt halts.`;
     return { current: '', prompt, context,
       options: [{ id: 'arm', label: 'Start auto deploy', ...(refusal ? { description: refusal, disabled: true } : { description: clip(steps, 300), confirm: { prompt: clip(`Auto deploy #${number} “${node.title}”?`, 500), note: clip(steps, 300), action: 'Start auto deploy' } }) }] };
   }
@@ -244,11 +275,13 @@ export class AutoDeploys {
   /** Writes left `sending` by an interrupted pass: the journal says whether they went out. Confirmed ones count as sent; declined ones halt;
    * one never journaled was never sent and is forgotten; anything else stays `sending`, which halts as outcome-unknown. */
   private resolveWrites(record: AutoDeployRecord): { record: AutoDeployRecord; decision?: AutoDeployDecision } {
-    if (!record.writes.some(write => write.state === 'sending' && write.kind !== 'fix')) return { record };
+    const pending = (write: AutoDeployRecord['writes'][number]) => write.state === 'sending' && write.kind !== 'fix' && write.kind !== 'rebase';
+    if (!record.writes.some(pending)) return { record };
     const jobs = new Map(this.options.store.listJobs().map(job => [job.requestKey, job]));
     let declined: string | undefined;
     const writes = record.writes.flatMap(write => {
-      if (write.state !== 'sending' || write.kind === 'fix') return [write];
+      if (!pending(write)) return [write];
+      if (write.kind === 'findings') return this.options.store.reviewSend(write.requestId) ? [{ ...write, state: 'sent' as const }] : [];
       const job = jobs.get(write.requestId);
       if (!job) return [];
       if (job.state === 'succeeded') return [{ ...write, state: 'sent' as const }];
@@ -285,11 +318,34 @@ export class AutoDeploys {
         const detail = (await this.options.resources.cached(node.id).catch(() => null))?.detail as { failingChecks?: unknown } | undefined;
         const failing = Array.isArray(detail?.failingChecks) ? detail.failingChecks.filter((name): name is string => typeof name === 'string').slice(0, 20) : [];
         facts.pull = { ...readiness, tag: titleTag(readiness.title).tag, failing } satisfies PullFacts;
+        Object.assign(facts, await this.reviewFacts(state, node, record));
       }
       return facts;
     }
     for (const rollout of this.followed(state, record)) facts.rollouts.push(await this.rolloutFacts(rollout));
     return facts;
+  }
+  /** The newest review linked to the pull request that is running or finished with findings, and the last findings send as its
+   * journal and the review's statuses have it. */
+  private async reviewFacts(state: WorkspaceState, node: Node, record: AutoDeployRecord): Promise<{ review?: LinkedReviewFacts; send?: FindingSendFacts }> {
+    const findings = this.options.findings, found: { review?: LinkedReviewFacts; send?: FindingSendFacts } = {};
+    if (!findings) return found;
+    const list = (nodeId: string) => findings.run(nodeId, { operation: 'list' }).then(value => value as ListedFindings, () => undefined);
+    const linked = state.nodes.filter(entry => !isOffMap(entry, state.nodes) && state.resources.some(resource => resource.id === entry.resourceId && resource.pluginId === 'code.review' && resource.data.sourcePrId === node.id));
+    for (const entry of linked.reverse()) {
+      const listed = await list(entry.id), provider = state.resources.find(resource => resource.id === entry.resourceId)?.data.provider === 'codex' ? 'Codex' : 'Claude';
+      if (!listed || listed.state === 'failed' || listed.state === 'complete' && listed.format !== 'findings') continue;
+      found.review = { nodeId: entry.id, title: `${provider} review`, state: listed.state === 'running' ? 'running' : 'findings', findings: (listed.review?.findings ?? []).map(finding => ({ id: finding.id, kind: finding.kind, ...(finding.severity ? { severity: finding.severity } : {}),
+        title: finding.title, ...(finding.locations[0] ? { path: finding.locations[0].path } : {}), status: listed.statuses[finding.id] ?? 'open', ignored: listed.ignored.includes(finding.id) })) };
+      break;
+    }
+    const last = record.findingSends?.at(-1);
+    if (last && !last.pushed) {
+      const send = this.options.store.reviewSend(last.sendId), listed = await list(last.reviewNodeId), statuses = listed?.statuses ?? {};
+      const titles = Object.fromEntries((listed?.review?.findings ?? []).filter(finding => last.findingIds.includes(finding.id)).map(finding => [finding.id, finding.title]));
+      found.send = { state: send?.state ?? 'missing', ...(send?.error ? { error: send.error } : {}), reported: last.findingIds.filter(id => statuses[id] === 'fixed'), titles };
+    }
+    return found;
   }
   private async readiness(node: Node, record: AutoDeployRecord) {
     const saved = this.readAt.get(recordKey(record)), every = this.options.readinessEveryMs ?? 60_000;
@@ -308,6 +364,10 @@ export class AutoDeploys {
   /** Performs one decided step and says whether the pass may take another. */
   private async act(state: WorkspaceState, node: Node, record: AutoDeployRecord, decision: Exclude<AutoDeployDecision, { kind: 'wait' | 'halt' | 'stop' | 'done' }>): Promise<boolean> {
     if (decision.kind === 'tag') return this.write(record, decision, 'tag', node.id, 'pr.showShip', { value: 'ship', expectedTitle: decision.title, sourceResourceId: record.pullResourceId! });
+    if (decision.kind === 'update') {
+      const rebases = [...record.rebases ?? [], { head: decision.head, base: decision.baseHead, at: this.now(), mode: 'update' as const }];
+      return this.write({ ...record, rebases }, decision, `update:${decision.baseHead}`, node.id, 'pr.updateBranch', { pullRequestId: decision.pullRequestId, expectedHeadOid: decision.head, sourceResourceId: record.pullResourceId! });
+    }
     if (decision.kind === 'merge') return this.write(record, decision, 'merge', node.id, 'pr.merge', { value: decision.method, pullRequestId: decision.pullRequestId, expectedHeadOid: decision.head, sourceResourceId: record.pullResourceId! });
     if (decision.kind === 'approve') {
       const options = await this.options.resources.execute(decision.rolloutNodeId, 'rollout.approval.options', {}, AbortSignal.timeout(120_000)).catch(() => undefined) as { context?: Record<string, unknown> } | undefined;
@@ -318,12 +378,13 @@ export class AutoDeploys {
       return this.write(record, decision, decision.key, decision.rolloutNodeId, 'rollout.approve', { value: 'approve', runId: String(context.runId), attempt: String(context.attempt), environmentIds: String(context.environmentIds), sourceResourceId: String(context.sourceResourceId) }, decision.names);
     }
     if (decision.kind === 'validate') return this.validate(state, record, decision);
-    return this.fix(state, node, record, decision);
+    if (decision.kind === 'send-findings') return this.sendFindings(state, node, record, decision);
+    return this.ask(state, node, record, decision);
   }
 
   /** Saves the write as `sending`, sends it once through the journaled provider action and reads the journal for its outcome. */
   private async write(record: AutoDeployRecord, decision: AutoDeployDecision, key: string, nodeId: string, actionId: string, input: JsonObject, label?: string): Promise<boolean> {
-    const requestId = stableUuid(`auto-deploy:${record.id}:${key}`), kind = decision.kind as 'tag' | 'merge' | 'approve';
+    const requestId = stableUuid(`auto-deploy:${record.id}:${key}`), kind = decision.kind as 'tag' | 'update' | 'merge' | 'approve';
     const sending = settle({ ...record, writes: [...record.writes, { key, kind, requestId, at: this.now(), state: 'sending', ...(label ? { label } : {}) }] }, decision, this.now());
     this.save(sending); await this.options.changed();
     let failure: unknown;
@@ -348,43 +409,105 @@ export class AutoDeploys {
     return (await this.requestMissing(state, this.read(recordKey(record))!)).state === 'armed';
   }
 
-  /** Asks an agent to fix the failing checks on the branch: the agent of the previous fix or another ready agent connected to the pull
-   * request, else a new Claude session beside it. Waits while the previous fixer still works. */
-  private async fix(state: WorkspaceState, node: Node, record: AutoDeployRecord, decision: Extract<AutoDeployDecision, { kind: 'fix' }>) {
-    const previous = record.fixes.at(-1)?.agentNodeId, agents = await this.agentsOf(state, node.id);
+  /** Asks an agent to fix the failing checks on the branch, or to rebase it onto its base and resolve the conflicts: the agent of the
+   * previous request or another ready agent connected to the pull request, else a new Claude session beside it. Waits while the
+   * previous agent still works. */
+  private async ask(state: WorkspaceState, node: Node, record: AutoDeployRecord, decision: Extract<AutoDeployDecision, { kind: 'fix' | 'rebase' }>) {
+    const rebase = decision.kind === 'rebase', previous = this.previousAgent(record), agents = await this.agentsOf(state, node.id);
     const agent = agents.find(entry => entry.ready && entry.nodeId === previous) ?? agents.find(entry => entry.ready);
-    if (!agent && agents.some(entry => entry.nodeId === previous && entry.status === 'working')) { await this.finish(record, { kind: 'wait', step: 'fixing-ci', detail: `${record.fixes.length}/${FIX_ATTEMPTS}` }); return false; }
+    const waiting: AutoDeployDecision = rebase ? { kind: 'wait', step: 'rebasing', detail: `${decision.base} (${decision.attempt}/${REBASE_ATTEMPTS})` } : { kind: 'wait', step: 'fixing-ci', detail: `${record.fixes.length}/${FIX_ATTEMPTS}` };
+    if (!agent && agents.some(entry => entry.nodeId === previous && entry.status === 'working')) { await this.finish(record, waiting); return false; }
     const starter = this.options.starter;
     if (!agent) {
-      const refusal = !starter ? 'No connected agent is ready to fix CI, and starting one is not available here.' : await starter.ready().then(() => undefined, error => errorText(error));
-      if (refusal) { await this.finish(record, { kind: 'halt', code: 'agent-unavailable', reason: clip(`No agent can fix the failing checks: ${refusal}`, 300) }); return false; }
+      const refusal = !starter ? `No connected agent is ready to ${rebase ? 'rebase the branch' : 'fix CI'}, and starting one is not available here.` : await starter.ready().then(() => undefined, error => errorText(error));
+      if (refusal) { await this.finish(record, { kind: 'halt', code: 'agent-unavailable', reason: clip(`No agent can ${rebase ? 'rebase the branch' : 'fix the failing checks'}: ${refusal}`, 300) }); return false; }
     }
-    const resource = state.resources.find(entry => entry.id === record.pullResourceId)!, detail = (await this.options.resources.cached(node.id).catch(() => null))?.detail as { pull?: { head?: { ref?: unknown } } } | undefined;
-    const branch = typeof detail?.pull?.head?.ref === 'string' ? detail.pull.head.ref : undefined, url = pullUrl(resource.data);
-    const prompt = [`Fix the failing checks of pull request ${node.title} (${url})${branch ? ` on its branch ${branch}` : ''}, head commit ${decision.head.slice(0, 12)}.`,
-      decision.failing.length ? `Failing: ${decision.failing.join(', ')}.` : 'Read the failing checks of the head commit on GitHub.',
-      'Find out why they fail, fix the cause and push the fix to the same branch. Do not skip, disable or weaken checks.',
-      'Do not merge, approve, retitle or close the pull request: auto deploy does that once the new commit\'s checks pass.',
-      'Say in one line what you changed once it is pushed.'].join('\n');
-    const seed = `auto-deploy:${record.id}:fix:${decision.attempt}`, agentNodeId = agent?.nodeId ?? stableUuid(`${seed}:node`);
-    const sending = settle({ ...record, fixes: [...record.fixes, { head: decision.head, at: this.now(), agentNodeId }], writes: [...record.writes, { key: `fix:${decision.attempt}`, kind: 'fix', requestId: stableUuid(seed), at: this.now(), state: 'sending' }] }, decision, this.now());
+    const resource = state.resources.find(entry => entry.id === record.pullResourceId)!, branch = await this.branch(node), url = pullUrl(resource.data);
+    const prompt = rebase ? [`Rebase the branch ${branch ?? 'of the pull request'} of pull request ${node.title} (${url}) onto the current head of ${decision.base}: it has merge conflicts with ${decision.base}. Its head commit is ${decision.head.slice(0, 12)}.`,
+      `Fetch ${decision.base}, rebase the branch onto it and resolve every conflict, keeping what both sides meant. Run the checks you can run locally.`,
+      'Push the rebased branch with --force-with-lease to the same branch.',
+      'Do not merge, approve, retitle or close the pull request: auto deploy does that once the branch is on its base and its checks pass.',
+      'Say in one line what you resolved once it is pushed.'].join('\n')
+      : [`Fix the failing checks of pull request ${node.title} (${url})${branch ? ` on its branch ${branch}` : ''}, head commit ${decision.head.slice(0, 12)}.`,
+        decision.failing.length ? `Failing: ${decision.failing.join(', ')}.` : 'Read the failing checks of the head commit on GitHub.',
+        'Find out why they fail, fix the cause and push the fix to the same branch. Do not skip, disable or weaken checks.',
+        'Do not merge, approve, retitle or close the pull request: auto deploy does that once the new commit\'s checks pass.',
+        'Say in one line what you changed once it is pushed.'].join('\n');
+    const seed = `auto-deploy:${record.id}:${decision.kind}:${decision.attempt}`, agentNodeId = agent?.nodeId ?? stableUuid(`${seed}:node`), title = clip(`${rebase ? 'Rebase' : 'Fix CI'} · ${node.title}`, 120);
+    const agentTitle = agent?.title ?? title, key = `${decision.kind}:${decision.attempt}`, write = { key, kind: decision.kind, requestId: stableUuid(seed), at: this.now(), state: 'sending' as const };
+    const entry = rebase ? { rebases: [...record.rebases ?? [], { head: decision.head, base: decision.base, at: this.now(), agentNodeId, agentTitle, mode: 'agent' as const }] }
+      : { fixes: [...record.fixes, { head: decision.head, at: this.now(), agentNodeId, agentTitle }] };
+    const sending = settle({ ...record, ...entry, writes: [...record.writes, write] }, decision, this.now());
+    if (rebase) sending.detail = `${sending.detail} · ${agentTitle}`;
     this.save(sending); await this.options.changed();
     try {
-      if (agent) await promptAgent(this.options.sessions!, agent.sessionId, `${FROM_TABLE} Fix the failing checks the pasted request describes:`, prompt);
+      if (agent) await promptAgent(this.options.sessions!, agent.sessionId, `${FROM_TABLE} ${rebase ? 'Rebase the branch' : 'Fix the failing checks'} the pasted request describes:`, prompt);
       else {
         const folder = state.nodes.find(candidate => candidate.id === node.projectId && !candidate.resourceId)?.workingDirectory;
-        const request: ResourceCreate = { requestId: stableUuid(`${seed}:session`), nodeId: agentNodeId, resourceId: stableUuid(`${seed}:resource`), pluginId: 'agent.session', title: clip(`Fix CI · ${node.title}`, 120),
+        const request: ResourceCreate = { requestId: stableUuid(`${seed}:session`), nodeId: agentNodeId, resourceId: stableUuid(`${seed}:resource`), pluginId: 'agent.session', title,
           ...(node.projectId ? { projectId: node.projectId } : {}), placedBy: node.id, connections: [{ id: stableUuid(`${seed}:link`), otherId: node.id, kind: 'context', sourceIsNew: false }],
           data: { provider: 'claude', cwd: folder || starter!.fallbackDirectory() } };
-        await starter!.launch(request, { prompt, data: { autoDeploy: { pullNodeId: node.id, attempt: decision.attempt } } });
+        await starter!.launch(request, { prompt, data: { autoDeploy: { pullNodeId: node.id, attempt: decision.attempt, ...(rebase ? { rebase: true } : {}) } } });
       }
     } catch {
-      await this.finish(this.read(recordKey(record)) ?? sending, { kind: 'halt', code: 'outcome-unknown', reason: 'The fix request to the agent could not be confirmed. Check the agent; nothing more was sent.' });
+      await this.finish(this.read(recordKey(record)) ?? sending, { kind: 'halt', code: 'outcome-unknown', reason: `The ${rebase ? 'rebase' : 'fix'} request to the agent could not be confirmed. Check the agent; nothing more was sent.` });
       return false;
     }
     const latest = this.read(recordKey(record)) ?? sending;
-    this.save({ ...latest, writes: latest.writes.map(write => write.key === `fix:${decision.attempt}` ? { ...write, state: 'sent' } : write) });
+    this.save({ ...latest, writes: latest.writes.map(entry => entry.key === key ? { ...entry, state: 'sent' } : entry) });
     return false;
+  }
+
+  /** Sends the blocking findings of a review to the fixer through the findings send path, under a send id derived from the record and
+   * the review, so a send interrupted by a restart goes out again under the same id and is never delivered twice. The fixer is a
+   * ready agent connected to the pull request (the previous one first), else a new Claude agent beside the review. */
+  private async sendFindings(state: WorkspaceState, node: Node, record: AutoDeployRecord, decision: Extract<AutoDeployDecision, { kind: 'send-findings' }>) {
+    const findings = this.options.findings;
+    if (!findings) { await this.finish(record, { kind: 'halt', code: 'agent-unavailable', reason: 'The review has blocking findings, and they cannot be sent to an agent from this workspace.' }); return false; }
+    const seed = `auto-deploy:${record.id}:findings:${decision.reviewNodeId}`, spawnId = stableUuid(`${seed}:agent`), existing = record.findingSends?.find(entry => entry.reviewNodeId === decision.reviewNodeId);
+    let agentNodeId = existing?.agentNodeId, agentTitle = existing?.agentTitle;
+    if (!existing) {
+      const previous = this.previousAgent(record), agents = await this.agentsOf(state, node.id), agent = agents.find(entry => entry.ready && entry.nodeId === previous) ?? agents.find(entry => entry.ready);
+      agentNodeId = agent?.nodeId ?? derivedId(spawnId, 'node'); agentTitle = agent?.title;
+    }
+    const spawn = agentNodeId === derivedId(spawnId, 'node'), sendId = existing?.sendId ?? stableUuid(seed), key = `findings:${decision.reviewNodeId}`;
+    const listed = await findings.run(decision.reviewNodeId, { operation: 'list' }) as ListedFindings;
+    const send = { reviewNodeId: decision.reviewNodeId, reviewTitle: decision.reviewTitle, sendId, findingIds: decision.findingIds, head: decision.head, at: this.now(), ...(agentNodeId ? { agentNodeId } : {}), ...(agentTitle ? { agentTitle } : {}),
+      counts: decision.counts, ...(record.reviewLeft ? { left: record.reviewLeft } : {}) };
+    const sending = settle({ ...record, findingSends: existing ? record.findingSends : [...record.findingSends ?? [], send],
+      writes: [...record.writes.filter(write => write.key !== key), { key, kind: 'findings', requestId: sendId, at: existing?.at ?? this.now(), state: 'sending' }] }, decision, this.now());
+    if (agentTitle) sending.detail = `${agentTitle} is fixing ${decision.findingIds.length} finding${decision.findingIds.length === 1 ? '' : 's'}`;
+    this.save(sending); await this.options.changed();
+    const resource = state.resources.find(entry => entry.id === record.pullResourceId)!, branch = await this.branch(node);
+    const note = clip(`Auto deploy merges pull request ${node.title} (${pullUrl(resource.data)}) once its checks pass. Push the fixes to its branch${branch ? ` ${branch}` : ''}, then report them fixed. Do not merge, approve or close the pull request.`, 2000);
+    try {
+      if (!spawn) {
+        const offered = await findings.run(decision.reviewNodeId, { operation: 'options' }) as { agents?: { nodeId: string }[] };
+        if (!offered.agents?.some(entry => entry.nodeId === agentNodeId)) await this.connect(state, record, decision.reviewNodeId, agentNodeId!);
+      }
+      await findings.run(decision.reviewNodeId, spawn ? { operation: 'spawn', requestId: spawnId, sendId, reviewSessionId: listed.reviewSessionId, findingIds: decision.findingIds, provider: 'claude', note }
+        : { operation: 'send', requestId: sendId, reviewSessionId: listed.reviewSessionId, findingIds: decision.findingIds, agentNodeId: agentNodeId!, note });
+    } catch (error) {
+      if (!this.options.store.reviewSend(sendId)) { await this.finish(this.read(recordKey(record)) ?? sending, { kind: 'halt', code: 'findings-failed', reason: clip(`The findings could not be sent to ${agentTitle ?? 'a new agent'}: ${errorText(error)}`, 300) }); return false; }
+    }
+    const latest = this.read(recordKey(record)) ?? sending, title = spawn ? (await this.options.control.read()).nodes.find(entry => entry.id === agentNodeId)?.title : undefined;
+    this.save({ ...latest, writes: latest.writes.map(write => write.key === key ? { ...write, state: 'sent' } : write),
+      ...(title ? { findingSends: latest.findingSends?.map(entry => entry.sendId === sendId ? { ...entry, agentTitle: title } : entry), ...(latest.step === 'fixing-findings' ? { detail: `${title} is fixing ${decision.findingIds.length} finding${decision.findingIds.length === 1 ? '' : 's'}` } : {}) } : {}) });
+    return false;
+  }
+  /** Links a fixer the findings path would not offer for this review to it. */
+  private async connect(state: WorkspaceState, record: AutoDeployRecord, reviewNodeId: string, agentNodeId: string) {
+    if (state.links.some(link => [link.sourceId, link.targetId].includes(reviewNodeId) && [link.sourceId, link.targetId].includes(agentNodeId))) return;
+    await this.options.control.dispatch({ commandId: stableUuid(`auto-deploy:${record.id}:link:${reviewNodeId}`), expectedRevision: state.revision, actor: { kind: 'system', id: ATTENTION },
+      commands: [{ type: 'link.save', link: { id: stableUuid(`auto-deploy:${record.id}:link:${reviewNodeId}:id`), sourceId: reviewNodeId, targetId: agentNodeId, kind: 'context', label: 'Findings' } }] });
+  }
+  /** The agent auto deploy asked last: for a rebase, review findings or a CI fix. */
+  private previousAgent(record: AutoDeployRecord) {
+    return [...record.rebases ?? [], ...record.findingSends ?? [], ...record.fixes].filter(entry => entry.agentNodeId).sort((a, b) => a.at - b.at).at(-1)?.agentNodeId;
+  }
+  private async branch(node: Node) {
+    const detail = (await this.options.resources.cached(node.id).catch(() => null))?.detail as { pull?: { head?: { ref?: unknown } } } | undefined;
+    return typeof detail?.pull?.head?.ref === 'string' ? detail.pull.head.ref : undefined;
   }
 
   private async agentsOf(state: WorkspaceState, nodeId: string) {

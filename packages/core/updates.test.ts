@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appUpdateRow, checkoutOfExecutable, compareVersions, newestTag, parseVersionTag, updateOffers } from './updates.ts';
+import { appUpdateRow, appReleaseUrl, checkoutOfExecutable, compareVersions, newestTag, parseVersionTag, updateOffers } from './updates.ts';
 import { bundleLayout } from './bundle-layout.ts';
 
 test('release tags are v-prefixed dotted numbers; anything else is not a release', () => {
@@ -44,10 +44,16 @@ test('Update and restart is offered only for an app installed in its own checkou
     '/home/me/act/node_modules/electron/dist/electron']) assert.equal(checkoutOfExecutable(path, linux), undefined, path);
   const newer = { current: '0.6.0', latest: 'v0.7.0', available: true, checkedAt: 100 };
   assert.equal(appUpdateRow({ app: newer, checkout: true }).action, 'restart');
-  assert.equal(appUpdateRow({ app: newer, checkout: false }).action, 'check');
+  assert.equal(appUpdateRow({ app: newer, checkout: false, packaged: true }).action, 'download', 'a packaged app from no checkout was downloaded: it offers the newer release to download');
+  assert.equal(appUpdateRow({ app: newer, checkout: false }).action, 'check', 'a development run from a checkout keeps npm run update');
+  assert.equal(appUpdateRow({ app: { ...newer, available: false }, checkout: false }).action, 'check');
   assert.equal(appUpdateRow({ app: { ...newer, available: false }, checkout: true }).action, 'check');
   const failure = { at: 200, tag: 'v0.7.0', message: 'The checkout has local changes' };
   assert.deepEqual(appUpdateRow({ app: newer, checkout: true, failure }).failure, failure, 'a check from before the failure does not clear it');
   assert.deepEqual(appUpdateRow({ app: { ...newer, checkedAt: 300, error: 'offline' }, checkout: true, failure }).failure, failure, 'nor does a failed check');
   assert.equal(appUpdateRow({ app: { ...newer, checkedAt: 300 }, checkout: true, failure }).failure, undefined);
+});
+
+test('a release downloads from its GitHub release page', () => {
+  assert.equal(appReleaseUrl('v0.17.0'), 'https://github.com/pelzerim/agentic-crafting-table/releases/tag/v0.17.0');
 });

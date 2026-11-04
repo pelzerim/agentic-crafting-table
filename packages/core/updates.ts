@@ -5,6 +5,8 @@ import type { BundleLayout } from './bundle-layout.ts';
 export const APP_REPOSITORY = 'pelzerim/agentic-crafting-table';
 export const APP_TAGS_URL = `https://api.github.com/repos/${APP_REPOSITORY}/tags?per_page=100`;
 export const UPDATE_COMMAND = 'npm run update';
+/** Where a release's builds for download live. */
+export const appReleaseUrl = (tag: string) => `https://github.com/${APP_REPOSITORY}/releases/tag/${tag}`;
 
 export type Version = readonly number[];
 const release = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
@@ -53,8 +55,9 @@ export function checkoutOfExecutable(executable: string, layout: BundleLayout): 
 /** A failed Update and restart, written by `scripts/update-restart.mjs` for the next launch to show. */
 export const updateFailureSchema = z.object({ at: z.number(), tag: z.string().max(100).optional(), message: z.string().max(4000) });
 export type UpdateFailure = z.infer<typeof updateFailureSchema>;
-/** Settings → About: Update and restart when a newer release can be built from this checkout; a failed run stays until a later check succeeds. */
-export function appUpdateRow({ app, checkout, failure }: { app?: UpdateSubject; checkout: boolean; failure?: UpdateFailure }): { action: 'restart' | 'check'; failure?: UpdateFailure } {
+/** Settings → About: Update and restart when a newer release can be built from this checkout, Download when a packaged
+ * app was not installed from one; a failed run stays until a later check succeeds. */
+export function appUpdateRow({ app, checkout, packaged = false, failure }: { app?: UpdateSubject; checkout: boolean; packaged?: boolean; failure?: UpdateFailure }): { action: 'restart' | 'download' | 'check'; failure?: UpdateFailure } {
   const cleared = Boolean(failure && app?.checkedAt !== undefined && app.checkedAt > failure.at && !app.error);
-  return { action: checkout && app?.available && app.latest ? 'restart' : 'check', failure: cleared ? undefined : failure };
+  return { action: app?.available && app.latest ? checkout ? 'restart' : packaged ? 'download' : 'check' : 'check', failure: cleared ? undefined : failure };
 }

@@ -73,3 +73,15 @@ test('an opened item keeps the size and place it was given across a reload', asy
   await expect(page.locator('.native-terminal')).toHaveAttribute('data-session-state', 'running');
   await expect.poll(async () => { const box = (await view.boundingBox())!; return [box.x, box.y, box.width, box.height].map(Math.round); }).toEqual([before.x, before.y, before.width, before.height].map(Math.round));
 });
+
+test('double-clicking the title bar fills the map with the view, and again puts it back', async ({ visual: { page } }) => {
+  await page.locator('[data-item-id="pr"]').click();
+  const view = page.locator('.item-view[data-item-view="pr"]'), area = (await page.locator('.map-area').boundingBox())!;
+  await expect(view).toBeVisible();
+  const before = (await view.boundingBox())!, title = view.locator('.card-heading').getByText('Plan switcher', { exact: true }).first();
+  await title.dblclick();
+  await expect.poll(async () => { const box = (await view.boundingBox())!; return [box.y - area.y, area.x + area.width - box.x - box.width, area.y + area.height - box.y - box.height]; }).toEqual([12, 12, 12]);
+  expect((await view.boundingBox())!.x - area.x).toBeLessThanOrEqual(64);
+  await title.dblclick();
+  await expect.poll(async () => view.boundingBox()).toEqual(before);
+});
