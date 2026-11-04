@@ -14,7 +14,7 @@ import { prepareWorkspace } from '../workspace-service/paths.ts';
 import { serveLocal } from '../workspace-service/local-rpc.ts';
 import type { RpcPeer } from '../workspace-service/local-rpc.ts';
 import { RuntimeJournal } from './journal.ts';
-import { managedSessionsSchema, sessionPageSchema, manageSessionSchema, launchSchema, inputSchema, resizeSchema, sessionIdSchema, readSessionSchema, stopSessionSchema, recordingsSchema, deleteRecordingSchema } from './protocol.ts';
+import { managedSessionsSchema, sessionPageSchema, manageSessionSchema, launchSchema, inputSchema, resizeSchema, sessionIdSchema, readSessionSchema, stopSessionSchema, recordingsSchema, deleteRecordingSchema, injectSchema } from './protocol.ts';
 import type { OutputChunk, SessionSnapshot, SessionEvent, SessionRecord } from './protocol.ts';
 import { stopProcessTree } from '../platform/process-tree.ts';
 import type { ProcessTreeStop } from '../platform/process-tree.ts';
@@ -40,6 +40,7 @@ export async function startSupervisor(directory: string) {
   try { mkdirSync(spoolDirectory, { recursive: true, mode: 0o700 }); } catch (error) { warnCache(error); }
   const launches = new Set<Promise<void>>();
   const preparing = new Map<string, { abort: AbortController; done: Promise<void> }>();
+  const drivers = new Map<string, NativeDriver>();
   const live = new Map<string, Live>(), buffers = new Map<string, BufferState>(), events = new EventEmitter();
   events.setMaxListeners(100);
   let closing = false;
@@ -200,6 +201,7 @@ export async function startSupervisor(directory: string) {
               emitState(journal.update(request.sessionId, { error: error.message, native: { ...journal.get(request.sessionId).native!, status: 'error', observedAt: new Date().toISOString() } }));
               output(request.sessionId, '\r\nCodex disconnected. Stop and resume this conversation to reconnect.\r\n'); void stop(request.sessionId);
             }, { executable: process.execPath, entrypoint: join(dirname(process.argv[1]), `native-process-owner${extname(process.argv[1])}`), electron: Boolean(process.versions.electron) }, signal);
+          if (native) drivers.set(request.sessionId, native);
           signal.throwIfAborted();
           if (journal.get(request.sessionId).error) throw new Error(journal.get(request.sessionId).error);
           // Launch the user's shell unchanged. Legacy capture/replay fields are
@@ -217,12 +219,12 @@ export async function startSupervisor(directory: string) {
           pty.onExit(({ exitCode, signal }) => {
             void (async () => {
               running.stopping?.settle();
-              try { await native?.close(); }
+              try { drivers.delete(request.sessionId); await native?.close(); }
               finally { live.delete(request.sessionId); decisive.delete(request.sessionId); emitState(journal.update(request.sessionId, { state: 'exited', exitCode, signal })); flush(request.sessionId); end(); }
             })().catch(error => { process.stderr.write(`Native session cleanup failed: ${(error as Error).message}\n`); });
           });
           emitState(journal.update(request.sessionId, { state: 'running', pid: pty.pid }));
-        } catch (error) { await native?.close(); emitState(journal.update(request.sessionId, signal.aborted ? { state: 'exited', error: undefined } : { state: 'failed', error: (error as Error).message })); }
+        } catch (error) { drivers.delete(request.sessionId); await native?.close(); emitState(journal.update(request.sessionId, signal.aborted ? { state: 'exited', error: undefined } : { state: 'failed', error: (error as Error).message })); }
         };
         const pending = launch(); launches.add(pending);
         try { await pending; } finally { launches.delete(pending); preparing.delete(request.sessionId); prepared(); }
@@ -248,6 +250,11 @@ export async function startSupervisor(directory: string) {
       case 'sessions.input': { const request = inputSchema.parse(input), running = live.get(request.sessionId); if (!running) throw new Error('Session has no live process'); if (journal.get(request.sessionId).readOnly) throw new Error('One-off analysis sessions do not accept terminal input');
         if (request.source === 'user' && request.encoding !== 'binary' && isDecisiveInput(request.data)) decisive.set(request.sessionId, { at: Date.now(), sequence: bufferFor(request.sessionId).sequence });
         running.pty.write(request.encoding === 'binary' ? Buffer.from(request.data, 'latin1') : request.data); return {}; }
+      case 'sessions.inject': {
+        const request = injectSchema.parse(input), driver = drivers.get(request.sessionId);
+        if (!driver || !live.has(request.sessionId)) throw Object.assign(new Error('This session has no live Codex conversation'), { code: 'SESSION_NOT_NATIVE' });
+        await driver.inject(request.instructions, request.context); return {};
+      }
       case 'sessions.resize': { const request = resizeSchema.parse(input), running = live.get(request.sessionId); if (!running) throw new Error('Session has no live process'); running.pty.resize(request.cols, request.rows); return journal.update(request.sessionId, { cols: request.cols, rows: request.rows }); }
       case 'sessions.stop': { const request = stopSessionSchema.parse(input); return stop(request.sessionId, request.preservePids); }
       case 'admin.shutdown': setTimeout(() => { void close(); }, 50); return {};

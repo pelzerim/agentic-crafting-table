@@ -78,6 +78,21 @@ test('a Codex sub-agent working is not read as the terminal moving to another co
   } finally { service.process.kill('SIGKILL'); await rm(directory, { recursive: true, force: true }); }
 });
 
+test('the guide can be added to a running Codex conversation, without a model turn', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-codex-inject-')), service = await start(directory);
+  const fixture = resolve('tests/fixtures/native-codex.mjs');
+  const launch = { ...request(directory, 'codex'), args: [fixture], native: { provider: 'codex', model: 'fixture', instructions: 'Trusted test guide', context: 'Untrusted project data', config: {}, serverArguments: [fixture] } };
+  try {
+    await service.client.call('sessions.launch', launch);
+    const started = await output(service.client, 'codex', 'NATIVE_READY:'), nativeId = started.session.native.nativeSessionId;
+    await assert.rejects(service.client.call('sessions.inject', { sessionId: 'missing', instructions: 'x', context: 'y' }), /no live Codex conversation/);
+    await service.client.call('sessions.inject', { sessionId: 'codex', instructions: 'Updated guide', context: 'Current project data' });
+    const saved = JSON.parse(await readFile(join(directory, 'native-codex.json'), 'utf8'));
+    assert.equal(saved.injections, 2); assert.equal(saved.contextThread, nativeId);
+    assert.deepEqual(saved.context.map(item => [item.role, item.content[0].text]), [['developer', 'Updated guide'], ['user', 'Current project data']]);
+  } finally { service.process.kill('SIGKILL'); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('native supervisor deduplicates launches and preserves ordered PTY streams across clients', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'craft-pty-')); const service = await start(directory);
   try {

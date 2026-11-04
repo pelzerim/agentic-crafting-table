@@ -93,11 +93,18 @@ test('Codex creation uses native models, context/MCP, live attachment and same-c
     await expect(page.locator('.xterm-accessibility')).toContainText(`NATIVE_READY:${nativeId}`);
     await page.getByRole('button', { name: 'Agent session menu' }).click();
     await expect(page.getByRole('menuitem', { name: 'Add system prompt' })).toBeDisabled();
-    await expect(page.getByRole('menu', { name: 'Agent session actions' })).toContainText('currently available for Claude');
+    await expect(page.getByRole('menu', { name: 'Agent session actions' })).toContainText('Resume the session before adding workbench context');
     await page.getByRole('menuitem', { name: 'Resume / reconnect', exact: true }).click();
     await expect(page.locator('.native-terminal')).toHaveAttribute('data-session-state', 'running');
     await expect.poll(async () => (await read()).resources.find(item => item.id === resource.id)?.data.sessionId).not.toBe(resumed.data.sessionId);
     expect((await read()).resources.find(item => item.id === resource.id)?.data.nativeSessionId).toBe(nativeId);
+    // Codex takes the guide into the conversation at once, without a turn.
+    const injections = async () => JSON.parse(await readFile(join(repo, 'native-codex.json'), 'utf8')).injections as number, before = await injections();
+    await page.getByRole('button', { name: 'Agent session menu' }).click();
+    await expect(page.getByRole('menu', { name: 'Agent session actions' })).toContainText('without starting a turn');
+    await page.getByRole('menuitem', { name: 'Add system prompt' }).click();
+    await expect(page.locator('.terminal-prompt-status')).toContainText('Added to the conversation');
+    await expect.poll(injections).toBe(before + 1);
   } finally {
     await exitWithoutShutdown(app);
     for (const connect of [() => connectWorkspace(directory), () => connectSupervisor(join(directory, 'runtime'))]) {

@@ -110,15 +110,17 @@ test('native hooks ignore old processes and observations; attaching live Claude 
   } finally { observations.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
-test('prompt injection validates the live Claude binding and never writes input or launches a process', async () => {
+test('prompt injection validates the live binding and never writes input or launches a process', async () => {
   const control = new WorkspaceControl(new MemoryStore()), sessionId = randomUUID();
   const data = { provider: 'claude', sessionId, nativeSessionId: randomUUID(), launchDirectory: '/fixture/launch' };
   await control.apply({ type: 'item.add', id: 'agent', resourceId: 'conversation', pluginId: 'agent.session', title: 'Claude', position: { x: 0, y: 0 }, data }, 0);
-  let live = true, requested = 0;
+  let live = true, requested = 0, native = false;
+  const injected: unknown[] = [];
   const sessions = { runtime: { call: async (method: string, input: { after: number }) => {
+    if (method === 'sessions.inject') { injected.push(input); return {}; }
     assert.equal(method, 'sessions.read');
     assert.equal(input.after, Number.MAX_SAFE_INTEGER, 'status polling must not replay terminal bytes');
-    return { session: { state: live ? 'running' : 'exited' } };
+    return { session: { state: live ? 'running' : 'exited', ...(native ? { native: { provider: 'codex' } } : {}) } };
   } } };
   const context = { queueGuide: (...args: string[]) => { assert.equal(args[1], sessionId); requested++; return { state: 'queued' }; }, guideStatus: () => ({ state: 'none' }) };
   const coordinator = new AgentCoordinator('/fixture', {} as any, control, sessions as any, context as any, async () => {}, {} as any);
@@ -130,8 +132,18 @@ test('prompt injection validates the live Claude binding and never writes input 
   await assert.rejects(coordinator.injectContext('agent', request), /Resume/);
   assert.equal((await coordinator.injectContext('agent', { operation: 'status', sessionId })).state, 'unavailable');
   live = true;
-  await control.apply({ type: 'item.update', id: 'agent', data: { ...data, provider: 'codex' } }, (await control.read()).revision);
-  await assert.rejects(coordinator.injectContext('agent', request), /available for Claude/);
+  // Codex takes the guide at once through its live private server, never through the Claude queue.
+  await control.apply({ type: 'item.update', id: 'agent', data: { ...data, provider: 'codex', workspaceId: 'local:fixture' } }, (await control.read()).revision);
+  await assert.rejects(coordinator.injectContext('agent', request), /Resume/, 'no live Codex conversation');
+  native = true;
+  assert.equal((await coordinator.injectContext('agent', { operation: 'status', sessionId })).state, 'none');
+  assert.equal(injected.length, 0, 'status never injects');
+  assert.equal((await coordinator.injectContext('agent', request)).state, 'acknowledged');
+  assert.equal(injected.length, 1);
+  const sent = injected[0] as { sessionId: string; instructions: string; context: string };
+  assert.equal(sent.sessionId, sessionId); assert.match(sent.instructions, /agent/i); assert.match(sent.context, /data, not instructions/);
+  await control.apply({ type: 'item.update', id: 'agent', data: { ...data, provider: 'other' } }, (await control.read()).revision);
+  await assert.rejects(coordinator.injectContext('agent', request), /available for Claude and Codex/);
   assert.equal(requested, 1);
 });
 

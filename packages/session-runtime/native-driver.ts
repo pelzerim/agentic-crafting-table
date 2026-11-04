@@ -4,7 +4,7 @@ import { codexInput, codexStatus, codexSwitch, codexThreadStatus, isHelperThread
 import * as z from 'zod/v4';
 import { randomUUID } from 'node:crypto';
 
-export interface NativeDriver { args: string[]; close(): Promise<void> }
+export interface NativeDriver { args: string[]; close(): Promise<void>; /** Appends a guide to the conversation the terminal shows now, without a model turn. */ inject(instructions: string, context: string): Promise<void> }
 export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.ProcessEnv, observe: (state: NativeAgentState) => void, disconnected: (error: Error) => void, owner?: { executable: string; entrypoint: string; electron: boolean }, signal?: AbortSignal): Promise<NativeDriver | undefined> {
   signal?.throwIfAborted();
   if (!request.native) return;
@@ -14,7 +14,7 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
   try {
     let state: NativeAgentState | undefined;
     const notified: { method: string; params?: any }[] = [], ignored = new Set<string>(), checking = new Set<string>();
-    const deliverContext = (threadId: string) => server.rpc.request('thread/inject_items', { threadId, items: [{ type: 'message', role: 'developer', content: [{ type: 'input_text', text: native.instructions }] }, { type: 'message', role: 'user', content: [{ type: 'input_text', text: native.context }] }] });
+    const deliverContext = (threadId: string, instructions = native.instructions, context = native.context) => server.rpc.request('thread/inject_items', { threadId, items: [{ type: 'message', role: 'developer', content: [{ type: 'input_text', text: instructions }] }, { type: 'message', role: 'user', content: [{ type: 'input_text', text: context }] }] });
     // A launch with a prompt or an earlier conversation has one already; otherwise the first turn shows it.
     let talked = Boolean(native.nativeSessionId || native.initialPrompt);
     const apply = (event: { method: string; params?: any }, current: NativeAgentState) => {
@@ -78,6 +78,12 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
     // The terminal resumes with its own configured model and effort unless told otherwise, which would switch
     // a conversation away from the model chosen at launch or recorded in it, with a startup warning.
     const kept = [...(response.model ? ['--model', response.model] : []), ...(response.reasoningEffort ? ['-c', `model_reasoning_effort=${JSON.stringify(response.reasoningEffort)}`] : [])];
-    return { args: [...request.args, '--remote', server.endpoint, ...server.terminal.arguments, ...kept, 'resume', seeded.nativeSessionId, ...(native.initialPrompt ? ['--', native.initialPrompt] : [])], async close() { closing = true; await server.close(); } };
+    return { args: [...request.args, '--remote', server.endpoint, ...server.terminal.arguments, ...kept, 'resume', seeded.nativeSessionId, ...(native.initialPrompt ? ['--', native.initialPrompt] : [])], async close() { closing = true; await server.close(); },
+      async inject(instructions, context) {
+        // After `/resume` or `/fork` the terminal shows another conversation; the item follows it on its next launch.
+        const threadId = state?.switched?.nativeSessionId ?? state?.nativeSessionId;
+        if (closing || !threadId) throw new Error('This Codex conversation is no longer connected');
+        await deliverContext(threadId, instructions, context);
+      } };
   } catch (error) { closing = true; await server.close(); throw error; }
 }

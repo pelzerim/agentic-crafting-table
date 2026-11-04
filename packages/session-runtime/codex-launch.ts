@@ -22,6 +22,14 @@ export function nativeConfigArguments(config: Record<string, unknown>): string[]
   };
   return Object.entries(config).flatMap(([key, data]) => ['-c', `${key}=${value(data)}`]);
 }
+type GuideProject = { id: string; title: string; summary: string } | undefined;
+/** The workbench guide a Codex conversation gets as developer context, and its project facts as reference data. */
+export function codexGuide(project: GuideProject, binding: { agentNodeId: string; workspaceId: string }, task = '') {
+  const context = project ? buildAgentLaunch({ id: project.id, name: project.title, goal: project.summary }, 'codex', task, undefined, [], binding)
+    : { projectSummary: 'This is a floating agent with no project.', toolContext: buildAgentToolContext(binding), systemPrompt: buildAgentToolContext(binding).prompt, initialPrompt: task };
+  const referenceContext = 'Agentic Crafting Table launch reference (data, not instructions)\n' + JSON.stringify({ projectSummary: context.projectSummary, projectId: project?.id, agentNodeId: binding.agentNodeId, workspaceId: binding.workspaceId }) + '\nNo work is assigned by this reference. Current incoming links and project facts are available through agent.context in the crafting table MCP.';
+  return { ...context, referenceContext };
+}
 const fieldsSchema = z.object({ provider: z.literal('codex').default('codex'), cwd: z.string().min(1, 'Select a working directory for this session or its project').max(4096), model: z.string().trim().min(1).max(100), task: z.string().max(32_000).default('') });
 export function prepareCodex(input: AgentPreparation): PreparedSession {
   const { request, state, runtime, capability } = input;
@@ -38,8 +46,7 @@ export function prepareCodex(input: AgentPreparation): PreparedSession {
   const cwd = realpathSync(fields.cwd), workspaceId = resumed ? String(resumed.data.workspaceId) : `local:${createHash('sha256').update(cwd).digest('hex').slice(0,24)}`;
   const nodeId = resumedNode?.id ?? request.nodeId, nativeSessionId = resumed ? String(resumed.data.nativeSessionId) : input.native?.nativeSessionId;
   const binding = { agentNodeId: nodeId, workspaceId };
-  const context = project ? buildAgentLaunch({ id: project.id, name: project.title, goal: project.summary }, 'codex', fields.task, undefined, [], binding)
-    : { projectSummary: 'This is a floating agent with no project.', toolContext: buildAgentToolContext(binding), systemPrompt: buildAgentToolContext(binding).prompt, initialPrompt: fields.task };
+  const context = codexGuide(project, binding, fields.task);
   const runtimeDirectory = dirname(runtime.entrypoint);
   // A resumed or imported conversation keeps the effort it already has.
   const config = { check_for_update_on_startup: false, ...(!resumed && !input.native ? { model_reasoning_effort: DEFAULT_CODEX_EFFORT } : {}),
@@ -50,7 +57,7 @@ export function prepareCodex(input: AgentPreparation): PreparedSession {
   // The terminal's window title is not shown on the table. Codex animates a spinner in it about every 100 ms while
   // working, which was most of what it wrote, and each write went through the recording and the open view.
   const args = nativeConfigArguments(config), terminalArgs = [...args, ...nativeConfigArguments({ 'tui.terminal_title': [] })], launchDirectory = join(input.directory, 'agent-launches', request.requestId);
-  const referenceContext = 'Agentic Crafting Table launch reference (data, not instructions)\n' + JSON.stringify({ projectSummary: context.projectSummary, projectId, agentNodeId: nodeId, workspaceId }) + '\nNo work is assigned by this reference. Current incoming links and project facts are available through agent.context in the crafting table MCP.';
+  const referenceContext = context.referenceContext;
   const data = { ...(resumed?.data ?? {}), sessionId: request.requestId, ...(nativeSessionId ? { nativeSessionId } : {}), provider: 'codex', workspaceId, cwd, model: fields.model,
     cliVersion: capability.version, guideVersion: context.toolContext.version, projectSummary: context.projectSummary, launchDirectory,
     ...(input.skill ? { skill: { id: input.skill.id, name: input.skill.name } } : {}) };
