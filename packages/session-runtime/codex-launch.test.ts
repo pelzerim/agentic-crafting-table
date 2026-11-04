@@ -70,6 +70,9 @@ test('a new Codex session runs at high effort, and a launch the supervisor would
     assert.equal(plan.launch.native?.config.model_reasoning_effort, 'high');
     assert.ok(plan.launch.args.includes('model_reasoning_effort="high"'));
     assert.ok(plan.launch.native?.serverArguments.includes('model_reasoning_effort="high"'));
+    // The table shows no window title, and the title's spinner was most of what Codex wrote while working.
+    assert.ok(plan.launch.args.includes('tui.terminal_title=[]'));
+    assert.ok(!plan.launch.native?.serverArguments.includes('tui.terminal_title=[]'));
     const refused = request('x'.repeat(32_000));
     assert.throws(() => prepareCodex({ ...input, request: refused }));
     assert.equal(readAgentPlan(directory, refused.requestId), undefined);

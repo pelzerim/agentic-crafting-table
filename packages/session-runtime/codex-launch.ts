@@ -47,14 +47,16 @@ export function prepareCodex(input: AgentPreparation): PreparedSession {
       ...(runtime.electronRuntime ? { ELECTRON_RUN_AS_NODE: '1' } : {}), ACT_DATA_DIR: input.directory, ACT_NODE_ID: nodeId, ACT_WORKSPACE_ID: workspaceId, ...(projectId ? { ACT_PROJECT_ID: projectId } : {}),
     } },
   };
-  const args = nativeConfigArguments(config), launchDirectory = join(input.directory, 'agent-launches', request.requestId);
+  // The terminal's window title is not shown on the table. Codex animates a spinner in it about every 100 ms while
+  // working, which was most of what it wrote, and each write went through the recording and the open view.
+  const args = nativeConfigArguments(config), terminalArgs = [...args, ...nativeConfigArguments({ 'tui.terminal_title': [] })], launchDirectory = join(input.directory, 'agent-launches', request.requestId);
   const referenceContext = 'Agentic Crafting Table launch reference (data, not instructions)\n' + JSON.stringify({ projectSummary: context.projectSummary, projectId, agentNodeId: nodeId, workspaceId }) + '\nNo work is assigned by this reference. Current incoming links and project facts are available through agent.context in the crafting table MCP.';
   const data = { ...(resumed?.data ?? {}), sessionId: request.requestId, ...(nativeSessionId ? { nativeSessionId } : {}), provider: 'codex', workspaceId, cwd, model: fields.model,
     cliVersion: capability.version, guideVersion: context.toolContext.version, projectSummary: context.projectSummary, launchDirectory,
     ...(input.skill ? { skill: { id: input.skill.id, name: input.skill.name } } : {}) };
   delete (data as Record<string, unknown>).nativeStartedAt;
   const plan: PreparedSession = { requestId: request.requestId, expectedRevision: request.expectedRevision, nodeId, action: resumed ? 'agent.resume' : 'agent.create', source,
-    launch: { sessionId: request.requestId, requestId: request.requestId, nodeId, ...(resumed ? { predecessorId: String(resumed.data.sessionId) } : {}), workspaceId, executable: capability.executable, args, cwd, cols: 100, rows: 30,
+    launch: { sessionId: request.requestId, requestId: request.requestId, nodeId, ...(resumed ? { predecessorId: String(resumed.data.sessionId) } : {}), workspaceId, executable: capability.executable, args: terminalArgs, cwd, cols: 100, rows: 30,
       native: { provider: 'codex', nativeSessionId, ...(!resumed && !input.native ? { model: fields.model } : {}), ...(resumed?.data.guideVersion === context.toolContext.version ? { contextDelivered: true } : {}), instructions: context.systemPrompt, context: referenceContext, config,
         serverArguments: args, ...(input.continueWork ? { initialPrompt: RECOVERY_PROMPT } : input.skill ? { initialPrompt: input.skill.prompt } : fields.task ? { initialPrompt: context.initialPrompt } : {}) } },
     commands: resumed ? [{ type: 'item.update', id: nodeId, data }, { type: 'node.update', id: nodeId, activity: 'unknown', attention: 'none', summary: 'Resuming Codex…' }]
