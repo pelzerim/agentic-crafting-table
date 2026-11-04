@@ -8,7 +8,7 @@ import { spawn } from 'node-pty';
 import type { IPty } from 'node-pty';
 import { EventEmitter } from 'node:events';
 import { randomUUID, createHash } from 'node:crypto';
-import { accessSync, constants, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { isAbsolute, join, dirname, extname } from 'node:path';
 import { prepareWorkspace } from '../workspace-service/paths.ts';
 import { serveLocal } from '../workspace-service/local-rpc.ts';
@@ -83,12 +83,9 @@ export async function startSupervisor(directory: string) {
   const flush = (id: string) => {
     const buffer = bufferFor(id); clearTimeout(buffer.timer); buffer.timer = undefined;
     if (!buffer.pending.length) return;
+    // SQLite holds the recording. Older versions also rewrote the whole retained tail to a file
+    // on every flush, five times a second while a CLI animated; that file is only imported once now.
     journal.append(id, buffer.pending); buffer.pending = []; buffer.pendingBytes = 0;
-    const path = spoolPath(id), temporary = path + '.tmp';
-    try {
-      writeFileSync(temporary, JSON.stringify({ chunks: buffer.chunks, sequence: buffer.sequence, truncated: buffer.truncated }), { mode: 0o600 });
-      renameSync(temporary, path);
-    } catch (error) { warnCache(error); } // The durable append above already succeeded.
   };
   const emitState = (session: SessionRecord) => events.emit('session', { kind: 'state', session } satisfies SessionEvent);
   const output = (id: string, data: string) => {

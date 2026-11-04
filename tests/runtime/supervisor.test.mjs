@@ -137,8 +137,10 @@ test('native supervisor deduplicates launches and preserves ordered PTY streams 
     assert.equal((await service.client.call('sessions.list')).length, 1, 'internal reconciliation retains dismissed identity');
     assert.equal((await service.client.call('sessions.launch', launch)).session.state, 'exited');
     await assert.rejects(service.client.call('sessions.input', { sessionId: launch.sessionId, data: 'no' }), /no live process/);
+    // A cached tail as older versions wrote it; deleting the recording also removes this file.
     const cachedPath = join(directory, 'scrollback', createHash('sha256').update(launch.sessionId).digest('hex') + '.json');
-    const cached = await readFile(cachedPath);
+    const cached = JSON.stringify({ chunks: [{ sequence: 1, data: 'READY:' }], sequence: 1, truncated: false });
+    await writeFile(cachedPath, cached);
     await assert.rejects(service.client.call('recordings.delete', { sessionId: launch.sessionId }), /confirmation/);
     const deleted = await service.client.call('recordings.delete', { sessionId: launch.sessionId, confirmation: 'delete-recording' });
     assert.ok(deleted.session.recordingDeletedAt); assert.equal(deleted.cleanupPending, false);
@@ -220,15 +222,15 @@ test('a tail read of a large recording starts at a line boundary and pages on wi
   } finally { await cleanup(service, directory); }
 });
 
-test('cache write failures keep the PTY alive and replay newer durable output after restart', async () => {
+test('a cached tail left by an older version cannot hide newer durable output after restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'craft-cache-failure-')); let service = await start(directory), childPid;
   const id = 'cache-session', cachedPath = join(directory, 'scrollback', createHash('sha256').update(id).digest('hex') + '.json');
   try {
     const launch = request(directory, id);
     childPid = (await service.client.call('sessions.launch', launch)).session.pid;
-    await output(service.client, id, 'READY:'); await until(() => existsSync(cachedPath));
-    const stale = await readFile(cachedPath, 'utf8');
-    await mkdir(cachedPath + '.tmp'); // EISDIR in this private fixture, not a disk-fill test.
+    await output(service.client, id, 'READY:');
+    const stale = JSON.stringify({ chunks: [{ sequence: 1, data: 'STALE_CACHED_TAIL' }], sequence: 1, truncated: false });
+    await writeFile(cachedPath, stale);
     const db = new DatabaseSync(join(directory, 'supervisor.sqlite'), { readOnly: true });
     try {
       for (const marker of ['CACHE_FAILURE_FIRST', 'CACHE_FAILURE_SECOND']) {
@@ -238,11 +240,9 @@ test('cache write failures keep the PTY alive and replay newer durable output af
         assert.equal(service.process.exitCode, null);
       }
     } finally { db.close(); }
-    assert.equal(service.diagnostics().split('Terminal tail cache unavailable').length - 1, 1, 'one diagnostic per runtime, not per output batch');
-    assert.ok(!service.diagnostics().includes(directory), 'diagnostic must not disclose private paths');
     await service.client.call('sessions.stop', { sessionId: id });
     await until(async () => (await service.client.call('sessions.attach', { sessionId: id })).session.state === 'exited');
-    assert.equal(await readFile(cachedPath, 'utf8'), stale, 'failure left the old cached tail untouched');
+    assert.equal(await readFile(cachedPath, 'utf8'), stale, 'streaming output never rewrites the cached tail');
     for (const cache of ['stale', 'missing', 'corrupt']) {
       const exited = once(service.process, 'exit'); service.process.kill('SIGTERM'); await exited; service.client.close();
       if (cache === 'missing') await rm(cachedPath);
@@ -259,6 +259,24 @@ test('cache write failures keep the PTY alive and replay newer durable output af
     if (childPid) { try { process.kill(childPid, 'SIGKILL'); } catch {} }
     await cleanup(service, directory);
   }
+});
+
+test('output is recorded in SQLite only, without rewriting a cached copy of the whole tail while it streams', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-no-spool-')), service = await start(directory);
+  try {
+    const launch = request(directory, 'streaming');
+    await service.client.call('sessions.launch', launch);
+    await output(service.client, launch.sessionId, 'READY:');
+    await service.client.call('sessions.input', { sessionId: launch.sessionId, data: 'colors\r' });
+    await output(service.client, launch.sessionId, 'COLORS:');
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const cached = join(directory, 'scrollback', createHash('sha256').update(launch.sessionId).digest('hex') + '.json');
+    assert.equal(existsSync(cached), false);
+    const page = await service.client.call('recordings.list', {});
+    assert.equal(page.recordings.find(entry => entry.id === launch.sessionId).hasOutput, true);
+    const full = await service.client.call('sessions.read', { sessionId: launch.sessionId, history: true });
+    assert.ok(full.chunks.map(chunk => chunk.data).join('').includes('COLORS:'));
+  } finally { await cleanup(service, directory); }
 });
 
 test('legacy cached tails import once and remain partial after the cache changes', async () => {
