@@ -10,7 +10,7 @@ import type { SettingsSnapshot } from '../../../packages/core/settings.ts';
 import type { AppSettings } from '../../../packages/core/settings.ts';
 import { REVIEW_AGENTS } from '../../../src/pull-requests/review-agents.ts';
 import { STANDUP_ENABLED } from '../../../packages/core/standup.ts';
-import { UPDATE_COMMAND, appUpdateRow } from '../../../packages/core/updates.ts';
+import { UPDATE_COMMAND, appReleaseUrl, appUpdateRow } from '../../../packages/core/updates.ts';
 import type { UpdateStatus } from '../../../packages/core/updates.ts';
 import { Button } from './ui/button.tsx';
 import { claudePermissionSettings } from '../../../packages/core/claude-settings.ts';
@@ -73,7 +73,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
   const [checkingUpdates, setCheckingUpdates] = useState(false), [updateCheck, setUpdateCheck] = useState(true), updates = updatesProp?.status;
   const checkUpdates = () => { setCheckingUpdates(true); updatesProp?.check().catch(() => {}).finally(() => setCheckingUpdates(false)); };
   const [restartError, setRestartError] = useState<string>();
-  const updateRow = appUpdateRow({ app: updates?.app, checkout: Boolean(appInfo?.updateRestart), failure: restartError ? { at: Infinity, message: restartError } : appInfo?.updateFailure });
+  const updateRow = appUpdateRow({ app: updates?.app, checkout: Boolean(appInfo?.updateRestart), packaged: Boolean(appInfo?.packaged), failure: restartError ? { at: Infinity, message: restartError } : appInfo?.updateFailure });
   const updateAndRestart = () => { setRestartError(undefined); window.craftingTable.updatesRestart().catch(error => setRestartError(error.message)); };
   useEffect(() => { let mounted = true; window.craftingTable.appInfo().then(info => { if (mounted) setAppInfo(info); }).catch(error => { if (mounted) setInfoError(String(error)); }); return () => { mounted = false; }; }, []);
   const sections = ['Connections', 'Items', 'Map', 'Corners', 'Notifications', 'AI features', 'General', 'Plugins', 'Data & diagnostics'] as const;
@@ -400,9 +400,10 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
           <SettingRow label="Warn before closing with active sessions" description="Closing the window keeps sessions running in the background; reopen it from the Dock. Quit stops them: when this is off, Quit saves and stops running sessions right away. Startup recovery still applies." meta="Off by default"><Switch checked={warnBeforeClosing} change={setWarnBeforeClosing} /></SettingRow>
         </SettingsSection>
         <SettingsSection label="About">
-          <SettingRow label="Version" description={updateRow.action === 'restart' ? `${updates!.app.latest} is available. Update and restart quits the app, checks out the newest release in your checkout, builds and installs it, then reopens the app. Sessions come back as after any quit.` : updates?.app.available && updates.app.latest ? `${updates.app.latest} is available. In your checkout, quit the app and run ${UPDATE_COMMAND}: it checks out the newest release, builds it and installs it in place.` : `Releases are tags of the public repository. To update, quit the app and run ${UPDATE_COMMAND} in your checkout.`}
+          <SettingRow label="Version" description={updateRow.action === 'restart' ? `${updates!.app.latest} is available. Update and restart quits the app, checks out the newest release in your checkout, builds and installs it, then reopens the app. Sessions come back as after any quit.` : updateRow.action === 'download' ? `${updates!.app.latest} is available. Download opens its release page: quit the app and replace it with the new build.` : updates?.app.available && updates.app.latest ? `${updates.app.latest} is available. In your checkout, quit the app and run ${UPDATE_COMMAND}: it checks out the newest release, builds it and installs it in place.` : `Releases are tags of the public repository. To update, quit the app and run ${UPDATE_COMMAND} in your checkout.`}
             meta={updateRow.failure ? <span className="settings-update-status" role="alert">Update{updateRow.failure.tag ? ` to ${updateRow.failure.tag}` : ''} failed: {updateRow.failure.message}</span> : <span className="settings-update-status" role="status">{updateStatusText(appInfo, updates)}</span>}>
             {updateRow.action === 'restart' ? <Button size="sm" onClick={updateAndRestart}>Update and restart</Button>
+              : updateRow.action === 'download' ? <Button size="sm" onClick={() => { void window.craftingTable.openUrl(appReleaseUrl(updates!.app.latest!)).catch(() => {}); }}>Download</Button>
               : <Button size="sm" onClick={checkUpdates} disabled={checkingUpdates || Boolean(updates?.checking)} aria-busy={checkingUpdates || Boolean(updates?.checking)}>Check now</Button>}
           </SettingRow>
           <SettingRow label="Check for updates daily" description="Looks up the newest release tag of the app and of each installed plugin pack once a day and shows a notice when there is a newer one. Nothing is downloaded or installed by it."><Switch checked={updateCheck} change={setUpdateCheck} /></SettingRow>

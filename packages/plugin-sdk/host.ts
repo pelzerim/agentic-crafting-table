@@ -112,6 +112,8 @@ export interface WorkspaceServices {
   /** Absent when the service runs without native sessions. */
   agents?: HostedAgents;
   storage: PluginStorage;
+  /** The review findings operation on a review item; absent without native reviews. */
+  findings?: { run(nodeId: string, input: JsonObject): Promise<unknown> };
   broadcast(): Promise<void>;
   /** False while background work is held back (shutdown, recovery, sleep). */
   allowed(): boolean;

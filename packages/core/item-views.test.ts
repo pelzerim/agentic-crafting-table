@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clampItemViewPosition, clampItemViewSize, expandedItemBounds, itemViewProfile, itemViewProfiles } from './item-views.ts';
+import { clampItemViewPosition, clampItemViewSize, expandedItemBounds, filledItemView, itemViewProfile, itemViewProfiles } from './item-views.ts';
 import { presentResource } from '../../src/resource-plugins/views.ts';
 import { settingsSchema } from './settings.ts';
 import { createResourcePluginRegistry } from '../../src/resource-plugins/builtins.ts';
@@ -70,4 +70,9 @@ test('a plugin minimum width holds against resizing, saved sizes and settings un
   assert.deepEqual(clampItemViewSize({ width: 500, height: 600 }, profile, canvas), { width: 750, height: 600 });
   assert.equal(expandedItemBounds(profile, { 'code.review': { width: 600, height: 700 } }, canvas, { x: 0, y: 0 }).width, 750);
   assert.equal(clampItemViewSize({ width: 500, height: 600 }, profile, { width: 700, height: 900 }).width, 676, 'the window still wins');
+});
+
+test('a filled view takes the map area within the margins, right of the rail', () => {
+  assert.deepEqual(filledItemView({ width: 1280, height: 800 }, 64), { position: { x: 64, y: 12 }, size: { width: 1204, height: 776 } });
+  assert.deepEqual(filledItemView({ width: 1280, height: 800 }, 24), { position: { x: 24, y: 12 }, size: { width: 1244, height: 776 } });
 });

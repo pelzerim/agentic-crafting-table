@@ -1,4 +1,5 @@
-import type { GitHubComment, GitHubResponse, GitHubReview, GitHubWorkflowRun, PullMergeRequest } from '../../packages/provider-runtime/github.ts';
+import { createHash } from 'node:crypto';
+import type { GitHubComment, GitHubResponse, GitHubReview, GitHubWorkflowRun, PullBranchUpdate, PullMergeRequest } from '../../packages/provider-runtime/github.ts';
 import { GitHubClient } from '../../packages/provider-runtime/github.ts';
 import { ProviderConnections } from '../../packages/provider-runtime/connections.ts';
 import { ResourcePluginHost } from '../../src/resource-plugins/host.ts';
@@ -37,6 +38,9 @@ export function githubFixture(additionalPulls: typeof pullFixture[] = []) {
   const mergeCancels: string[] = [];
   const autoMergeRequest = () => autoMerge && { enabledAt: autoMerge.enabledAt, mergeMethod: autoMerge.method };
   let mergeReply: ((request: PullMergeRequest) => GitHubResponse | Promise<GitHubResponse>) | undefined;
+  /** Branch updates sent (rebase onto the base); by default GitHub rebases an out-of-date branch and refuses one with conflicts. */
+  const branchUpdates: PullBranchUpdate[] = [];
+  let branchUpdateReply: ((request: PullBranchUpdate) => GitHubResponse | Promise<GitHubResponse>) | undefined;
   const titles: string[] = []; let titleReply: ((title: string) => GitHubResponse | Promise<GitHubResponse>) | undefined;
   /** Every comment/state/draft write in order, e.g. ['comment', 'state:closed', 'draft:true']. */
   const writes: string[] = [], states: ('open' | 'closed')[] = [], drafts: { pullRequestId: string; draft: boolean }[] = [];
@@ -54,7 +58,7 @@ export function githubFixture(additionalPulls: typeof pullFixture[] = []) {
   }, async mergeOptions(_identity, signal) {
     requests++; await before?.(signal); signal.throwIfAborted();
     return { status, headers: new Headers(headers), body: { data: { repository: { mergeCommitAllowed: mergeSettings.merge, squashMergeAllowed: mergeSettings.squash, rebaseMergeAllowed: mergeSettings.rebase, viewerDefaultMergeMethod: mergeSettings.defaultMethod, autoMergeAllowed: mergeSettings.autoMergeAllowed ?? false,
-      pullRequest: { id: nodeId(), number: pull.number, title: pull.title, state: pull.merged ? 'MERGED' : pull.state === 'closed' ? 'CLOSED' : 'OPEN', isDraft: pull.draft, merged: pull.merged, headRefOid: pull.head.sha, baseRefName: pull.base.ref,
+      pullRequest: { id: nodeId(), number: pull.number, title: pull.title, state: pull.merged ? 'MERGED' : pull.state === 'closed' ? 'CLOSED' : 'OPEN', isDraft: pull.draft, merged: pull.merged, headRefOid: pull.head.sha, baseRefName: pull.base.ref, baseRefOid: pull.base.sha,
         mergeStateStatus: pull.draft ? 'DRAFT' : mergeSettings.status, isMergeQueueEnabled: mergeSettings.queueEnabled, isInMergeQueue: queue.queued, reviewDecision: mergeSettings.review ?? null, autoMergeRequest: autoMergeRequest(),
         commits: { nodes: [{ commit: { oid: pull.head.sha, statusCheckRollup: mergeSettings.rollup ? { state: mergeSettings.rollup } : null } }] } } } } } };
   }, async merge(request, signal) {
@@ -77,6 +81,15 @@ export function githubFixture(additionalPulls: typeof pullFixture[] = []) {
     if (request.method === 'QUEUE') { queue = { queued: true, position: 0 }; return { status: 200, headers: new Headers(), body: { data: { enqueuePullRequest: { mergeQueueEntry: { position: 0, pullRequest: { id: nodeId() } } } } } }; }
     pull = { ...pull, state: 'closed', merged: true, merged_at: new Date().toISOString(), merge_commit_sha: 'c'.repeat(40) } as typeof pull; autoMerge = null;
     return { status: 200, headers: new Headers(), body: { data: { mergePullRequest: { pullRequest: { id: nodeId(), merged: true } } } } };
+  }, async updateBranch(request, signal) {
+    signal.throwIfAborted(); await beforeWrite?.(); signal.throwIfAborted(); branchUpdates.push(request);
+    if (branchUpdateReply) return branchUpdateReply(request);
+    const decline = (message: string) => ({ status: 200, headers: new Headers(), body: { data: { updatePullRequestBranch: null }, errors: [{ type: 'UNPROCESSABLE', message }] } });
+    if (request.expectedHeadOid !== pull.head.sha) return decline('Head branch was modified. Review and try the update again.');
+    if (mergeSettings.status === 'DIRTY') return decline('Merge conflict between base and head');
+    const rebased = createHash('sha1').update(`${pull.head.sha}:${pull.base.sha}`).digest('hex');
+    pull = { ...pull, head: { ...pull.head, sha: rebased }, updated_at: new Date().toISOString() }; if (mergeSettings.status === 'BEHIND') mergeSettings = { ...mergeSettings, status: 'CLEAN' };
+    return { status: 200, headers: new Headers(), body: { data: { updatePullRequestBranch: { pullRequest: { id: nodeId(), headRefOid: rebased } } } } };
   }, async disableAutoMerge(pullRequestId, signal) {
     signal.throwIfAborted(); await beforeWrite?.(); signal.throwIfAborted(); mergeCancels.push(pullRequestId);
     autoMerge = null;
@@ -110,7 +123,7 @@ export function githubFixture(additionalPulls: typeof pullFixture[] = []) {
         : path.includes('/reviews?') ? structuredClone(reviews) : structuredClone(additionalPulls.find(candidate => path.endsWith(`/pulls/${candidate.number}`)) ?? pull);
     return { status, body, headers: new Headers(headers) };
   } });
-  return { connections, accounts, client, posts, merges, mergeCancels, get autoMerge() { return autoMerge; }, set autoMerge(value) { autoMerge = value; }, get mergeCommit() { return mergeCommit; }, set mergeCommit(value) { mergeCommit = value; }, get mergeCommitReads() { return mergeCommitReads; }, get mergeSettings() { return mergeSettings; }, set mergeSettings(value) { mergeSettings = value; }, replyToMerge(reply: typeof mergeReply) { mergeReply = reply; }, titles, replyToTitle(reply: typeof titleReply) { titleReply = reply; }, writes, states, drafts, replyToState(reply: typeof stateReply) { stateReply = reply; }, replyToDraft(reply: typeof draftReply) { draftReply = reply; }, get comments() { return comments; }, set comments(value) { comments = value; }, get inline() { return inline; }, set inline(value) { inline = value; }, get reviewEntries() { return reviews; }, set reviewEntries(value) { reviews = value; }, get requests() { return requests; }, get pull() { return pull; }, set pull(value) { pull = value; }, get runs() { return runs; }, set runs(value) { runs = value; }, get queue() { return queue; }, set queue(value) { queue = value; }, get checks() { return checks; }, set checks(value) { checks = value; },
+  return { connections, accounts, client, posts, merges, mergeCancels, get autoMerge() { return autoMerge; }, set autoMerge(value) { autoMerge = value; }, get mergeCommit() { return mergeCommit; }, set mergeCommit(value) { mergeCommit = value; }, get mergeCommitReads() { return mergeCommitReads; }, get mergeSettings() { return mergeSettings; }, set mergeSettings(value) { mergeSettings = value; }, replyToMerge(reply: typeof mergeReply) { mergeReply = reply; }, branchUpdates, replyToBranchUpdate(reply: typeof branchUpdateReply) { branchUpdateReply = reply; }, titles, replyToTitle(reply: typeof titleReply) { titleReply = reply; }, writes, states, drafts, replyToState(reply: typeof stateReply) { stateReply = reply; }, replyToDraft(reply: typeof draftReply) { draftReply = reply; }, get comments() { return comments; }, set comments(value) { comments = value; }, get inline() { return inline; }, set inline(value) { inline = value; }, get reviewEntries() { return reviews; }, set reviewEntries(value) { reviews = value; }, get requests() { return requests; }, get pull() { return pull; }, set pull(value) { pull = value; }, get runs() { return runs; }, set runs(value) { runs = value; }, get queue() { return queue; }, set queue(value) { queue = value; }, get checks() { return checks; }, set checks(value) { checks = value; },
     fail(code: number, extra: Record<string, string> = {}) { status = code; headers = extra; }, delay(callback: typeof before) { before = callback; }, holdWrites(gate: typeof beforeWrite) { beforeWrite = gate; },
     host(registry: ResourcePluginRegistry) { const host = new ResourcePluginHost(registry); host.register('github.pull-request', githubPullRequestConnector(resource => { connections.resolve('github', resource.connectionId); return client; }, { viewer: resource => resource.connectionId ? connections.resolve('github', resource.connectionId).account : undefined })); host.present('github.pull-request', pullRequestPresentation); return host; },
   };

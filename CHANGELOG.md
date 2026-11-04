@@ -3,6 +3,22 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## 0.17.0 — 2026-11-04
+
+### Auto deploy
+- **Rebases and fixes review findings**: an out-of-date branch is updated from its base on GitHub, merge conflicts go to an agent to rebase (twice at most), and blocking findings of the Claude review linked to the pull request (critical, high and security) go to an agent once before the merge; medium and low ones are left for you.
+- **What it did**: the pull request's status line unfolds “N actions”, a list of every action with links to the agent, the review, the commit and the run; the rollout's timeline lists the same actions.
+
+### Item views
+- **Fill the map**: double-click an open item's title bar to fill the map with it; double-click again to put it back.
+
+### Rollouts
+- **Waiting approval stands out**: a rollout card waiting on an approval shows its state in the Needs me amber.
+- **Running jobs by name**: auto deploy's deploying step names the jobs that are running instead of “other”.
+
+### Updates
+- **Downloads on every release**: each release tag builds macOS (Apple silicon), Windows and Linux apps on GitHub and attaches them to a GitHub release, with the changelog and how to open the unsigned builds. A downloaded app offers **Download** in Settings → General when a newer release is out.
+
 ## 0.16.0 — 2026-11-02
 
 ### Diagnostics

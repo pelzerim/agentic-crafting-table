@@ -18,7 +18,7 @@ import { rolloutDiscoveryKey } from '../provider-runtime/github-status.ts';
 import type { RolloutObservation } from '../provider-runtime/github-rollout.ts';
 import type { PullMergeReadiness } from '../provider-runtime/github.ts';
 import { AutoDeploys, AUTO_DEPLOY_COLLECTION, autoDeployArmed, validationRequestFailure } from './auto-deploy.ts';
-import { AUTO_DEPLOY_OPERATION } from '../../src/resource-plugins/items/github-rollout/auto-deploy.ts';
+import { armRecord, AUTO_DEPLOY_OPERATION } from '../../src/resource-plugins/items/github-rollout/auto-deploy.ts';
 import type { AutoDeployRecord } from '../../src/resource-plugins/items/github-rollout/auto-deploy.ts';
 import { agentRuntimeRefusal } from '../core/runtime.ts';
 import { humanOnlyMessage } from '../../src/resource-plugins/host.ts';
@@ -58,6 +58,7 @@ async function fixture(options: { starter?: boolean; tagging?: boolean; director
       if (outcome === 'unknown') { store.transitionJob(job.id, 'running', 'outcome-unknown', { error: 'GitHub may have merged it.' }); throw new Error('GitHub may have merged it.'); }
       if (actionId === 'pr.showShip') github.readiness.title = `[ship] ${github.readiness.title}`;
       if (actionId === 'pr.merge') github.readiness.lifecycle = 'merged';
+      if (actionId === 'pr.updateBranch') github.readiness = { ...github.readiness, head: 'e'.repeat(40), mergeStateStatus: 'CLEAN' };
       if (actionId === 'rollout.approve' && github.observation) github.observation = { ...github.observation, gates: [] };
       store.transitionJob(job.id, 'running', 'succeeded', { result: {} });
       return {};
@@ -88,7 +89,19 @@ async function fixture(options: { starter?: boolean; tagging?: boolean; director
     if (method === 'sessions.input') prompts.push(input);
     return { session: { state: 'running', native: { status: 'idle' } }, lastSequence: 1 };
   } } } as unknown as SessionCoordinator : undefined;
-  const deploys = new AutoDeploys({ storage: store.pluginStorage('github.rollout'), store, control, resources, validations, changed: async () => {}, now: () => now, readinessEveryMs: 0,
+  /** The review findings operation: the linked review's findings and statuses, and each send or spawn journaled like the real one. */
+  const review = { listed: undefined as undefined | { state: 'running' | 'complete'; findings: { id: string; kind: string; severity?: string; title: string; locations: { path: string }[] }[]; statuses: Record<string, string>; ignored: string[] },
+    calls: [] as JsonObject[], agents: [] as { nodeId: string; title: string; status: string }[] };
+  const findings = { async run(nodeId: string, input: JsonObject) {
+    if (input.operation === 'list') { if (!review.listed) throw new Error('The review is not on the map.'); return { state: review.listed.state, reviewSessionId: 'review-session', format: 'findings', review: { summary: '', findings: review.listed.findings }, statuses: review.listed.statuses, ignored: review.listed.ignored }; }
+    if (input.operation === 'options') return { agents: review.agents, newAgent: { available: true } };
+    review.calls.push({ nodeId, ...input });
+    const sendId = String(input.operation === 'spawn' ? input.sendId : input.requestId), ids = input.findingIds as string[];
+    if (!store.reviewSend(sendId)) store.createReviewSend({ id: sendId, reviewNodeId: nodeId, reviewSessionId: 'review-session', agentNodeId: String(input.agentNodeId ?? 'spawned'), findingIds: ids, note: String(input.note ?? ''), prompt: 'findings', linked: false }, now);
+    for (const id of ids) review.listed!.statuses[id] = 'queued';
+    return { id: sendId };
+  } };
+  const deploys = new AutoDeploys({ storage: store.pluginStorage('github.rollout'), store, control, resources, validations, findings, changed: async () => {}, now: () => now, readinessEveryMs: 0,
     tagging: () => options.tagging !== false, ...(sessions ? { sessions } : {}), ...(options.starter === false ? {} : { starter }) });
   const run = (input: object, nodeId = 'pr') => deploys.run(nodeId, input) as Promise<Record<string, unknown>>;
   const arm = () => run({ operation: 'set', value: 'arm', sourceResourceId: 'pr-r', requestId: randomUUID() });
@@ -104,7 +117,7 @@ async function fixture(options: { starter?: boolean; tagging?: boolean; director
   const gate = (id: number, name: string) => ({ environment: { id, name }, wait_timer: 0, current_user_can_approve: true, reviewers: [{ type: 'User' }] });
   const pass = async (minutes = 1) => { now += minutes * 60_000; await deploys.reconcile(); };
   const attention = async (nodeId = 'pr') => (await control.read()).nodes.find(node => node.id === nodeId)?.attentionSources?.['auto-deploy'] ?? null;
-  return { directory, store, control, deploys, github, triggers, verdicts, events, launches, prompts, run, arm, record, discover, job, gate, pass, attention, apply, failTriggers: (message: string) => { triggerFailure = message; }, setNow: (value: number) => { now = value; } };
+  return { directory, store, control, deploys, github, review, triggers, verdicts, events, launches, prompts, run, arm, record, discover, job, gate, pass, attention, apply, failTriggers: (message: string) => { triggerFailure = message; }, setNow: (value: number) => { now = value; } };
 }
 
 test('arming from the menu confirms what will happen, is idempotent, and Stop ends it before the next step', async () => {
@@ -451,4 +464,99 @@ test('a validation that cannot be requested halts with its error, however long t
   assert.match(reason, /Claude Code is not installed\.$/);
   assert.match(reason, /^The validation of before production \(Prod - region-0 AWS \/ deploy/);
   assert.equal(validationRequestFailure('staging', 'No agent.'), 'The validation of staging could not be requested: No agent.');
+});
+
+test('an out-of-date branch is updated by GitHub once per base head, journaled, and never again after a restart', async () => {
+  const f = await fixture({ tagging: false });
+  f.github.readiness.mergeStateStatus = 'BEHIND'; f.github.readiness.baseHead = 'f'.repeat(40); f.github.readiness.checks = 'pending';
+  f.github.outcomes['pr.updateBranch'] = 'unknown';
+  await f.arm(); await f.pass();
+  assert.deepEqual(f.github.writes.map(write => [write.actionId, write.input.pullRequestId, write.input.expectedHeadOid, write.input.sourceResourceId]), [['pr.updateBranch', 'PR_node42', head, 'pr-r']]);
+  assert.deepEqual([f.record()!.state, f.record()!.halt?.code], ['halted', 'outcome-unknown']);
+  assert.match(f.record()!.halt!.reason, /branch update could not be confirmed/);
+
+  const g = await fixture({ tagging: false });
+  g.github.readiness.mergeStateStatus = 'BEHIND'; g.github.readiness.baseHead = 'f'.repeat(40); g.github.readiness.checks = 'pending';
+  await g.arm(); await g.pass();
+  assert.deepEqual(g.github.writes.map(write => write.actionId), ['pr.updateBranch']);
+  assert.deepEqual(g.record()!.rebases?.map(entry => [entry.mode, entry.base, entry.head, entry.pushed]), [['update', 'f'.repeat(40), head, 'e'.repeat(40)]]);
+  assert.equal((await g.run({ operation: 'status' })).line, 'Auto deploy · waiting for checks');
+  g.deploys.close();
+  const again = await fixture({ directory: g.directory, tagging: false });
+  again.github.readiness = { ...again.github.readiness, mergeStateStatus: 'BEHIND', baseHead: 'f'.repeat(40), head: 'e'.repeat(40), checks: 'pending' };
+  await again.pass();
+  assert.deepEqual(again.github.writes, [], 'the base head it was updated from is not sent again');
+  assert.equal(again.record()!.step, 'updating-branch');
+});
+
+test('conflicts start an agent beside the pull request to rebase, with the branch, the base and what it must not do', async () => {
+  const f = await fixture({ tagging: false });
+  f.github.readiness.mergeStateStatus = 'DIRTY';
+  await f.arm(); await f.pass();
+  assert.equal(f.launches.length, 1);
+  const [launch] = f.launches;
+  assert.equal(launch.request.title, 'Rebase · Batch exports');
+  assert.match(launch.hosted.prompt, /Rebase the branch feature\/exports of pull request Batch exports \(https:\/\/github\.com\/acme\/app\/pull\/42\) onto the current head of main/);
+  assert.match(launch.hosted.prompt, /--force-with-lease/); assert.match(launch.hosted.prompt, /Do not merge, approve, retitle or close/);
+  assert.equal((await f.run({ operation: 'status' })).line, 'Auto deploy · rebasing onto main (1/2) · Rebase · Batch exports');
+  assert.deepEqual(f.record()!.rebases?.map(entry => [entry.mode, entry.head, entry.agentNodeId, entry.agentTitle]), [['agent', head, launch.request.nodeId, 'Rebase · Batch exports']]);
+  await f.pass(); assert.equal(f.launches.length, 1, 'one request per head');
+  f.github.readiness = { ...f.github.readiness, head: 'b'.repeat(40), mergeStateStatus: 'CLEAN' };
+  await f.pass();
+  assert.equal(f.record()!.rebases![0].pushed, 'b'.repeat(40));
+  assert.deepEqual(f.github.writes.map(write => write.actionId), ['pr.merge']);
+  const status = await f.run({ operation: 'status' }) as { events: { kind: string; text: string; links?: { label: string; url?: string; resourceId?: string }[] }[] };
+  assert.deepEqual(status.events.map(event => event.kind), ['armed', 'rebase', 'rebased', 'merged']);
+  assert.deepEqual(status.events[2].links, [{ label: 'Rebase · Batch exports', resourceId: launch.request.resourceId }, { label: 'bbbbbbb', url: `https://github.com/acme/app/commit/${'b'.repeat(40)}` }]);
+});
+
+const reviewFindings = () => ({ state: 'complete' as const, ignored: [] as string[], statuses: {} as Record<string, string>, findings: [
+  { id: 'F1', kind: 'bug', severity: 'critical', title: 'Exports drop the last page', locations: [{ path: 'src/exports.ts' }] },
+  { id: 'F2', kind: 'security', title: 'Token leaks into logs', locations: [{ path: 'src/log.ts' }] },
+  { id: 'F3', kind: 'bug', severity: 'medium', title: 'Slow query', locations: [{ path: 'src/db.ts' }] }] });
+const addReview = (f: Awaited<ReturnType<typeof fixture>>) => f.apply([{ type: 'item.create', id: 'review', projectId: 'web', position: { x: 300, y: 600 }, resource: { id: 'review-r', pluginId: 'code.review', schemaVersion: 1, title: 'Claude review · #42', data: { provider: 'claude', model: 'opus', sessionId: 'review-session', sourcePrId: 'pr', baseSha: 'b'.repeat(40), headSha: head, launchMode: 'review' } } }]);
+
+test('blocking findings of the linked review are sent once to a new agent under a journaled id, then the report and the push move on to checks', async () => {
+  const f = await fixture({ tagging: false });
+  await addReview(f);
+  f.review.listed = { ...reviewFindings(), state: 'running' };
+  await f.arm(); await f.pass();
+  assert.equal((await f.run({ operation: 'status' })).line, 'Auto deploy · waiting for the Claude review');
+  f.review.listed = reviewFindings();
+  await f.pass();
+  assert.equal(f.review.calls.length, 1);
+  const [call] = f.review.calls;
+  assert.deepEqual([call.nodeId, call.operation, call.findingIds, call.provider, call.reviewSessionId], ['review', 'spawn', ['F1', 'F2'], 'claude', 'review-session']);
+  assert.match(String(call.note), /feature\/exports/); assert.match(String(call.note), /Do not merge, approve or close/);
+  const send = f.record()!.findingSends![0];
+  assert.deepEqual([send.sendId, send.findingIds, send.reviewNodeId, send.counts, f.record()!.reviewLeft], [call.sendId, ['F1', 'F2'], 'review', '1 critical, 1 security', '1 medium']);
+  assert.equal((await f.run({ operation: 'status' })).line, 'Auto deploy · the fixer is fixing 2 findings · 1 medium left for you');
+  await f.pass(); assert.equal(f.review.calls.length, 1, 'sent once');
+  f.deploys.close();
+  const again = await fixture({ directory: f.directory, tagging: false });
+  again.review.listed = reviewFindings(); again.review.listed.statuses = { F1: 'sent', F2: 'sent' };
+  await again.pass();
+  assert.deepEqual(again.review.calls, [], 'no second send after a restart');
+  again.review.listed.statuses = { F1: 'fixed', F2: 'fixed' };
+  await again.pass();
+  assert.equal(again.record()!.step, 'waiting-push');
+  again.github.readiness.head = 'b'.repeat(40);
+  await again.pass();
+  assert.deepEqual([again.record()!.findingSends![0].pushed, again.github.writes.map(write => write.actionId)], ['b'.repeat(40), ['pr.merge']]);
+  assert.deepEqual(again.review.calls, [], 'once per review: nothing is sent again after the fix');
+});
+
+test('a ready agent connected to the pull request gets the findings through the send path; a send recorded but never journaled goes out under the same id', async () => {
+  const f = await fixture({ tagging: false, sessions: true });
+  await addReview(f);
+  await f.apply([{ type: 'item.add', id: 'helper', resourceId: 'helper-r', pluginId: 'agent.session', title: 'Claude · impl', projectId: 'web', position: { x: 300, y: 500 }, data: { provider: 'claude', sessionId: 'session-helper' } },
+    { type: 'link.save', link: { id: 'pr-helper', sourceId: 'pr', targetId: 'helper', kind: 'context', label: '' } }, { type: 'node.update', id: 'helper', activity: 'idle' }]);
+  f.review.listed = reviewFindings(); f.review.agents = [{ nodeId: 'helper', title: 'Claude · impl', status: 'idle' }];
+  const armed = armRecord({ id: randomUUID(), pullResourceId: 'pr-r', pullNodeId: 'pr', now: T0 });
+  f.store.pluginStorage('github.rollout').put(AUTO_DEPLOY_COLLECTION, 'pr-r', { ...armed, findingSends: [{ reviewNodeId: 'review', reviewTitle: 'Claude review', sendId: '00000000-0000-4000-8000-0000000000aa', findingIds: ['F1', 'F2'], head, at: T0, agentNodeId: 'helper', agentTitle: 'Claude · impl', counts: '1 critical, 1 security' }],
+    writes: [{ key: 'findings:review', kind: 'findings', requestId: '00000000-0000-4000-8000-0000000000aa', at: T0, state: 'sending' }] } as never);
+  await f.pass();
+  assert.deepEqual(f.review.calls.map(call => [call.operation, call.requestId, call.agentNodeId]), [['send', '00000000-0000-4000-8000-0000000000aa', 'helper']]);
+  assert.equal((await f.run({ operation: 'status' })).line, 'Auto deploy · Claude · impl is fixing 2 findings · 1 medium left for you');
+  assert.equal(f.record()!.writes.find(write => write.kind === 'findings')?.state, 'sent');
 });

@@ -10,6 +10,9 @@ import { openResourceChoices } from '../../choices.ts';
 import { titleTag } from './show-ship.ts';
 import { AUTO_DEPLOY_OPERATION } from '../github-rollout/auto-deploy.ts';
 import { mountReviewLoop } from './review-loop-line.ts';
+import { actionRows } from './auto-deploy-actions.ts';
+import type { ListedAction } from './auto-deploy-actions.ts';
+import { pixelGlyphElement } from '../../pixel-glyphs.ts';
 import { previewPull } from './preview.ts';
 import { formatWhen } from '../../format-when.ts';
 import { emptyState, mountViewHeader, skeleton, staleNotice } from '../../view-header.ts';
@@ -88,7 +91,29 @@ export const githubPullRequestViews: ResourcePluginViews = {
     };
     const deployText = element('span', '', 'pr-auto-deploy-text'), stopDeploy = element('button', 'Stop', 'pr-auto-deploy-stop'); stopDeploy.type = 'button';
     stopDeploy.setAttribute('aria-label', 'Stop auto deploy'); stopDeploy.title = 'Nothing further is tagged, merged or approved. A write already sent is not undone.';
-    const deployStatus = element('div', '', 'pr-auto-deploy-status'); deployStatus.setAttribute('role', 'status'); deployStatus.hidden = true; deployStatus.append(deployText, stopDeploy);
+    const deployToggle = element('button', '', 'pr-auto-deploy-toggle'); deployToggle.type = 'button'; deployToggle.hidden = true; deployToggle.setAttribute('aria-expanded', 'false');
+    const deployStatus = element('div', '', 'pr-auto-deploy-status'); deployStatus.setAttribute('role', 'status'); deployStatus.hidden = true; deployStatus.append(deployText, deployToggle, stopDeploy);
+    const deployActions = element('ol', '', 'pr-auto-deploy-actions'); deployActions.setAttribute('aria-label', 'Auto deploy actions'); deployActions.hidden = true; deployActions.id = `pr-auto-deploy-actions-${resource.id}`;
+    deployToggle.setAttribute('aria-controls', deployActions.id);
+    let actionsOpen = false;
+    deployToggle.onclick = () => { actionsOpen = !actionsOpen; deployToggle.setAttribute('aria-expanded', String(actionsOpen)); deployActions.hidden = !actionsOpen || deployStatus.hidden; };
+    /** What auto deploy did, oldest first; agents, reviews and runs open on the map, commits on GitHub. */
+    const renderDeployActions = (events: readonly ListedAction[], state: string) => {
+      const link = (entry: { label: string; resourceId?: string; url?: string }) => {
+        const node = element('button', entry.label, 'pr-auto-deploy-link'); node.type = 'button';
+        node.onclick = () => { if (entry.resourceId) services.openResource(entry.resourceId); else if (entry.url) services.openUrl?.(entry.url); };
+        return node;
+      };
+      deployActions.replaceChildren(...actionRows(events, state).map(row => {
+        const item = element('li', '', row.type === 'group' ? 'pr-auto-deploy-group' : 'pr-auto-deploy-action');
+        if (row.type === 'group') { item.append(row.resourceId ? link({ label: row.label, resourceId: row.resourceId }) : row.label); return item; }
+        const time = element('time', formatWhen(row.at, 'time')); time.dateTime = new Date(row.at).toISOString(); time.title = formatWhen(row.at, 'full');
+        const text = element('span', row.text, 'pr-auto-deploy-action-text');
+        if (row.links.length) text.append(' ', ...row.links.flatMap((entry, index) => index ? [' · ', link(entry)] : [link(entry)]));
+        item.append(time, pixelGlyphElement(document, row.glyph), text); item.dataset.tone = row.tone; if (row.now) { item.dataset.now = ''; item.setAttribute('aria-current', 'step'); }
+        return item;
+      }));
+    };
     stopDeploy.onclick = async () => {
       stopDeploy.disabled = true;
       try { await services.runAction(AUTO_DEPLOY_OPERATION, { operation: 'set', value: 'stop', sourceResourceId: resource.id, requestId: crypto.randomUUID() }); await readAutoDeploy(); }
@@ -97,10 +122,12 @@ export const githubPullRequestViews: ResourcePluginViews = {
     };
     /** The status line follows the service's record: armed with Stop, then its last word (done or halted) until the next start. */
     async function readAutoDeploy() {
-      const value = await services.runAction(AUTO_DEPLOY_OPERATION, { operation: 'status' }).catch(() => undefined) as { state?: string; line?: string } | undefined;
+      const value = await services.runAction(AUTO_DEPLOY_OPERATION, { operation: 'status' }).catch(() => undefined) as { state?: string; line?: string; events?: ListedAction[] } | undefined;
       if (disposed) return;
-      const state = value?.state ?? 'off';
+      const state = value?.state ?? 'off', events = value?.events ?? [];
       deployStatus.hidden = !value?.line || state === 'stopped'; deployStatus.dataset.state = state;
+      deployToggle.hidden = !events.length; deployToggle.textContent = `${events.length} action${events.length === 1 ? '' : 's'}`;
+      deployToggle.setAttribute('aria-label', `${deployToggle.textContent} of auto deploy`); renderDeployActions(events, state); deployActions.hidden = !actionsOpen || deployStatus.hidden || !events.length;
       deployText.textContent = value?.line ?? ''; stopDeploy.hidden = state !== 'armed';
       autoDeploy.textContent = state === 'armed' ? 'Auto deploy · on' : 'Auto deploy'; autoDeploy.setAttribute('aria-label', autoDeploy.textContent);
     }
@@ -148,7 +175,7 @@ export const githubPullRequestViews: ResourcePluginViews = {
       reworkDone.disabled = true;
       try { await services.clearRework?.(); } catch (failure) { report((failure as Error).message); } finally { reworkDone.disabled = false; }
     };
-    root.append(reviewStatus, reviewLoop.status, deployStatus, rework, error, body); container.append(root);
+    root.append(reviewStatus, reviewLoop.status, deployStatus, deployActions, rework, error, body); container.append(root);
     const header = mountViewHeader(document, services, root, { menu: 'Actions', onRefresh: () => { actionNotice = ''; void load(true); } });
     const autoValidate = element('label', '', 'pr-auto-validate'), autoValidateBox = element('input'); autoValidateBox.type = 'checkbox'; autoValidateBox.checked = autoValidates(resource);
     autoValidate.append(autoValidateBox, document.createTextNode('Auto validate'));

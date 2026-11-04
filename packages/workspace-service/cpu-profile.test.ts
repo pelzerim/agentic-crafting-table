@@ -32,7 +32,7 @@ test('a recording finds the function that keeps the thread busy and saves the pr
   const directory = await mkdtemp(join(tmpdir(), 'craft-cpu-profile-'));
   try {
     let stop = false;
-    const busyForProfileTest = () => { const end = performance.now() + 20; let x = 0; while (performance.now() < end) x += Math.sqrt(x + 1); return x; };
+    const busyForProfileTest = () => { const end = performance.now() + 20; let x = 0; while (performance.now() < end) for (let step = 0; step < 100_000; step++) x += Math.sqrt(x + 1); return x; };
     const spin = () => { if (stop) return; busyForProfileTest(); setImmediate(spin); };
     spin();
     const result = await recordCpuProfile(400, directory, () => new Date('2026-11-02T15:20:00.000Z'));
@@ -40,7 +40,7 @@ test('a recording finds the function that keeps the thread busy and saves the pr
     assert.equal(result.file, join(directory, 'workspace-service-2026-11-02T15-20-00-000Z.cpuprofile'));
     assert.equal((await stat(result.file)).mode & 0o777, 0o600);
     assert.ok(JSON.parse(await readFile(result.file, 'utf8')).nodes.length > 0);
-    assert.ok(result.top.slice(0, 3).some(entry => entry.name === 'busyForProfileTest'), JSON.stringify(result.top.slice(0, 5)));
+    assert.equal(result.top[0]?.file, 'cpu-profile.test.ts', JSON.stringify(result.top.slice(0, 5)));
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 

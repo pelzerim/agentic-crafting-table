@@ -67,6 +67,7 @@ const connectors = [
   { plugin: githubPullRequest, connector: () => githubPullRequestConnector(() => githubFixture().client), actions: { files: { head: 'a'.repeat(40), base: 'b'.repeat(40) }, comments: {}, reviews: {}, reply: { kind: 'discussion', commentId: '5', body: 'Fixture reply', sourceResourceId: 'contract-resource', requestId: '00000000-0000-4000-8000-000000000001' },
     'pr.merge.options': {}, 'pr.mergeReadiness': {}, 'pr.merge': { value: 'SQUASH', pullRequestId: 'PR_kwDOfixture42', expectedHeadOid: 'a'.repeat(40), sourceResourceId: 'contract-resource', requestId: '00000000-0000-4000-8000-000000000002' },
     'pr.showShip.options': {}, 'pr.showShip': { value: 'ship', expectedTitle: 'Make billing plan changes predictable', sourceResourceId: 'contract-resource', requestId: '00000000-0000-4000-8000-000000000003' },
+    'pr.updateBranch': { pullRequestId: 'PR_kwDOfixture42', expectedHeadOid: 'a'.repeat(40), sourceResourceId: 'contract-resource', requestId: '00000000-0000-4000-8000-000000000005' },
     'pr.state.options': {}, 'pr.state': { value: 'close', pullRequestId: 'PR_kwDOfixture42', expectedState: 'open', comment: 'Fixture closing comment', sourceResourceId: 'contract-resource', requestId: '00000000-0000-4000-8000-000000000004' } } },
 ] as const;
 for (const fixture of connectors) resourceConnectorContract(fixture.plugin, { valid: data[fixture.plugin.id], connector: fixture.connector, actions: fixture.actions });

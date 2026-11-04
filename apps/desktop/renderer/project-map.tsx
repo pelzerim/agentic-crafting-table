@@ -47,7 +47,7 @@ import type { ResourcePreview, ResourceRecord } from '../../../src/resource-plug
 import type { TodoEntry } from '../../../src/graph/todos.ts';
 import type { ResourcePluginRegistry } from '../../../src/resource-plugins/registry.ts';
 import { placeProjectLabels } from '../../../src/graph/label-placement.ts';
-import { clampItemViewPosition, clampItemViewSize, expandedItemBounds } from '../../../packages/core/item-views.ts';
+import { clampItemViewPosition, clampItemViewSize, expandedItemBounds, filledItemView } from '../../../packages/core/item-views.ts';
 import type { ItemViewProfile, ItemViewSizes } from '../../../packages/core/item-views.ts';
 import { splitViewBounds } from './item-view-bounds.ts';
 import type { ItemViewBounds, ViewPlace, ViewSize } from './item-view-bounds.ts';
@@ -1277,6 +1277,22 @@ function MapCanvas(props: ProjectMapProps) {
     });
     if (held?.capture.hasPointerCapture(held.pointerId)) held.capture.releasePointerCapture(held.pointerId);
   };
+  // The open view's title bar was pressed without dragging; a double-click right after it fills the map or puts the view back.
+  const titlePress = useRef<{ id: string; at: number }>(undefined);
+  const unfilled = useRef(new Map<string, { position?: { x: number; y: number }; size?: { width: number; height: number } }>());
+  const toggleFilled = (id: string) => {
+    cancelViewGesture(); setMorph(undefined);
+    const view = itemViews.find(view => view.id === id), fill = filledItemView(size, focusLeftInset);
+    if (!view) return;
+    const filled = view.position.x === fill.position.x && view.position.y === fill.position.y && view.data.width === fill.size.width && view.data.height === fill.size.height;
+    const put = (position?: { x: number; y: number }, viewSize?: { width: number; height: number }) => {
+      setViewPositions(old => { const next = { ...old }; if (position) next[id] = position; else delete next[id]; return next; });
+      setViewSizes(old => { const next = { ...old }; if (viewSize) next[id] = viewSize; else delete next[id]; return next; });
+    };
+    if (filled) { const previous = unfilled.current.get(id); unfilled.current.delete(id); put(previous?.position, previous?.size); return; }
+    unfilled.current.set(id, { position: viewPositions[id], size: viewSizes[id] });
+    put(fill.position, fill.size);
+  };
   const resetViewSize = (id: string) => {
     cancelViewGesture(); setMorph(undefined);
     setViewSizes(old => { const next = { ...old }; delete next[id]; return next; });
@@ -1431,6 +1447,8 @@ function MapCanvas(props: ProjectMapProps) {
       const rect = container.current!.getBoundingClientRect(), position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
       props.onUrlDrop({ url, screen: { x: event.clientX - rect.left, y: event.clientY - rect.top }, position, projectId: containingProject(position, projects) });
     }} onDoubleClick={event => {
+    const press = titlePress.current; titlePress.current = undefined;
+    if (focus && press?.id === focus && event.timeStamp - press.at < 500) { event.preventDefault(); event.stopPropagation(); toggleFilled(focus); return; }
     if (focus || !(event.target as Element).classList.contains('react-flow__pane')) return;
     event.preventDefault(); event.stopPropagation();
     const rect = container.current!.getBoundingClientRect(), position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
@@ -1474,6 +1492,7 @@ function MapCanvas(props: ProjectMapProps) {
         viewGesture.current = undefined; setViewInteracting(false);
         if (held.capture.hasPointerCapture(event.pointerId)) held.capture.releasePointerCapture(event.pointerId);
         if (held.moved) { event.preventDefault(); event.stopPropagation(); suppressClick.current = true; }
+        else if (held.mode === 'move') titlePress.current = { id: held.id, at: event.timeStamp };
         return;
       }
       if (!linkDrag) return; event.preventDefault(); event.stopPropagation();

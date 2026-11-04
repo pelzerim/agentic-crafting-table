@@ -40,18 +40,21 @@ function failingChecks(pullRequest: unknown): PullChecks | undefined {
 }
 const oid = z.string().regex(/^[a-f0-9]{40,64}$/i), nodeId = z.string().regex(/^[A-Za-z0-9_=-]{1,200}$/);
 const mergeState = z.object({ data: z.object({ repository: z.object({ mergeCommitAllowed: z.boolean(), squashMergeAllowed: z.boolean(), rebaseMergeAllowed: z.boolean(), viewerDefaultMergeMethod: mergeMethod, autoMergeAllowed: z.boolean().optional(),
-  pullRequest: z.object({ id: nodeId, number: z.number().int().positive(), title: z.string().min(1).max(500), state: z.enum(['OPEN', 'CLOSED', 'MERGED']), isDraft: z.boolean(), merged: z.boolean(), headRefOid: oid, baseRefName: short,
+  pullRequest: z.object({ id: nodeId, number: z.number().int().positive(), title: z.string().min(1).max(500), state: z.enum(['OPEN', 'CLOSED', 'MERGED']), isDraft: z.boolean(), merged: z.boolean(), headRefOid: oid, baseRefName: short, baseRefOid: oid.optional(),
     mergeStateStatus: z.enum(['BEHIND', 'BLOCKED', 'CLEAN', 'DIRTY', 'DRAFT', 'HAS_HOOKS', 'UNKNOWN', 'UNSTABLE']), isMergeQueueEnabled: z.boolean(), isInMergeQueue: z.boolean(),
     reviewDecision: z.enum(['APPROVED', 'CHANGES_REQUESTED', 'REVIEW_REQUIRED']).nullable().optional(), autoMergeRequest,
     commits: z.object({ nodes: z.array(z.object({ commit: z.object({ oid, statusCheckRollup: z.object({ state: short }).nullable() }) }).nullable()).max(1) }).optional() }) }) }) });
 const mergeResult = z.object({ data: z.object({ mergePullRequest: z.object({ pullRequest: z.object({ id: nodeId, merged: z.boolean() }) }) }) });
 const autoMergeResult = (field: string) => z.object({ data: z.object({ [field]: z.object({ pullRequest: z.object({ id: nodeId, autoMergeRequest: z.object({}).passthrough().nullable() }) }) }) });
+const updateResult = z.object({ data: z.object({ updatePullRequestBranch: z.object({ pullRequest: z.object({ id: nodeId, headRefOid: oid }) }) }) });
 const enqueueResult = z.object({ data: z.object({ enqueuePullRequest: z.object({ mergeQueueEntry: z.object({ position: z.number().int().nonnegative(), pullRequest: z.object({ id: nodeId }).nullable() }) }) }) });
 const graphError = z.object({ errors: z.array(z.object({ message: z.string().max(10_000).optional(), type: z.string().max(100).optional() })).min(1).max(100) });
 export type PullMergeState = z.infer<typeof mergeState>['data']['repository'];
 export type PullMergeMethod = z.infer<typeof mergeMethod> | 'QUEUE';
 /** `whenReady` asks GitHub to merge (or queue) once it can: auto-merge. */
 export interface PullMergeRequest { pullRequestId: string; expectedHeadOid: string; method: PullMergeMethod; whenReady?: boolean }
+/** A rebase of the pull request's branch onto its base's current head, refused by GitHub when the head moved. */
+export interface PullBranchUpdate { pullRequestId: string; expectedHeadOid: string }
 export type PullLifecycle = 'open' | 'draft' | 'closed' | 'merged';
 export type PullStateChange = 'ready' | 'draft' | 'close' | 'reopen';
 /** `comment` is posted before a close. */
@@ -108,6 +111,7 @@ export interface MergeQueueState { queued: boolean; position: number | null; che
 export interface GitHubTransport { postComment?(path: string, body: string, signal: AbortSignal): Promise<GitHubResponse>; get(path: string, signal: AbortSignal): Promise<GitHubResponse>; mergeCommit?(identity: PullIdentity, signal: AbortSignal): Promise<GitHubResponse>; mergeQueue?(identity: PullIdentity, signal: AbortSignal): Promise<GitHubResponse>;
   mergeOptions?(identity: PullIdentity, signal: AbortSignal): Promise<GitHubResponse>; merge?(request: PullMergeRequest, signal: AbortSignal): Promise<GitHubResponse>;
   disableAutoMerge?(pullRequestId: string, signal: AbortSignal): Promise<GitHubResponse>;
+  updateBranch?(request: PullBranchUpdate, signal: AbortSignal): Promise<GitHubResponse>;
   setTitle?(identity: PullIdentity, title: string, signal: AbortSignal): Promise<GitHubResponse>;
   setState?(identity: PullIdentity, state: 'open' | 'closed', signal: AbortSignal): Promise<GitHubResponse>;
   setDraft?(pullRequestId: string, draft: boolean, signal: AbortSignal): Promise<GitHubResponse>;
@@ -153,7 +157,7 @@ export function mergeChoices(state: PullMergeState): MergeChoices {
 }
 export type HeadChecks = 'passing' | 'pending' | 'failing' | 'none';
 export interface PullMergeReadiness { pullRequestId: string; number: number; title: string; lifecycle: PullLifecycle; head: string; base: string; mergeStateStatus: PullMergeState['pullRequest']['mergeStateStatus'];
-  reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null; checks: HeadChecks; queued: boolean; queueEnabled: boolean; mergeWhenReady: boolean; method: PullMergeMethod | null }
+  reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null; checks: HeadChecks; queued: boolean; queueEnabled: boolean; mergeWhenReady: boolean; method: PullMergeMethod | null; baseHead?: string }
 const ROLLUP: Record<string, HeadChecks> = { SUCCESS: 'passing', PENDING: 'pending', EXPECTED: 'pending', FAILURE: 'failing', ERROR: 'failing' };
 /** What decides a merge nobody watches: GitHub's merge state, the review decision and the head commit's check rollup
  * (a rollup of another commit counts as pending), whether merge when ready is on, and the method an immediate merge would use. */
@@ -161,7 +165,8 @@ export function mergeReadiness(state: PullMergeState): PullMergeReadiness {
   const pull = state.pullRequest, commit = pull.commits?.nodes[0]?.commit, choices = immediateMergeChoices(state);
   const checks: HeadChecks = !commit ? 'none' : commit.oid.toLowerCase() !== pull.headRefOid.toLowerCase() ? 'pending' : commit.statusCheckRollup ? ROLLUP[commit.statusCheckRollup.state] ?? 'pending' : 'none';
   return { pullRequestId: pull.id, number: pull.number, title: pull.title, lifecycle: pullLifecycle(pull), head: pull.headRefOid.toLowerCase(), base: pull.baseRefName, mergeStateStatus: pull.mergeStateStatus,
-    reviewDecision: pull.reviewDecision ?? null, checks, queued: pull.isInMergeQueue, queueEnabled: pull.isMergeQueueEnabled, mergeWhenReady: Boolean(pull.autoMergeRequest), method: 'options' in choices ? choices.options[0]?.id ?? null : null };
+    reviewDecision: pull.reviewDecision ?? null, checks, queued: pull.isInMergeQueue, queueEnabled: pull.isMergeQueueEnabled, mergeWhenReady: Boolean(pull.autoMergeRequest), method: 'options' in choices ? choices.options[0]?.id ?? null : null,
+    ...(pull.baseRefOid ? { baseHead: pull.baseRefOid.toLowerCase() } : {}) };
 }
 /** A GraphQL reply whose every field is null with errors: GitHub refused, with its first error sanitized. */
 function graphRejection(body: unknown): string | undefined {
@@ -281,6 +286,23 @@ export class GitHubClient {
     if (detail !== undefined) throw new GitHubError('GITHUB_REJECTED', `GitHub declined merge when ready${detail ? `: ${detail}` : '.'}`);
     const enabled = autoMergeResult('enablePullRequestAutoMerge').safeParse(response.body).data?.data.enablePullRequestAutoMerge as { pullRequest: { id: string; autoMergeRequest: object | null } } | undefined;
     if (enabled?.pullRequest.id !== request.pullRequestId || !enabled.pullRequest.autoMergeRequest) throw uncertain();
+  }
+  /** Rebases the branch onto its base's current head: one update write at the head it was read at, never retried. Returns the new head. */
+  async updateBranch(identity: PullIdentity, request: PullBranchUpdate, signal: AbortSignal) {
+    pullKey(identity);
+    if (!this.transport.updateBranch) throw new GitHubError('GITHUB_FORBIDDEN', 'Updating the branch is unavailable for this connection.');
+    signal.throwIfAborted();
+    const uncertain = () => Object.assign(new Error('GitHub may have updated the branch. Check the PR before trying again.'), { outcomeUnknown: true });
+    let response: GitHubResponse;
+    try { response = await this.transport.updateBranch(request, signal); }
+    catch (error) { if ((error as GitHubError).code === 'GITHUB_POST_UNCERTAIN') throw uncertain(); throw error; }
+    checkedWrite(response, this.now());
+    if (response.status !== 200) throw uncertain();
+    const detail = graphRejection(response.body);
+    if (detail !== undefined) throw new GitHubError('GITHUB_REJECTED', `GitHub declined the branch update${detail ? `: ${detail}` : '.'}`);
+    const updated = updateResult.safeParse(response.body).data?.data.updatePullRequestBranch.pullRequest;
+    if (updated?.id !== request.pullRequestId) throw uncertain();
+    return updated.headRefOid.toLowerCase();
   }
   /** Turns merge when ready off: one disable auto-merge write, never retried. */
   async cancelMergeWhenReady(identity: PullIdentity, pullRequestId: string, signal: AbortSignal) {
