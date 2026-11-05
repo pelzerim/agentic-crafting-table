@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Item views
+- **Centred refresh button**: the refresh glyph in an open item's header now sits in the middle of its button instead of 3px to the right. (#20, @MegaMaddin)
+
 ## 0.18.0 — 2026-11-05
 
 ### Auto deploy
