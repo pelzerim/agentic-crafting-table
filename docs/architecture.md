@@ -1756,8 +1756,17 @@ and source anchors. Unchanged snapshots preserve DOM selection and scroll.
 
 PR content opts into Marked HTML parsing before DOMPurify sanitization. Other
 provider views retain their existing inert HTML behavior. Only allowlisted tags
-and browser-safe links survive; images/iframes/scripts/events are removed and
-inputs are disabled checkboxes. Direct related agents remain discoverable without
+and browser-safe links survive; iframes/scripts/events are removed and
+inputs are disabled checkboxes. GitHub attachment images are the one exception:
+`renderMarkdown`'s `images` option keeps them as `img` elements whose address moves
+from `src` to `data-image-src` inside DOMPurify's inert document, so the renderer
+never requests them. Opening a comment or the description runs the person-only,
+read-only `image` connector action, which reads that body once with
+`application/vnd.github.html+json` (never revalidated, since its signed links expire
+in minutes), takes the signed copy matching the attachment id from
+`private-user-images.githubusercontent.com`, fetches it without credentials or
+redirects (`github-media.ts`, `githubImage`) and returns a `data:` URL kept in a
+bounded in-memory map. Other images are dropped or stay links as before. Direct related agents remain discoverable without
 a context sidebar. Existing comment DOM nodes/drafts survive unchanged polling.
 Seen receipts are resource-scoped hashes in a separate bounded SQLite cache slot,
 not GitHub read/resolution state; changed body/review revisions invalidate receipts.

@@ -5,6 +5,7 @@ import { GitHubError, INBOX_PATHS, isActivityPath } from './github.ts';
 import { pullKey } from './github.ts';
 import type { WorkflowTransport } from './github-workflow.ts';
 import { requestBudget, validators } from './request-budget.ts';
+import { IMAGE_BYTES, IMAGE_TYPES, isSignedImageUrl } from './github-media.ts';
 import type { RequestBudget } from './request-budget.ts';
 import type { GitHubTransport, PullBranchUpdate, PullIdentity, PullMergeRequest } from './github.ts';
 
@@ -95,7 +96,7 @@ function observeLimits(budget: RequestBudget, resource: string, response: Respon
 }
 function transport(login: string, credentials: GitHubCredentials = githubCredentials(), fetcher: typeof fetch = fetch, workflows = false, rollouts = false, comments = false, approvals = false, merges = false, titles = false) {
   if (!LOGIN.test(login)) throw new GitHubError('GITHUB_AUTH', 'Select a valid GitHub account.');
-  return { async request(path: string, signal: AbortSignal, method: 'GET' | 'POST' | 'PATCH' = 'GET', payload: object = { body: '/review' }) {
+  return { async request(path: string, signal: AbortSignal, method: 'GET' | 'POST' | 'PATCH' = 'GET', payload: object = { body: '/review' }, html = false) {
     // Only relative REST paths, with no encoded traversal, fragments or authority.
     const resourcePath = /^\/(?:user|repos\/[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9_.-]+\/(?:pulls|issues)\/[1-9]\d*(?:\/(?:files|comments|reviews|commits))?)(?:\?per_page=100&page=[1-9]\d*)?$/.test(path);
     const commitRunsPath = /^\/repos\/[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9_.-]+\/actions\/runs\?head_sha=[a-f0-9]{40,64}&per_page=100$/i.test(path);
@@ -114,7 +115,10 @@ function transport(login: string, credentials: GitHubCredentials = githubCredent
     const merge = merges && method === 'POST' && path === '/graphql' ? mergeDocument(payload) : undefined;
     const queryPath = method === 'POST' && path === '/graphql' && ([MERGE_QUEUE_QUERY, MERGE_COMMIT_QUERY].includes((payload as { query?: string }).query ?? '') || merge === 'read');
     const read = method === 'GET' || queryPath;
-    if ((method === 'PATCH' ? !editPath : method === 'POST' ? !writePath && !commentPath && !queryPath && !approvalPath && merge !== 'write' : !resourcePath && !commitRunsPath && !inboxPath && !assignedPath && !workflowPath && !rolloutPath) || path.split(/[/?]/).some(part => part === '.' || part === '..')) throw new GitHubError('GITHUB_INVALID_PATH', 'Unsupported GitHub API path.');
+    /** Rendered HTML only of the description, one comment or one review; its signed image links expire, so it is never cached. */
+    const htmlPath = /^\/repos\/[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9_.-]+\/(?:pulls\/[1-9]\d*(?:\/reviews\/[1-9]\d*)?|(?:issues|pulls)\/comments\/[1-9]\d*)$/.test(path);
+    if (html && (method !== 'GET' || !htmlPath || path.split('/').some(part => part === '.' || part === '..'))) throw new GitHubError('GITHUB_INVALID_PATH', 'Unsupported GitHub API path.');
+    if (!html && (method === 'PATCH' ? !editPath : method === 'POST' ? !writePath && !commentPath && !queryPath && !approvalPath && merge !== 'write' : !resourcePath && !commitRunsPath && !inboxPath && !assignedPath && !workflowPath && !rolloutPath) || path.split(/[/?]/).some(part => part === '.' || part === '..')) throw new GitHubError('GITHUB_INVALID_PATH', 'Unsupported GitHub API path.');
     // Every caller of this account shares one budget; writes are counted, never throttled.
     const budget = requestBudget('github', login), limited = path === '/graphql' ? 'graphql' : inboxPath ? 'search' : 'core';
     const release = await budget.acquire(limited, signal, !read);
@@ -122,11 +126,11 @@ function transport(login: string, credentials: GitHubCredentials = githubCredent
       const token = await credentials.token(login, signal); signal.throwIfAborted();
       // Validators are per exact path, so each page of a collection is revalidated on
       // its own; a 304 restores that page's body and Link header, never later pages.
-      const cached = method === 'GET' ? validators.get('github', login, path, Date.now()) : undefined;
+      const cached = method === 'GET' && !html ? validators.get('github', login, path, Date.now()) : undefined;
       const conditional: Record<string, string> = cached?.etag ? { 'If-None-Match': cached.etag } : cached?.lastModified ? { 'If-Modified-Since': cached.lastModified } : {};
       const timeout = AbortSignal.timeout(read ? GITHUB_TIMEOUTS.read : GITHUB_TIMEOUTS.write), combined = AbortSignal.any([signal, timeout]);
       let response: Response;
-      try { response = await fetcher(`https://api.github.com${path}`, { method, ...(method !== 'GET' ? { body: JSON.stringify(payload) } : {}), redirect: 'error', signal: combined, headers: { ...(method !== 'GET' ? { 'Content-Type': 'application/json' } : {}), ...conditional, Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2026-03-10', 'User-Agent': 'Agentic-Crafting-Table' } }); }
+      try { response = await fetcher(`https://api.github.com${path}`, { method, ...(method !== 'GET' ? { body: JSON.stringify(payload) } : {}), redirect: 'error', signal: combined, headers: { ...(method !== 'GET' ? { 'Content-Type': 'application/json' } : {}), ...conditional, Authorization: `Bearer ${token}`, Accept: html ? 'application/vnd.github.html+json' : 'application/vnd.github+json', 'X-GitHub-Api-Version': '2026-03-10', 'User-Agent': 'Agentic-Crafting-Table' } }); }
       catch { if (!read) throw new GitHubError('GITHUB_POST_UNCERTAIN', 'The comment request was interrupted. Reconcile it before continuing.'); stopIfAborted(signal); throw new GitHubError('GITHUB_NETWORK', timeout.aborted ? SLOW : 'Could not reach GitHub. Check the connection and try again.'); }
       observeLimits(budget, limited, response);
       let size = 0; const chunks: Uint8Array[] = [], reader = response.body?.getReader();
@@ -144,7 +148,7 @@ function transport(login: string, credentials: GitHubCredentials = githubCredent
         let body: unknown;
         try { body = size ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : null; }
         catch { throw new GitHubError('GITHUB_INVALID_RESPONSE', 'GitHub returned invalid content.'); }
-        if (method === 'GET' && response.status === 200) validators.set('github', login, path, { etag: response.headers.get('etag') ?? undefined, lastModified: response.headers.get('last-modified') ?? undefined, link: response.headers.get('link') ?? undefined, body }, Date.now());
+        if (method === 'GET' && !html && response.status === 200) validators.set('github', login, path, { etag: response.headers.get('etag') ?? undefined, lastModified: response.headers.get('last-modified') ?? undefined, link: response.headers.get('link') ?? undefined, body }, Date.now());
         return { status: response.status, headers: response.headers, body };
       } catch (error) {
         if (!read) throw new GitHubError('GITHUB_POST_UNCERTAIN', 'The comment response was interrupted. Reconcile it before continuing.');
@@ -224,5 +228,33 @@ export function githubMergeTransport(login: string, credentials: GitHubCredentia
   const api = transport(login, credentials, fetcher, false, false, true, false, true, true);
   return { get: (path, signal) => api.request(path, signal), mergeCommit: (identity, signal) => api.mergeCommit(identity, signal), mergeQueue: (identity, signal) => api.mergeQueue(identity, signal), postComment: (path, body, signal) => api.request(path, signal, 'POST', { body }),
     mergeOptions: (identity, signal) => api.mergeOptions(identity, signal), merge: (request, signal) => api.merge(request, signal), disableAutoMerge: (pullRequestId, signal) => api.disableAutoMerge(pullRequestId, signal), updateBranch: (request, signal) => api.updateBranch(request, signal), setTitle: (identity, title, signal) => api.setTitle(identity, title, signal),
-    setState: (identity, state, signal) => api.setState(identity, state, signal), setDraft: (pullRequestId, draft, signal) => api.setDraft(pullRequestId, draft, signal) };
+    setState: (identity, state, signal) => api.setState(identity, state, signal), setDraft: (pullRequestId, draft, signal) => api.setDraft(pullRequestId, draft, signal),
+    html: (path, signal) => api.request(path, signal, 'GET', undefined, true), image: (url, signal) => githubImage(url, signal, fetcher) };
+}
+
+/** A signed attachment copy from a GitHub image host: no token or cookie, no redirect, a raster type and a size bound. */
+export async function githubImage(url: string, signal: AbortSignal, fetcher: typeof fetch = fetch): Promise<{ type: string; bytes: Uint8Array }> {
+  if (!isSignedImageUrl(url)) throw new GitHubError('GITHUB_INVALID_PATH', 'Unsupported image address.');
+  const timeout = AbortSignal.timeout(GITHUB_TIMEOUTS.read), combined = AbortSignal.any([signal, timeout]);
+  let response: Response;
+  try { response = await fetcher(url, { method: 'GET', redirect: 'error', credentials: 'omit', signal: combined, headers: { 'User-Agent': 'Agentic-Crafting-Table' } }); }
+  catch { stopIfAborted(signal); throw new GitHubError('GITHUB_NETWORK', timeout.aborted ? SLOW : 'Could not load the image from GitHub. Try again.'); }
+  const reader = response.body?.getReader();
+  try {
+    if (response.status !== 200) throw new GitHubError('GITHUB_UNAVAILABLE', 'GitHub no longer serves this image. Refresh and try again.');
+    const type = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+    if (!IMAGE_TYPES.includes(type)) throw new GitHubError('GITHUB_INVALID_RESPONSE', 'This attachment is not an image that can be shown inline.');
+    let size = 0; const chunks: Uint8Array[] = [];
+    if (reader) while (true) {
+      const chunk = await reader.read(); if (chunk.done) break;
+      size += chunk.value.byteLength; if (size > IMAGE_BYTES) throw new GitHubError('GITHUB_CONTENT_LIMIT', 'This image is too large to show inline.');
+      chunks.push(chunk.value);
+    }
+    combined.throwIfAborted();
+    return { type, bytes: new Uint8Array(Buffer.concat(chunks)) };
+  } catch (error) {
+    stopIfAborted(signal);
+    if (error instanceof GitHubError) throw error;
+    throw new GitHubError('GITHUB_NETWORK', timeout.aborted ? SLOW : 'The image download was interrupted. Try again.');
+  } finally { await reader?.cancel().catch(() => {}); }
 }

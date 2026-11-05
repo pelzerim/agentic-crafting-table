@@ -8,6 +8,9 @@ their pull request and author.
 ### Map
 - **Readable location trail**: the Project / Item trail above an open item now sits on a solid plate with the cards' pixel corners, so cards scrolling under it no longer show through its text. (#16, @MegaMaddin)
 
+### Pull requests
+- **Inline images**: screenshots and other images attached on GitHub now show inside the description and comments of a pull request once you open them, instead of disappearing. Other images stay links. (#17, @MegaMaddin)
+
 ## 0.17.0 — 2026-11-04
 
 ### Auto deploy
