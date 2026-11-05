@@ -470,6 +470,11 @@ button.view-chip:focus-visible {
   border: 1px solid var(--act-line-control);
 }
 
+/** `.map-card button` pads every button on a card; a glyph button needs its whole box to centre the glyph. */
+.view-header :is(.view-refresh, .view-more:not(.view-menu)) {
+  padding: 0;
+}
+
 .view-open[hidden],
 .view-refresh[hidden],
 .view-more[hidden] {
