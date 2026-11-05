@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { findCodexExecutable } from './codex-executable.ts';
@@ -8,7 +8,7 @@ import { findCodexExecutable } from './codex-executable.ts';
 const posixOnly = { skip: process.platform === 'win32' };
 const TRIPLE = 'x86_64-pc-windows-msvc';
 async function folder(run: (root: string) => Promise<void>) {
-  const root = await mkdtemp(join(tmpdir(), 'act-codex-exe-'));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'act-codex-exe-')));
   try { await run(root); } finally { await rm(root, { recursive: true, force: true }); }
 }
 async function file(path: string, text = '', mode = 0o755) { await mkdir(join(path, '..'), { recursive: true }); await writeFile(path, text, { mode }); }
