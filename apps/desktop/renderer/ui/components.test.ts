@@ -38,3 +38,11 @@ test('busy buttons show a stepped pixel spinner that stops under reduced motion;
   assert.match(components, /@media \(prefers-reduced-motion: reduce\)\s*\{[^}]*\[aria-busy=true\]::before\s*\{[^}]*animation: none/);
   assert.doesNotMatch(base, /:disabled\s*\{[^}]*cursor: wait/);
 });
+
+test('the map trail sits on an opaque plate so cards scrolling under it never show through', () => {
+  const trail = css('styles/cards.css').match(/(?:^|\})\s*\.map-trail\s*\{([^}]*)\}/)?.[1] ?? '';
+  assert.match(trail, /background:\s*var\(--act-surface\)/);
+  assert.match(trail, /border:\s*1px solid var\(--act-line-control\)/);
+  assert.match(trail, /border-image:\s*var\(--pixel-panel-border\) 9 \/ 9px \/ 0 stretch/, 'pixel corners like the cards');
+  assert.match(trail, /clip-path:\s*var\(--act-shape-panel\)/, 'pixel corners like the cards');
+});

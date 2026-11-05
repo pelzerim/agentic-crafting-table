@@ -1195,8 +1195,15 @@
   gap: 9px;
   font-size: var(--act-fs-ui);
   z-index: 110;
-  left: 22px;
-  top: 24px;
+  /* An opaque plate: cards scrolling under the trail must not show through its text. The
+     offsets take back the padding and border, so the text stays where it was. */
+  left: 5px;
+  top: 19px;
+  padding: 4px 16px;
+  background: var(--act-surface);
+  border: 1px solid var(--act-line-control);
+  border-image: var(--pixel-panel-border) 9 / 9px / 0 stretch;
+  clip-path: var(--act-shape-panel);
   max-width: calc(100% - 384px);
   overflow: hidden;
   white-space: nowrap;
