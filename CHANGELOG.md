@@ -3,9 +3,10 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
-## Unreleased
+## 0.18.1 — 2026-11-05
 
 ### Item views
+- **No crash on a brand-new item**: an open item whose details have not reached the window yet, such as a code review just started, is shown once they arrive; before, the window crashed with “Cannot read properties of undefined (reading 'key')”.
 - **Centred refresh button**: the refresh glyph in an open item's header now sits in the middle of its button instead of 3px to the right. (#20, @MegaMaddin)
 
 ## 0.18.0 — 2026-11-05

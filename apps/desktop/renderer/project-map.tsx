@@ -852,16 +852,16 @@ function MapCanvas(props: ProjectMapProps) {
   // The open view keeps the screen spot it opened at while the board pans or zooms under it.
   const openAnchor = useMemo(() => { const box = focus ? boxes.find(box => box.item.id === focus) : undefined; return box && { x: box.x * viewport.zoom + viewport.x, y: box.y * viewport.zoom + viewport.y }; }, [focus]);
   // Keep visited views mounted so moving/closing/reopening does not replace a PTY view.
-  const itemViews = nodes.filter(node => visited.has(node.id) && !node.data.projectLabel).map(node => {
-    const box = boxes.find(box => box.item.id === node.id)!;
+  // A visited item whose type is not known yet (its record has not arrived) has no view to place; it is shown once it has one.
+  const itemViews = nodes.flatMap(node => { const box = visited.has(node.id) && !node.data.projectLabel ? boxes.find(box => box.item.id === node.id) : undefined; return box?.view ? [{ node, box, view: box.view }] : []; }).map(({ node, box, view }) => {
     const open = node.id === focus, returning = node.id === closing;
-    const bounds = expandedItemBounds(box.view!, props.itemViews ?? {}, size,
+    const bounds = expandedItemBounds(view, props.itemViews ?? {}, size,
       open && openAnchor ? openAnchor : { x: box.x * viewport.zoom + viewport.x, y: box.y * viewport.zoom + viewport.y }, focusLeftInset);
-    if (viewSizes[node.id]) Object.assign(bounds, clampItemViewSize(viewSizes[node.id], box.view!, size));
+    if (viewSizes[node.id]) Object.assign(bounds, clampItemViewSize(viewSizes[node.id], view, size));
     const position = clampItemViewPosition(viewPositions[node.id] ?? { x: bounds.x - bounds.width / 2, y: bounds.y - bounds.height / 2 }, bounds, size);
     const origin = { x: (node.position.x - node.width! / 2) * viewport.zoom + viewport.x,
       y: (node.position.y - node.height! / 2) * viewport.zoom + viewport.y };
-    return { id: node.id, profile: box.view!, hidden: !open && !returning, position: returning ? origin : position,
+    return { id: node.id, profile: view, hidden: !open && !returning, position: returning ? origin : position,
       data: reuseCardData(previousViews.current.get(node.id), { ...node.data, viewSurface: true, viewOpen: false, visited: true, expanded: open, resizable: false, needsMe: open && needsMe.has(node.id), keep: open && props.keep?.id === node.id ? props.keep.tier : undefined,
         compact: open ? false : node.data.compact, location: open ? place : undefined, width: returning ? node.data.width : bounds.width,
         height: returning ? node.data.height : bounds.height, scale: returning ? viewport.zoom : 1,
