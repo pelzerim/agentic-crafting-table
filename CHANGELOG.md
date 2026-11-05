@@ -22,6 +22,9 @@ their pull request and author.
 ### Terminals
 - **Less disk writing**: a streaming session no longer rewrites a copy of its whole recent output to disk five times a second; the recording database already has it. (#18, @timohuovinen)
 
+### Platform
+- **Linux**: A maximized window at 125% text scaling no longer shows a stray row of pixels under the menu bar. (#15, @timohuovinen)
+
 ## 0.17.0 — 2026-11-04
 
 ### Auto deploy

@@ -9,7 +9,7 @@ import { pluginDiscoverySchema } from '../../src/resource-plugins/url-input.ts';
 import { createKeepAwake } from './keep-awake.ts';
 import { ScreenReaderWatch, assistiveTechnologyOverride, voiceOverRunning } from './assistive-technology.ts';
 import { NEIGHBORHOOD_STYLE_PARAMETER, neighborhoodStylePin } from './neighborhood-style-pin.ts';
-import { COLOR_SCHEME_PARAMETER, WINDOW_BACKGROUND, themeSource } from './appearance.ts';
+import { COLOR_SCHEME_PARAMETER, WINDOW_BACKGROUND, fillWindowBackground, themeSource } from './appearance.ts';
 import { settingsWriteSchema } from '../../packages/core/settings.ts';
 import { providerAccountsSchema, providerRefreshSchema, providerSelectSchema } from '../../packages/core/connections.ts';
 import type { Appearance, SettingsSnapshot } from '../../packages/core/settings.ts';
@@ -210,7 +210,7 @@ async function main() {
   const applyAppearance = (appearance: Appearance) => { nativeTheme.themeSource = themeSource(Boolean(testDirectory), process.env.ACT_TEST_APPEARANCE, appearance); };
   applyAppearance('system');
   nativeTheme.on('updated', () => {
-    for (const window of BrowserWindow.getAllWindows()) { window.setBackgroundColor(WINDOW_BACKGROUND[colorScheme()]); window.webContents.send('app:color-scheme', colorScheme()); }
+    for (const window of BrowserWindow.getAllWindows()) { fillWindowBackground(window, colorScheme()); window.webContents.send('app:color-scheme', colorScheme()); }
   });
   let settingsRevision = -1;
   const applySettings = (snapshot: SettingsSnapshot) => {
@@ -403,6 +403,7 @@ async function main() {
       backgroundColor: WINDOW_BACKGROUND[colorScheme()], title: 'Agentic Crafting Table',
       webPreferences: { preload: join(app.getAppPath(), 'dist', 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: !backgroundTest },
     });
+    fillWindowBackground(window, colorScheme());
     // maximize() reveals a hidden window, so background tests retain normal bounds.
     if (placement.state.maximized && !backgroundTest) window.maximize();
     window.on('focus', () => window.webContents.send('app:focus', true));
