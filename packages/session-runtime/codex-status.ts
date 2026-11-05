@@ -20,14 +20,20 @@ export function codexStatus(event: { method: string; params?: unknown }, nativeI
   if (!parsed.success || parsed.data.threadId !== nativeId) return;
   return nativeStatus(parsed.data.status);
 }
-const startedThread = z.object({ thread: z.object({ id: z.string().uuid(), forkedFromId: z.string().nullish(), parentThreadId: z.string().nullish(), source: z.unknown() }) });
-/** The conversation Codex's terminal moved to. A subagent's thread also starts on this server, and is noted so that its status is not read as a resume. */
+const nativeThread = z.object({ id: z.string().uuid(), forkedFromId: z.string().nullish(), parentThreadId: z.string().nullish(), source: z.unknown(), threadSource: z.string().nullish() });
+const startedThread = z.object({ thread: nativeThread });
+/** A thread Codex started for its own work (a sub-agent, a review, a compaction), which the terminal never shows as its conversation. */
+export const isHelperThread = (thread: z.infer<typeof nativeThread>) => Boolean(thread.parentThreadId) || (thread.source !== null && typeof thread.source === 'object') || thread.threadSource === 'subagent';
+/** The thread `thread/read` returns, or undefined for an answer that is not one. */
+export const readThread = (response: unknown) => { const parsed = startedThread.safeParse(response); return parsed.success ? parsed.data.thread : undefined; };
+/** The conversation Codex's terminal moved to. A subagent's thread also starts on this server, and is noted so that its status is not read as a resume.
+ * A status from a thread not seen before is only a candidate `resume`: a sub-agent's status can arrive without, or before, its `thread/started`. */
 export function codexSwitch(event: { method: string; params?: unknown }, nativeId: string, ignored: Set<string>): ConversationSwitch | undefined {
   if (event.method === 'thread/started') {
     const parsed = startedThread.safeParse(event.params);
     if (!parsed.success || parsed.data.thread.id === nativeId) return;
-    const { id, forkedFromId, parentThreadId, source } = parsed.data.thread;
-    if (parentThreadId || (source !== null && typeof source === 'object')) { ignored.add(id); return; }
+    const { id, forkedFromId } = parsed.data.thread;
+    if (isHelperThread(parsed.data.thread)) { ignored.add(id); return; }
     return { kind: forkedFromId ? 'fork' : 'new', nativeSessionId: id };
   }
   if (event.method !== 'thread/status/changed') return;

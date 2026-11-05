@@ -1949,7 +1949,10 @@ or replaced process cannot receive them. Show queued versus Claude-acknowledged
 status, deduplicate pending requests and exact retries, and keep failed/unconfirmed
 delivery retryable at the next prompt. The shared MCP operation uses the same
 validation and queue as the UI. Unsupported providers expose an unavailable action
-with a reason; reconnect does not implicitly resend the guide.
+with a reason; reconnect does not implicitly resend the guide. A running Codex
+conversation takes the current guide and project reference at once through the table's
+private Codex server, as developer context and reference data like at launch, without a
+model turn; the menu says so and shows that it was added.
 
 **AGENT-06 — Lifetime.** Selection and zooming do not terminate sessions. Archiving a Claude session or its map item stops its running or starting process while retaining history and resume identity. Archiving a project also stops its Claude sessions; restoring never starts a process automatically.
 On macOS, closing the app window (window button or Cmd+W) only hides it: no

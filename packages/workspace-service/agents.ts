@@ -12,6 +12,7 @@ import { canonical } from '../core/control.ts';
 import { readAgentPlan } from '../session-runtime/agent-plan.ts';
 import type { HostedLaunch } from '../session-runtime/agent-plan.ts';
 import { agentProvider } from './agent-providers.ts';
+import { codexGuide } from '../session-runtime/codex-launch.ts';
 import type { SessionCoordinator } from './sessions.ts';
 import type { AgentContextCoordinator } from './agent-context.ts';
 import type { SqliteStore } from './sqlite-store.ts';
@@ -116,7 +117,8 @@ export class AgentCoordinator {
       if (args.operation === 'queue') throw new Error(message);
       return { state: 'unavailable' as const, message };
     };
-    if (!resource || resource.data.provider !== 'claude') return unavailable('Adding context to a running session is currently available for Claude.');
+    if (resource?.data.provider === 'codex') return this.injectCodexContext(nodeId, args, resource, unavailable);
+    if (!resource || resource.data.provider !== 'claude') return unavailable('Adding context to a running session is available for Claude and Codex.');
     if (resource.data.sessionId !== args.sessionId) return unavailable('This session has changed. Reopen the item and try again.');
     if (typeof resource.data.launchDirectory !== 'string' || !resource.data.nativeSessionId) return unavailable('Resume this conversation through the table to connect its workbench hooks.');
     const current = await this.sessions.runtime.call<SessionSnapshot>('sessions.read', { sessionId: args.sessionId, after: Number.MAX_SAFE_INTEGER });
@@ -127,6 +129,19 @@ export class AgentCoordinator {
     if (fresh?.data.sessionId !== args.sessionId || fresh.data.nativeSessionId !== resource.data.nativeSessionId || fresh.data.provider !== 'claude') return unavailable('This session has changed. Reopen the item and try again.');
     if (args.operation === 'status') return this.context.guideStatus(nodeId, args.sessionId);
     return this.context.queueGuide(nodeId, args.sessionId, z.string().uuid().parse(args.requestId));
+  }
+  /** Codex takes the guide into the conversation at once, as at launch: developer context and reference data, with no model turn. */
+  private async injectCodexContext(nodeId: string, args: { operation: 'queue' | 'status'; sessionId: string }, resource: { id: string; data: Record<string, unknown> }, unavailable: (message: string) => { state: 'unavailable'; message: string }) {
+    if (resource.data.sessionId !== args.sessionId) return unavailable('This session has changed. Reopen the item and try again.');
+    if (typeof resource.data.nativeSessionId !== 'string') return unavailable('Resume this conversation through the table to connect it.');
+    const current = await this.sessions.runtime.call<SessionSnapshot>('sessions.read', { sessionId: args.sessionId, after: Number.MAX_SAFE_INTEGER });
+    if (current.session.state !== 'running' || current.session.stopRequestedAt || current.session.readOnly || !current.session.native) return unavailable('Resume the session before adding workbench context.');
+    if (args.operation === 'status') return { state: 'none' as const, message: 'Adds the workbench guide and current project context to this conversation now, without starting a turn. Codex’s own instructions stay intact.' };
+    const state = await this.control.read(), node = state.nodes.find(candidate => candidate.id === nodeId);
+    const project = state.nodes.find(candidate => candidate.id === node?.projectId && !candidate.resourceId);
+    const guide = codexGuide(project && { id: project.id, title: project.title, summary: project.summary }, { agentNodeId: nodeId, workspaceId: String(resource.data.workspaceId) });
+    await this.sessions.runtime.call('sessions.inject', { sessionId: args.sessionId, instructions: guide.systemPrompt, context: guide.referenceContext });
+    return { state: 'acknowledged' as const, message: 'Added to the conversation. Codex reads it with your next prompt.' };
   }
   private async skillDirectory(projectId: string, requested?: string) {
     const state = await this.control.read(), project = state.nodes.find(node => node.id === projectId && !node.resourceId && !node.projectId);

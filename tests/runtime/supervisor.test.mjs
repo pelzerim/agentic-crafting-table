@@ -40,7 +40,7 @@ async function cleanup(service, directory) {
 test('a resumed Codex conversation takes its status from the response and keeps one copy of its guide', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'craft-codex-seeded-')), service = await start(directory, { CODEX_FIXTURE_QUIET_RESUME: '1' });
   const fixture = resolve('tests/fixtures/native-codex.mjs');
-  const launch = { ...request(directory, 'codex'), args: [fixture], native: { provider: 'codex', model: 'fixture', instructions: 'Trusted test guide', context: 'Untrusted project data', config: {}, serverArguments: [fixture] } };
+  const launch = { ...request(directory, 'codex'), args: [fixture], native: { provider: 'codex', model: 'fixture', instructions: 'Trusted test guide', context: 'Untrusted project data', config: { model_reasoning_effort: 'high' }, serverArguments: [fixture] } };
   try {
     await service.client.call('sessions.launch', launch);
     const started = await output(service.client, 'codex', 'NATIVE_READY:'), nativeId = started.session.native.nativeSessionId;
@@ -51,7 +51,45 @@ test('a resumed Codex conversation takes its status from the response and keeps 
     await service.client.call('sessions.launch', resumed);
     const ready = await output(service.client, 'resumed', 'NATIVE_READY:');
     assert.equal(ready.session.native.status, 'idle', 'no notification is needed'); assert.ok(ready.session.native.readyAt);
+    // The terminal's own resume would otherwise switch the conversation to the configured default model.
+    await output(service.client, 'codex', 'NATIVE_MODEL:fixture:model_reasoning_effort="high"');
+    await output(service.client, 'resumed', 'NATIVE_MODEL:fixture:model_reasoning_effort="high"');
     assert.equal(JSON.parse(await readFile(join(directory, 'native-codex.json'), 'utf8')).injections, 1);
+  } finally { service.process.kill('SIGKILL'); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('a Codex sub-agent working is not read as the terminal moving to another conversation; /resume is', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-codex-subagent-')), service = await start(directory);
+  const fixture = resolve('tests/fixtures/native-codex.mjs');
+  const launch = { ...request(directory, 'codex'), args: [fixture], native: { provider: 'codex', model: 'fixture', instructions: 'Trusted test guide', context: 'Untrusted project data', config: {}, serverArguments: [fixture] } };
+  try {
+    await service.client.call('sessions.launch', launch);
+    const started = await output(service.client, 'codex', 'NATIVE_READY:'), nativeId = started.session.native.nativeSessionId;
+    await service.client.call('sessions.input', { sessionId: 'codex', data: 'subagent-status\r' });
+    await output(service.client, 'codex', 'OTHER_THREAD:');
+    await new Promise(resolve => setTimeout(resolve, 500));
+    let session = (await service.client.call('sessions.read', { sessionId: 'codex', after: Number.MAX_SAFE_INTEGER })).session;
+    assert.equal(session.native.switched, undefined); assert.equal(session.native.nativeSessionId, nativeId);
+    await service.client.call('sessions.input', { sessionId: 'codex', data: 'resume-command\r' });
+    const text = (await until(async () => { const value = (await service.client.call('sessions.attach', { sessionId: 'codex' })).chunks.map(chunk => chunk.data).join(''); return value.split('OTHER_THREAD:').length > 2 && value; }));
+    const resumed = text.split('OTHER_THREAD:')[2].slice(0, 36);
+    session = await until(async () => { const value = (await service.client.call('sessions.read', { sessionId: 'codex', after: Number.MAX_SAFE_INTEGER })).session; return value.native.switched && value; });
+    assert.deepEqual(session.native.switched, { kind: 'resume', nativeSessionId: resumed });
+  } finally { service.process.kill('SIGKILL'); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('the guide can be added to a running Codex conversation, without a model turn', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-codex-inject-')), service = await start(directory);
+  const fixture = resolve('tests/fixtures/native-codex.mjs');
+  const launch = { ...request(directory, 'codex'), args: [fixture], native: { provider: 'codex', model: 'fixture', instructions: 'Trusted test guide', context: 'Untrusted project data', config: {}, serverArguments: [fixture] } };
+  try {
+    await service.client.call('sessions.launch', launch);
+    const started = await output(service.client, 'codex', 'NATIVE_READY:'), nativeId = started.session.native.nativeSessionId;
+    await assert.rejects(service.client.call('sessions.inject', { sessionId: 'missing', instructions: 'x', context: 'y' }), /no live Codex conversation/);
+    await service.client.call('sessions.inject', { sessionId: 'codex', instructions: 'Updated guide', context: 'Current project data' });
+    const saved = JSON.parse(await readFile(join(directory, 'native-codex.json'), 'utf8'));
+    assert.equal(saved.injections, 2); assert.equal(saved.contextThread, nativeId);
+    assert.deepEqual(saved.context.map(item => [item.role, item.content[0].text]), [['developer', 'Updated guide'], ['user', 'Current project data']]);
   } finally { service.process.kill('SIGKILL'); await rm(directory, { recursive: true, force: true }); }
 });
 
@@ -114,8 +152,10 @@ test('native supervisor deduplicates launches and preserves ordered PTY streams 
     assert.equal((await service.client.call('sessions.list')).length, 1, 'internal reconciliation retains dismissed identity');
     assert.equal((await service.client.call('sessions.launch', launch)).session.state, 'exited');
     await assert.rejects(service.client.call('sessions.input', { sessionId: launch.sessionId, data: 'no' }), /no live process/);
+    // A cached tail as older versions wrote it; deleting the recording also removes this file.
     const cachedPath = join(directory, 'scrollback', createHash('sha256').update(launch.sessionId).digest('hex') + '.json');
-    const cached = await readFile(cachedPath);
+    const cached = JSON.stringify({ chunks: [{ sequence: 1, data: 'READY:' }], sequence: 1, truncated: false });
+    await writeFile(cachedPath, cached);
     await assert.rejects(service.client.call('recordings.delete', { sessionId: launch.sessionId }), /confirmation/);
     const deleted = await service.client.call('recordings.delete', { sessionId: launch.sessionId, confirmation: 'delete-recording' });
     assert.ok(deleted.session.recordingDeletedAt); assert.equal(deleted.cleanupPending, false);
@@ -197,15 +237,15 @@ test('a tail read of a large recording starts at a line boundary and pages on wi
   } finally { await cleanup(service, directory); }
 });
 
-test('cache write failures keep the PTY alive and replay newer durable output after restart', async () => {
+test('a cached tail left by an older version cannot hide newer durable output after restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'craft-cache-failure-')); let service = await start(directory), childPid;
   const id = 'cache-session', cachedPath = join(directory, 'scrollback', createHash('sha256').update(id).digest('hex') + '.json');
   try {
     const launch = request(directory, id);
     childPid = (await service.client.call('sessions.launch', launch)).session.pid;
-    await output(service.client, id, 'READY:'); await until(() => existsSync(cachedPath));
-    const stale = await readFile(cachedPath, 'utf8');
-    await mkdir(cachedPath + '.tmp'); // EISDIR in this private fixture, not a disk-fill test.
+    await output(service.client, id, 'READY:');
+    const stale = JSON.stringify({ chunks: [{ sequence: 1, data: 'STALE_CACHED_TAIL' }], sequence: 1, truncated: false });
+    await writeFile(cachedPath, stale);
     const db = new DatabaseSync(join(directory, 'supervisor.sqlite'), { readOnly: true });
     try {
       for (const marker of ['CACHE_FAILURE_FIRST', 'CACHE_FAILURE_SECOND']) {
@@ -215,11 +255,9 @@ test('cache write failures keep the PTY alive and replay newer durable output af
         assert.equal(service.process.exitCode, null);
       }
     } finally { db.close(); }
-    assert.equal(service.diagnostics().split('Terminal tail cache unavailable').length - 1, 1, 'one diagnostic per runtime, not per output batch');
-    assert.ok(!service.diagnostics().includes(directory), 'diagnostic must not disclose private paths');
     await service.client.call('sessions.stop', { sessionId: id });
     await until(async () => (await service.client.call('sessions.attach', { sessionId: id })).session.state === 'exited');
-    assert.equal(await readFile(cachedPath, 'utf8'), stale, 'failure left the old cached tail untouched');
+    assert.equal(await readFile(cachedPath, 'utf8'), stale, 'streaming output never rewrites the cached tail');
     for (const cache of ['stale', 'missing', 'corrupt']) {
       const exited = once(service.process, 'exit'); service.process.kill('SIGTERM'); await exited; service.client.close();
       if (cache === 'missing') await rm(cachedPath);
@@ -236,6 +274,24 @@ test('cache write failures keep the PTY alive and replay newer durable output af
     if (childPid) { try { process.kill(childPid, 'SIGKILL'); } catch {} }
     await cleanup(service, directory);
   }
+});
+
+test('output is recorded in SQLite only, without rewriting a cached copy of the whole tail while it streams', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-no-spool-')), service = await start(directory);
+  try {
+    const launch = request(directory, 'streaming');
+    await service.client.call('sessions.launch', launch);
+    await output(service.client, launch.sessionId, 'READY:');
+    await service.client.call('sessions.input', { sessionId: launch.sessionId, data: 'colors\r' });
+    await output(service.client, launch.sessionId, 'COLORS:');
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const cached = join(directory, 'scrollback', createHash('sha256').update(launch.sessionId).digest('hex') + '.json');
+    assert.equal(existsSync(cached), false);
+    const page = await service.client.call('recordings.list', {});
+    assert.equal(page.recordings.find(entry => entry.id === launch.sessionId).hasOutput, true);
+    const full = await service.client.call('sessions.read', { sessionId: launch.sessionId, history: true });
+    assert.ok(full.chunks.map(chunk => chunk.data).join('').includes('COLORS:'));
+  } finally { await cleanup(service, directory); }
 });
 
 test('legacy cached tails import once and remain partial after the cache changes', async () => {

@@ -264,7 +264,7 @@ function NativeTerminal({ sessionId, active, options }: { sessionId: string; act
           resume={options.resume && (() => { void action(options.resume!); })} resumeDisabled={busy}
           prompt={() => { void action(async () => setPromptStatus(await options.prompt!('queue'))); }}
           promptDisabled={busy || !options.prompt || session?.state !== 'running' || !!session.stopRequestedAt || promptStatus?.state === 'queued' || promptStatus?.state === 'unavailable'}
-          message={options.prompt ? promptStatus?.message ?? 'Adds the workbench guide and current project context with your next prompt. Claude’s own system instructions stay intact.' : 'Adding context to a running session is currently available for Claude.'}
+          message={options.prompt ? promptStatus?.message ?? 'Adds the workbench guide and current project context with your next prompt. Claude’s own system instructions stay intact.' : 'Adding context to a running session is available for Claude and Codex.'}
           stop={() => { void requestStop(); }} stopDisabled={stopDisabled} />
       </> : <>
         {options.resume && <button disabled={busy || (options.resumeWhenStopped && (!session || ['running', 'starting'].includes(session.state)))} onClick={() => { void action(options.resume!); }}>{options.resumeLabel ?? 'Resume / reconnect'}</button>}

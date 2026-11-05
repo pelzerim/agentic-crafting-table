@@ -1,8 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
-import { findExecutable, sessionPath } from '../platform/shell.ts';
+import { sessionPath } from '../platform/shell.ts';
+import { findCodexExecutable } from './codex-executable.ts';
 import { openCodexMetadata } from './codex-client.ts';
 import { isBelow } from '../../src/graph/archive.ts';
 import type { CodexModel } from './codex-client.ts';
@@ -12,7 +11,7 @@ let capability: Promise<CodexCapability> | undefined;
 export function probeCodex(): Promise<CodexCapability> {
   if (!capability) capability = (async () => {
     const env = { ...process.env, PATH: await sessionPath() };
-    const executable = findExecutable('codex', env.PATH, [join(homedir(), '.local/bin')]);
+    const executable = findCodexExecutable(env.PATH);
     if (!executable) throw new Error('Codex CLI is not installed. Install and sign in to Codex, then retry.');
     const exec = promisify(execFile);
     const [version, help, server] = await Promise.all([

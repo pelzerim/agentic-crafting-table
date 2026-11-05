@@ -20,7 +20,7 @@ if (args.includes('app-server')) {
     while (!existsSync(join(process.cwd(), 'native-release'))) await new Promise(resolve => setTimeout(resolve, 20));
   };
   if (process.env.CODEX_FIXTURE_PAUSE_METHOD === 'startup') { writeFileSync(join(process.cwd(), 'native-server.pid'), String(process.pid)); await pause('startup'); }
-  let thread, subscriber;
+  let thread, subscriber; const others = new Map();
   try { thread = JSON.parse(readFileSync(file, 'utf8')); } catch {}
   const clients = new Set(), save = () => writeFileSync(file, JSON.stringify(thread));
   const notify = (method, params) => { for (const client of clients) client.send(JSON.stringify({ method, params })); };
@@ -47,8 +47,8 @@ if (args.includes('app-server')) {
       case 'model/list': result = { data: ['gpt-6-astra', 'fixture-choice'].map(model => ({ id: model, model, displayName: model, hidden: false, isDefault: model === 'gpt-6-astra', defaultReasoningEffort: 'medium', supportedReasoningEfforts: [] })), nextCursor: null }; break;
       case 'skills/list': result = { data: params.cwds.map(cwd => ({ cwd, skills: [{ name: 'fixture-skill', description: 'Inspect the fixture project', path: join(cwd, '.agents/skills/fixture-skill/SKILL.md'), scope: 'repo', enabled: true }, { name: 'disabled-skill', description: 'Disabled fixture', path: '/disabled/SKILL.md', scope: 'user', enabled: false }], errors: [] })) }; break;
       case 'thread/list': result = { data: thread && (!params.searchTerm || `${thread.name} ${thread.preview}`.toLowerCase().includes(params.searchTerm.toLowerCase())) ? [thread] : [], nextCursor: null }; break;
-      case 'thread/read': if (thread?.id !== params.threadId) throw new Error('Native conversation is missing'); result = { thread }; break;
-      case 'thread/start': thread = { id: randomUUID(), cwd: params.cwd, status: { type: 'idle' }, config: params.config, model: params.model, updatedAt: Date.now() / 1000, name: 'Saved Codex', preview: 'Saved Codex' }; break;
+      case 'thread/read': if (others.has(params.threadId)) { result = { thread: others.get(params.threadId) }; break; } if (thread?.id !== params.threadId) throw new Error('Native conversation is missing'); result = { thread }; break;
+      case 'thread/start': thread = { id: randomUUID(), cwd: params.cwd, status: { type: 'idle' }, config: params.config, model: params.model ?? 'fixture-default', effort: params.config?.model_reasoning_effort ?? null, updatedAt: Date.now() / 1000, name: 'Saved Codex', preview: 'Saved Codex' }; break;
       case 'thread/resume':
         if (!thread || thread.id !== params.threadId) throw new Error('Native conversation is missing');
         if (params.config) thread.config = params.config;
@@ -62,10 +62,17 @@ if (args.includes('app-server')) {
         if (params.data === 'sync') await sync(socket);
         if (params.data === 'disconnect') for (const client of clients) client.terminate?.();
         // What the real TUI's `/new` sends to the server's other connections.
+        // A sub-agent's status can arrive without its thread/started; the real TUI's `/resume` moves to a saved thread.
+        if (params.data === 'subagent-status' || params.data === 'resume-command') {
+          const other = { id: randomUUID(), cwd: thread.cwd, status: { type: 'idle' }, forkedFromId: null, ...(params.data === 'subagent-status' ? { parentThreadId: thread.id, source: { subAgent: { thread_spawn: { parent_thread_id: thread.id, depth: 1 } } }, threadSource: 'subagent' } : { parentThreadId: null, source: 'cli' }) };
+          others.set(other.id, other); notify('thread/status/changed', { threadId: other.id, status: { type: 'active', activeFlags: [] } });
+          socket.send(JSON.stringify({ method: 'fixture/output', params: { text: 'OTHER_THREAD:' + other.id } }));
+        }
         if (params.data === 'new-command') { notify('thread/started', { thread: { id: randomUUID(), forkedFromId: null, source: 'vscode' } }); notify('thread/status/changed', { threadId: thread.id, status: { type: 'notLoaded' } }); }
         break;
     }
-    if (input.method === 'thread/start' || input.method === 'thread/resume') result = { thread };
+    // Like the real server: the thread's model and effort, which a client that does not name its own keeps.
+    if (input.method === 'thread/start' || input.method === 'thread/resume') result = { thread, model: thread.model ?? 'fixture-default', reasoningEffort: thread.effort ?? null };
     if (input.id !== undefined) socket.send(JSON.stringify({ id: input.id, result }));
   };
   const receive = (bytes, socket) => { const input = JSON.parse(String(bytes)); void handle(input, socket).catch(error => socket.send(JSON.stringify({ id: input.id, error: { code: -32600, message: error.message }, method: input.id === undefined ? 'fixture/output' : undefined, params: { text: 'FIXTURE_ERROR:' + error.message } }))); };
@@ -85,7 +92,7 @@ if (args.includes('app-server')) {
   socket.on('open', () => { socket.send(JSON.stringify({ id: 1, method: 'initialize', params: {} })); socket.send(JSON.stringify({ id: 2, method: 'thread/resume', params: { threadId: value('resume') } })); });
   socket.on('message', bytes => {
     const frame = JSON.parse(String(bytes));
-    if (frame.id === 2 && frame.result) { process.stdout.write('NATIVE_READY:' + frame.result.thread.id + '\r\n'); if (process.env.CODEX_FIXTURE_DRAFT) process.stdout.write('\x1b[?1002h\x1b[?1006h' + process.env.CODEX_FIXTURE_DRAFT); if (args.includes('--')) process.stdout.write('INITIAL_PROMPT:' + value('--') + '\r\n'); }
+    if (frame.id === 2 && frame.result) { process.stdout.write('NATIVE_READY:' + frame.result.thread.id + '\r\n'); process.stdout.write('NATIVE_MODEL:' + (args.includes('--model') ? value('--model') : 'config-default') + ':' + (args.find(arg => arg.startsWith('model_reasoning_effort=')) ?? 'no-effort') + '\r\n'); if (process.env.CODEX_FIXTURE_DRAFT) process.stdout.write('\x1b[?1002h\x1b[?1006h' + process.env.CODEX_FIXTURE_DRAFT); if (args.includes('--')) process.stdout.write('INITIAL_PROMPT:' + value('--') + '\r\n'); }
     if (frame.method === 'item/commandExecution/requestApproval') process.stdout.write('NATIVE_APPROVAL_WAITING\r\n');
     if (frame.method === 'fixture/output') process.stdout.write(frame.params.text + '\r\n');
   });

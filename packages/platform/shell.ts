@@ -29,8 +29,8 @@ export const isShadowedPath = (key: string, platform: NodeJS.Platform = process.
 export const executableName = (name: string, platform: NodeJS.Platform = process.platform) => platform === 'win32' ? `${name}.exe` : name;
 
 /** The first executable called `name` on `searchPath`, then in `fallbackDirectories`. */
-export function findExecutable(name: string, searchPath: string, fallbackDirectories: string[] = []) {
-  const candidates = [...searchPath.split(delimiter).filter(Boolean), ...fallbackDirectories].map(directory => join(directory, executableName(name)));
+export function findExecutable(name: string, searchPath: string, fallbackDirectories: string[] = [], platform: NodeJS.Platform = process.platform) {
+  const candidates = [...searchPath.split(delimiter).filter(Boolean), ...fallbackDirectories].map(directory => join(directory, executableName(name, platform)));
   return candidates.find(path => { try { accessSync(path, constants.X_OK); return statSync(path).isFile(); } catch { return false; } });
 }
 

@@ -11,6 +11,17 @@ their pull request and author.
 ### Pull requests
 - **Inline images**: screenshots and other images attached on GitHub now show inside the description and comments of a pull request once you open them, instead of disappearing. Other images stay links. (#17, @MegaMaddin)
 
+### Codex
+- **Keeps its model on resume**: a Codex session started or resumed on the table runs on the model and effort it was started with. Before, it switched to your configured default, and a startup warning appeared. Codex opens that warning with F2, and Esc closes it again. (#18, @timohuovinen)
+- **Stays on its own conversation**: a Codex sub-agent at work no longer moves the agent's item to the sub-agent's thread, which Codex then refused to resume. (#18, @timohuovinen)
+- **Add system prompt**: the Session menu adds the workbench guide and current project context to a running Codex conversation at once, without starting a turn. (#18, @timohuovinen)
+- **Found on Windows when installed with npm, pnpm or Yarn**: the table runs the native `codex.exe` behind the `codex.cmd` script, and also looks in the standalone installer's folder. (#18, @timohuovinen)
+- **Less work while it runs**: table sessions turn off Codex's spinner in the window title, which the table does not show. The spinner made most of a working session's output. (#18, @timohuovinen)
+- **New agent form opens faster**: the Codex model list from the last minute shows at once while a fresh one loads. (#18, @timohuovinen)
+
+### Terminals
+- **Less disk writing**: a streaming session no longer rewrites a copy of its whole recent output to disk five times a second; the recording database already has it. (#18, @timohuovinen)
+
 ## 0.17.0 — 2026-11-04
 
 ### Auto deploy
