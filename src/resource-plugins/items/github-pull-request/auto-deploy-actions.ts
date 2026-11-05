@@ -8,7 +8,7 @@ export type ActionRow = { type: 'group'; label: string; resourceId?: string }
   | { type: 'action'; at: number; glyph: GlyphName; tone: ActionTone; text: string; links: NonNullable<ListedAction['links']>; now?: true };
 
 const LOOK: Record<AutoDeployEventKind, [GlyphName, ActionTone]> = {
-  armed: ['auto', 'blue'], tag: ['pr', 'blue'], update: ['retry', 'blue'], rebase: ['claude', 'claude'], rebased: ['check', 'mint'], findings: ['send', 'claude'], fixed: ['check', 'mint'],
+  armed: ['auto', 'blue'], ready: ['pr', 'blue'], tag: ['pr', 'blue'], update: ['retry', 'blue'], rebase: ['claude', 'claude'], rebased: ['check', 'mint'], findings: ['send', 'claude'], fixed: ['check', 'mint'],
   fix: ['claude', 'claude'], merged: ['git-merge', 'mint'], validate: ['claude', 'claude'], verdict: ['check', 'mint'], approve: ['gate', 'mint'], halted: ['bang', 'amber'], done: ['check', 'mint'], stopped: ['dash', 'blue'],
 };
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);

@@ -3,10 +3,29 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
-## Unreleased
+## 0.18.0 — 2026-11-05
+
+### Auto deploy
+- **Marks a draft ready**: armed on a draft pull request, auto deploy marks it ready for review once and carries on instead of halting. If GitHub declines it, or you set the pull request back to draft, it halts.
+- **Picks up a running validation**: Auto deploy from here with **Validate what shipped first** waits for a validation already running on the rollout and gates on its verdict instead of asking for a second one; the plan says “V2 validating · counts once it passes”.
+- **Action list opens on start**: starting auto deploy from the pull request unfolds its “N actions” list, so you see each step as it happens.
+- **Waits for an approving review**: started before anyone approved, auto deploy now shows “waiting for an approving review” and merges once someone approves, instead of halting with “A required review is missing”. Changes requested still halts.
+- **Alerts only when it matters**: while auto deploy runs, a rollout finishing a stage or waiting at a gate it approves, and a validation agent finishing, no longer notify you or show in Needs me. You hear about validation concerns or failures, a failed rollout, a halt, and “Auto deploy done” once everything shipped.
+- **Phased rollouts with many regions**: a gate holding back many jobs no longer halts auto deploy with “could not be requested: … too_big”; the phase is named with two jobs and “+N more”.
+
+### Workspace service
+- **No disconnect under load**: the app no longer loses its connection to the local service when several views read the whole workspace at once. Views opening together share one read, and the service now holds up to 64 MB for a slow app instead of 8 MB.
 
 ### Map
+- **Submenus stay open on the way there**: moving the pointer diagonally from a menu row to its submenu, for example to a submenu shown on the left near the right edge of the screen, no longer switches to the rows you cross; a row takes over when the pointer stops on it.
+- **Every plot moves by its sign**: dragging a plot's sign moves it even when its first item is a hidden agent, such as a validation agent working off the map; before, the drag did nothing.
 - **Readable location trail**: the Project / Item trail above an open item now sits on a solid plate with the cards' pixel corners, so cards scrolling under it no longer show through its text. (#16, @MegaMaddin)
+
+### Linear
+- **Copy URL and middle click work**: Linear tickets again offer **Open on Linear** and **Copy URL**, and a middle click opens them. Each read from Linear now saves the issue's link with the ticket; before, the first read dropped it, so every ticket lost its web page.
+
+### Rollouts
+- **Top no longer cut off**: showing a validation that is already running (“Showing V1 … instead of a second validation”) scrolls only the timeline; before, it could scroll the whole rollout view and hide its top.
 
 ### Pull requests
 - **Inline images**: screenshots and other images attached on GitHub now show inside the description and comments of a pull request once you open them, instead of disappearing. Other images stay links. (#17, @MegaMaddin)

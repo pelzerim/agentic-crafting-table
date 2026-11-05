@@ -54,10 +54,17 @@ test('a validation asked for in chat gets an id and a label on the rollout', asy
     // Validate from the item while the chat validation runs: it is shown instead of asked again, and Re-run asks again.
     await h.idle('claude');
     const view = page.getByRole('region', { name: 'Web / Release', exact: true }), menu = page.getByRole('menu', { name: 'Trigger validation', exact: true });
+    await page.setViewportSize({ width: 1280, height: 420 });
     await prActions(page, view).pick('Validate');
     const reuse = detail.locator('.rv-reuse');
     await expect(reuse).toContainText('Showing V1, started from chat, instead of a second validation');
     await expect(card('V1').getByRole('button', { name: 'Hide report ▴' })).toBeVisible();
+    expect(await card('V1').evaluate(element => {
+      const scrolled: string[] = [], feed = element.closest('.rv-feed');
+      for (let at = feed?.parentElement; at; at = at.parentElement) if (at.scrollTop || at.scrollLeft) scrolled.push(at.className);
+      return scrolled;
+    }), 'showing the card scrolls only the feed, never the view or the map').toEqual([]);
+    await page.setViewportSize({ width: 1280, height: 800 });
     expect(await h.output('claude')).not.toContain('validationId "V2"');
     await reuse.getByRole('button', { name: 'Re-run', exact: true }).click();
     await expect(menu.locator('.resource-choice-prompt')).toContainText('V1, started from chat, covers live and is still running');

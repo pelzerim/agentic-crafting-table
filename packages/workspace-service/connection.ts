@@ -28,6 +28,7 @@ export class WorkspaceConnection extends EventEmitter {
   private events: ConnectionEvent[] = [];
   private slowestSnapshots: SnapshotDelivery[] = [];
   snapshot?: WorkspaceSnapshot;
+  private whole?: Promise<WorkspaceSnapshot>;
   /** `subscribe: false` connects for requests only: no snapshots are sent to it, for callers such as an agent's MCP bridge that read on demand. */
   private readonly subscribes: boolean;
   constructor(directory: string, executable: string, entrypoint: string, electronRuntime = false, mode: { subscribe?: boolean } = {}) {
@@ -46,7 +47,7 @@ export class WorkspaceConnection extends EventEmitter {
       let disconnected = false;
       client.on('snapshot', (snapshot: WorkspaceSnapshot, parse?: FrameParse) => {
         if (this.disposed || disconnected) return;
-        this.cursor = snapshot.cursor; this.snapshot = snapshot; this.emit('snapshot', snapshot, parse);
+        this.cursor = snapshot.cursor; this.snapshot = snapshot; this.whole = undefined; this.emit('snapshot', snapshot, parse);
       });
       client.on('notification', value => {
         if (this.disposed || disconnected) return;
@@ -55,7 +56,7 @@ export class WorkspaceConnection extends EventEmitter {
         if (value.event === 'reminder-due') this.emit('reminder-due', { reminder: value.reminder, day: value.day });
         if (value.event === 'session-switched') this.emit('session-switched', { fromNodeId: value.fromNodeId, toNodeId: value.toNodeId });
       });
-      client.once('disconnected', (error?: Error) => { disconnected = true; if (this.client === client) this.client = undefined; this.scheduleReconnect(error?.message ?? 'closed'); });
+      client.once('disconnected', (error?: Error) => { disconnected = true; this.whole = undefined; if (this.client === client) this.client = undefined; this.scheduleReconnect(error?.message ?? 'closed'); });
       try {
         subscribing = this.subscribes;
         if (subscribing) await client.subscribe(this.cursor, this.layer);
@@ -103,6 +104,17 @@ export class WorkspaceConnection extends EventEmitter {
     const client = this.client ?? await this.connecting?.catch(() => undefined);
     return client && this.layer === layer ? client.subscribe(this.cursor, layer) : undefined;
   }
-  async call<T = unknown>(method: string, args?: unknown): Promise<T> { return (await this.connect()).call<T>(method, args); }
+  async call<T = unknown>(method: string, args?: unknown): Promise<T> {
+    try { return await (await this.connect()).call<T>(method, args); } finally { if (method !== 'read') this.whole = undefined; }
+  }
+  /** The whole state. A subscribing connection shares one service read among its callers until the next snapshot arrives
+   * or another call, which may have changed the state, returns. */
+  read(): Promise<WorkspaceSnapshot> {
+    if (!this.subscribes) return this.call<WorkspaceSnapshot>('read');
+    if (this.whole) return this.whole;
+    const whole = this.whole = this.call<WorkspaceSnapshot>('read');
+    whole.catch(() => { if (this.whole === whole) this.whole = undefined; });
+    return whole;
+  }
   close() { this.disposed = true; clearTimeout(this.retry); this.lifetime.abort(); this.subscribing?.close(); this.client?.close(); this.client = undefined; }
 }

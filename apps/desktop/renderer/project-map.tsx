@@ -1211,7 +1211,10 @@ function MapCanvas(props: ProjectMapProps) {
   const plotActions = useStableHandlers({
     hover: (id: string | undefined) => setHoveredPlot(id),
     select: (id: string, add: boolean) => { const plot = plotOf(id); if (plot) setSelection(old => new Set([...add ? old : [], ...plot.memberIds])); },
-    grab: (event: React.PointerEvent<HTMLElement>, id: string) => { const plot = plotOf(id); if (plot) dashboardDrag.grab(event, plot.memberIds[0], plot.memberIds); },
+    grab: (event: React.PointerEvent<HTMLElement>, id: string) => {
+      const plot = plotOf(id), anchor = plot?.memberIds.find(member => props.nodes.some(node => node.id === member && !isArchived(node, props.nodes)));
+      if (plot && anchor) dashboardDrag.grab(event, anchor, plot.memberIds);
+    },
     rename: (id: string) => { setPlotMenu(undefined); setRenamingPlot(id); },
     save: (id: string, name: string) => {
       setRenamingPlot(undefined); const plot = plotOf(id), value = name.trim();

@@ -97,7 +97,7 @@ export const githubPullRequestViews: ResourcePluginViews = {
     const deployStatus = element('div', '', 'pr-auto-deploy-status'); deployStatus.setAttribute('role', 'status'); deployStatus.hidden = true; deployStatus.append(deployText, deployToggle, stopDeploy);
     const deployActions = element('ol', '', 'pr-auto-deploy-actions'); deployActions.setAttribute('aria-label', 'Auto deploy actions'); deployActions.hidden = true; deployActions.id = `pr-auto-deploy-actions-${resource.id}`;
     deployToggle.setAttribute('aria-controls', deployActions.id);
-    let actionsOpen = false;
+    let actionsOpen = false, seenState: string | undefined;
     deployToggle.onclick = () => { actionsOpen = !actionsOpen; deployToggle.setAttribute('aria-expanded', String(actionsOpen)); deployActions.hidden = !actionsOpen || deployStatus.hidden; };
     /** What auto deploy did, oldest first; agents, reviews and runs open on the map, commits on GitHub. */
     const renderDeployActions = (events: readonly ListedAction[], state: string) => {
@@ -122,11 +122,14 @@ export const githubPullRequestViews: ResourcePluginViews = {
       catch (failure) { report((failure as Error).message); }
       finally { stopDeploy.disabled = false; }
     };
-    /** The status line follows the service's record: armed with Stop, then its last word (done or halted) until the next start. */
+    /** The status line follows the service's record: armed with Stop, then its last word (done or halted) until the next start.
+     * Arming seen while the view is open unfolds the action list. */
     async function readAutoDeploy() {
       const value = await services.runAction(AUTO_DEPLOY_OPERATION, { operation: 'status' }).catch(() => undefined) as { state?: string; line?: string; events?: ListedAction[] } | undefined;
       if (disposed) return;
       const state = value?.state ?? 'off', events = value?.events ?? [];
+      if (seenState !== undefined && seenState !== 'armed' && state === 'armed') { actionsOpen = true; deployToggle.setAttribute('aria-expanded', 'true'); }
+      seenState = state;
       deployStatus.hidden = !value?.line || state === 'stopped'; deployStatus.dataset.state = state;
       deployToggle.hidden = !events.length; deployToggle.textContent = `${events.length} action${events.length === 1 ? '' : 's'}`;
       deployToggle.setAttribute('aria-label', `${deployToggle.textContent} of auto deploy`); renderDeployActions(events, state); deployActions.hidden = !actionsOpen || deployStatus.hidden || !events.length;

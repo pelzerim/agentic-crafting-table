@@ -181,7 +181,7 @@ async function main() {
         void (async () => {
           let target = notice.nodeId;
           if (target) {
-            const { state } = await workspace.call<WorkspaceSnapshot>('read');
+            const { state } = await workspace.read();
             const node = state.nodes.find(node => node.id === target);
             if (!node || isOffMap(node, state.nodes)) target = undefined;
           }
@@ -315,7 +315,8 @@ async function main() {
       // The renderer cannot choose a socket, credential, admin method or actor.
       let result: unknown;
       switch (method) {
-        case 'read': case 'settings.read': case 'directories.recent': case 'plugins': case 'capabilities': case 'lifecycle.status': case 'connections.status': case 'diagnostics.report': case 'diagnostics.health': result = await workspace.call(method); break;
+        case 'read': result = await workspace.read(); break;
+        case 'settings.read': case 'directories.recent': case 'plugins': case 'capabilities': case 'lifecycle.status': case 'connections.status': case 'diagnostics.report': case 'diagnostics.health': result = await workspace.call(method); break;
         case 'subscribe': result = await workspace.setLayer(z.object({ layer: z.enum(['map', 'below']) }).strict().parse(args).layer); break;
         case 'diagnostics.cpuProfile': result = await workspace.call(method, z.object({ ms: z.number().int().min(1000).max(120_000) }).strict().parse(args)); break;
         case 'github.inbox.read': result = await workspace.call(method, z.object({ refresh: z.boolean().default(false), opened: z.boolean().default(false) }).strict().parse(args ?? {})); break;

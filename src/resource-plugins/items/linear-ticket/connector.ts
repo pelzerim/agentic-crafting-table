@@ -8,7 +8,7 @@ function snapshot(issue: LinearIssue): ResourceSnapshot {
   const label = issue.archived ? 'Archived in Linear' : issue.state.name;
   return { title: title(issue), done: finished(type), activity: issue.archived || ['completed', 'canceled'].includes(type) ? 'complete' : 'idle', attention: 'none', connection: 'connected', observedAt: new Date().toISOString(), label,
     indicators: [{ id: 'workflow', label, tone, icon: type === 'completed' ? 'check' : type === 'canceled' ? 'x' : 'clock', showLabel: true, ...(issue.archived || ['completed', 'canceled'].includes(type) ? { stage: 'done' as const } : {}) }],
-    resolution: { data: { issueId: issue.id }, aliases: [issue.identifier, ...issue.previousIdentifiers].map(issueId => ({ issueId })) }, detail: { ...issue, state: { ...issue.state } } };
+    resolution: { data: { issueId: issue.id, workspaceKey: new URL(issue.url).pathname.split('/')[1]!, url: issue.url }, aliases: [issue.identifier, ...issue.previousIdentifiers].map(issueId => ({ issueId })) }, detail: { ...issue, state: { ...issue.state } } };
 }
 export function linearTicketConnector(clientFor: (resource: ResourceRecord, signal: AbortSignal) => Promise<LinearClient>): ResourcePluginConnector {
   const workspace = (resource: ResourceRecord) => typeof resource.data.workspaceKey === 'string' ? resource.data.workspaceKey : undefined;

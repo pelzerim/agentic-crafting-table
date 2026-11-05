@@ -196,7 +196,10 @@ the original map bubble. Inline and browser-only items still do not mount a view
 form separated groups: provider actions (each marked with an amber remote glyph;
 an irreversible one such as Merge ends in “…” for its confirm step), then Open on
 the provider, Copy URL (MAP-27) and a **Settings ▸** submenu, then map housekeeping (to-do, auto-name, Mark
-done, Undermap). **Settings ▸** holds **Item settings…** (Edit note… for
+done, Undermap). A submenu opens on hover beside the menu, on whichever side has room. While
+the pointer moves from its row toward the open submenu, the rows it crosses on the way do not
+take over; a crossed row opens its own submenu (or closes this one) only if the pointer stops on
+it for 300 ms or turns away from the submenu. **Settings ▸** holds **Item settings…** (Edit note… for
 notes and other types with a generated title, as before) and **Use size as default**:
 the latter makes this item's map size the default for its type — the type's default
 tier (SETTINGS-07 map sizes) becomes this item's tier, and when the item was resized by
@@ -2440,7 +2443,8 @@ Space act at once. A double-click on an editable title (to-dos) still edits it,
 and controls inside a card keep their own double-click. Items without a web page,
 and every item while the setting is off, keep today's click and double-click
 behaviour. Web pages come from stored fields only: pull request (`/pull/N`), Linear
-ticket (`linear.app/{workspace}/issue/{ID}`, only when the workspace key is saved),
+ticket (the issue URL Linear returns, saved with the ticket on every read; before the
+first read, `linear.app/{workspace}/issue/{ID}` when the workspace key is saved),
 rollout (the Actions run, or the workflow with its branch filter), Notion page
 (`www.notion.so/{pageId}`), web link and bookmark (their https URL; http is not
 offered), and Claude artifact (its claude.ai URL). Slack messages (their permalink
@@ -2645,12 +2649,14 @@ the whole state is sent, since Needs me, the badge, notifications and the to-do 
 keep counting the map there. Both carry `layer` and `layers.below` (the number of items
 below and the projects the Undermap draws). Subscribing again with another layer
 replaces it and answers with that layer's snapshot. A subscriber without a layer (MCP,
-older clients) and every `read` receive the whole state. The service encodes one frame
+older clients) and every `read` receive the whole state. The desktop app shares one
+`read` among its windows and views until the next snapshot or another request returns,
+since the whole state runs to megabytes. The service encodes one frame
 per layer in use. Only the newest snapshot waits for
 a slow client: while a client's socket still has unsent data, a new snapshot replaces
 the one waiting and is written when the socket drains; replies and other events are
-never replaced. A client is dropped only when one frame would take its unsent data
-over 8 MB, and the service writes `Local client dropped: <queued> bytes queued,
+never replaced. A client is dropped only when one frame is over 8 MB or would take its
+unsent data over 64 MB, and the service writes `Local client dropped: <queued> bytes queued,
 <frame> bytes frame, <event or method>` to service.log first. The service measures its
 own health: event-loop lag (a one-second timer's drift; per-minute max and p95 for the
 last hour, and each lag of 250 ms or more with the operations then running), the
@@ -3655,7 +3661,8 @@ deploy**, asks again in place: “Auto deploy #42 “Batch exports”?” with w
 (“Tags it [ship], rebases it onto main when needed, has an agent fix blocking Claude review
 findings and failing CI, merges it into main once ready, validates every rollout phase and
 approves the next one only after a pass. Any doubt halts.”; without Show/Ship turned on it
-starts “Rebases it …” and the title is left alone), Back and **Start auto deploy**. A closed pull request offers the entry disabled with
+starts “Rebases it …” and the title is left alone; on a draft it starts “Marks it ready for
+review, tags it [ship], rebases it …”), Back and **Start auto deploy**. A closed pull request offers the entry disabled with
 the reason; a merged one does too (“Already merged.”) unless a rollout its merge discovered is
 on the map and still running (see “From here” below). Arming is the person's standing consent for the service to
 write and to spend agent tokens for this one pull request; it is human-only, while agents
@@ -3668,7 +3675,11 @@ The service, not the renderer, then works through the steps, once per pass (15 s
 and after workspace changes), and records each in a persisted record (the rollout
 package's plugin storage, collection `auto-deploy`, keyed by the pull request's resource (or,
 for a rollout armed from here with no pull request on the map, by the rollout's resource),
-so aliases share it and it survives restarts; no table or migration):
+so aliases share it and it survives restarts; no table or migration). A draft pull request is
+first marked ready for review: one GitHub write, the connector's PR-STATE action `pr.state`
+(value `ready`, expected state `draft`, GraphQL `markPullRequestReadyForReview`), journaled
+under the write key `ready` (“marking the pull request ready”), sent at most once per arming
+and never again after a restart; then the steps below follow as for any open pull request.
 
 1. **Tag.** With Show/Ship on and the title not tagged [ship], one PR-SHOW-SHIP write
    (`pr.showShip`, value `ship`) with the title it read.
@@ -3682,7 +3693,7 @@ so aliases share it and it survives restarts; no table or migration):
    the branch onto the base's current head, resolve the conflicts, run the checks it can and
    push with `--force-with-lease`, without merging, approving, retitling or closing (“rebasing
    onto main (1/2) · Claude · impl”). One request per head, at most two. A rebase that dismisses
-   approvals then halts as a missing required review.
+   approvals then waits for an approving review again.
 3. **Fix blocking review findings, once.** The newest code review linked to the pull request
    (a direct review, PR-02, `sourcePrId`; a review loop's later rounds are newer) is read
    through the findings operation `list`. While it runs, auto deploy waits (“waiting for the
@@ -3720,7 +3731,9 @@ so aliases share it and it survives restarts; no table or migration):
    the jobs it holds back (`gate:<environment ids>@<waiting job ids>`), so a phased rollout
    that gates the same environment before every phase has one boundary per phase, each
    validated after the phase before it (“validating before production (apply-prod-phase-2 /
-   apply (region-2))”) and approved on its own. A rollout without gates is one phase,
+   apply (region-2))”; more than two held jobs read “…, … +6 more”, and the label, which is
+   the focus the validation is asked with, is at most 200 characters) and approved on its
+   own. A rollout without gates is one phase,
    validated once at the end. A gate waiting before anything ran is approved without a
    validation.
 8. **Validate** each phase exactly as Trigger validation does (journaled request,
@@ -3757,29 +3770,41 @@ has merge conflicts after two rebase attempts, the agent asked to rebase (or Git
 update) brings no new head within 45 minutes, or GitHub declines the update; the fixer sent
 review findings reports none fixed within 45 minutes, reports them fixed but pushes nothing
 within 45 minutes, or leaves some unreported (named: “Claude · impl did not report F2 “Token
-leaks into logs” fixed.”), or the send fails or is cancelled; a required review is missing or
-changes were requested (only a person can resolve that); the branch stays blocked; the pull
-request is a draft or closed; GitHub or the table
+leaks into logs” fixed.”), or the send fails or is cancelled; a reviewer requested
+changes (only a person can resolve that); the branch stays blocked; the pull
+request is closed; marking a draft ready for review is declined or its outcome is unknown
+(`draft`, “Marking the pull request ready for review failed: …” / “… could not be
+confirmed.”); a person sets the pull request back to draft after auto deploy marked it ready
+(`draft`, “The pull request was set back to draft after auto deploy marked it ready.”: it is
+not marked ready twice in one arming); GitHub or the table
 declines a write; a write's, a fix or rebase request's or a findings send's outcome is unknown; no agent can be asked
 (none ready and Claude cannot start, or a validation request fails); a deploy run or job
 fails or is cancelled; no deploy run appears within 30 minutes of the merge. Waiting is not
-doubt: pending checks, the merge queue, running jobs and a gate someone else approves wait.
-Done raises “Finished · ready to view” (note “Auto deploy done”). Stop ends it without
+doubt: pending checks, a missing required review (“waiting for an approving review”, no
+alert; it merges once someone approves), the merge queue, running jobs and a gate someone
+else approves wait.
+Done raises “Finished · ready to view” (note “Auto deploy done”). While armed, what auto
+deploy takes care of raises nothing: a rollout it follows finishing (“Rollout finished”) or
+waiting at a gate (“… needs approval”), and an agent validating one of them since it was armed
+(or whose validation it picked up) finishing a turn (“Agent finished”). Each such event is spent
+without an alert or a Needs me row, so it does not come back once auto deploy ends. Validation
+concerns or failure, a failed rollout, a halt and done still alert. Stop ends it without
 Needs me; so does taking the pull request out of the merge queue after auto deploy queued it,
 which counts as a person stopping it, and requeueing it by hand does not arm it again. Arming
 again starts a new record and withdraws the old reason.
 
 The PR view shows a status line under the frame bar while a record exists (not after
-Stop): “Auto deploy · updating the branch from main”, “· rebasing onto main (1/2) · Claude ·
+Stop): “Auto deploy · marking the pull request ready”, “· updating the branch from main”, “· rebasing onto main (1/2) · Claude ·
 impl”, “· waiting for the Claude review”, “· Claude · impl is fixing 3 findings”, “· waiting for
 Claude · impl to push”, “· waiting for checks”, “· fixing CI (1/2)”, “· merging”, “· in the merge
 queue”, “· waiting for the deploy run”, “· deploying live”, “· waiting out live · 7 min”,
 “· validating preview”, “· approving live”, “· live waits for another approver”, “· done”
 or “· halted: <reason>” (amber), with **Stop** while armed; the Actions entry reads “Auto
 deploy · on”. The line ends with “N actions ▾”, which unfolds the list of what auto deploy did
-in place under it (collapsed by default; open or closed is the view's own state): one row per
+in place under it (collapsed by default, unfolded when auto deploy is armed while the view is
+open; open or closed is the view's own state): one row per
 action, oldest first, with its time, a pixel glyph, the text and links to what it touched (the
-agent and the review open on the map, a commit on GitHub): armed, tagged, the branch updated or
+agent and the review open on the map, a commit on GitHub): armed, marked ready for review, tagged, the branch updated or
 the rebase asked for and pushed, findings sent (with what is left for the person) and fixed, CI
 fix requests, merged; then, while the pull request is on the map, the rollout's actions under
 “On run #1842” (a link to the rollout): validations asked for and their verdicts, approvals,
@@ -3802,11 +3827,11 @@ here?”, with two choices, the first checked: **Validate what shipped first** (
 passing validation are validated before the next gate.”) and **Start from the next phase**
 (“What already deployed counts as accepted; only phases that finish from now on are
 validated.”). Under them the plan for the checked one, one line per phase that ran or waits at
-its gate (“preview · V1 passed at 14:09 · counts”, “staging · deployed 14:12 · validate now”
-or “· counts as accepted, not validated” in amber, “production · approve after staging
+its gate (“preview · V1 passed at 14:09 · counts”, “staging · deployed 14:12 · validate now”,
+“· V2 validating · counts once it passes” or “· counts as accepted, not validated” in amber, “production · approve after staging
 passes, then validate once deployed” or “· approve now, then validate once deployed”), and a
 foot line (“One validation (staging) before production. Validates production after it
-deploys. Any doubt halts.”). The entry is disabled with a reason on a run that finished
+deploys. Any doubt halts.”, or “Waits for V2 (staging) before production. …”). The entry is disabled with a reason on a run that finished
 (“Already deployed.”), failed or was cancelled (“The run failed. Re-run it on GitHub
 first.”) or has not started (“Waiting for the deploy run.”); while a record follows the
 rollout it reads **Stop auto deploy** (the menu says “Under auto deploy from #418 · <step>”).
@@ -3819,9 +3844,13 @@ merges. Otherwise (a push or dispatch) the record is keyed by the rollout's reso
 the view has no Open pull request. Records stay `version: 1`; the new fields are optional, so
 records saved before read unchanged. At arm time every passing, current validation of the
 attempt scoped to jobs (same run attempt, not stale, not resolved) counts for those jobs;
-with `validate` a phase already due that they cover in full counts as passed and every other
-due phase is validated before any gate is approved, scoped to what no counted validation
-covered; with `accept` whatever else deployed is recorded as accepted (“accepted when armed”)
+with `validate` a phase already due that they cover in full counts as passed; a validation
+of the same attempt still requested or running (not stale, not resolved) that covers every
+deployed job no counted validation covered, or is not scoped to jobs, is picked up as the
+next due phases' validation (`adopted`; the list says “picked up V2, already validating
+<phase>”) and gates them on its verdict and the usual one-hour deadline from its request, so
+no second validation is asked for; every other due phase is validated before any gate is
+approved, scoped to what no counted validation covered; with `accept` whatever else deployed is recorded as accepted (“accepted when armed”)
 and every phase already due as passed. Phases that finish later are validated as usual. Gates
 a person approved before arming stay approved; nothing is approved twice.
 

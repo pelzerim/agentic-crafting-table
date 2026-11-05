@@ -18,7 +18,7 @@ import { isOffMap } from '../../src/graph/archive.ts';
 import { clip } from '../../src/pull-requests/review-findings.ts';
 import { titleTag } from '../../src/resource-plugins/items/github-pull-request/show-ship.ts';
 import type { JsonObject, JsonValue } from '../../src/resource-plugins/types.ts';
-import { armRecord, autoDeployEvents, decide, FIX_ATTEMPTS, observe, REBASE_ATTEMPTS, phaseTrack, recordKey, seedCatchUp, settle, statusLine, takeoverRefusal, trackNext } from '../../src/resource-plugins/items/github-rollout/auto-deploy.ts';
+import { armRecord, autoDeployEvents, decide, declined, FIX_ATTEMPTS, observe, PHASE_LABEL, REBASE_ATTEMPTS, phaseTrack, recordKey, seedCatchUp, settle, statusLine, takeoverRefusal, trackNext } from '../../src/resource-plugins/items/github-rollout/auto-deploy.ts';
 import type { AutoDeployDecision, AutoDeployFacts, AutoDeployRecord, CatchUp, FindingSendFacts, LinkedReviewFacts, PullFacts, RolloutFacts } from '../../src/resource-plugins/items/github-rollout/auto-deploy.ts';
 import type { FindingStatus, ReviewFindings } from '../../src/pull-requests/review-findings.ts';
 import { rolloutFactsOf } from '../../src/resource-plugins/items/github-rollout/rollout-facts.ts';
@@ -29,6 +29,7 @@ import { VALIDATION_AGENT } from '../../src/resource-plugins/items/github-rollou
 
 /** The plugin storage collection holding one record per pull request resource. */
 export const AUTO_DEPLOY_COLLECTION = 'auto-deploy';
+const ROLLOUT_ATTENTION = 'provider:github.rollout';
 /** Whether Auto deploy is armed on a pull request, from its stored record. */
 export const autoDeployArmed = (storage: Pick<PluginStorage, 'get'>, pullResourceId: string) => (storage.get(AUTO_DEPLOY_COLLECTION, pullResourceId)?.value as { state?: unknown } | undefined)?.state === 'armed';
 /** `from: 'here'` takes over rollouts already running (from a rollout, or a merged pull request's), with `catchUp` for what already deployed. */
@@ -51,7 +52,7 @@ interface ListedFindings { state: 'running' | 'complete' | 'failed'; reviewSessi
 type Resources = Pick<ResourceCoordinator, 'cached' | 'execute' | 'writing' | 'refreshPresentation'>;
 type Node = WorkspaceState['nodes'][number];
 export interface AutoDeployOptions {
-  storage: PluginStorage; store: Pick<SqliteStore, 'listJobs' | 'readSettings' | 'agentObservation' | 'agentBackground' | 'reviewSend'>; control: WorkspaceControl; resources: Resources; validations: Validations;
+  storage: PluginStorage; store: Pick<SqliteStore, 'listJobs' | 'readSettings' | 'agentObservation' | 'agentBackground' | 'reviewSend' | 'rolloutValidations'>; control: WorkspaceControl; resources: Resources; validations: Validations;
   /** Sends blocking review findings to the fixer; absent, a review with blocking findings halts. */
   findings?: Findings;
   sessions?: SessionCoordinator; starter?: HostedAgents; changed: () => Promise<void>; now?: () => number; allowed?: () => boolean;
@@ -75,7 +76,33 @@ export class AutoDeploys {
   private options: AutoDeployOptions; private now: () => number; private allowed: () => boolean;
   private reconciling?: Promise<void>; private again = false; private timer?: ReturnType<typeof setInterval>; private closed = false;
   private readAt = new Map<string, { at: number; value: PullMergeReadiness }>();
-  constructor(options: AutoDeployOptions) { this.options = options; this.now = options.now ?? Date.now; this.allowed = options.allowed ?? (() => true); }
+  private unfilter?: () => void;
+  constructor(options: AutoDeployOptions) { this.options = options; this.now = options.now ?? Date.now; this.allowed = options.allowed ?? (() => true); this.unfilter = options.control.filter((state, commands) => this.quiet(state, commands)); }
+
+  /** While armed, what it takes care of alerts nobody: a followed rollout finishing or waiting at a gate, and an agent validating one of them
+   * finishing a turn. The event is spent without an alert, so it is not raised again once auto deploy ends. Concerns, failures, a halt and
+   * “Auto deploy done” still alert. */
+  quiet(state: WorkspaceState, commands: readonly WorkspaceCommand[]): readonly WorkspaceCommand[] {
+    const muffled = (command: WorkspaceCommand) => command.type === 'attention.set' && (command.source === ROLLOUT_ATTENTION ? command.reason === 'finished' || command.reason === 'input' : command.source === 'completion' && command.reason === 'finished');
+    if (!commands.some(muffled)) return commands;
+    const armed = this.options.storage.list(AUTO_DEPLOY_COLLECTION).map(entry => entry.value as unknown as AutoDeployRecord).filter(record => record.state === 'armed');
+    if (!armed.length) return commands;
+    const rollouts = new Set<string>(), agents = new Set<string>();
+    for (const record of armed) for (const rollout of this.followed(state, record)) {
+      if (!rollout.resourceId) continue;
+      rollouts.add(rollout.resourceId);
+      for (const validation of this.options.store.rolloutValidations({ rolloutResourceId: rollout.resourceId }))
+        if (validation.requestedAt >= record.armedAt || record.checks.some(check => check.validationId === `V${validation.ordinal}`)) agents.add(validation.agentNodeId);
+    }
+    const resourceOf = (id: string) => state.nodes.find(node => node.id === id)?.resourceId;
+    const agentResources = new Set([...agents].map(resourceOf).filter(Boolean));
+    return commands.map(command => {
+      if (command.type !== 'attention.set' || !muffled(command)) return command;
+      const resourceId = resourceOf(command.id);
+      const ours = command.source === ROLLOUT_ATTENTION ? Boolean(resourceId && rollouts.has(resourceId)) : agents.has(command.id) || Boolean(resourceId && agentResources.has(resourceId));
+      return ours ? { type: 'attention.set', id: command.id, source: command.source, reason: null, ...(command.eventId ? { eventId: command.eventId } : {}) } : command;
+    });
+  }
 
   async run(nodeId: string, input: unknown): Promise<unknown> {
     const args = autoDeployInput.parse(input), state = await this.options.control.read(), node = state.nodes.find(candidate => candidate.id === nodeId);
@@ -182,7 +209,7 @@ export class AutoDeploys {
   private async choices(state: WorkspaceState, node: Node, resource: WorkspaceState['resources'][number], record: AutoDeployRecord | undefined) {
     const context = { sourceResourceId: resource.id };
     if (record?.state === 'armed') return { current: '', prompt: statusLine(record), context, options: [STOP] };
-    const pull = ((await this.options.resources.cached(node.id).catch(() => null))?.detail as { pull?: { merged?: boolean; state?: string; base?: { ref?: string } } } | undefined)?.pull;
+    const pull = ((await this.options.resources.cached(node.id).catch(() => null))?.detail as { pull?: { merged?: boolean; draft?: boolean; state?: string; base?: { ref?: string } } } | undefined)?.pull;
     const base = pull?.base?.ref ?? 'its base branch', number = Number(resource.data.number), prompt = record ? statusLine(record) : `Deploy #${number} automatically?`;
     if (pull?.merged) {
       const running = await this.runningRollouts(state, resource.id);
@@ -192,7 +219,8 @@ export class AutoDeploys {
       return { current: '', prompt, context: { ...context, from: 'here' }, options: [{ id: 'arm', label: running.length === 1 ? 'Auto deploy its rollout' : `Auto deploy its ${running.length} rollouts`, description: clip(runs.join(', '), 300), confirm }] };
     }
     const refusal = pull?.state === 'closed' ? 'The pull request is closed.' : undefined;
-    const steps = `${this.tagging() ? 'Tags it [ship], rebases' : 'Rebases'} it onto ${base} when needed, has an agent fix blocking Claude review findings and failing CI, merges it into ${base} once ready, validates every rollout phase and approves the next one only after a pass. Any doubt halts.`;
+    const first = [pull?.draft ? 'marks it ready for review' : '', this.tagging() ? 'tags it [ship]' : '', 'rebases it'].filter(Boolean).join(', ');
+    const steps = `${first.charAt(0).toUpperCase()}${first.slice(1)} onto ${base} when needed, has an agent fix blocking Claude review findings and failing CI, merges it into ${base} once ready, validates every rollout phase and approves the next one only after a pass. Any doubt halts.`;
     return { current: '', prompt, context,
       options: [{ id: 'arm', label: 'Start auto deploy', ...(refusal ? { description: refusal, disabled: true } : { description: clip(steps, 300), confirm: { prompt: clip(`Auto deploy #${number} “${node.title}”?`, 500), note: clip(steps, 300), action: 'Start auto deploy' } }) }] };
   }
@@ -201,7 +229,7 @@ export class AutoDeploys {
   private catchUpChoices(rollouts: readonly RolloutFacts[]) {
     const now = this.now(), several = rollouts.length > 1;
     const option = (catchUp: CatchUp) => {
-      const plan: { name: string; text: string; tone?: 'do' | 'risk' }[] = [], before: string[] = [], gates: string[] = [];
+      const plan: { name: string; text: string; tone?: 'do' | 'risk' }[] = [], before: string[] = [], waits: string[] = [], gates: string[] = [];
       for (const rollout of rollouts) {
         const record = seedCatchUp(armRecord({ id: 'plan', rolloutResourceId: rollout.nodeId, rolloutNodeId: rollout.nodeId, now, takeover: { catchUp, rolloutNodeIds: [rollout.nodeId] } }), [rollout], now);
         const track = phaseTrack(record, rollout), needs: string[] = [];
@@ -212,9 +240,12 @@ export class AutoDeploys {
           if (phase.check?.state === 'passed') {
             const finished = rollout.validations.find(entry => entry.label === phase.check!.id)?.finishedAt;
             plan.push({ name, text: `${phase.check.id} passed${finished === undefined ? '' : ` at ${clock(finished)}`} · counts` });
+          } else if (phase.state === 'done' && phase.check?.state === 'running' && phase.check.id) {
+            plan.push({ name, text: `${phase.check.id} validating · counts once it passes`, tone: 'do' }); needs.push(phase.name);
+            waits.push(`${phase.check.id} (${name})`);
           } else if (phase.state === 'done') {
             if (phase.check?.state === 'accepted') plan.push({ name, text: `deployed${at} · counts as accepted, not validated`, tone: 'risk' });
-            else { plan.push({ name, text: `deployed${at} · validate now`, tone: 'do' }); needs.push(phase.name); }
+            else { plan.push({ name, text: `deployed${at} · validate now`, tone: 'do' }); needs.push(phase.name); before.push(name); }
           } else if (phase.state === 'running') plan.push({ name, text: 'deploying · validate once deployed', tone: 'do' });
           else if (phase.gate && phase.gate.state !== 'approved' && rollout.gates.length && !gated) {
             gated = true; gates.push(name);
@@ -223,10 +254,11 @@ export class AutoDeploys {
             plan.push({ name, text, tone: 'do' });
           }
         }
-        before.push(...needs.map(name => several ? `${rollout.title} · ${name}` : name));
       }
       const gate = gates.join(', ');
-      const first = before.length ? `${before.length === 1 ? 'One validation' : `${before.length} validations`} (${before.join(', ')}) ${gate ? `before ${gate}` : 'now'}.` : gate ? `Approves ${gate} at once.` : '';
+      const fresh = before.length ? `${before.length === 1 ? 'one validation' : `${before.length} validations`} (${before.join(', ')})` : '';
+      const ahead = [waits.length ? `waits for ${waits.join(', ')}` : '', fresh].filter(Boolean).join(' and ');
+      const first = ahead ? `${ahead.charAt(0).toUpperCase()}${ahead.slice(1)} ${gate ? `before ${gate}` : fresh ? 'now' : 'first'}.` : gate ? `Approves ${gate} at once.` : '';
       return { plan: plan.slice(0, 20), foot: clip(`${first ? `${first} ` : ''}Validates ${gate || 'each phase'} after it deploys. Any doubt halts.`, 300) };
     };
     return { field: 'catchUp', label: 'Phases that already ran', options: [
@@ -235,8 +267,8 @@ export class AutoDeploys {
   }
 
   observe() { if (!this.closed && this.allowed()) void this.reconcile().catch(() => {}); }
-  start() { this.closed = false; clearInterval(this.timer); this.timer = setInterval(() => this.observe(), 15_000); this.timer.unref?.(); this.observe(); }
-  async close() { this.closed = true; clearInterval(this.timer); await this.reconciling?.catch(() => {}); }
+  start() { this.unfilter ??= this.options.control.filter((state, commands) => this.quiet(state, commands)); this.closed = false; clearInterval(this.timer); this.timer = setInterval(() => this.observe(), 15_000); this.timer.unref?.(); this.observe(); }
+  async close() { this.unfilter?.(); this.unfilter = undefined; this.closed = true; clearInterval(this.timer); await this.reconciling?.catch(() => {}); }
   /** One pass over every armed auto deploy; a pass asked for while one runs runs once more after it. */
   reconcile(): Promise<void> {
     if (this.reconciling) { this.again = true; return this.reconciling; }
@@ -278,18 +310,18 @@ export class AutoDeploys {
     const pending = (write: AutoDeployRecord['writes'][number]) => write.state === 'sending' && write.kind !== 'fix' && write.kind !== 'rebase';
     if (!record.writes.some(pending)) return { record };
     const jobs = new Map(this.options.store.listJobs().map(job => [job.requestKey, job]));
-    let declined: string | undefined;
+    let refusal: AutoDeployDecision | undefined;
     const writes = record.writes.flatMap(write => {
       if (!pending(write)) return [write];
       if (write.kind === 'findings') return this.options.store.reviewSend(write.requestId) ? [{ ...write, state: 'sent' as const }] : [];
       const job = jobs.get(write.requestId);
       if (!job) return [];
       if (job.state === 'succeeded') return [{ ...write, state: 'sent' as const }];
-      if (job.state === 'failed') declined ??= job.error ?? 'GitHub declined the request.';
+      if (job.state === 'failed') refusal ??= declined(write.kind, job.error ?? 'GitHub declined the request.');
       return [write];
     });
     const next = { ...record, writes };
-    return declined ? { record: next, decision: { kind: 'halt', code: 'declined', reason: clip(declined, 300) } } : { record: next };
+    return refusal ? { record: next, decision: refusal } : { record: next };
   }
 
   /** A validation recorded but not confirmed (the pass stopped in between) is asked for again with the same journaled request. */
@@ -297,7 +329,7 @@ export class AutoDeploys {
     for (const check of record.checks.filter(entry => !entry.validationId && !entry.accepted)) {
       const rollout = state.nodes.find(node => node.id === check.rolloutNodeId);
       try {
-        const result = await this.options.validations.run(check.rolloutNodeId, { operation: 'trigger', sourceResourceId: rollout?.resourceId ?? '', value: check.agent ?? VALIDATION_AGENT, requestId: check.requestId, phase: { focus: check.label, jobs: check.jobs ?? [] } }) as { validationId?: unknown };
+        const result = await this.options.validations.run(check.rolloutNodeId, { operation: 'trigger', sourceResourceId: rollout?.resourceId ?? '', value: check.agent ?? VALIDATION_AGENT, requestId: check.requestId, phase: { focus: clip(check.label, PHASE_LABEL), jobs: check.jobs ?? [] } }) as { validationId?: unknown };
         if (typeof result?.validationId !== 'string') throw new Error('The validation was not recorded.');
         record = { ...record, checks: record.checks.map(entry => entry.key === check.key ? { ...entry, validationId: result.validationId as string } : entry) };
         this.save(record);
@@ -363,6 +395,7 @@ export class AutoDeploys {
 
   /** Performs one decided step and says whether the pass may take another. */
   private async act(state: WorkspaceState, node: Node, record: AutoDeployRecord, decision: Exclude<AutoDeployDecision, { kind: 'wait' | 'halt' | 'stop' | 'done' }>): Promise<boolean> {
+    if (decision.kind === 'ready') return this.write(record, decision, 'ready', node.id, 'pr.state', { value: 'ready', expectedState: 'draft', pullRequestId: decision.pullRequestId, sourceResourceId: record.pullResourceId! });
     if (decision.kind === 'tag') return this.write(record, decision, 'tag', node.id, 'pr.showShip', { value: 'ship', expectedTitle: decision.title, sourceResourceId: record.pullResourceId! });
     if (decision.kind === 'update') {
       const rebases = [...record.rebases ?? [], { head: decision.head, base: decision.baseHead, at: this.now(), mode: 'update' as const }];
@@ -384,7 +417,7 @@ export class AutoDeploys {
 
   /** Saves the write as `sending`, sends it once through the journaled provider action and reads the journal for its outcome. */
   private async write(record: AutoDeployRecord, decision: AutoDeployDecision, key: string, nodeId: string, actionId: string, input: JsonObject, label?: string): Promise<boolean> {
-    const requestId = stableUuid(`auto-deploy:${record.id}:${key}`), kind = decision.kind as 'tag' | 'update' | 'merge' | 'approve';
+    const requestId = stableUuid(`auto-deploy:${record.id}:${key}`), kind = decision.kind as 'ready' | 'tag' | 'update' | 'merge' | 'approve';
     const sending = settle({ ...record, writes: [...record.writes, { key, kind, requestId, at: this.now(), state: 'sending', ...(label ? { label } : {}) }] }, decision, this.now());
     this.save(sending); await this.options.changed();
     let failure: unknown;
@@ -395,7 +428,7 @@ export class AutoDeploys {
     if (job?.state === 'succeeded') { this.save({ ...latest, writes: latest.writes.map(write => write.key === key ? { ...write, state: 'sent' } : write) }); return latest.state === 'armed'; }
     if (!job || job.state === 'failed') {
       const forgotten = { ...latest, writes: latest.writes.filter(write => write.key !== key) };
-      await this.finish(forgotten, { kind: 'halt', code: 'declined', reason: clip(job?.error ?? errorText(failure), 300) }); return false;
+      await this.finish(forgotten, declined(kind, job?.error ?? errorText(failure))); return false;
     }
     await this.finish(latest, decide(latest, { now: this.now(), tagging: false, rollouts: [] })); return false;
   }

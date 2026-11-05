@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { startWorkspaceService } from './server.ts';
 import { connectWorkspace } from './client.ts';
 import { linearProviders, linearIssueId } from '../../tests/fixtures/linear.ts';
+import { resourceWebPage } from '../../src/resource-plugins/web-page.ts';
 import type { ResourceChoices, ResourceSnapshot, SkillContext } from '../../src/resource-plugins/types.ts';
 
 test('Linear aliases retain UUID identity, links and lifecycle through imports, rename, context, account errors and restart', async () => {
@@ -23,11 +24,13 @@ test('Linear aliases retain UUID identity, links and lifecycle through imports, 
     await assert.rejects(client.call('item.create', request('https://linear.app/other/issue/BIL-128/title')), /different Linear workspace/); assert.deepEqual(await service.control.read(), before);
     const original = request('https://linear.app/old-fixture/issue/OLD-42/outdated');
     const result = await client.call('item.create', original), state = await service.control.read(); assert.equal(state.resources.length, 2); assert.equal(state.nodes.length, 3);
-    const resource = state.resources.find(resource => resource.pluginId === 'linear.ticket')!; assert.deepEqual(resource.data, { issueId: linearIssueId }); assert.equal(resource.connectionId, 'linear-fixture'); assert.deepEqual(state.links, before.links);
+    const resource = state.resources.find(resource => resource.pluginId === 'linear.ticket')!; assert.deepEqual(resource.data, { issueId: linearIssueId, workspaceKey: 'fixture', url: 'https://linear.app/fixture/issue/BIL-128/plan-changes' });
+    assert.deepEqual(resourceWebPage(resource, service.control.registry, () => undefined), { label: 'Open on Linear', url: 'https://linear.app/fixture/issue/BIL-128/plan-changes' }); assert.equal(resource.connectionId, 'linear-fixture'); assert.deepEqual(state.links, before.links);
     for (const old of before.nodes) { const node = state.nodes.find(node => node.id === old.id)!; assert.deepEqual(node.position, old.position); assert.equal(node.completedAt, old.completedAt); }
     providers.data.issue.previousIdentifiers.push('BIL-128'); providers.data.issue.identifier = 'PAY-7'; providers.data.issue.url = 'https://linear.app/fixture/issue/PAY-7/new'; providers.data.issue.state.name = 'Done'; providers.data.issue.state.type = 'completed';
     const read = (refresh = false) => client.call<ResourceSnapshot>('runtime.run', { nodeId: 'OLD-42', action: 'resource.read', arguments: { refresh } });
     const refreshed = await read(true); assert.equal(refreshed.title, 'PAY-7 · Make plan changes predictable'); assert.equal(refreshed.activity, 'complete');
+    assert.equal((await service.control.read()).resources.find(resource => resource.pluginId === 'linear.ticket')?.data.url, 'https://linear.app/fixture/issue/PAY-7/new');
     await client.call('item.create', request(providers.data.issue.url)); assert.equal((await service.control.read()).nodes.length, 3);
     providers.data.issue.description = 'Large description '.repeat(3000); const context = await client.call<SkillContext>('runtime.run', { nodeId: 'OLD-42', action: 'resource.context', arguments: {} }); assert.ok(context.content.length <= 32_000); assert.match(context.content, /Context excerpt/); assert.equal(context.sourceUrl, providers.data.issue.url);
     client.close(); await service.close(); service = await startWorkspaceService(directory, undefined, undefined, providers); client = await connectWorkspace(directory);

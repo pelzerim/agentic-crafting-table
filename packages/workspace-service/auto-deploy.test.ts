@@ -43,7 +43,7 @@ async function fixture(options: { starter?: boolean; tagging?: boolean; director
     writes: [] as { nodeId: string; actionId: string; input: JsonObject }[], approvable: '', merged: false };
   const resources = {
     async cached(nodeId: string) {
-      if (nodeId === 'pr') return { detail: { pull: { title: github.readiness.title, state: github.merged ? 'closed' : 'open', merged: github.merged, base: { ref: 'main' }, head: { ref: 'feature/exports', sha: github.readiness.head } }, ...(github.failing.length ? { failingChecks: github.failing } : {}) } };
+      if (nodeId === 'pr') return { detail: { pull: { title: github.readiness.title, state: github.merged ? 'closed' : 'open', merged: github.merged, draft: github.readiness.lifecycle === 'draft', base: { ref: 'main' }, head: { ref: 'feature/exports', sha: github.readiness.head } }, ...(github.failing.length ? { failingChecks: github.failing } : {}) } };
       return github.observation ? { detail: github.observation } : null;
     },
     async execute(nodeId: string, actionId: string, input: JsonObject) {
@@ -58,6 +58,7 @@ async function fixture(options: { starter?: boolean; tagging?: boolean; director
       if (outcome === 'unknown') { store.transitionJob(job.id, 'running', 'outcome-unknown', { error: 'GitHub may have merged it.' }); throw new Error('GitHub may have merged it.'); }
       if (actionId === 'pr.showShip') github.readiness.title = `[ship] ${github.readiness.title}`;
       if (actionId === 'pr.merge') github.readiness.lifecycle = 'merged';
+      if (actionId === 'pr.state') github.readiness.lifecycle = 'open';
       if (actionId === 'pr.updateBranch') github.readiness = { ...github.readiness, head: 'e'.repeat(40), mergeStateStatus: 'CLEAN' };
       if (actionId === 'rollout.approve' && github.observation) github.observation = { ...github.observation, gates: [] };
       store.transitionJob(job.id, 'running', 'succeeded', { result: {} });
@@ -312,6 +313,19 @@ test('agents may read an auto deploy but only a person arms or stops it', () => 
   for (const value of ['arm', 'stop']) assert.equal(agentRuntimeRefusal({ action: AUTO_DEPLOY_OPERATION, arguments: { operation: 'set', value } }), humanOnlyMessage);
 });
 
+test('a validation recorded with a phase label over 200 characters is asked for with the label clipped', async () => {
+  const f = await fixture({ tagging: false });
+  await f.arm(); await f.pass();
+  await f.discover([f.gate(7, 'live')], [f.job(1, 'preview / ship'), f.job(2, 'live / ship', 'waiting', null)]);
+  await f.pass();
+  const saved = f.record()!, long = `before live (${'apply-prod-phase-2 / apply (ap-south-1), '.repeat(8)})`;
+  f.store.pluginStorage('github.rollout').put(AUTO_DEPLOY_COLLECTION, 'pr-r', { ...saved, checks: saved.checks.map(check => ({ ...check, label: long, validationId: undefined })) } as never);
+  await f.pass();
+  const focus = (f.triggers.at(-1)!.input.phase as { focus: string }).focus;
+  assert.ok(long.length > 200 && focus.length <= 200 && focus.startsWith('before live (apply-prod-phase-2'), focus);
+  assert.equal(f.record()!.state, 'armed');
+});
+
 test('a failed validation halts before any approval', async () => {
   const f = await fixture({ tagging: false });
   await f.arm(); await f.pass();
@@ -328,6 +342,21 @@ type Offer = { prompt: string; context: JsonObject; options: { id: string; label
 const midRollout = (f: Awaited<ReturnType<typeof fixture>>, linked = true) => f.discover([f.gate(7, 'production')],
   [f.job(1, 'build'), f.job(2, 'deploy-preview / ship'), f.job(3, 'deploy-staging / ship'), f.job(4, 'deploy-prod (eu-west)', 'waiting', null)], 'waiting', null, linked);
 const passedPreview = [{ label: 'V1', state: 'final', verdict: 'passed', finishedAt: T0, scope: { runId: 101, attempt: 1, jobs: [1, 2] } }];
+
+test('auto deploy from here with a validation already running: the plan says it counts once it passes, and no second validation is asked for', async () => {
+  const f = await fixture({ tagging: false, validated: [...passedPreview, { label: 'V2', state: 'running', requestedAt: T0, scope: { runId: 101, attempt: 1, jobs: [3] } }] });
+  f.github.merged = true; f.github.readiness.lifecycle = 'merged';
+  await midRollout(f);
+  const offer = await f.run({ operation: 'options' }, 'rollout') as unknown as Offer;
+  const [validate] = offer.options[0].confirm!.pick!.options;
+  assert.deepEqual(validate.plan!.map(row => [row.name, row.text.replace(/\d\d:\d\d/, 'hh:mm'), row.tone]), [['preview', 'V1 passed at hh:mm · counts', undefined], ['staging', 'V2 validating · counts once it passes', 'do'], ['production', 'approve after staging passes, then validate once deployed', 'do']]);
+  assert.equal(validate.foot, 'Waits for V2 (staging) before production. Validates production after it deploys. Any doubt halts.');
+  await f.run({ operation: 'set', value: 'arm', from: 'here', catchUp: 'validate', sourceResourceId: 'rollout-r', requestId: randomUUID() }, 'rollout');
+  await f.pass();
+  assert.deepEqual(f.triggers, [], 'the running V2 is the gating validation');
+  assert.equal(f.github.writes.length, 0);
+  assert.equal((await f.run({ operation: 'status' }, 'rollout') as { line?: string }).line, 'Auto deploy · validating before production (deploy-prod (eu-west))');
+});
 
 test('auto deploy from a rollout a pull request discovered: the confirm offers both catch-ups with their plan, the record is the pull request\'s, and staging is validated before production is approved', async () => {
   const f = await fixture({ tagging: false, validated: passedPreview });
@@ -489,6 +518,53 @@ test('an out-of-date branch is updated by GitHub once per base head, journaled, 
   assert.equal(again.record()!.step, 'updating-branch');
 });
 
+test('a draft is marked ready for review once, journaled, then auto deploy goes on; never sent again after a restart', async () => {
+  const f = await fixture({ tagging: false });
+  f.github.readiness.lifecycle = 'draft'; f.github.readiness.checks = 'pending';
+  const options = await f.run({ operation: 'options' }) as { options: { confirm?: { note?: string } }[] };
+  assert.match(options.options[0].confirm!.note!, /^Marks it ready for review, rebases it onto main/);
+  await f.arm(); await f.pass();
+  assert.deepEqual(f.github.writes.map(write => [write.actionId, write.input.value, write.input.expectedState, write.input.pullRequestId, write.input.sourceResourceId]), [['pr.state', 'ready', 'draft', 'PR_node42', 'pr-r']]);
+  assert.deepEqual(f.record()!.writes.map(write => [write.key, write.kind, write.state]), [['ready', 'ready', 'sent']]);
+  assert.equal((await f.run({ operation: 'status' })).line, 'Auto deploy · waiting for checks');
+  const events = (await f.run({ operation: 'status' })).events as { kind: string; text: string }[];
+  assert.deepEqual(events.map(event => event.text), ['armed by you', 'marked ready for review']);
+  f.github.readiness.checks = 'passing'; await f.pass();
+  assert.deepEqual(f.github.writes.map(write => write.actionId), ['pr.state', 'pr.merge'], 'once ready it merges as usual');
+
+  const g = await fixture({ tagging: false });
+  g.github.readiness.lifecycle = 'draft'; g.github.readiness.checks = 'pending';
+  await g.arm(); await g.pass();
+  g.deploys.close();
+  const again = await fixture({ directory: g.directory, tagging: false });
+  again.github.readiness = { ...again.github.readiness, lifecycle: 'draft', checks: 'pending' };
+  await again.pass();
+  assert.deepEqual(again.github.writes, [], 'a pull request set back to draft is not marked ready again');
+  assert.deepEqual([again.record()!.state, again.record()!.halt?.code], ['halted', 'draft']);
+  assert.match(again.record()!.halt!.reason, /set back to draft/);
+});
+
+test('marking a draft ready that GitHub declines or does not confirm halts as draft and is not sent again', async () => {
+  const f = await fixture({ tagging: false });
+  f.github.readiness.lifecycle = 'draft'; f.github.outcomes['pr.state'] = 'failed';
+  await f.arm(); await f.pass();
+  assert.deepEqual([f.record()!.state, f.record()!.halt?.code], ['halted', 'draft']);
+  assert.match(f.record()!.halt!.reason, /^Marking the pull request ready for review failed: /);
+
+  const g = await fixture({ tagging: false });
+  g.github.readiness.lifecycle = 'draft'; g.github.outcomes['pr.state'] = 'unknown';
+  await g.arm(); await g.pass();
+  assert.deepEqual([g.record()!.state, g.record()!.halt?.code], ['halted', 'draft']);
+  assert.match(g.record()!.halt!.reason, /Marking the pull request ready for review could not be confirmed/);
+  g.deploys.close();
+  const again = await fixture({ directory: g.directory, tagging: false });
+  again.github.readiness.lifecycle = 'draft'; again.github.readiness.checks = 'pending';
+  await again.pass();
+  assert.equal(again.github.writes.length, 0, 'the unconfirmed write is not sent again after a restart');
+  await again.run({ operation: 'set', value: 'arm', sourceResourceId: 'pr-r', requestId: randomUUID() }); await again.pass();
+  assert.deepEqual(again.github.writes.map(write => write.actionId), ['pr.state'], 'a new arming may mark it ready again');
+});
+
 test('conflicts start an agent beside the pull request to rebase, with the branch, the base and what it must not do', async () => {
   const f = await fixture({ tagging: false });
   f.github.readiness.mergeStateStatus = 'DIRTY';
@@ -559,4 +635,37 @@ test('a ready agent connected to the pull request gets the findings through the 
   assert.deepEqual(f.review.calls.map(call => [call.operation, call.requestId, call.agentNodeId]), [['send', '00000000-0000-4000-8000-0000000000aa', 'helper']]);
   assert.equal((await f.run({ operation: 'status' })).line, 'Auto deploy · Claude · impl is fixing 2 findings · 1 medium left for you');
   assert.equal(f.record()!.writes.find(write => write.kind === 'findings')?.state, 'sent');
+});
+
+test('while armed, its rollouts finishing or waiting at a gate and its validation agents finishing alert nobody; concerns, failures and a stopped one still do', async () => {
+  const f = await fixture();
+  f.github.readiness.checks = 'pending';
+  await f.arm();
+  await f.discover([], [f.job(1, 'deploy (staging)')]);
+  await f.apply([{ type: 'item.add', id: 'checker', resourceId: 'checker-r', pluginId: 'agent.session', title: 'Validation agent', projectId: 'web', position: { x: 900, y: 200 }, data: { provider: 'claude', sessionId: 'checker-session' } },
+    { type: 'item.add', id: 'helper', resourceId: 'helper-r', pluginId: 'agent.session', title: 'Other agent', projectId: 'web', position: { x: 900, y: 500 }, data: { provider: 'claude', sessionId: 'helper-session' } }]);
+  f.store.createRolloutValidation({ id: randomUUID(), rolloutResourceId: 'rollout-r', agentNodeId: 'checker', agent: { title: 'Validation agent' }, requestId: randomUUID(), scope: { runId: 101, attempt: 1, headSha: sha }, requestedAt: T0 + 60_000 });
+  const node = async (id: string) => (await f.control.read()).nodes.find(entry => entry.id === id)!;
+  const raise = (id: string, source: string, reason: string, eventId: string) => f.apply([{ type: 'attention.set', id, source, reason, eventId } as WorkspaceCommand]);
+
+  for (const [reason, eventId] of [['finished', 'run:passed'], ['input', 'run:gate']]) {
+    const before = (await node('rollout')).attentionVersion ?? 0;
+    await raise('rollout', 'provider:github.rollout', reason, eventId);
+    const after = await node('rollout');
+    assert.equal(after.attentionVersion ?? 0, before, `${reason} raises no alert`);
+    assert.equal(after.attentionSources?.['provider:github.rollout'], undefined);
+    assert.equal(after.attentionEvents?.['provider:github.rollout'], eventId, 'the event is spent, so it is not raised again later');
+  }
+  await raise('checker', 'completion', 'finished', 'claude:checker:1');
+  assert.equal((await node('checker')).attentionSources?.completion, undefined, 'its validation agent finishing a turn');
+  await raise('helper', 'completion', 'finished', 'claude:helper:1');
+  assert.equal((await node('helper')).attentionSources?.completion, 'finished', 'an agent that validates nothing of it');
+  await raise('rollout', 'validation:checker', 'validation', 'V1:concerns');
+  assert.equal((await node('rollout')).attentionSources?.['validation:checker'], 'validation');
+  await raise('rollout', 'provider:github.rollout', 'error', 'run:failed');
+  assert.equal((await node('rollout')).attentionSources?.['provider:github.rollout'], 'error');
+
+  await f.run({ operation: 'set', value: 'stop', sourceResourceId: 'pr-r', requestId: randomUUID() });
+  await raise('rollout', 'provider:github.rollout', 'finished', 'run:passed-again');
+  assert.equal((await node('rollout')).attentionSources?.['provider:github.rollout'], 'finished', 'once stopped, the rollout alerts again');
 });

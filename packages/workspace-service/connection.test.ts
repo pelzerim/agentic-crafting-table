@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path';
 import { WorkspaceConnection } from './connection.ts';
 import { connectWorkspace } from './client.ts';
 import { serveLocal } from './local-rpc.ts';
+import type { RpcPeer } from './local-rpc.ts';
 import { startWorkspaceService } from './server.ts';
 import { prepareWorkspace } from './paths.ts';
 import { PROTOCOL_VERSION } from './protocol.ts';
@@ -156,5 +157,52 @@ test('a connection for requests only never subscribes, so it is sent no snapshot
     await connection.connect();
     assert.deepEqual((await connection.call<{ cursor: number }>('read')).cursor, 0);
     assert.equal(asked.includes('subscribe'), false);
+  } finally { connection.close(); server.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('whole-workspace reads share one service read until a newer snapshot arrives', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-connection-read-'));
+  const paths = prepareWorkspace(directory);
+  let reads = 0, cursor = 1, subscriber: RpcPeer | undefined;
+  const server = await serveLocal(paths.socket, paths.secret, async (method, _args, peer) => {
+    if (method === 'hello') return { protocol: PROTOCOL_VERSION };
+    if (method === 'subscribe') { subscriber = peer; return { state: emptyState(), cursor, layer: 'map' }; }
+    if (method === 'read') { reads++; await new Promise(resolve => setTimeout(resolve, 20)); return { state: emptyState(), cursor }; }
+    if (method === 'apply') return { revision: 1 };
+    throw new Error('Unexpected fixture request');
+  });
+  const connection = new WorkspaceConnection(directory, process.execPath, 'unused');
+  try {
+    connection.setLayer('map');
+    await connection.connect();
+    const [first, second] = await Promise.all([connection.read(), connection.read()]);
+    assert.equal(reads, 1); assert.equal(first.cursor, 1); assert.equal(second.cursor, 1);
+    await connection.read();
+    assert.equal(reads, 1);
+    cursor = 2;
+    const notified = once(connection, 'snapshot', { signal: AbortSignal.timeout(5000) });
+    subscriber!.notify('snapshot', { snapshot: { state: emptyState(), cursor: 2, layer: 'map' } });
+    await notified;
+    assert.equal((await connection.read()).cursor, 2);
+    assert.equal(reads, 2);
+    await connection.call('apply', {});
+    await connection.read();
+    assert.equal(reads, 3);
+  } finally { connection.close(); server.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('a connection that does not subscribe reads the service every time', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-connection-read-plain-'));
+  const paths = prepareWorkspace(directory);
+  let reads = 0;
+  const server = await serveLocal(paths.socket, paths.secret, async method => {
+    if (method === 'hello') return { protocol: PROTOCOL_VERSION };
+    if (method === 'read') { reads++; return { state: emptyState(), cursor: 1 }; }
+    throw new Error('Unexpected fixture request');
+  });
+  const connection = new WorkspaceConnection(directory, process.execPath, 'unused', false, { subscribe: false });
+  try {
+    await connection.read(); await connection.read();
+    assert.equal(reads, 2);
   } finally { connection.close(); server.close(); await rm(directory, { recursive: true, force: true }); }
 });

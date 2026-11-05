@@ -45,6 +45,17 @@ interface PendingWrite { requestId: string; actionId: string; nodeId: string; in
 /** A repaint of more cards than one envelope holds is sent in batches, each against the newest revision. */
 const MAXIMUM_PRESENTATION_BATCHES = 50;
 
+/** The attention.set a provider reading needs on its node, or nothing. An event the node already records with no reason left was
+ * spent without an alert (its alert was quieted); sending it again on every poll would only write a refused replay. */
+export function providerAttentionCommand(target: Pick<WorkspaceState['nodes'][number], 'attentionSources' | 'attentionEvents' | 'attentionNotes'> | undefined, nodeId: string, source: string,
+  snapshot: Pick<ResourceSnapshot, 'attentionReason' | 'attentionNote' | 'attentionEventId'>): WorkspaceCommand | undefined {
+  if (snapshot.attentionReason === undefined) return undefined;
+  const current = target?.attentionSources?.[source] ?? null, note = snapshot.attentionReason ? attentionNote(snapshot.attentionNote) : undefined;
+  if (snapshot.attentionReason && current === null && snapshot.attentionEventId && target?.attentionEvents?.[source] === snapshot.attentionEventId) return undefined;
+  if (current === snapshot.attentionReason && (!snapshot.attentionEventId || target?.attentionEvents?.[source] === snapshot.attentionEventId) && target?.attentionNotes?.[source] === note) return undefined;
+  return { type: 'attention.set', id: nodeId, source, reason: snapshot.attentionReason, ...(note ? { note } : {}), eventId: snapshot.attentionEventId };
+}
+
 export class ResourceCoordinator {
   private store: SqliteStore; private control: WorkspaceControl; private host: ResourcePluginHost; private connections: ProviderConnections;
   private changed: () => Promise<void>; private now: () => number;
@@ -363,10 +374,8 @@ export class ResourceCoordinator {
   }
   private observeAttention(commands: WorkspaceCommand[], state: WorkspaceState, nodeId: string, resource: ResourceRecord, snapshot: ResourceSnapshot) {
     if (snapshot.attentionReason === undefined) return;
-    const source = `provider:${resource.pluginId}`, target = state.nodes.find(node => node.id === nodeId);
-    const note = snapshot.attentionReason ? attentionNote(snapshot.attentionNote) : undefined;
-    if ((target?.attentionSources?.[source] ?? null) !== snapshot.attentionReason || snapshot.attentionEventId && target?.attentionEvents?.[source] !== snapshot.attentionEventId || target?.attentionNotes?.[source] !== note)
-      commands.push({ type: 'attention.set', id: nodeId, source, reason: snapshot.attentionReason, ...(note ? { note } : {}), eventId: snapshot.attentionEventId });
+    const command = providerAttentionCommand(state.nodes.find(node => node.id === nodeId), nodeId, `provider:${resource.pluginId}`, snapshot);
+    if (command) commands.push(command);
   }
   private observePresentationAttention(commands: WorkspaceCommand[], state: WorkspaceState, resource: ResourceRecord, snapshot: ResourceSnapshot) {
     const attention = presentationAttention(this.host, resource, snapshot, this.store);
