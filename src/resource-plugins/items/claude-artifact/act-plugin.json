@@ -1,7 +1,7 @@
 {
   "id": "claude.artifact",
   "name": "Claude artifacts",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "apiRange": "^1.0.0",
   "entries": {
     "definitions": "plugin.ts",

@@ -2,11 +2,11 @@ import { defineResourcePlugin } from '../../define.ts';
 import { defaultArtifactTitle, parseClaudeArtifactUrl } from './url.ts';
 
 export const claudeArtifact = defineResourcePlugin({
-  settingsHelp: 'Keep a private Claude artifact, such as an architecture overview or flow diagram, next to the work it explains. Add its claude.ai link with From URL; agents on the table add the ones they publish. The page opens in your browser, where you are signed in to Claude.',
+  settingsHelp: 'Keep a private Claude artifact, such as an architecture overview or flow diagram, next to the work it explains. Add its claude.ai link with From URL; agents on the table add the ones they publish. The page opens inside the item. Sign in to claude.ai inside the item once; Open in browser is still there.',
   id: 'claude.artifact', apiVersion: 1, schemaVersion: 2,
   name: 'Claude artifact', icon: 'workflow', preferredView: 'focus',
   context: { parentField: 'sourcePrId', fields: ['headSha', 'artifactId', 'url'] },
-  view: { width: 460, height: 300 },
+  view: { width: 900, height: 640 },
   webLink: { label: 'Open on claude.ai', template: '{url}' },
   mapSizes: { defaultSize: 'small', sizes: {
     small: { width: 150, height: 48, summaryLines: 0, description: "Artifact title and progress/attention." },
