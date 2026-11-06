@@ -23,6 +23,10 @@ async function serveArtifactPages(app: ElectronApplication) {
     session.fromPartition('persist:claude-artifacts').protocol.handle('https', request => {
       const url = new globalThis.URL(request.url); served.push(url.hostname + url.pathname);
       if (url.hostname === 'idp.example.com') return html(`<script>document.cookie = 'idp=1; Secure; Path=/';</script>`);
+      // Google's sign-in popup: it sets its cookie, tries a popup of its own and answers its opener.
+      if (url.hostname === 'accounts.google.com') return html(`<script>document.cookie = 'google=1; Secure; Path=/';
+        window.open('https://example.com/from-sign-in');
+        window.opener.postMessage('signed in:' + typeof window.craftingTable + typeof require, '*');</script>`);
       if (url.pathname === '/auth/callback') return html(`<script>document.cookie = 'sessionKey=fixture; Secure; Path=/'; location.replace('https://claude.ai/auth/done');</script>`);
       if (url.pathname === '/auth/done') return new Response(null, { status: 302, headers: { location: artifact } });
       return html('<p>Fixture artifact</p>');
@@ -94,17 +98,30 @@ test('a pasted claude.ai artifact link becomes one card whose page opens inside 
   expect(await opened()).toEqual([URL, URL]);
   await expect(address).toBeHidden();
 
-  // A popup goes to the browser and the item keeps the artifact.
+  // Google sign-in opens in an app window in the artifact session, answers the item's page and closes; a popup it opens
+  // goes to the browser. Any other popup goes to the browser, and the item keeps the artifact.
+  const userAgent = await inGuest(app, 'navigator.userAgent');
+  expect(userAgent).not.toContain('Electron/'); expect(userAgent).toMatch(/\(KHTML, like Gecko\) Chrome\/\S+ Safari\//);
+  await inGuest(app, "addEventListener('message', event => { document.title = event.data; }); window.signInWindow = window.open('https://accounts.google.com/o/oauth2/v2/auth'); undefined");
+  await expect.poll(() => inGuest(app, 'document.title')).toBe('signed in:undefinedundefined');
+  // The window's title is its page's host, not the page's own title.
+  await expect.poll(() => app.evaluate(({ BrowserWindow, session }) => BrowserWindow.getAllWindows()
+    .filter(window => window.webContents.session === session.fromPartition('persist:claude-artifacts')).map(window => window.getTitle()))).toEqual(['accounts.google.com']);
+  await inGuest(app, 'window.signInWindow.close()');
+  await expect.poll(() => cookies(app, 'persist:claude-artifacts')).toEqual(['accounts.google.com:google', 'claude.ai:sessionKey', 'idp.example.com:idp']);
+  expect(await cookies(app)).toEqual([]);
+  await expect.poll(opened).toEqual([URL, URL, 'https://example.com/from-sign-in']);
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
   await inGuest(app, "window.open('https://example.com/popup')");
-  await expect.poll(opened).toEqual([URL, URL, 'https://example.com/popup']);
+  await expect.poll(opened).toEqual([URL, URL, 'https://example.com/from-sign-in', 'https://example.com/popup']);
   expect((await guest(app))?.url).toBe(URL);
   expect(page.url()).not.toContain('claude.ai');
 
   // A plain http page and a download go to the browser, and the item keeps the artifact.
   await inGuest(app, "location.href = 'http://example.com/'");
-  await expect.poll(opened).toEqual([URL, URL, 'https://example.com/popup', 'http://example.com/']);
+  await expect.poll(opened).toEqual([URL, URL, 'https://example.com/from-sign-in', 'https://example.com/popup', 'http://example.com/']);
   await inGuest(app, "Object.assign(document.createElement('a'), { href: 'https://claude.ai/files/notes.txt', download: 'notes.txt' }).click()");
-  await expect.poll(opened).toEqual([URL, URL, 'https://example.com/popup', 'http://example.com/', 'https://claude.ai/files/notes.txt']);
+  await expect.poll(opened).toEqual([URL, URL, 'https://example.com/from-sign-in', 'https://example.com/popup', 'http://example.com/', 'https://claude.ai/files/notes.txt']);
   expect((await guest(app))?.url).toBe(URL);
 
   // Closing the view removes the page; opening it again loads it again.

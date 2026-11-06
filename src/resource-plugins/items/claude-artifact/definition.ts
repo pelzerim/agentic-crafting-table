@@ -2,7 +2,7 @@ import { defineResourcePlugin } from '../../define.ts';
 import { defaultArtifactTitle, parseClaudeArtifactUrl } from './url.ts';
 
 export const claudeArtifact = defineResourcePlugin({
-  settingsHelp: 'Keep a private Claude artifact, such as an architecture overview or flow diagram, next to the work it explains. Add its claude.ai link with From URL; agents on the table add the ones they publish. The page opens inside the item. Sign in to claude.ai inside the item once; Open in browser is still there. Some sign-in methods, such as Google, may only work in your browser.',
+  settingsHelp: 'Keep a private Claude artifact, such as an architecture overview or flow diagram, next to the work it explains. Add its claude.ai link with From URL; agents on the table add the ones they publish. The page opens inside the item. Sign in to claude.ai inside the item once; Open in browser is still there.',
   id: 'claude.artifact', apiVersion: 1, schemaVersion: 2,
   name: 'Claude artifact', icon: 'workflow', preferredView: 'focus',
   context: { parentField: 'sourcePrId', fields: ['headSha', 'artifactId', 'url'] },

@@ -26,6 +26,12 @@ test('top-level https pages stay in the guest so sign-in can leave the site and 
   assert.equal(embeddedNavigation('http://example.com/embed', false), 'allow');
 });
 
+test('only Google sign-in and the site itself open as a sign-in window in the site session', () => {
+  const signIn = embeddedSite('claude')!.signIn!;
+  for (const url of ['https://accounts.google.com/o/oauth2/v2/auth?client_id=x', 'https://claude.ai/login', 'https://auth.claude.ai/callback']) assert.equal(signIn(url), true, url);
+  for (const url of ['https://accounts.google.com.evil.example/o/oauth2', 'http://accounts.google.com/o/oauth2', 'https://evilaccounts.google.com/', 'https://example.com/popup', 'not a url']) assert.equal(signIn(url), false, url);
+});
+
 test('embedded pages get no device or notification permissions', () => {
   assert.equal(embeddedPermissionAllowed('clipboard-sanitized-write'), true);
   for (const permission of ['media', 'geolocation', 'notifications', 'clipboard-read', 'openExternal', 'display-capture']) assert.equal(embeddedPermissionAllowed(permission), false);

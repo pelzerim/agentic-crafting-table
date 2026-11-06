@@ -4,7 +4,7 @@ import type { DesktopAnnouncement, NotificationTarget } from './notifications.ts
 import type { WorkspaceSnapshot } from '../../packages/workspace-service/protocol.ts';
 import { isOffMap } from '../../src/graph/archive.ts';
 import { browserUrl, clipboardUrls } from './browser-url.ts';
-import { EMBEDDED_SITES, attachEmbeddedPage, embeddedNavigation, embeddedPermissionAllowed } from './embedded-sites.ts';
+import { EMBEDDED_SITES, GUEST_PREFERENCES, attachEmbeddedPage, browserUserAgent, embeddedNavigation, embeddedPermissionAllowed } from './embedded-sites.ts';
 import { savePastedImage } from './pasted-images.ts';
 import { pluginDiscoverySchema } from '../../src/resource-plugins/url-input.ts';
 import { createKeepAwake } from './keep-awake.ts';
@@ -127,18 +127,32 @@ async function main() {
     try { target = browserUrl(input); } catch { target = undefined; }
     if (target) void shell.openExternal(target).catch(() => {});
   };
+  const userAgent = browserUserAgent(app.userAgentFallback);
   for (const site of EMBEDDED_SITES) {
     const pages = session.fromPartition(site.partition);
+    pages.setUserAgent(userAgent);
     pages.setPermissionRequestHandler((_contents, permission, callback) => callback(embeddedPermissionAllowed(permission)));
     pages.setPermissionCheckHandler((_contents, permission) => embeddedPermissionAllowed(permission));
     pages.on('will-download', (event, item) => { event.preventDefault(); openOutside(item.getURL()); });
   }
-  // A site's page in an item view: popups go to the browser, top-level pages stay https, and it never hosts a webview.
+  // Any page in a site's session (the item's page and its sign-in windows): sign-in popups open in a small window in
+  // that session, other popups go to the browser, top-level pages stay https, and it never hosts a webview.
   app.on('web-contents-created', (_event, contents) => {
-    if (contents.getType() !== 'webview') return;
+    const site = EMBEDDED_SITES.find(candidate => contents.session === session.fromPartition(candidate.partition));
+    if (!site) return;
     contents.on('will-attach-webview', event => event.preventDefault());
     contents.on('select-bluetooth-device', (event, _devices, callback) => { event.preventDefault(); callback(''); });
-    contents.setWindowOpenHandler(({ url }) => { openOutside(url); return { action: 'deny' }; });
+    contents.setWindowOpenHandler(({ url }) => {
+      if (site.signIn?.(url)) return { action: 'allow', overrideBrowserWindowOptions: { width: 500, height: 640, autoHideMenuBar: true, show: !backgroundTest, focusable: !backgroundTest, webPreferences: { ...GUEST_PREFERENCES, partition: site.partition } } };
+      openOutside(url); return { action: 'deny' };
+    });
+    // A sign-in window has no address bar, so its title shows the page's host and the page cannot set it.
+    contents.on('did-create-window', (window, { url }) => {
+      const showHost = (address: string) => { try { window.setTitle(new URL(address).host); } catch { window.setTitle(''); } };
+      window.on('page-title-updated', event => event.preventDefault()); showHost(url);
+      window.webContents.on('did-navigate', (_event, address) => showHost(address));
+      window.webContents.on('did-navigate-in-page', (_event, address, isMainFrame) => { if (isMainFrame) showHost(address); });
+    });
     const keepHttps = (event: Electron.Event<{ url: string; isMainFrame: boolean }>) => {
       if (embeddedNavigation(event.url, event.isMainFrame) === 'allow') return;
       event.preventDefault(); openOutside(event.url);

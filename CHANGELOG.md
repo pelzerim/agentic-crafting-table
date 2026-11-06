@@ -6,7 +6,7 @@ their pull request and author.
 ## Unreleased
 
 ### Claude artifacts
-- **The page opens inside the item**: an open Claude artifact shows its claude.ai page in the item view. Sign in to claude.ai inside the item once; the sign-in is kept apart from the app and survives restarts. Links that open a new window go to your browser, and **Open in browser** is still in the header. Some sign-in methods, such as Google, may only work in your browser. (#19, @shiini2)
+- **The page opens inside the item**: an open Claude artifact shows its claude.ai page in the item view. Sign in to claude.ai inside the item once; the sign-in is kept apart from the app and survives restarts. Google sign-in opens in a small window inside the app; other links that open a new window go to your browser, and **Open in browser** is still in the header. (#19, @shiini2)
 
 ## 0.18.1 — 2026-11-05
 

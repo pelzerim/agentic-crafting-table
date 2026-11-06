@@ -4258,8 +4258,10 @@ inside the item view, in its own persistent session; the person signs in to clau
 inside the item once, kept apart from the app's session and across restarts. The page
 is an embedded site page (`claude`, the only site the app embeds): it always starts on a
 claude.ai page, without the app's preload or Node. It may move to other https pages, so a
-sign-in through another provider comes back inside the item; popups and anything that is
-not https go to the system browser. The view keeps **Open in browser** in its header; the
+sign-in through another provider comes back inside the item. A sign-in popup (Google's, or
+claude.ai's own) opens in a small app window in the same session and reports back to the
+page; other popups and anything that is not https go to the system browser. The page's
+user agent leaves out the Electron and app tokens, since Google refuses embedded agents. The view keeps **Open in browser** in its header; the
 menu offers **Open on claude.ai**. Both use
 the system browser. Without a saved link the view is a small panel saying so.
 

@@ -1,5 +1,6 @@
-/** A site whose pages an item view may show in the app, each in its own persistent session. */
-export interface EmbeddedSite { id: string; partition: string; allows(url: string): boolean }
+/** A site whose pages an item view may show in the app, each in its own persistent session. `signIn` names the popups
+ * that open as a small app window in that session, so a sign-in there signs the page in. */
+export interface EmbeddedSite { id: string; partition: string; allows(url: string): boolean; signIn?(url: string): boolean }
 
 const httpsHost = (url: string, matches: (host: string) => boolean) => {
   let parsed: URL;
@@ -8,17 +9,21 @@ const httpsHost = (url: string, matches: (host: string) => boolean) => {
 };
 
 /** Adding a site is one entry; a page attaches only on a URL its site allows. */
+const claudeHost = (host: string) => host === 'claude.ai' || host.endsWith('.claude.ai');
 export const EMBEDDED_SITES: readonly EmbeddedSite[] = [
-  { id: 'claude', partition: 'persist:claude-artifacts', allows: url => httpsHost(url, host => host === 'claude.ai' || host.endsWith('.claude.ai')) },
+  {
+    id: 'claude', partition: 'persist:claude-artifacts', allows: url => httpsHost(url, claudeHost),
+    signIn: url => httpsHost(url, host => host === 'accounts.google.com' || claudeHost(host)),
+  },
 ];
 
 export const embeddedSite = (id: unknown) => EMBEDDED_SITES.find(site => site.id === id);
 
 /** The only preferences a guest gets, whatever the embedder or its `webpreferences` attribute asked for. */
-const GUEST_PREFERENCES = {
+export const GUEST_PREFERENCES = {
   nodeIntegration: false, nodeIntegrationInSubFrames: false, nodeIntegrationInWorker: false, contextIsolation: true, sandbox: true,
   webSecurity: true, webviewTag: false, allowRunningInsecureContent: false, experimentalFeatures: false, enableBlinkFeatures: '', plugins: false,
-  // Popups must reach the guest's window-open handler, which denies them and opens the browser.
+  // Popups must reach the guest's window-open handler, which opens them in the browser or a sign-in window.
   disablePopups: false,
 };
 
@@ -43,3 +48,7 @@ export const embeddedNavigation = (url: string, isMainFrame: boolean): 'allow' |
 
 /** Embedded pages may write to the clipboard and nothing else: no camera, microphone, location or notifications. */
 export const embeddedPermissionAllowed = (permission: string) => permission === 'clipboard-sanitized-write';
+
+/** The user agent without the `Electron/x` and app-name tokens: Google refuses to sign in agents it sees as embedded. */
+export const browserUserAgent = (userAgent: string) =>
+  userAgent.replace(/ Electron\/\S+/, '').replace(/(\(KHTML, like Gecko\)) .*? (Chrome\/)/, '$1 $2');
