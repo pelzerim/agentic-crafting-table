@@ -4259,8 +4259,8 @@ inside the item once, kept apart from the app's session and across restarts. The
 is an embedded site page (`claude`, the only site the app embeds): it always starts on a
 claude.ai page, without the app's preload or Node. It may move to other https pages, so a
 sign-in through another provider comes back inside the item; popups and anything that is
-not https go to the system browser. The view keeps **Open in browser** in its header and
-the connected PR or agent under the page; the menu offers **Open on claude.ai**. Both use
+not https go to the system browser. The view keeps **Open in browser** in its header; the
+menu offers **Open on claude.ai**. Both use
 the system browser. Without a saved link the view is a small panel saying so.
 
 **MAP-SELECT — Multiple items.** Shift-click toggles items in a selection;

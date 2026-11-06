@@ -57,7 +57,8 @@
   font-size: 18px;
 }
 
-.resource-detail:has(.native-terminal) {
+.resource-detail:has(.native-terminal),
+.resource-detail:has(.embedded-frame) {
   padding: 0;
   overflow: hidden;
 }

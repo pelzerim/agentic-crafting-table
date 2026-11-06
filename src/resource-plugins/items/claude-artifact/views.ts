@@ -14,7 +14,7 @@ export const claudeArtifactViews: ResourcePluginViews = {
     const root = element('section', '', 'claude-artifact-view');
     container.append(root);
     const header = mountViewHeader(document, services, root);
-    header.update({ status: { label: 'Private', tone: 'neutral' }, meta: ['Claude artifact'], ...(artifact ? { link: { url: artifact.url, provider: 'Claude' } } : {}) });
+    const pageLink = artifact ? { link: { url: artifact.url, provider: 'Claude' } } : {};
 
     const open = element('button', 'Open in browser'); open.type = 'button';
     if (artifact) open.onclick = () => { if (services.openUrl) services.openUrl(artifact.url); else document.defaultView?.open(artifact.url, '_blank', 'noopener'); };
@@ -25,6 +25,7 @@ export const claudeArtifactViews: ResourcePluginViews = {
     const slot = element('div', '', 'claude-artifact-page');
     const showPanel = () => {
       slot.remove();
+      header.update({ status: { label: 'Private', tone: 'neutral' }, meta: ['Claude artifact'], ...pageLink });
       const body = element('div', '', 'claude-artifact-body');
       open.className = 'btn'; open.dataset.variant = 'primary'; open.dataset.size = 'sm';
       const link = element('a', artifact?.url ?? 'No claude.ai link saved', 'claude-artifact-link');
@@ -38,7 +39,7 @@ export const claudeArtifactViews: ResourcePluginViews = {
       body.append(title, link, actions, element('p', 'Opens on claude.ai, where you are signed in to Claude.', 'claude-artifact-note'), facts, related);
       root.append(body);
     };
-    if (embed) { header.actions.append(open); root.append(slot, related); } else showPanel();
+    if (embed) { header.update(pageLink); header.actions.append(open); root.append(slot); } else showPanel();
 
     // The host keeps a closed view mounted but hidden; only the open one holds a live page.
     let page: { dispose(): void } | undefined;

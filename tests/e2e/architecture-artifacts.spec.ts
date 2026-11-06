@@ -93,8 +93,6 @@ test('Explain architecture starts one connected Claude session whose published a
     await card.click();
     const panel = page.getByRole('region', { name: 'Billing plan architecture', exact: true });
     await expect(panel.locator('webview[data-site="claude"]')).toHaveAttribute('src', ARTIFACT_URL);
-    await expect(panel.getByRole('button', { name: 'Pull request · ' + fixture.pull.title })).toBeVisible();
-    await expect(panel.getByRole('button', { name: 'Agent · Architecture · #42' })).toBeVisible();
     await panel.getByRole('button', { name: 'Open in browser', exact: true }).click();
     await expect.poll(opened).toEqual([ARTIFACT_URL, ARTIFACT_URL]);
   } finally {
