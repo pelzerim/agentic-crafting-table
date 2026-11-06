@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { armRecord, autoDeployEvents, decide, observe, phaseTrack, recordKey, seedCatchUp, settle, statusLine, takeoverRefusal, trackNext, FINDINGS_DEADLINE_MS, FIX_ATTEMPTS, FIX_DEADLINE_MS, REBASE_ATTEMPTS, REBASE_DEADLINE_MS, ROLLOUT_DEADLINE_MS, VALIDATION_DEADLINE_MS, BLOCKED_GRACE_MS } from './auto-deploy.ts';
+import { armRecord, autoDeployEvents, decide, declined, observe, phaseTrack, recordKey, seedCatchUp, settle, statusLine, takeoverRefusal, trackNext, FINDINGS_DEADLINE_MS, FIX_ATTEMPTS, FIX_DEADLINE_MS, REBASE_ATTEMPTS, REBASE_DEADLINE_MS, ROLLOUT_DEADLINE_MS, VALIDATION_DEADLINE_MS, BLOCKED_GRACE_MS } from './auto-deploy.ts';
 import type { AutoDeployDecision, AutoDeployFacts, AutoDeployRecord, PhaseTrack, PullFacts, RolloutFacts } from './auto-deploy.ts';
 import { parseStageRules } from './stages.ts';
 import type { RolloutJob } from '../../../../packages/provider-runtime/github-rollout.ts';
@@ -63,13 +63,30 @@ test('failing checks ask an agent to fix them, at most twice, one request per he
 
 test('every doubt before the merge halts with its reason', () => {
   halts(decide(armed(), facts({ pull: pull({ lifecycle: 'closed' }) })), 'closed', /closed/);
-  halts(decide(armed(), facts({ pull: pull({ lifecycle: 'draft' }) })), 'draft', /draft/);
   halts(decide(armed(), facts({ pull: pull({ reviewDecision: 'CHANGES_REQUESTED' }) })), 'changes-requested', /requested changes/);
-  halts(decide(armed(), facts({ pull: pull({ reviewDecision: 'REVIEW_REQUIRED' }) })), 'review-required', /only a person/);
   halts(decide(armed({ blockedSince: T0 - BLOCKED_GRACE_MS }), facts({ pull: pull({ mergeStateStatus: 'BLOCKED' }) })), 'blocked', /blocked/);
   halts(decide(armed({ writes: [{ key: 'merge', kind: 'merge', requestId: 'm', at: T0, state: 'sending' }] }), facts()), 'outcome-unknown', /merge.*could not be confirmed/i);
   halts(decide(merged({ writes: [{ key: 'approve:x', kind: 'approve', requestId: 'a', at: T0, state: 'sending' }] }), facts()), 'outcome-unknown', /approval.*could not be confirmed/i);
   halts(decide(armed({ writes: [{ key: 'fix:1', kind: 'fix', requestId: 'f', at: T0, state: 'sending' }] }), facts()), 'outcome-unknown', /fix request/i);
+});
+
+test('a draft is marked ready for review once per arming, then auto deploy goes on; set back to draft by a person, it halts', () => {
+  const draft = facts({ pull: pull({ lifecycle: 'draft', title: 'Batch exports', tag: '' }) });
+  assert.deepEqual(decide(armed(), draft), { kind: 'ready', pullRequestId: 'PR_node42', head });
+  const legacy = { version: 1, id: 'old', pullResourceId: 'pr-r', pullNodeId: 'pr', armedAt: T0, updatedAt: T0, state: 'armed', step: 'waiting-checks', writes: [{ key: 'tag', kind: 'tag', requestId: 't', at: T0, state: 'sent' }], fixes: [], checks: [] } as AutoDeployRecord;
+  assert.deepEqual(decide(legacy, draft), { kind: 'ready', pullRequestId: 'PR_node42', head }, 'a record from before marking ready reads and decides as before');
+  const marking = settle(armed(), decide(armed(), draft), T0);
+  assert.equal(marking.step, 'marking-ready');
+  assert.equal(statusLine(marking), 'Auto deploy · marking the pull request ready');
+  const readied = armed({ writes: [{ key: 'ready', kind: 'ready', requestId: 'r', at: T0, state: 'sent' }] });
+  assert.deepEqual(decide(readied, facts({ pull: pull({ title: 'Batch exports', tag: '' }) })), { kind: 'tag', title: 'Batch exports' }, 'once ready, it goes on as for any pull request');
+  assert.equal(decide(readied, facts()).kind, 'merge');
+  halts(decide(readied, facts({ pull: pull({ lifecycle: 'draft', head: 'b'.repeat(40) }) })), 'draft', /set back to draft/);
+  halts(decide(armed({ writes: [{ key: 'ready', kind: 'ready', requestId: 'r', at: T0, state: 'sending' }] }), draft), 'draft', /Marking the pull request ready for review could not be confirmed/);
+  halts(declined('ready', 'GitHub declined to mark it ready for review.'), 'draft', /^Marking the pull request ready for review failed: GitHub declined/);
+  halts(declined('merge', 'GitHub declined the merge.'), 'declined', /^GitHub declined the merge\.$/);
+  const events = autoDeployEvents({ ...readied, writes: [{ key: 'ready', kind: 'ready', requestId: 'r', at: T0 + MIN, state: 'sent' }] });
+  assert.deepEqual(events.map(event => [event.part, event.kind, event.text]), [['pull', 'armed', 'armed by you'], ['pull', 'ready', 'marked ready for review']]);
 });
 
 test('taking the pull request out of the merge queue stops auto deploy instead of halting it', () => {
@@ -249,6 +266,35 @@ test('catching up by validating: a passing current validation counts for what it
   assert.equal(decide(covered, facts({ pull: undefined, rollouts: [takeoverRollout({ validations: [{ label: 'V1', state: 'final', verdict: 'passed' }] })] })).kind, 'approve');
 });
 
+test('catching up by validating picks up a validation still running on the attempt and gates on its verdict', () => {
+  const record = armRecord({ id: 'arm-2', pullResourceId: 'pr-r', pullNodeId: 'pr', now: T0, takeover: { catchUp: 'validate', rolloutNodeIds: ['rollout'] } });
+  const label = 'before production (deploy-prod (eu-west))', passedV1 = takeoverRollout().validations[0];
+  const ongoing = (state: 'requested' | 'running' | 'final', verdict?: 'passed' | 'concerns') => takeoverRollout({ validations: [passedV1, { label: 'V2', state, ...(verdict ? { verdict } : {}), jobs: [3], runId: 101, attempt: 1, requestedAt: T0 - 60_000 }] });
+  const seeded = seedCatchUp(record, [ongoing('running')], T0);
+  assert.deepEqual(seeded.checks.at(-1), { key: 'rollout:101:1:gate:7@4', rolloutNodeId: 'rollout', label, requestId: 'arm-2:seed:rollout:101:1:gate:7@4', validationId: 'V2', requestedAt: T0 - 60_000, jobs: [3], adopted: true });
+  waits(decide(seeded, facts({ pull: undefined, rollouts: [ongoing('running')] })), 'validating', label);
+  assert.equal(decide(seeded, facts({ pull: undefined, rollouts: [ongoing('final', 'passed')] })).kind, 'approve', 'its pass opens the gate');
+  assert.equal((decide(seeded, facts({ pull: undefined, rollouts: [ongoing('final', 'concerns')] })) as { code?: string }).code, 'validation-concerns');
+  assert.ok(autoDeployEvents(seeded).some(event => event.kind === 'validate' && event.text === `picked up V2, already validating ${label}`));
+  assert.equal(seedCatchUp(record, [ongoing('requested')], T0).checks.at(-1)?.validationId, 'V2', 'a requested validation is picked up too');
+  const unscoped = takeoverRollout({ validations: [{ label: 'V3', state: 'running', runId: 101, attempt: 1 }] });
+  assert.deepEqual(seedCatchUp(record, [unscoped], T0).checks.map(entry => [entry.key, entry.validationId, entry.jobs]), [['rollout:101:1:gate:7@4', 'V3', [1, 2, 3]]], 'one of the whole run covers what deployed');
+  const other = takeoverRollout({ validations: [passedV1, { label: 'V2', state: 'running', jobs: [3], runId: 101, attempt: 2 }] });
+  assert.equal(decide(seedCatchUp(record, [other], T0), facts({ pull: undefined, rollouts: [other] })).kind, 'validate', 'one of another attempt is not picked up');
+  assert.equal(seedCatchUp({ ...record, takeover: { ...record.takeover!, catchUp: 'accept' } }, [ongoing('running')], T0).checks.some(entry => entry.adopted), false, 'starting from the next phase picks up nothing');
+});
+
+test('a phase held at a gate by many jobs is labelled with two of them and how many more, short enough to ask a validation for', () => {
+  const regions = ['ap-south-1', 'ap-southeast-1', 'ap-southeast-2', 'ap-northeast-1', 'eu-central-1', 'eu-west-3', 'us-east-1', 'us-west-2'];
+  const phased = rollout({ gates: [gate(7, 'production')], jobs: [job(1, 'plan'), ...regions.map((region, index) => job(10 + index, `apply-prod-phase-2 / apply (${region})`, 'waiting', null))] });
+  const record = armRecord({ id: 'arm-2', rolloutResourceId: 'rollout-r', rolloutNodeId: 'rollout', now: T0, takeover: { catchUp: 'validate', rolloutNodeIds: ['rollout'] } });
+  const decision = decide(record, facts({ pull: undefined, rollouts: [phased] })) as { kind: string; label?: string };
+  assert.equal(decision.kind, 'validate');
+  assert.equal(decision.label, 'before production (apply-prod-phase-2 / apply (ap-south-1), apply-prod-phase-2 / apply (ap-southeast-1) +6 more)');
+  const gates = rollout({ gates: Array.from({ length: 12 }, (_, index) => gate(index + 1, `production-region-${index + 1}-with-a-long-environment-name`)), jobs: [job(1, 'plan'), job(2, 'apply', 'waiting', null)] });
+  assert.ok(((decide(record, facts({ pull: undefined, rollouts: [gates] })) as { label: string }).label).length <= 200);
+});
+
 test('catching up by accepting: what deployed counts as accepted, the waiting gate is approved at once, later phases are validated', () => {
   const record = armRecord({ id: 'arm-3', rolloutResourceId: 'rollout-r', rolloutNodeId: 'rollout', now: T0, takeover: { catchUp: 'accept', rolloutNodeIds: ['rollout'] } });
   const seeded = seedCatchUp(record, [takeoverRollout({ validations: [] })], T0);
@@ -412,7 +458,7 @@ test('conflicts ask the fixer agent to rebase, once per head and at most twice; 
   halts(decide(second, facts({ pull: pull({ head: 'd'.repeat(40), mergeStateStatus: 'DIRTY' }) })), 'conflicts', new RegExp(`merge conflicts with main after ${REBASE_ATTEMPTS} rebase attempts`));
   assert.equal(decide(second, facts({ pull: pull({ head: 'd'.repeat(40) }) })).kind, 'merge', 'a clean branch after the second rebase merges');
   halts(decide(armed({ writes: [{ key: 'rebase:1', kind: 'rebase', requestId: 'r', at: T0, state: 'sending' }] }), dirty), 'outcome-unknown', /rebase request/);
-  halts(decide(second, facts({ pull: pull({ head: 'd'.repeat(40), reviewDecision: 'REVIEW_REQUIRED' }) })), 'review-required', /only a person/);
+  waits(decide(second, facts({ pull: pull({ head: 'd'.repeat(40), reviewDecision: 'REVIEW_REQUIRED' }) })), 'waiting-approval');
 });
 
 test('blocking findings of the linked review go to the fixer once; a running review is waited for; ignored, fixed, medium and low ones stay', () => {
@@ -516,4 +562,13 @@ test('a running group of jobs with no environment is named by what runs, never �
   waits(decide(merged(), facts({ rollouts: [rollout({ jobs: [job(1, 'publish-image', 'in_progress', null), job(2, 'lint')] })] })), 'deploying', 'publish-image');
   waits(decide(merged(), facts({ rollouts: [rollout({ jobs: [job(1, 'publish-image', 'in_progress', null), job(2, 'lint', 'in_progress', null), job(3, 'unit', 'in_progress', null)] })] })), 'deploying', '3 jobs');
   waits(decide(merged(), facts({ rollouts: [rollout({ jobs: [job(1, 'lint'), job(2, 'publish-image', 'queued', null), job(3, 'release', 'queued', null)] })] })), 'deploying', '2 jobs');
+});
+
+test('a missing required review is waited for, not a halt: it merges once someone approves, and changes requested still halts', () => {
+  const missing = facts({ pull: pull({ reviewDecision: 'REVIEW_REQUIRED', mergeStateStatus: 'BLOCKED' }) });
+  waits(decide(armed(), missing), 'waiting-approval');
+  assert.equal(statusLine(settle(armed(), decide(armed(), missing), T0)), 'Auto deploy · waiting for an approving review');
+  waits(decide(armed({ blockedSince: T0 - BLOCKED_GRACE_MS }), missing), 'waiting-approval');
+  assert.equal(decide(armed(), facts({ pull: pull({ reviewDecision: 'APPROVED' }) })).kind, 'merge');
+  halts(decide(armed(), facts({ pull: pull({ reviewDecision: 'CHANGES_REQUESTED' }) })), 'changes-requested', /requested changes/);
 });

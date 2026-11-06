@@ -1,4 +1,5 @@
 import { pullDiscussion } from './discussion.ts';
+import { attachmentId } from '../../../../packages/provider-runtime/github-media.ts';
 import { mergeOptimism, showShipOptimism, stateOptimism } from './optimistic.ts';
 import { showShipChoices, taggedTitle, titleProblem, titleTag } from './show-ship.ts';
 import type { ShowShipTag } from './show-ship.ts';
@@ -11,6 +12,8 @@ import type { GitHubClient, GitHubWorkflowRun, PullIdentity, PullMergeMethod } f
 import { isDeployRun, MERGE_ROLLOUT_WINDOW_MS, pullStatus, rolloutDiscoveryKey } from '../../../../packages/provider-runtime/github-status.ts';
 
 const MERGE_METHODS = ['SQUASH', 'MERGE', 'REBASE', 'QUEUE'];
+const IMAGE_CACHE_CHARACTERS = 48 * 1024 * 1024;
+const IMAGE_FIELDS: ResourceFields = { kind: { kind: 'text', label: 'kind', required: true }, commentId: { kind: 'text', label: 'commentId', required: false }, src: { kind: 'text', label: 'src', required: true } };
 const MERGE_CHOICES = [...MERGE_METHODS, ...MERGE_METHODS.map(method => `${method}${WHEN_READY_SUFFIX}`), 'CANCEL_WHEN_READY'];
 const STATE_FIELDS: ResourceFields = { ...Object.fromEntries(['value', 'pullRequestId', 'expectedState', 'sourceResourceId', 'requestId'].map(key => [key, { label: key, kind: 'text' as const, required: true }])),
   comment: { label: 'Comment posted before closing', kind: 'text', required: false, multiline: true } };
@@ -22,6 +25,13 @@ export function githubPullRequestConnector(clientFor: (resource: ResourceRecord)
   // A closed-PR event creates all of its head-commit runs at merge, so one read after
   // the merge settles is kept per head; the merge commit keeps being read for later chains.
   const headRuns = new Map<string, { at: number; runs: GitHubWorkflowRun[] }>(), mergeCommits = new Map<string, string>();
+  /** Inline images already shown, per pull request and attachment, kept in memory only and bounded in size. */
+  const images = new Map<string, string>();
+  const keepImage = (key: string, data: string) => {
+    images.set(key, data);
+    let total = 0; for (const value of images.values()) total += value.length;
+    for (const [oldest, value] of images) { if (total <= IMAGE_CACHE_CHARACTERS || images.size === 1) break; images.delete(oldest); total -= value.length; }
+  };
   const connector: ResourcePluginConnector = {
     pollIntervalMs: 60_000,
     async load(resource, signal) {
@@ -82,6 +92,8 @@ export function githubPullRequestConnector(clientFor: (resource: ResourceRecord)
           description: 'Add, switch or remove the [show]/[ship] tag at the start of the pull request title on GitHub. Only a person can confirm this in the app.',
           inputFields: Object.fromEntries(['value', 'expectedTitle', 'sourceResourceId', 'requestId'].map(key => [key, { label: key, kind: 'text' as const, required: true }])) }]),
       { id: 'comments', label: 'Discussion', readOnly: true }, { id: 'reviews', label: 'Reviews', readOnly: true },
+      { id: 'image', label: 'Inline image', readOnly: true, humanOnly: true, description: 'An image attached to the description or a comment, for the open item view.',
+        inputFields: IMAGE_FIELDS },
     ],
     async execute(resource, action, signal, input): Promise<JsonValue> {
       const client = clientFor(resource), key = identity(resource);
@@ -151,6 +163,14 @@ export function githubPullRequestConnector(clientFor: (resource: ResourceRecord)
         const before = await check(), files = await client.files(key, signal); await check();
         if (files.length !== before.changed_files) throw new Error('GitHub returned an incomplete file list. No comparison was saved.');
         return { files, head: before.head.sha, base: before.base.sha };
+      }
+      if (action === 'image') {
+        const kind = String(input?.kind), src = String(input?.src ?? '');
+        if (!['description', 'discussion', 'inline', 'review'].includes(kind)) throw new Error('Unknown image location.');
+        const cacheKey = `${pullKey(key)}:${attachmentId(src) ?? src}`, kept = images.get(cacheKey);
+        if (kept) return { src: kept };
+        const data = await client.attachment(key, { kind: kind as 'description', ...(kind === 'description' ? {} : { id: Number(input?.commentId) }) }, src, signal);
+        keepImage(cacheKey, data); return { src: data };
       }
       if (action === 'comments') return { comments: await client.comments(key, signal) };
       if (action === 'reviews') return { reviews: await client.reviews(key, signal) };

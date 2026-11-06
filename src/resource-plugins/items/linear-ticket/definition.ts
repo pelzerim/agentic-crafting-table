@@ -7,7 +7,7 @@ export const linearTicket = defineResourcePlugin({
   id: 'linear.ticket', apiVersion: 1, schemaVersion: 1,
   name: 'Linear ticket', icon: 'circle-dashed', brand: 'linear', preferredView: 'inspector',
   connectionProvider: 'linear', todoSupport: true,
-  webLink: { label: 'Open on Linear', template: 'https://linear.app/{workspaceKey}/issue/{issueId}' },
+  webLink: { label: 'Open on Linear', template: ['{url}', 'https://linear.app/{workspaceKey}/issue/{issueId}'] },
   contextMenu: [{ id: 'status', label: 'Change status', children: [], choices: { load: 'linear.status.options', apply: 'linear.status.set' } },
     { id: 'pulls', label: 'Linked pull requests', children: [{ id: 'pulls.add', label: 'Add to the map', description: 'Every GitHub pull request linked to this ticket, beside it' }] }],
   providerIdentity: (data, resource) => resource.connectionId && /^(?:[A-Z][A-Z0-9]*-[1-9]\d*|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i.test(String(data.issueId)) ? String(data.issueId).toLowerCase() : undefined,
@@ -30,5 +30,6 @@ export const linearTicket = defineResourcePlugin({
     issueId: { label: 'Issue ID', kind: 'text', required: true },
     workspaceKey: { label: 'Workspace', kind: 'text', pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$' },
   },
+  validateData: data => data.url === undefined || (typeof data.url === 'string' && data.url.startsWith('https://linear.app/')),
   creation: { label: 'Attach ticket', shortLabel: 'Linear', action: 'resource.attach', mode: 'url', urlPlaceholder: 'https://linear.app/workspace/issue/TEAM-123/title' },
 });

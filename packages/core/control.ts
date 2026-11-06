@@ -360,12 +360,22 @@ export class MemoryStore implements WorkspaceStore {
   async writeView(clientId: string, input: unknown) { const view = viewSchema.parse(input); this.views.set(clientId, view); return structuredClone(view); }
 }
 
+/** Rewrites a batch of commands before it is reduced, from the state it lands on. */
+export type CommandFilter = (state: WorkspaceState, commands: readonly WorkspaceCommand[]) => readonly WorkspaceCommand[];
 export class WorkspaceControl {
   readonly store: WorkspaceStore;
   readonly registry: ResourcePluginRegistry;
+  private filters = new Set<CommandFilter>();
   constructor(store: WorkspaceStore = new MemoryStore(), registry = createResourcePluginRegistry()) {
     this.store = store;
     this.registry = registry;
+  }
+  /** Rewrites each dispatched batch against the state it lands on, before it is reduced; returns its removal. */
+  filter(filter: CommandFilter) { this.filters.add(filter); return () => { this.filters.delete(filter); }; }
+  private filtered(state: WorkspaceState, commands: readonly WorkspaceCommand[]) {
+    let result = commands;
+    for (const filter of this.filters) result = filter(state, result);
+    return result;
   }
   read() { return this.store.read(); }
   async apply(input: unknown, expectedRevision: number) {
@@ -375,7 +385,7 @@ export class WorkspaceControl {
   async dispatch(input: unknown): Promise<CommandResult> {
     const envelope = envelopeSchema.parse(input);
     if (!this.store.commit) throw new Error('This legacy store does not support durable command envelopes');
-    const result = await this.store.commit(envelope, state => reduceCommands(state, envelope.commands, envelope.expectedRevision, this.registry, this.store.readMapLayout?.(), envelope.actor));
+    const result = await this.store.commit(envelope, state => reduceCommands(state, this.filtered(state, envelope.commands), envelope.expectedRevision, this.registry, this.store.readMapLayout?.(), envelope.actor));
     const alreadyOnMap = itemsAlreadyOnMap(result.state, envelope, this.registry);
     return alreadyOnMap.length ? { ...result, alreadyOnMap } : result;
   }

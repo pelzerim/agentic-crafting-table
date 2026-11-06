@@ -10,7 +10,7 @@ import { once } from 'node:events';
 import { LocalRpcClient, serveLocal } from './local-rpc.ts';
 import type { RpcPeer } from './local-rpc.ts';
 import { prepareWorkspace } from './paths.ts';
-import { serializeError } from './protocol.ts';
+import { MAX_FRAME_BYTES, serializeError } from './protocol.ts';
 
 test('transport loss preserves its cause while all pending calls retain uncertain-outcome semantics', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'craft-rpc-cause-')), paths = prepareWorkspace(directory);
@@ -108,6 +108,32 @@ test('a subscriber that stops reading gets only the newest snapshot once it drai
   assert.equal(snapshots.length + coalesced.length, 20);
   assert.deepEqual(received.filter(frame => frame.id).map(frame => frame.result?.method), ['subscribe', 'first', 'second']);
   assert.equal(socket.destroyed, false); assert.deepEqual(dropped, []);
+});
+
+test('replies that together pass the frame limit wait for a slow client instead of dropping it', async t => {
+  const dropped: unknown[] = [];
+  const { socket, request } = await rawPeer(t, method => ({ method, padding: 'x'.repeat(2 * 1024 * 1024) }),
+    { observer: { dropped: (_peer, drop) => dropped.push(drop) } });
+  const received = frames(socket);
+  socket.pause();
+  for (let n = 0; n < 6; n++) request(`read-${n}`, 'read');
+  await new Promise(resolve => setTimeout(resolve, 100));
+  socket.resume();
+  await until(() => received.filter(frame => frame.id).length === 6);
+  assert.deepEqual(dropped, []); assert.equal(socket.destroyed, false);
+});
+
+test('unsent data over the backlog limit drops the client', async t => {
+  const dropped: { queuedBytes: number }[] = [];
+  const { socket, request } = await rawPeer(t, method => ({ method, padding: 'x'.repeat(7 * 1024 * 1024) }),
+    { observer: { dropped: (_peer, drop) => dropped.push(drop) } });
+  t.mock.method(console, 'error', () => {});
+  socket.pause();
+  const closed = once(socket, 'close');
+  for (let n = 0; n < 12; n++) request(`read-${n}`, 'read');
+  await until(() => dropped.length === 1);
+  socket.resume(); await closed;
+  assert.ok(dropped[0].queuedBytes > MAX_FRAME_BYTES);
 });
 
 test('a single frame over the limit drops the client with one stderr line', async t => {

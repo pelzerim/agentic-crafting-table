@@ -232,7 +232,7 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
     if (picked !== undefined) { picked = undefined; render(true); }
     const approve = railFolded() ? null : jobsList.querySelector<HTMLButtonElement>('.rv-approve');
     if (!approve) { menu(status, 'approve'); return; }
-    approve.scrollIntoView({ block: 'nearest' }); approve.focus();
+    revealInList(approve); approve.focus({ preventScroll: true });
   };
   status.onclick = () => { if (!status.disabled) showApproval(); };
   root.addEventListener('keydown', event => { if (event.key === 'Escape' && (jobFilter || phaseFilter)) { event.preventDefault(); event.stopPropagation(); filterJob(undefined); render(true); } });
@@ -343,7 +343,7 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
     renderRail(value, runGroups, views, events, environments, now);
     renderReuse(views, now);
     renderFeed(value, groups, environments, currentGroup, now, views.length);
-    if (reveal && attached) { reveal = false; feed.querySelector(`.rv-card[aria-label^="${CSS.escape(attached)} · "]`)?.scrollIntoView({ block: 'nearest' }); }
+    if (reveal && attached) { reveal = false; const card = feed.querySelector<HTMLElement>(`.rv-card[aria-label^="${CSS.escape(attached)} · "]`); if (card) revealInList(card); }
     if (focused) root.querySelector<HTMLElement>(`[data-focus-key="${CSS.escape(focused)}"]`)?.focus();
   }
 
@@ -813,4 +813,15 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
     },
     dispose() { disposed = true; generation++; clearTimeout(timer); clearInterval(listTimer); approvalWait?.stop(); closeMenu?.(); sizes.disconnect(); document.removeEventListener('keydown', railKey); header.dispose(); root.remove(); },
   };
+}
+
+/** Scrolls the nearest scrolling list around `element` just enough to show it. Unlike scrollIntoView it never scrolls the
+ * view's frame or the map, whose overflow is hidden. */
+function revealInList(element: HTMLElement) {
+  let list = element.parentElement;
+  while (list && !/(auto|scroll)/.test(getComputedStyle(list).overflowY)) list = list.parentElement;
+  if (!list) return;
+  const box = list.getBoundingClientRect(), target = element.getBoundingClientRect();
+  if (target.top < box.top) list.scrollTop -= box.top - target.top;
+  else if (target.bottom > box.bottom) list.scrollTop += Math.min(target.bottom - box.bottom, target.top - box.top);
 }

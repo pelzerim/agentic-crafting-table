@@ -51,6 +51,8 @@ import { claudeArtifact } from './items/claude-artifact/definition.ts';
 import { claudeArtifactConnector } from './items/claude-artifact/connector.ts';
 import { createResourcePluginHost } from './catalog.server.ts';
 import { createResourcePluginRegistry } from './builtins.ts';
+/** The attachment the contract's pull request description carries. */
+const CONTRACT_ASSET = '33333333-1111-4111-8111-333333333333';
 const connectors = [
   { plugin: githubRollout, connector: () => {
     const fixture = rolloutFixture(); fixture.run.status = 'waiting'; fixture.gates = [{ environment: { id: 1, name: 'production' }, wait_timer: 0, current_user_can_approve: true, reviewers: [{ type: 'Team' }] }];
@@ -64,7 +66,7 @@ const connectors = [
   { plugin: todoItem, connector: () => todoConnector, actions: {} },
   { plugin: webLink, connector: () => createWebLinkConnector(async () => 'Fixture page'), actions: { reference: {} } },
   { plugin: claudeArtifact, connector: () => claudeArtifactConnector, actions: { reference: {} } },
-  { plugin: githubPullRequest, connector: () => githubPullRequestConnector(() => githubFixture().client), actions: { files: { head: 'a'.repeat(40), base: 'b'.repeat(40) }, comments: {}, reviews: {}, reply: { kind: 'discussion', commentId: '5', body: 'Fixture reply', sourceResourceId: 'contract-resource', requestId: '00000000-0000-4000-8000-000000000001' },
+  { plugin: githubPullRequest, connector: () => githubPullRequestConnector(() => { const github = githubFixture(); github.pull = { ...github.pull, body: `${github.pull.body}\n\n![screen](https://github.com/user-attachments/assets/${CONTRACT_ASSET})` }; return github.client; }), actions: { image: { kind: 'description', src: `https://github.com/user-attachments/assets/${CONTRACT_ASSET}` }, files: { head: 'a'.repeat(40), base: 'b'.repeat(40) }, comments: {}, reviews: {}, reply: { kind: 'discussion', commentId: '5', body: 'Fixture reply', sourceResourceId: 'contract-resource', requestId: '00000000-0000-4000-8000-000000000001' },
     'pr.merge.options': {}, 'pr.mergeReadiness': {}, 'pr.merge': { value: 'SQUASH', pullRequestId: 'PR_kwDOfixture42', expectedHeadOid: 'a'.repeat(40), sourceResourceId: 'contract-resource', requestId: '00000000-0000-4000-8000-000000000002' },
     'pr.showShip.options': {}, 'pr.showShip': { value: 'ship', expectedTitle: 'Make billing plan changes predictable', sourceResourceId: 'contract-resource', requestId: '00000000-0000-4000-8000-000000000003' },
     'pr.updateBranch': { pullRequestId: 'PR_kwDOfixture42', expectedHeadOid: 'a'.repeat(40), sourceResourceId: 'contract-resource', requestId: '00000000-0000-4000-8000-000000000005' },

@@ -4,6 +4,8 @@ import { ItemIcon } from './icons.tsx';
 import { canonical } from '../../../packages/core/control.ts';
 import { ColorPicker } from './ui/color-picker.tsx';
 import { useRecentColors } from './recent-colors.ts';
+import { aimsAtSubmenu, MENU_AIM_DELAY_MS } from './menu-aim.ts';
+import type { Point } from './menu-aim.ts';
 
 const ICONS: Partial<Record<MenuActionId, string>> = {
   open: 'open', connect: 'link', 'open-web': 'external', 'copy-url': 'copy', edit: 'settings', settings: 'settings', 'add-todo': 'square-check', 'remove-todo': 'square', 'auto-title': 'sparkles',
@@ -68,6 +70,26 @@ export function CanvasMenu({ screen, avoid, actions, act, close, loadChoices, on
     if (focus && action.id === submenu) { const first = child.current?.querySelector<HTMLButtonElement>('button:not(:disabled)'); if (first) { first.focus(); focusChild.current = false; } }
   };
   const back = () => { setSubmenu(undefined); trigger.current?.focus(); };
+  /** Where the pointer last was on the open submenu's row, and the row change waiting while it heads for the submenu. */
+  const aimFrom = useRef<Point | undefined>(undefined), waiting = useRef<{ timer: ReturnType<typeof setTimeout>; apply: () => void } | undefined>(undefined);
+  const settle = () => { const pending = waiting.current; if (!pending) return; clearTimeout(pending.timer); waiting.current = undefined; pending.apply(); };
+  const forget = () => { if (waiting.current) clearTimeout(waiting.current.timer); waiting.current = undefined; };
+  useEffect(() => forget, []);
+  const heading = (point: Point) => {
+    const from = aimFrom.current, sub = child.current?.getBoundingClientRect();
+    return Boolean(from && sub && aimsAtSubmenu(from, point, sub));
+  };
+  /** A top-level row the pointer enters takes over at once, unless the pointer is on its way to the open submenu: then only if it stops there. */
+  const entered = (event: React.PointerEvent, apply: () => void) => {
+    forget();
+    if (!heading({ x: event.clientX, y: event.clientY })) { apply(); return; }
+    waiting.current = { apply, timer: setTimeout(settle, MENU_AIM_DELAY_MS) };
+  };
+  const moved = (event: React.PointerEvent) => {
+    const point = { x: event.clientX, y: event.clientY };
+    if (trigger.current && submenu && trigger.current.contains(event.target as Node)) { aimFrom.current = point; return; }
+    if (waiting.current && !heading(point)) settle();
+  };
   useLayoutEffect(() => { menu.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus(); }, []);
   useLayoutEffect(() => {
     if (group && focusChild.current && (!group.choices || loaded?.id === group.id)) { child.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus(); focusChild.current = false; }
@@ -111,7 +133,7 @@ export function CanvasMenu({ screen, avoid, actions, act, close, loadChoices, on
   };
   /** A row of colours is the shared picker in its compact form: one Up/Down stop, Left/Right within it. */
   const row = (action: MenuAction, choices: NonNullable<MenuAction['row']>, nested: boolean) =>
-    <div className="canvas-menu-row" onPointerEnter={() => { if (!nested) setSubmenu(undefined); }}>
+    <div className="canvas-menu-row" onPointerEnter={event => { if (!nested) entered(event, () => setSubmenu(undefined)); }}>
       <span className="canvas-menu-row-label" aria-hidden="true">{action.label}</span>
       <ColorPicker compact label={action.label} custom={Boolean(action.customColor)} recent={recent} onRecent={remember}
         presets={choices.map(choice => ({ id: choice.value, label: choice.label, color: choice.swatch ?? 'var(--act-control)' }))}
@@ -133,7 +155,12 @@ export function CanvasMenu({ screen, avoid, actions, act, close, loadChoices, on
       }}>{action.confirm?.action ?? 'Confirm'}</button>
     </div> : <button data-action={action.id} role={action.checked === undefined ? "menuitem" : "menuitemradio"} aria-label={action.checked === undefined ? undefined : action.label} aria-checked={action.checked} disabled={action.disabled && !action.highlight || Boolean(nested && confirming && confirming !== action.id)} aria-disabled={action.disabled && action.highlight ? true : undefined} tabIndex={-1} title={action.description} data-destructive={action.destructive || undefined} data-remote={action.remote || undefined}
       aria-haspopup={action.children ? 'menu' : undefined} aria-expanded={action.children ? submenu === action.id : undefined}
-      onPointerEnter={event => { onHighlight?.(action.highlight); if (action.children) open(action, event.currentTarget, false); else if (!nested) setSubmenu(undefined); }}
+      onPointerEnter={event => {
+        onHighlight?.(action.highlight);
+        const button = event.currentTarget, at = { x: event.clientX, y: event.clientY };
+        if (!nested && action.id !== submenu) entered(event, () => { if (action.children) { aimFrom.current = at; open(action, button, false); } else setSubmenu(undefined); });
+        else if (action.children) open(action, button, false);
+      }}
       onPointerLeave={() => onHighlight?.(undefined)} onFocus={() => onHighlight?.(action.highlight)} onBlur={() => onHighlight?.(undefined)}
       onClick={event => action.children ? open(action, event.currentTarget, true) : action.disabled ? undefined : action.id === 'plugin:cancel' ? close() : nested && (asks || action.confirm) && action.mutation ? setConfirming(action.id) : act(action)}>
       {!nested && <span className="canvas-menu-icon">{icon(action) && <ItemIcon icon={icon(action)} />}</span>}
@@ -141,7 +168,7 @@ export function CanvasMenu({ screen, avoid, actions, act, close, loadChoices, on
     </button>}
   </div>);
   return <div className="canvas-context" ref={root} style={{ left: screen.x, top: screen.y }}>
-    <div ref={menu} className="canvas-menu" role="menu" aria-label={label} onKeyDown={event => keyboard(event, false)}>{entries(actions)}</div>
-    {group && children && <div ref={child} className="canvas-menu canvas-submenu" role="menu" aria-label={group.label} onKeyDown={event => keyboard(event, true)}>{entries(children, true)}</div>}
+    <div ref={menu} className="canvas-menu" role="menu" aria-label={label} onKeyDown={event => keyboard(event, false)} onPointerMove={moved}>{entries(actions)}</div>
+    {group && children && <div ref={child} className="canvas-menu canvas-submenu" role="menu" aria-label={group.label} onKeyDown={event => keyboard(event, true)} onPointerEnter={forget}>{entries(children, true)}</div>}
   </div>;
 }

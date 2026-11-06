@@ -10,7 +10,7 @@ import { pluginDiscoverySchema } from '../../src/resource-plugins/url-input.ts';
 import { createKeepAwake } from './keep-awake.ts';
 import { ScreenReaderWatch, assistiveTechnologyOverride, voiceOverRunning } from './assistive-technology.ts';
 import { NEIGHBORHOOD_STYLE_PARAMETER, neighborhoodStylePin } from './neighborhood-style-pin.ts';
-import { COLOR_SCHEME_PARAMETER, WINDOW_BACKGROUND, themeSource } from './appearance.ts';
+import { COLOR_SCHEME_PARAMETER, WINDOW_BACKGROUND, fillWindowBackground, themeSource } from './appearance.ts';
 import { settingsWriteSchema } from '../../packages/core/settings.ts';
 import { providerAccountsSchema, providerRefreshSchema, providerSelectSchema } from '../../packages/core/connections.ts';
 import type { Appearance, SettingsSnapshot } from '../../packages/core/settings.ts';
@@ -205,7 +205,7 @@ async function main() {
         void (async () => {
           let target = notice.nodeId;
           if (target) {
-            const { state } = await workspace.call<WorkspaceSnapshot>('read');
+            const { state } = await workspace.read();
             const node = state.nodes.find(node => node.id === target);
             if (!node || isOffMap(node, state.nodes)) target = undefined;
           }
@@ -234,7 +234,7 @@ async function main() {
   const applyAppearance = (appearance: Appearance) => { nativeTheme.themeSource = themeSource(Boolean(testDirectory), process.env.ACT_TEST_APPEARANCE, appearance); };
   applyAppearance('system');
   nativeTheme.on('updated', () => {
-    for (const window of BrowserWindow.getAllWindows()) { window.setBackgroundColor(WINDOW_BACKGROUND[colorScheme()]); window.webContents.send('app:color-scheme', colorScheme()); }
+    for (const window of BrowserWindow.getAllWindows()) { fillWindowBackground(window, colorScheme()); window.webContents.send('app:color-scheme', colorScheme()); }
   });
   let settingsRevision = -1;
   const applySettings = (snapshot: SettingsSnapshot) => {
@@ -339,7 +339,8 @@ async function main() {
       // The renderer cannot choose a socket, credential, admin method or actor.
       let result: unknown;
       switch (method) {
-        case 'read': case 'settings.read': case 'directories.recent': case 'plugins': case 'capabilities': case 'lifecycle.status': case 'connections.status': case 'diagnostics.report': case 'diagnostics.health': result = await workspace.call(method); break;
+        case 'read': result = await workspace.read(); break;
+        case 'settings.read': case 'directories.recent': case 'plugins': case 'capabilities': case 'lifecycle.status': case 'connections.status': case 'diagnostics.report': case 'diagnostics.health': result = await workspace.call(method); break;
         case 'subscribe': result = await workspace.setLayer(z.object({ layer: z.enum(['map', 'below']) }).strict().parse(args).layer); break;
         case 'diagnostics.cpuProfile': result = await workspace.call(method, z.object({ ms: z.number().int().min(1000).max(120_000) }).strict().parse(args)); break;
         case 'github.inbox.read': result = await workspace.call(method, z.object({ refresh: z.boolean().default(false), opened: z.boolean().default(false) }).strict().parse(args ?? {})); break;
@@ -427,6 +428,7 @@ async function main() {
       backgroundColor: WINDOW_BACKGROUND[colorScheme()], title: 'Agentic Crafting Table',
       webPreferences: { preload: join(app.getAppPath(), 'dist', 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, webviewTag: true, backgroundThrottling: !backgroundTest },
     });
+    fillWindowBackground(window, colorScheme());
     // maximize() reveals a hidden window, so background tests retain normal bounds.
     if (placement.state.maximized && !backgroundTest) window.maximize();
     window.on('focus', () => window.webContents.send('app:focus', true));

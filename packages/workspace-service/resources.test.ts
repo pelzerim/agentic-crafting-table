@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { ResourceCoordinator } from './resources.ts';
+import { ResourceCoordinator, providerAttentionCommand as providerAttention } from './resources.ts';
 import { SqliteStore } from './sqlite-store.ts';
 import { WorkspaceControl } from '../core/control.ts';
 import type { WorkspaceCommand } from '../core/control.ts';
@@ -310,3 +310,16 @@ test('my own pull request comments never enter Needs me or the unseen count', ()
   current = await node();
   assert.equal(current.attentionNotes?.['pr.comments'], '1 new comment', 'others still notify');
 }));
+
+test('a provider event spent without an alert is not sent again; a new event, a changed note or a cleared reason still is', () => {
+  const providerAttentionCommand = (...args: Parameters<typeof providerAttention>) => providerAttention(...args) as { reason?: string | null; note?: string } | undefined;
+  const snapshot = { attentionReason: 'finished' as const, attentionNote: 'Rollout finished', attentionEventId: 'run:passed' };
+  const spent = { attentionEvents: { 'provider:github.rollout': 'run:passed' } };
+  assert.equal(providerAttentionCommand(spent, 'rollout', 'provider:github.rollout', snapshot), undefined);
+  assert.equal(providerAttentionCommand(spent, 'rollout', 'provider:github.rollout', { ...snapshot, attentionEventId: 'run:passed-again' })?.reason, 'finished');
+  assert.equal(providerAttentionCommand({}, 'rollout', 'provider:github.rollout', snapshot)?.reason, 'finished');
+  const raised = { ...spent, attentionSources: { 'provider:github.rollout': 'finished' as const }, attentionNotes: { 'provider:github.rollout': 'Rollout finished' } };
+  assert.equal(providerAttentionCommand(raised, 'rollout', 'provider:github.rollout', snapshot), undefined);
+  assert.equal(providerAttentionCommand(raised, 'rollout', 'provider:github.rollout', { ...snapshot, attentionNote: 'Rollout done' })?.note, 'Rollout done');
+  assert.equal(providerAttentionCommand(raised, 'rollout', 'provider:github.rollout', { attentionReason: null, attentionEventId: 'run:active' })?.reason, null);
+});

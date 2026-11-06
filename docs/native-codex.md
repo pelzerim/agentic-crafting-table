@@ -46,11 +46,21 @@ native terminal → model → stdio MCP → SQLite path, creating a disposable t
 reading project context, with one-time approvals and no change to account
 permissions; its conversations and workspaces are removed afterwards.
 
+The table finds the CLI on PATH, in `~/.local/bin` or in the standalone installer's
+`$CODEX_HOME/packages/standalone/current/bin`. On Windows, npm, pnpm and Yarn put only
+`codex.cmd`, `codex.ps1` and a shell script on PATH; the table runs the native `codex.exe`
+from the package's platform dependency instead.
+
 Choose **Agent session → Provider: codex**. The native CLI supplies the model list;
 The newest `gpt-<version>-sol` in that list is the default, compared by number, with the
 catalog's own default as fallback; no version is written in the code. New sessions start
 at `high` effort through `model_reasoning_effort`; `/model` changes it, and resumed or
-imported conversations keep what they have. A Codex view does not send Ctrl+V as a key:
+imported conversations keep what they have. The terminal reconnects with `resume`, which
+would otherwise take the configured default model and effort and warn about the switch, so
+it gets the model and effort the private server reports for the thread. The terminal title
+is off (`tui.terminal_title=[]`): the table does not show it, and its spinner was most of
+what Codex wrote while working. A status from a thread the terminal has not shown is a
+`/resume` only when `thread/read` says it is not a sub-agent or other helper thread. A Codex view does not send Ctrl+V as a key:
 the TUI would read the desktop clipboard itself and report "no image on clipboard" for
 text. The browser paste event carries the content instead. Text goes through as a
 bracketed paste split into 64 KiB writes; an image is saved as a private PNG for seven
@@ -69,7 +79,8 @@ conversations retain native model selection. The guide is appended as developer
 context, project facts as reference data, without replacing user or built-in
 instructions. Per-session MCP bindings do not rewrite the user's configuration.
 Current project/context changes are available through the same MCP context/acknowledge
-contract used by Claude. Native first-use prompts remain in the terminal. Missing
+contract used by Claude. **Add system prompt** appends the current guide and project reference to the
+running conversation through `thread/inject_items`, without a model turn. Native first-use prompts remain in the terminal. Missing
 CLI, startup, identity and connection failures are explicit. Do not replace the terminal with a custom chat implementation or
 silently approve/disable user hooks to pass those gates. App-server/WebSocket APIs
 are currently experimental; keep version probes and explicit unsupported errors.

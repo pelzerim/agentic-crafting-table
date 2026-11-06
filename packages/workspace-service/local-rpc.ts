@@ -3,7 +3,7 @@ import type { Socket } from 'node:net';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { addAbortListener, EventEmitter } from 'node:events';
 import { listenOnEndpoint, removeEndpoint } from '../platform/local-endpoint.ts';
-import { CONNECTION_LOST, MAX_FRAME_BYTES, REQUEST_TIMEOUT, replyTimeout, serializeError } from './protocol.ts';
+import { CONNECTION_LOST, MAX_FRAME_BYTES, MAX_UNSENT_BYTES, REQUEST_TIMEOUT, replyTimeout, serializeError } from './protocol.ts';
 
 /** How long a received notification took to parse, and its length in characters. */
 export interface FrameParse { parseMs: number; length: number }
@@ -80,7 +80,7 @@ export const encodeFrame = (value: unknown): EncodedFrame => { const data = JSON
 let writers = 0;
 /** Writes newline-delimited frames to one client. A replaceable frame (a snapshot) waits while the
  * socket still has unsent data, a newer one replaces it, and the one left is written on 'drain'.
- * A frame that would take the backlog over MAX_FRAME_BYTES drops the client. */
+ * A frame over MAX_FRAME_BYTES, or one that would take the unsent data over MAX_UNSENT_BYTES, drops the client. */
 export class FrameWriter {
   readonly peer = ++writers;
   private socket: Socket;
@@ -108,7 +108,7 @@ export class FrameWriter {
   private write(frame: EncodedFrame, label: string, flushed?: () => void) {
     if (this.socket.destroyed) return;
     const queuedBytes = this.socket.writableLength;
-    if (frame.bytes + queuedBytes > MAX_FRAME_BYTES) {
+    if (frame.bytes > MAX_FRAME_BYTES || frame.bytes + queuedBytes > MAX_UNSENT_BYTES) {
       console.error(`Local client dropped: ${queuedBytes} bytes queued, ${frame.bytes} bytes frame, ${label}`);
       this.observer?.dropped?.(this.peer, { at: Date.now(), queuedBytes, frameBytes: frame.bytes, label });
       this.socket.destroy(); return;

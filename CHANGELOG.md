@@ -8,6 +8,53 @@ their pull request and author.
 ### Claude artifacts
 - **The page opens inside the item**: an open Claude artifact shows its claude.ai page in the item view. Sign in to claude.ai inside the item once; the sign-in is kept apart from the app and survives restarts. Links that open a new window go to your browser, and **Open in browser** is still in the header. Some sign-in methods, such as Google, may only work in your browser. (#19, @shiini2)
 
+## 0.18.1 — 2026-11-05
+
+### Item views
+- **No crash on a brand-new item**: an open item whose details have not reached the window yet, such as a code review just started, is shown once they arrive; before, the window crashed with “Cannot read properties of undefined (reading 'key')”.
+- **Centred refresh button**: the refresh glyph in an open item's header now sits in the middle of its button instead of 3px to the right. (#20, @MegaMaddin)
+
+## 0.18.0 — 2026-11-05
+
+### Auto deploy
+- **Marks a draft ready**: armed on a draft pull request, auto deploy marks it ready for review once and carries on instead of halting. If GitHub declines it, or you set the pull request back to draft, it halts.
+- **Picks up a running validation**: Auto deploy from here with **Validate what shipped first** waits for a validation already running on the rollout and gates on its verdict instead of asking for a second one; the plan says “V2 validating · counts once it passes”.
+- **Action list opens on start**: starting auto deploy from the pull request unfolds its “N actions” list, so you see each step as it happens.
+- **Waits for an approving review**: started before anyone approved, auto deploy now shows “waiting for an approving review” and merges once someone approves, instead of halting with “A required review is missing”. Changes requested still halts.
+- **Alerts only when it matters**: while auto deploy runs, a rollout finishing a stage or waiting at a gate it approves, and a validation agent finishing, no longer notify you or show in Needs me. You hear about validation concerns or failures, a failed rollout, a halt, and “Auto deploy done” once everything shipped.
+- **Phased rollouts with many regions**: a gate holding back many jobs no longer halts auto deploy with “could not be requested: … too_big”; the phase is named with two jobs and “+N more”.
+
+### Workspace service
+- **No disconnect under load**: the app no longer loses its connection to the local service when several views read the whole workspace at once. Views opening together share one read, and the service now holds up to 64 MB for a slow app instead of 8 MB.
+
+### Map
+- **Submenus stay open on the way there**: moving the pointer diagonally from a menu row to its submenu, for example to a submenu shown on the left near the right edge of the screen, no longer switches to the rows you cross; a row takes over when the pointer stops on it.
+- **Every plot moves by its sign**: dragging a plot's sign moves it even when its first item is a hidden agent, such as a validation agent working off the map; before, the drag did nothing.
+- **Readable location trail**: the Project / Item trail above an open item now sits on a solid plate with the cards' pixel corners, so cards scrolling under it no longer show through its text. (#16, @MegaMaddin)
+
+### Linear
+- **Copy URL and middle click work**: Linear tickets again offer **Open on Linear** and **Copy URL**, and a middle click opens them. Each read from Linear now saves the issue's link with the ticket; before, the first read dropped it, so every ticket lost its web page.
+
+### Rollouts
+- **Top no longer cut off**: showing a validation that is already running (“Showing V1 … instead of a second validation”) scrolls only the timeline; before, it could scroll the whole rollout view and hide its top.
+
+### Pull requests
+- **Inline images**: screenshots and other images attached on GitHub now show inside the description and comments of a pull request once you open them, instead of disappearing. Other images stay links. (#17, @MegaMaddin)
+
+### Codex
+- **Keeps its model on resume**: a Codex session started or resumed on the table runs on the model and effort it was started with. Before, it switched to your configured default, and a startup warning appeared. Codex opens that warning with F2, and Esc closes it again. (#18, @timohuovinen)
+- **Stays on its own conversation**: a Codex sub-agent at work no longer moves the agent's item to the sub-agent's thread, which Codex then refused to resume. (#18, @timohuovinen)
+- **Add system prompt**: the Session menu adds the workbench guide and current project context to a running Codex conversation at once, without starting a turn. (#18, @timohuovinen)
+- **Found on Windows when installed with npm, pnpm or Yarn**: the table runs the native `codex.exe` behind the `codex.cmd` script, and also looks in the standalone installer's folder. (#18, @timohuovinen)
+- **Less work while it runs**: table sessions turn off Codex's spinner in the window title, which the table does not show. The spinner made most of a working session's output. (#18, @timohuovinen)
+- **New agent form opens faster**: the Codex model list from the last minute shows at once while a fresh one loads. (#18, @timohuovinen)
+
+### Terminals
+- **Less disk writing**: a streaming session no longer rewrites a copy of its whole recent output to disk five times a second; the recording database already has it. (#18, @timohuovinen)
+
+### Platform
+- **Linux**: A maximized window at 125% text scaling no longer shows a stray row of pixels under the menu bar. (#15, @timohuovinen)
+
 ## 0.17.0 — 2026-11-04
 
 ### Auto deploy

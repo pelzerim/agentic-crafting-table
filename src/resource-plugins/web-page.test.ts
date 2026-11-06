@@ -28,3 +28,10 @@ test('a code review and a review run link to the pull request they were made fro
 test('items with no page of their own have none', () => {
   for (const pluginId of ['agent.session', 'workspace.note', 'terminal.session']) assert.equal(page(record('x', pluginId, {})), undefined, pluginId);
 });
+
+test('a Linear ticket links to the issue page Linear gave it, and to nothing off Linear', () => {
+  const ticket = (data: ResourceRecord['data']) => page(record('t', 'linear.ticket', data))?.url;
+  assert.equal(ticket({ issueId: '11111111-1111-4111-8111-111111111111', url: 'https://linear.app/acme/issue/BIL-128/plans' }), 'https://linear.app/acme/issue/BIL-128/plans');
+  assert.equal(ticket({ issueId: 'BIL-128', workspaceKey: 'acme' }), 'https://linear.app/acme/issue/BIL-128');
+  assert.equal(registry.get('linear.ticket')?.validateData({ issueId: 'BIL-128', url: 'https://evil.example/acme/issue/BIL-128' }), false);
+});

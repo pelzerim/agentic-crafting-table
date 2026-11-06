@@ -265,6 +265,36 @@ test('PR comments render sanitized HTML, persist seen state, copy links, and rep
   } finally { await app.close(); await service.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test('PR comments and description show GitHub image attachments inline once opened, loaded through the service', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-pr-images-')), providers = githubFixture();
+  const asset = (n: number) => `https://github.com/user-attachments/assets/${String(n).repeat(8)}-1111-4111-8111-${String(n).repeat(12)}`;
+  providers.comments[0].body = `Before:\r\n\r\n<img width="2" height="2" alt="before" src="${asset(1)}" />\r\n\r\nAfter:\r\n\r\n![after](${asset(2)})\r\n\r\n![broken](https://github.com/user-attachments/assets/00000000-1111-4111-8111-000000000000)\r\n\r\n![elsewhere](https://images.example.test/tracker.png)`;
+  providers.pull.body = `Screenshot:\n\n![screen](${asset(3)})`;
+  const service = await startWorkspaceService(directory, undefined, undefined, providers);
+  await service.control.dispatch({ commandId: randomUUID(), expectedRevision: 0, actor: { kind: 'user', id: 'fixture' }, commands: [{ type: 'item.add', id: 'pr', resourceId: 'pull', pluginId: 'github.pull-request', title: providers.pull.title, data: { owner: 'fixture', repo: 'billing', number: 42 }, position: { x: 400, y: 220 } }] });
+  const app = await electron.launch({ args: ['.', ...scrollbarArgs], env: { ...process.env, ACT_TEST_DATA_DIR: directory } });
+  try {
+    const page = await app.firstWindow(); await page.getByRole('article', { name: providers.pull.title, exact: true }).click();
+    const comment = page.locator('.pr-comment[data-kind=discussion][data-comment-id="5"]');
+    await expect(comment.locator('img')).toHaveCount(3);
+    await expect(comment.locator('img[src]')).toHaveCount(0);
+    expect(providers.htmlReads).toEqual([]);
+    await comment.locator('.pr-comment-preview').click();
+    for (const name of ['before', 'after']) {
+      const image = comment.getByRole('img', { name, exact: true });
+      await expect(image).toHaveAttribute('src', /^data:image\/png;base64,/);
+      await expect.poll(() => image.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBe(2);
+    }
+    await expect(comment.getByRole('link', { name: 'Image: broken', exact: true })).toHaveAttribute('href', 'https://github.com/user-attachments/assets/00000000-1111-4111-8111-000000000000');
+    await expect(comment.getByRole('link', { name: 'Image: elsewhere', exact: true })).toHaveAttribute('href', 'https://images.example.test/tracker.png');
+    expect(providers.imageReads.every(url => url.startsWith('https://private-user-images.githubusercontent.com/'))).toBe(true);
+    expect(providers.htmlReads.every(path => path === '/repos/fixture/billing/issues/comments/5')).toBe(true);
+    await page.locator('.pr-description-panel > summary').click();
+    await expect(page.locator('.pr-description').getByRole('img', { name: 'screen', exact: true })).toHaveAttribute('src', /^data:image\/png;base64,/);
+    expect(providers.htmlReads).toContain('/repos/fixture/billing/pulls/42');
+  } finally { await app.close(); await service.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('PR conversation defaults to human comments and settings persist bot/activity visibility', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'craft-pr-filters-')), providers = githubFixture();
   providers.comments.push({ ...providers.comments[0], id: 8, body: 'Automated checks passed.', user: { login: 'ci-service', type: 'Bot' } });

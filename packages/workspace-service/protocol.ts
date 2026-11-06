@@ -2,6 +2,8 @@ import type { WorkspaceState } from '../core/control.ts';
 
 export const PROTOCOL_VERSION = 1;
 export const MAX_FRAME_BYTES = 8 * 1024 * 1024;
+/** Unsent data the service holds for one client before dropping it. */
+export const MAX_UNSENT_BYTES = 64 * 1024 * 1024;
 /** `plots` is derived from the committed state and saved plot names (MAP-24); `reminders` is the
  * reminder list with today's states (MAP-REMINDERS). Older services omit either. A subscriber that named
  * a `layer` receives the state presented for it (`presentLayer`) with `layers`; a read and a subscriber

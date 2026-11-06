@@ -45,6 +45,7 @@ async function geometry(view: Locator) {
       actions: actions.map(button => ({ name: button.getAttribute('aria-label') ?? button.textContent ?? '', box: box(button)!, primary: button.hasAttribute('data-primary') })),
       hiddenActions: [...heading.querySelectorAll('.view-actions button')].filter(button => button.hasAttribute('data-view-overflow')).map(button => button.getAttribute('aria-label') ?? button.textContent ?? ''),
       more: box(heading.querySelector('.view-more')), open: box(heading.querySelector('.view-open')), refresh: box(heading.querySelector('.view-refresh')), seen: box(heading.querySelector('.item-seen')), close: box(heading.querySelector('.item-close')),
+      refreshGlyph: box(heading.querySelector('.view-refresh > .act-glyph')),
       chip: box(heading.querySelector('.view-chip')), meta: box(heading.querySelector('.view-meta')), freshness: box(heading.querySelector('.view-freshness')),
       overflowing: [...heading.querySelectorAll('*')].filter(node => {
         const b = box(node); return b && b.width > 0 && (b.left < element.getBoundingClientRect().left - .5 || b.right > element.getBoundingClientRect().right + .5);
@@ -106,6 +107,9 @@ test('the frame bar keeps identity and controls on one row and status on a secon
         expect(Math.abs(control.top - row.top), `control top at ${width}`).toBeLessThanOrEqual(2);
         expect(Math.abs(control.height - row.height), `control height at ${width}`).toBeLessThanOrEqual(1);
       }
+      const glyph = g.refreshGlyph!, middle = (b: Box) => b.left + b.width / 2;
+      expect(Math.abs(middle(glyph) - middle(g.refresh!)), `↻ glyph centred across its button at ${width}`).toBeLessThanOrEqual(.5);
+      expect(Math.abs(center(glyph) - center(g.refresh!)), `↻ glyph centred down its button at ${width}`).toBeLessThanOrEqual(.5);
       for (const part of [g.icon, g.title, g.blocked]) {
         expect(part, `row 1 part at ${width}`).toBeTruthy();
         expect(Math.abs(center(part!) - center(row)), `row 1 centre at ${width}`).toBeLessThanOrEqual(2);

@@ -129,6 +129,24 @@ test('the signpost highlights, selects and moves its members together, and Escap
   });
 });
 
+test('the signpost moves its plot when its first member is hidden off the map', async () => {
+  await launch(async ({ page }) => {
+    await page.evaluate(async () => {
+      const { state } = await window.craftingTable.workspaceRead();
+      await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), actor: { kind: 'user', id: 'test' }, expectedRevision: state.revision, commands: [{ type: 'node.hide', id: 'billing-agent' }] });
+    });
+    await expect(page.locator('.react-flow__node[data-id="billing-agent"]')).toHaveCount(0);
+    const plot = (await read(page)).plots?.list.find(entry => entry.memberIds.includes('billing-pr'));
+    expect(plot?.memberIds[0]).toBe('billing-agent');
+    const shown = billing.filter(id => id !== 'billing-agent'), before = await positions(page, shown), revision = (await read(page)).state.revision;
+    const box = (await sign(page, /Billing/).getByRole('button').boundingBox())!;
+    await page.mouse.move(box.x + 20, box.y + 10); await page.mouse.down();
+    await page.mouse.move(box.x + 100, box.y + 60, { steps: 10 }); await page.mouse.up();
+    await expect.poll(async () => (await read(page)).state.revision).toBe(revision + 1);
+    expect((await positions(page, shown))[0].x - before[0].x).toBeGreaterThan(50);
+  });
+});
+
 test('double-click renames inline; the menu selects, renames and hides', async () => {
   await launch(async ({ page }) => {
     await sign(page, 'Thumbnail · 4 items').getByRole('button').dblclick();
