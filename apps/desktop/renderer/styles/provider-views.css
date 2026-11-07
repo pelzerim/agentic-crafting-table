@@ -52,6 +52,54 @@
   overflow-wrap: anywhere;
 }
 
+.github-issue-detail {
+  max-width: 1000px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.github-issue-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--act-sp-2);
+  margin: 0 0 var(--act-sp-4);
+  padding: 0;
+  list-style: none;
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-dim);
+}
+
+.github-issue-labels li {
+  padding: 0 var(--act-sp-2);
+  border: 1px solid var(--act-line);
+}
+
+.github-issue-comments h3 {
+  margin: var(--act-sp-6) 0 var(--act-sp-4);
+  font-size: var(--act-fs-body);
+  color: var(--act-ink-dim);
+}
+
+.github-issue-comment {
+  max-width: 76ch;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border-left: 2px solid var(--act-line);
+}
+
+.github-issue-comment header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: var(--act-fs-body);
+}
+
+.github-issue-comment time {
+  font-size: var(--act-fs-meta);
+  color: var(--act-ink-dim);
+}
+
 .slack-detail {
   max-width: 1000px;
   line-height: 1.6;
@@ -115,6 +163,7 @@
 @container (min-width:1000px) {
   .notion-detail,
   .slack-detail,
+  .github-issue-detail,
   .linear-detail {
     max-width: calc(76ch + 2 * var(--act-sp-6));
     margin-inline: auto;

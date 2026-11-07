@@ -8,6 +8,7 @@ import type { PluginDefinitionsModule } from '../../packages/plugin-sdk/host.ts'
 export { agentSession } from './items/agent-session/definition.ts';
 export { terminalSession } from './items/terminal-session/definition.ts';
 export { githubPullRequest } from './items/github-pull-request/definition.ts';
+export { githubIssue } from './items/github-issue/definition.ts';
 export { claudeArtifact } from './items/claude-artifact/definition.ts';
 export { codeReview } from './items/code-review/definition.ts';
 export { githubReviewRun } from './items/github-review-run/definition.ts';
