@@ -8,7 +8,7 @@ import type { TodoContextMode } from './todo-context.tsx';
 import { createPortal } from 'react-dom';
 import { CanvasMenu } from './canvas-menu.tsx';
 import { isArchived, isBelow, isOffMap } from '../../../src/graph/archive.ts';
-import { LATER_AGE_DAYS, NEXT_SOFT_LIMIT, oldestTodo, todoList, untouchedDays, withoutMuted } from '../../../src/graph/todos.ts';
+import { LATER_AGE_DAYS, NEXT_SOFT_LIMIT, inboxName, oldestTodo, todoList, untouchedDays, withoutMuted } from '../../../src/graph/todos.ts';
 import type { TodoEntry, TodoHorizon, TodoList } from '../../../src/graph/todos.ts';
 import { placeRows, placementFor } from './todo-placement.ts';
 import type { Placement } from './todo-placement.ts';
@@ -43,7 +43,7 @@ export interface TodoOverlayHandle {
   /** Opens the list with keyboard focus on this to-do's row. */
   show(id: string): void;
 }
-const LABELS: Record<Group, string> = { inbox: 'From Linear', next: 'Next', later: 'Later', done: 'Done' };
+const LABELS: Record<Group, string> = { inbox: 'Assigned to you', next: 'Next', later: 'Later', done: 'Done' };
 const EDITING = 'input:not([type=checkbox]), textarea, select, [contenteditable=true], [data-inline-title] input';
 export function TodoOverlay({ state, registry, view, save, saveView, reveal, openWeb, onDragTodo, announce, doneArchiveDays, ref }: {
   state: WorkspaceState; registry: ResourcePluginRegistry; view: ViewState;
@@ -397,10 +397,11 @@ export function TodoOverlay({ state, registry, view, save, saveView, reveal, ope
       </div>;
     });
   };
-  const heading = (group: Group, count: number, extra?: React.ReactNode) => <h3 className="todo-group-heading">{LABELS[group]}<span className="todo-group-count">{count}</span>{extra}</h3>;
+  const inboxLabel = inboxName(canonical.inbox), label = (group: Group) => group === 'inbox' ? inboxLabel : LABELS[group];
+  const heading = (group: Group, count: number, extra?: React.ReactNode) => <h3 className="todo-group-heading">{label(group)}<span className="todo-group-count">{count}</span>{extra}</h3>;
   const next = shown('next'), laterRows = shown('later'), doneRows = shown('done'), inboxRows = shown('inbox');
   const stale = canonical.later.filter(entry => untouchedDays(entry, now) >= LATER_AGE_DAYS);
-  // The badge counts tickets waiting in From Linear to be taken; tickets marked Not for me are not in the inbox.
+  // The badge counts tickets waiting in the inbox to be taken; tickets marked Not for me are not in the inbox.
   const waiting = live.inbox.length;
   const empty = !canonical.inbox.length && !canonical.next.length && !canonical.later.length && !canonical.done.length;
   return <RailPanel slot="todos" label="To-dos" resizeLabel="Resize to-do list" className="todo-overlay" element="form" keepMounted open={open} close={close} closeLabel="Close to-do list" rootRef={panel} sheetRef={sheet}
@@ -431,8 +432,8 @@ export function TodoOverlay({ state, registry, view, save, saveView, reveal, ope
       <div className="todo-list" ref={list} onScroll={event => { scroll.current = event.currentTarget.scrollTop; clearTimeout(persistTimer.current); persistTimer.current = setTimeout(() => persistence.current(), 160); }}
         onDragLeave={event => { const current = moveRef.current; if (current?.target && !event.currentTarget.contains(event.relatedTarget as Node | null)) setMove({ ...current, target: undefined }); }}>
         {empty && <div className="todo-empty"><ItemIcon icon="square-check" /><p><strong>Nothing here yet</strong><span>Type below, or drag an item onto a to-do.</span></p></div>}
-        {canonical.inbox.length > 0 && <section className="todo-group" data-group="inbox" aria-label={LABELS.inbox}>
-          {heading('inbox', canonical.inbox.length, <button type="button" className="todo-group-fold" tabIndex={open ? 0 : -1} aria-expanded={inboxOpen} aria-label={`${inboxOpen ? 'Hide' : 'Show'} ${canonical.inbox.length} from Linear`} onClick={() => setInboxOpen(value => !value)}>{inboxOpen ? 'Hide' : 'Show'}</button>)}
+        {canonical.inbox.length > 0 && <section className="todo-group" data-group="inbox" aria-label={inboxLabel}>
+          {heading('inbox', canonical.inbox.length, <button type="button" className="todo-group-fold" tabIndex={open ? 0 : -1} aria-expanded={inboxOpen} aria-label={`${inboxOpen ? 'Hide' : 'Show'} ${canonical.inbox.length} ${inboxLabel.replace(/^From /, 'from ').replace(/^Assigned/, 'assigned')}`} onClick={() => setInboxOpen(value => !value)}>{inboxOpen ? 'Hide' : 'Show'}</button>)}
           {inboxOpen && inboxRows.map(slot => row(slot.entry, 'inbox', slot.role))}
         </section>}
         {!empty && <>
