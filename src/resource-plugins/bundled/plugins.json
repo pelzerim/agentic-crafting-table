@@ -12,5 +12,6 @@
   "bookmark",
   "web-link",
   "todo",
-  "note"
+  "note",
+  "github-issue"
 ]

@@ -8,7 +8,7 @@ const UI_GLYPHS: Record<string, GlyphName<12>> = {
   'git-pull-request': 'git-pull-request', 'git-merge': 'git-merge', project: 'folder', sparkles: 'sparkles', sprout: 'sprout', grid: 'grid',
   server: 'server', link: 'link', unlink: 'unlink', globe: 'globe', square: 'square', 'square-check': 'square-check',
   check: 'check', seen: 'check', settings: 'settings', file: 'file', 'file-text': 'file', note: 'file', review: 'search',
-  workflow: 'workflow', bookmark: 'bookmark', circle: 'circle', 'circle-dashed': 'circle-dashed', open: 'open',
+  workflow: 'workflow', bookmark: 'bookmark', circle: 'circle', 'circle-dashed': 'circle-dashed', 'circle-dot': 'circle-dot', open: 'open',
   external: 'external', copy: 'copy', refresh: 'refresh', undermap: 'undermap', archive: 'archive', plus: 'plus', minus: 'minus',
   inbox: 'inbox', 'chevron-left': 'chevron-left', rocket: 'rocket', box: 'box', remote: 'remote', clock: 'clock',
   bell: 'bell', x: 'close', 'alert-triangle': 'alert', bang: 'bang',

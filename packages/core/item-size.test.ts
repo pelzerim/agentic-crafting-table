@@ -75,7 +75,7 @@ test('every builtin preserves its native default footprint and restricted types 
     const profile = mapSizeProfile(plugin), preset = profile.sizes[profile.defaultSize]!;
     const tier = plugin.appearance?.size ?? 'small';
     assert.equal(preset.width, plugin.appearance?.width ?? ({ icon: 48, tiny: 144, small: 150, medium: 200, large: 240 }[tier]), plugin.id);
-    assert.equal(preset.height, plugin.id === 'linear.ticket' ? 64 : plugin.id === 'workspace.note' ? 88 : { icon: 48, tiny: 32, small: 48, medium: 84, large: 112 }[tier], plugin.id);
+    assert.equal(preset.height, plugin.id === 'linear.ticket' || plugin.id === 'github.issue' ? 64 : plugin.id === 'workspace.note' ? 88 : { icon: 48, tiny: 32, small: 48, medium: 84, large: 112 }[tier], plugin.id);
   }
   const control = new WorkspaceControl();
   await control.apply({ type: 'item.add', id: 'todo', resourceId: 'todo-r', pluginId: 'workspace.todo', title: 'Task', data: {}, position: { x: 100, y: 100 } }, 0);
