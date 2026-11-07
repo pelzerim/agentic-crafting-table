@@ -3,6 +3,14 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### GitHub issues
+- **GitHub issues as items**: paste a `github.com/…/issues/N` link (From URL, or a drop) to keep an issue on the map. It shows its title, its state (Open, Closed, Not planned), labels, description and latest comments, and refreshes like a pull request; issue links saved as web links become issues once GitHub is connected.
+- **Change state and Mark done**: right-click → **Change state** (or the state chip in the open issue) closes it as completed or not planned, or reopens it, on GitHub. As a to-do, Mark done closes the issue and Reopen reopens it; closing it on GitHub ticks the to-do.
+- **Linked pull requests**: right-click → **Linked pull requests → Add to the map** places the pull requests that close or mention the issue beside it.
+- **Assigned issues in the to-do inbox**: turn on **Settings → Items → GitHub issue → Show my assigned GitHub issues in the to-do inbox** (off by default) and your open assigned issues wait there like Linear tickets. The inbox is called From GitHub, From Linear, or Assigned to you when it holds both. (#21, @MegaMaddin)
+
 ## 0.18.1 — 2026-11-05
 
 ### Item views

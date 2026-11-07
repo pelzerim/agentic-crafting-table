@@ -727,7 +727,7 @@ real runtime adapters and automatic semantic summarization are still unimplement
 
 ### URL-only attachments
 
-Pull requests, Notion pages, and Linear issues are attached with a single URL.
+Pull requests, GitHub issues, Notion pages, and Linear issues are attached with a single URL.
 No manual title is requested. Each plugin advertises `creation.mode: 'url'` and a
 placeholder, and its `matchInput` parses provider identity. The original title
 comes from the authenticated provider connector's `ResourceSnapshot.title`, not
@@ -907,7 +907,7 @@ size, content and links; its title is struck through. Its menu changes to
 **Reopen**.
 Done items no longer contribute to active project counts or Needs me. This flag
 does not stop a running agent or complete a linked to-do. It changes provider
-state only for items whose connector mirrors completion (Linear tickets).
+state only for items whose connector mirrors completion (Linear tickets, GitHub issues).
 
 **Delete** immediately removes the selected map node, its incident connections
 and to-do references. Linked items remain. Deleting a project leaves its members
