@@ -16,6 +16,7 @@ Expanded view sizing is independent. Dimensions below are defaults in world pixe
 | Rollout | 200×60: workflow title and status icon | 200×84: status badge and job progress | 280×132: longer progress, repository and branch filter | Medium |
 | Note | 160 wide paper: text, 3–14 lines tall | 220 wide paper | 300 wide paper | Small |
 | Linear ticket | 240×64: identifier/title and workflow status (48-pixel compatibility floor) | 260×84: adds workflow status | —; open the ticket for details | Small |
+| GitHub issue | 240×64: #N tag, title and state (48-pixel compatibility floor) | 260×84: adds the state | —; open the issue for details | Small |
 | Notion page | 150×48: title and attention | 230×84: adds saved page/sync status | —; open the page for its content | Small |
 | Slack | 210×48: message/thread title and attention | 260×104: adds saved scope/message-count status and workspace | —; open the message/thread for its content | Small |
 | Code review | 150×48: review title, progress/attention | 240×112: saved result/progress summary, provider and model | —; findings belong in the review | Small |
