@@ -4,6 +4,7 @@ import type { DesktopAnnouncement, NotificationTarget } from './notifications.ts
 import type { WorkspaceSnapshot } from '../../packages/workspace-service/protocol.ts';
 import { isOffMap } from '../../src/graph/archive.ts';
 import { browserUrl, clipboardUrls } from './browser-url.ts';
+import { EMBEDDED_SITES, GUEST_PREFERENCES, attachEmbeddedPage, browserUserAgent, embeddedDownload, embeddedNavigation, embeddedPermissionAllowed } from './embedded-sites.ts';
 import { savePastedImage } from './pasted-images.ts';
 import { pluginDiscoverySchema } from '../../src/resource-plugins/url-input.ts';
 import { createKeepAwake } from './keep-awake.ts';
@@ -121,6 +122,48 @@ async function main() {
   const clipboardWrite = (permission: string, url: string | undefined) => permission === 'clipboard-sanitized-write' && Boolean(url?.startsWith(origin + '/'));
   session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => callback(clipboardWrite(permission, details.requestingUrl ?? contents.getURL())));
   session.defaultSession.setPermissionCheckHandler((_contents, permission, requestingOrigin) => clipboardWrite(permission, `${requestingOrigin}/`));
+  const openOutside = (input: string) => {
+    let target: string | undefined;
+    try { target = browserUrl(input); } catch { target = undefined; }
+    if (target) void shell.openExternal(target).catch(() => {});
+  };
+  const userAgent = browserUserAgent(app.userAgentFallback);
+  for (const site of EMBEDDED_SITES) {
+    const pages = session.fromPartition(site.partition);
+    pages.setUserAgent(userAgent);
+    pages.setPermissionRequestHandler((contents, permission, callback) => callback(embeddedPermissionAllowed(site, permission, contents.getURL())));
+    pages.setPermissionCheckHandler((contents, permission) => embeddedPermissionAllowed(site, permission, contents?.getURL()));
+    pages.on('will-download', (event, item) => { if (embeddedDownload(item.getURL()) === 'browser') { event.preventDefault(); openOutside(item.getURL()); } });
+  }
+  // Any page in a site's session (the item's page and its sign-in windows): sign-in popups open in a small window in
+  // that session, other popups go to the browser, top-level pages stay https, and it never hosts a webview.
+  app.on('web-contents-created', (_event, contents) => {
+    const site = EMBEDDED_SITES.find(candidate => contents.session === session.fromPartition(candidate.partition));
+    if (!site) return;
+    contents.on('will-attach-webview', event => event.preventDefault());
+    contents.on('select-bluetooth-device', (event, _devices, callback) => { event.preventDefault(); callback(''); });
+    contents.setWindowOpenHandler(({ url }) => {
+      if (site.signIn?.(url)) return { action: 'allow', overrideBrowserWindowOptions: { width: 500, height: 640, autoHideMenuBar: true, show: !backgroundTest, focusable: !backgroundTest, webPreferences: { ...GUEST_PREFERENCES, partition: site.partition } } };
+      openOutside(url); return { action: 'deny' };
+    });
+    // A sign-in window has no address bar, so its title shows the page's host and the page cannot set it.
+    contents.on('did-create-window', (window, { url }) => {
+      const showHost = (address: string) => { try { window.setTitle(new URL(address).host); } catch { window.setTitle(''); } };
+      window.on('page-title-updated', event => event.preventDefault()); showHost(url);
+      window.webContents.on('did-navigate', (_event, address) => showHost(address));
+      window.webContents.on('did-navigate-in-page', (_event, address, isMainFrame) => { if (isMainFrame) showHost(address); });
+    });
+    const keepHttps = (event: Electron.Event<{ url: string; isMainFrame: boolean }>) => {
+      if (embeddedNavigation(event.url, event.isMainFrame) === 'allow') return;
+      event.preventDefault(); openOutside(event.url);
+    };
+    contents.on('will-navigate', keepHttps); contents.on('will-redirect', keepHttps);
+    // Loads the embedder starts (`src`, `loadURL`) skip will-navigate; stopping inside this event crashes, so it waits a tick.
+    contents.on('did-start-navigation', ({ url, isMainFrame, isSameDocument, initiator }) => {
+      if (initiator || isSameDocument || embeddedNavigation(url, isMainFrame) === 'allow') return;
+      setImmediate(() => { if (!contents.isDestroyed()) contents.stop(); }); openOutside(url);
+    });
+  });
   ipcMain.handle('app:focused', event => { assertCaller(event); return backgroundTest || Boolean(BrowserWindow.fromWebContents(event.sender)?.isFocused()); });
   ipcMain.handle('app:info', async event => {
     assertCaller(event);
@@ -257,7 +300,7 @@ async function main() {
     if (!counts) { counts = new Map(); watches.set(sender, counts); sender.once('destroyed', () => { for (const [sessionId, count] of counts!) for (let i = 0; i < count; i++) void wake.detach(sessionId).catch(() => {}); }); }
     return counts;
   };
-  const lifecycle = spike ? undefined : installLifecycle(workspace, runtime, closeHidesWindow(process.platform) ? window => presence.hide(window) : undefined);
+  const lifecycle = spike ? undefined : installLifecycle(workspace, runtime, closeHidesWindow(process.platform) ? window => presence.hide(window) : undefined, { app, dialog });
   ipcMain.handle('session:request', async (event, request) => {
     assertCaller(event);
     try {
@@ -402,7 +445,7 @@ async function main() {
       ...placement.state.bounds, minWidth: placement.minWidth, minHeight: placement.minHeight,
       show: !backgroundTest, focusable: !backgroundTest,
       backgroundColor: WINDOW_BACKGROUND[colorScheme()], title: 'Agentic Crafting Table',
-      webPreferences: { preload: join(app.getAppPath(), 'dist', 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: !backgroundTest },
+      webPreferences: { preload: join(app.getAppPath(), 'dist', 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, webviewTag: true, backgroundThrottling: !backgroundTest },
     });
     fillWindowBackground(window, colorScheme());
     // maximize() reveals a hidden window, so background tests retain normal bounds.
@@ -418,13 +461,9 @@ async function main() {
     });
     const contentsId = window.webContents.id;
     window.webContents.on('destroyed', () => zoomTargets.delete(contentsId));
-    window.webContents.setWindowOpenHandler(({ url }) => {
-      let target: string | undefined;
-      try { target = browserUrl(url); } catch { target = undefined; }
-      if (target) void shell.openExternal(target).catch(() => {});
-      return { action: 'deny' };
-    });
+    window.webContents.setWindowOpenHandler(({ url }) => { openOutside(url); return { action: 'deny' }; });
     window.webContents.on('will-navigate', event => event.preventDefault());
+    window.webContents.on('will-attach-webview', (event, preferences, params) => { if (!attachEmbeddedPage(preferences, params)) event.preventDefault(); });
     const query = new URLSearchParams(spike ? { spike: '1' } : {}), pinnedStyle = neighborhoodStylePin(Boolean(testDirectory), process.env.ACT_TEST_NEIGHBORHOOD_STYLE);
     if (pinnedStyle) query.set(NEIGHBORHOOD_STYLE_PARAMETER, pinnedStyle);
     query.set(COLOR_SCHEME_PARAMETER, colorScheme());

@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import * as z from 'zod/v4';
 import { isOwnedByCurrentUser } from '../platform/private-files.ts';
+import { isProcessRunning } from '../platform/process-identity.ts';
 import { migrations } from '../workspace-service/sqlite-store.ts';
 
 // Only app-owned durable state is included. Native conversations, OS credentials,
@@ -24,6 +25,10 @@ function exists(path: string) { try { lstatSync(path); return true; } catch (err
 function alive(pid: number) {
   if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error('Invalid saved process identity');
   try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
+}
+function ownerRunning(pid: number, started: string | null) {
+  if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error('Invalid saved process identity');
+  return isProcessRunning(pid, started);
 }
 function canonical(path: string): string {
   const absolute = resolve(path);
@@ -89,7 +94,7 @@ function dbCheck(db: DatabaseSync, path: string) {
 }
 function assertStopped(db: DatabaseSync, path: string, tables: string[]) {
   const table = path === databases[0] ? 'service_owner' : 'owner';
-  if (tables.includes(table) && db.prepare(`SELECT pid FROM ${table}`).all().some(row => alive(Number(row.pid)))) throw new Error('Quit the app and stop its services before creating a backup');
+  if (tables.includes(table) && db.prepare(`SELECT * FROM ${table}`).all().some(row => ownerRunning(Number(row.pid), typeof row.started === 'string' ? row.started : null))) throw new Error('Quit the app and stop its services before creating a backup');
   if (path === databases[1]) for (const row of db.prepare('SELECT body FROM sessions').all()) {
     const session = JSON.parse(String(row.body));
     if (['running', 'starting', 'lost'].includes(session.state) && session.pid !== undefined && alive(session.pid)) throw new Error('A recorded session process is still alive; stop it before creating a backup');

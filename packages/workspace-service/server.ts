@@ -92,6 +92,7 @@ import { TodoSweeper } from './todo-sweeper.ts';
 import { ComparisonPruner } from './comparison-pruning.ts';
 import type { TriageAdapter } from './triage.ts';
 import { linearTriageAdapter } from '../provider-runtime/linear-triage.ts';
+import { githubIssueTriageAdapter } from '../provider-runtime/github-issue-triage.ts';
 import { StandupReports } from './standup.ts';
 import { UpdateChecker, tagsSource } from './updates.ts';
 import type { UpdateCheckerOptions } from './updates.ts';
@@ -197,7 +198,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   const context = new AgentContextCoordinator(store, control, plugins, (nodeId, signal) => resources.context(nodeId, signal));
   const assignments = new AssignmentCoordinator(store, control, providers ? providers.assignments ?? [] : [githubAssignmentAdapter()], () => store.readSettings().value.connections, broadcast, () => !closing && lifecycle.allowsBackgroundWork);
   // Assigned provider work arrives as quiet Triage to-dos; an injected provider set brings its own adapters.
-  const triage = new TriageCoordinator(store, control, providers ? providers.triage?.adapters ?? [] : [linearTriageAdapter()], providers?.triage?.connections ?? (() => store.readSettings().value.connections),
+  const triage = new TriageCoordinator(store, control, providers ? providers.triage?.adapters ?? [] : [linearTriageAdapter(), githubIssueTriageAdapter()], providers?.triage?.connections ?? (() => store.readSettings().value.connections),
     () => control.registry.pluginSettings(store.readSettings().value.plugins), broadcast, () => !closing && lifecycle.allowsBackgroundWork);
   const todoSweeper = new TodoSweeper(control, () => control.registry.pluginSettings(store.readSettings().value.plugins)['workspace.todo'], broadcast, () => !closing && lifecycle.allowsBackgroundWork, providers?.todoClock);
   const recaps = new AgentRecaps(control, broadcast, () => !closing && lifecycle.allowsBackgroundWork);

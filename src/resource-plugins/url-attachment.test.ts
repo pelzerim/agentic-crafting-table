@@ -46,6 +46,10 @@ test('unified URL discovery prefers exact provider matches and preserves generic
   const registry = createResourcePluginRegistry();
   for (const [url, type] of [
     ['https://github.com/acme/app/pull/48', 'github.pull-request'],
+    ['https://github.com/acme/app/issues/48', 'github.issue'],
+    ['https://github.com/acme/app/issues/48/', 'github.issue'],
+    ['https://github.com/acme/app/issues', 'web.link'],
+    ['https://github.com/acme/app/issues/48/timeline', 'web.link'],
     ['https://www.notion.so/Old-title-0123456789abcdef0123456789abcdef?pvs=4', 'notion.page'],
     ['https://linear.app/acme/issue/BIL-128/title', 'linear.ticket'],
     ['https://fixture.slack.com/archives/C0123456789/p1727172000000001', 'slack.message'],

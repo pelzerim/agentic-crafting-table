@@ -21,6 +21,7 @@ const data: Record<string, JsonObject> = {
   'terminal.session': { sessionId: 'fixture-terminal', workspaceId: 'local', shell: 'zsh', cwd: '/fixture' },
   'github.rollout': { owner: 'fixture', repo: 'web', runId: 101 },
   'github.pull-request': { owner: 'fixture', repo: 'app', number: 42 },
+  'github.issue': { owner: 'fixture', repo: 'web', number: 7 },
   'claude.artifact': { url: 'https://claude.ai/code/artifact/00000000-0000-4000-8000-000000000042', artifactId: '00000000-0000-4000-8000-000000000042', sourcePrId: 'pr', headSha: 'a'.repeat(40), sessionId: 'agent' },
   'code.review': { provider: 'claude', sessionId: 'review', sourcePrId: 'pr', baseSha: 'b'.repeat(40), headSha: 'a'.repeat(40), model: 'opus' },
   'github.review-run': { requestId: 'request', sourcePrId: 'pr', repository: 'fixture/app' },
@@ -47,6 +48,9 @@ import { createWebLinkConnector } from './items/web-link/connector.ts';
 import { githubPullRequest } from './items/github-pull-request/definition.ts';
 import { githubPullRequestConnector } from './items/github-pull-request/connector.ts';
 import { githubFixture } from '../../tests/fixtures/github.ts';
+import { githubIssue } from './items/github-issue/definition.ts';
+import { githubIssueConnector } from './items/github-issue/connector.ts';
+import { githubIssueFixture } from '../../tests/fixtures/github-issue.ts';
 import { claudeArtifact } from './items/claude-artifact/definition.ts';
 import { claudeArtifactConnector } from './items/claude-artifact/connector.ts';
 import { createResourcePluginHost } from './catalog.server.ts';
@@ -61,6 +65,7 @@ const connectors = [
   { plugin: noteItem, connector: () => noteConnector, actions: {} },
   { plugin: slackMessage, connector: () => slackMessageConnector(async () => slackFixture().client), actions: {} },
   { plugin: linearTicket, connector: () => linearTicketConnector(async () => linearFixture().client), actions: { 'linear.status.options': {}, 'linear.status.complete': { done: 'true', restore: '', sourceResourceId: 'contract-resource', requestId: '99999999-9999-4999-8999-999999999998' }, 'linear.status.set': { value: '88888888-8888-4888-8888-888888888888', expectedStateId: '44444444-4444-4444-8444-444444444444', expectedUpdatedAt: '2026-09-26T12:00:00.000Z', sourceResourceId: 'contract-resource', requestId: '99999999-9999-4999-8999-999999999999' } } },
+  { plugin: githubIssue, connector: () => githubIssueConnector(() => githubIssueFixture().client), actions: { 'issue.state.options': {}, 'issue.pulls': {}, 'issue.state.complete': { done: 'true', sourceResourceId: 'contract-resource', requestId: '99999999-9999-4999-8999-999999999997' }, 'issue.state.set': { value: 'not_planned', expectedState: 'open', sourceResourceId: 'contract-resource', requestId: '99999999-9999-4999-8999-999999999996' } } },
   { plugin: notionPage, connector: () => notionPageConnector(async () => notionFixture().client), actions: {} },
   { plugin: bookmark, connector: () => bookmarkConnector, actions: { reference: {} } },
   { plugin: todoItem, connector: () => todoConnector, actions: {} },

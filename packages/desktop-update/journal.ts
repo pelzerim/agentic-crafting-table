@@ -3,6 +3,7 @@ import { chmodSync, closeSync, constants, fstatSync, openSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { isOwnedByCurrentUser } from '../platform/private-files.ts';
+import { isProcessRunning } from '../platform/process-identity.ts';
 
 export type FileIdentity = { dev: number; ino: number };
 export type InstallIntent = {
@@ -43,11 +44,8 @@ export class InstallJournal {
       if (version > 1) throw new Error('Installer journal is from a newer version');
       this.db.exec('CREATE TABLE IF NOT EXISTS owner (id INTEGER PRIMARY KEY CHECK(id=1), token TEXT NOT NULL, pid INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS pending (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL); PRAGMA user_version=1');
       const previous = this.db.prepare('SELECT pid FROM owner WHERE id=1').get();
-      if (previous) {
-        let alive = true;
-        try { process.kill(Number(previous.pid), 0); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') alive = false; }
-        if (alive) throw new Error('Another installer is already running');
-      }
+      // No recorded start: older installers write this row without column names, so a new column would break them.
+      if (previous && isProcessRunning(Number(previous.pid), null)) throw new Error('Another installer is already running');
       this.db.prepare('INSERT OR REPLACE INTO owner VALUES(1,?,?)').run(this.owner, process.pid);
       this.db.exec('COMMIT');
     } catch (error) { try { this.db.exec('ROLLBACK'); } catch {} this.db.close(); throw error; }

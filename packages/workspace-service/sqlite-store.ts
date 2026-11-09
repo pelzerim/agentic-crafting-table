@@ -7,6 +7,7 @@ import { SNAP_PITCH, type MapLayout } from '../../src/graph/snap.ts';
 import type { AppSettings, SettingsSnapshot } from '../core/settings.ts';
 import { MAX_RECENT_DIRECTORIES } from '../core/working-directories.ts';
 import { DatabaseSync } from 'node:sqlite';
+import { currentProcessStart, isProcessRunning } from '../platform/process-identity.ts';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -101,6 +102,9 @@ export const migrations = [
   // Pinned plot members (MAP-24): the item ids a person pinned in a plot as a JSON array, NULL for none, added once as
   // the `pinned_member_ids` column (`PLOT_PINS_VERSION`).
   `SELECT 1; -- plots.pinned_member_ids`,
+  // Service owner start (`SERVICE_OWNER_START_VERSION`): when the owning process started, so a reused process ID is not taken
+  // for the owner. Added once as the `started` column.
+  `SELECT 1; -- service_owner.started`,
 ] as const;
 const CONFLICTS_KEPT = 1000, CONFLICT_LANDED_SHOWN = 20;
 export interface RevisionConflictRecord { at: string; actor: string; commands: CommandSubject[]; expected: number; current: number; landed: { revision: number; actor: string; commands: CommandSubject[] }[] }
@@ -112,6 +116,7 @@ function commandSubject(command: WorkspaceCommand): CommandSubject {
 }
 const TODO_HORIZONS_VERSION = 25, VALIDATION_LINKS_VERSION = 26, PLOT_COLORS_VERSION = 28;
 const PLOT_PINS_VERSION = migrations.findIndex(migration => migration.includes('plots.pinned_member_ids')) + 1;
+const SERVICE_OWNER_START_VERSION = migrations.findIndex(migration => migration.includes('service_owner.started')) + 1;
 /** Per-package storage quota and largest single record, in bytes of stored JSON. */
 export const PLUGIN_STORAGE_BYTES = 16 * 1024 * 1024, PLUGIN_RECORD_BYTES = 1024 * 1024;
 /** Conditional-request cache bounds per provider account (least recently used first out). */
@@ -209,6 +214,10 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
         if (current < PLOT_PINS_VERSION) {
           const columns = new Set(this.db.prepare('PRAGMA table_info(plots)').all().map(row => String(row.name)));
           if (!columns.has('pinned_member_ids')) this.db.exec('ALTER TABLE plots ADD COLUMN pinned_member_ids TEXT');
+        }
+        if (current < SERVICE_OWNER_START_VERSION) {
+          const columns = new Set(this.db.prepare('PRAGMA table_info(service_owner)').all().map(row => String(row.name)));
+          if (!columns.has('started')) this.db.exec('ALTER TABLE service_owner ADD COLUMN started TEXT');
         }
       });
       this.db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;');
@@ -851,16 +860,11 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
   }
 
   /** SQLite serializes ownership acquisition, including recovery of a dead process. */
-  claimService(instanceId: string, pid = process.pid) {
+  claimService(instanceId: string) {
     this.transaction(() => {
-      const previous = this.db.prepare('SELECT instance_id, pid FROM service_owner WHERE id = 1').get();
-      if (previous) {
-        let alive = true;
-        try { process.kill(Number(previous.pid), 0); }
-        catch (error) { alive = (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
-        if (alive) throw Object.assign(new Error('Workspace service already running'), { code: 'SERVICE_RUNNING' });
-      }
-      this.db.prepare('INSERT INTO service_owner(id, instance_id, pid) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET instance_id = excluded.instance_id, pid = excluded.pid').run(instanceId, pid);
+      const previous = this.db.prepare('SELECT pid, started FROM service_owner WHERE id = 1').get();
+      if (previous && isProcessRunning(Number(previous.pid), typeof previous.started === 'string' ? previous.started : null)) throw Object.assign(new Error('Workspace service already running'), { code: 'SERVICE_RUNNING' });
+      this.db.prepare('INSERT INTO service_owner(id, instance_id, pid, started) VALUES (1, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET instance_id = excluded.instance_id, pid = excluded.pid, started = excluded.started').run(instanceId, process.pid, currentProcessStart());
     });
   }
   releaseService(instanceId: string) { this.db.prepare('DELETE FROM service_owner WHERE instance_id = ?').run(instanceId); }

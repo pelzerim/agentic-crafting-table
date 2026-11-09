@@ -48,7 +48,7 @@
 
 **Your tools as plugin packs**
 - The public base ships the generic item types: agents, terminals, notes, to-dos, links,
-  GitHub pull requests and rollouts, reviews, Linear, Notion and Slack.
+  GitHub pull requests, issues and rollouts, reviews, Linear, Notion and Slack.
 - Team-specific items ship as plugin packs from their own git repository and install
   through **Settings → Plugins**. Items of a pack that is not installed stay on the map
   as placeholders.

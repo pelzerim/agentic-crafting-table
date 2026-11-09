@@ -145,3 +145,31 @@ Deterministic fixtures cover approval/failure/rerun transitions, pagination and
 errors; a live read observes existing state and is not proof of every transition
 during a future rollout. Live write acceptance is neither needed nor performed for
 this observer. Private repository URLs return 404 without authenticated access.
+
+## Issues
+
+`github.issue` reads `GET /repos/{owner}/{repo}/issues/{number}` and, when the issue has any,
+its comments (`…/issues/{number}/comments`, paginated like pull request discussion) through
+`githubIssueTransport`. That transport can do three things besides reads: one PATCH of exactly
+`{ state: "closed", state_reason: "completed" | "not_planned" }` or `{ state: "open",
+state_reason: "reopened" }` on an issue path (`issueStateUpdate`), and one fixed GraphQL query,
+`IssueLinkedPulls`, which reads `closedByPullRequestsReferences` (GitHub's Development list) and
+the cross-referenced and connected events of the issue's timeline. It has no comment, title,
+merge or workflow endpoint. The REST issue endpoint also answers for pull requests; a reply that
+carries `pull_request` is refused, so a pull request never becomes an issue item. A state write is
+sent once, never retried, and confirmed only by the issue GitHub returns; anything else is
+outcome-unknown and the next read reconciles. Linked pull requests are read only when asked for
+(the map menu, or an agent's `options`), not on every poll.
+
+Assigned issues for the to-do inbox come from the same `/issues?filter=assigned` read the
+assigned pull request watcher makes (so they share its conditional-read validator), keeping the
+entries without `pull_request`. The import is off by default.
+
+Fixture tests cover the transport allowlist and its refusals, projection, a pull request behind
+an issue URL, not-found wording, confirmed/refused/unconfirmed state writes, linked pull request
+ordering and dedupe, the assigned list (paging path, sort, cap), the connector contract, Mark done
+mirroring through the workspace service and the inbox import. No live issue was read or changed;
+the `state_reason` values and the GraphQL fields come from GitHub's public REST and GraphQL
+references: [issues](https://docs.github.com/en/rest/issues/issues#update-an-issue) and
+[`Issue.closedByPullRequestsReferences`](https://docs.github.com/en/graphql/reference/objects#issue).
+Live acceptance against a real repository remains open.

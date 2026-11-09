@@ -1333,7 +1333,7 @@ recording archive. Stop, removal and archival still never erase history implicit
 
 ### To-do overlay and spatial drops
 
-The overlay derives its groups through `todoList` (From Linear, Next, Later, Done)
+The overlay derives its groups through `todoList` (the inbox, Next, Later, Done; `inboxName` titles the inbox From Linear, From GitHub or Assigned to you by its tickets' sources)
 and, with Group by project on, splits Next and Later by `TodoEntry.projectId`; map
 tasks retain node completion/membership and graph links, while independent
 checklist entries use the `todo.save` and `todo.move` commands exposed to MCP. Drop/complete/detach helpers
@@ -1834,7 +1834,7 @@ workflow. Restart creates an empty cache. Credentials remain outside the cache.
 
 A checklist to-do may carry `triage`: `{ source, key, label, url?, status?, item }`,
 the provider work it was imported for, its provider state name and the item to
-create for it. Imports are saved with `horizon: 'inbox'` and form the From Linear
+create for it. Imports are saved with `horizon: 'inbox'` and form the to-do
 inbox (`todoList().inbox`, the Triage group of `groupWorkspaceTodos()`) until a
 person takes them. `todo.save` keeps a stored `triage` when the command omits it,
 so list edits cannot drop it. The coordinator applies its commands as the provider
