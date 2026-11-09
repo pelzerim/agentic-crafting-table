@@ -38,6 +38,25 @@ test('URL attachment reuses an MCP item, preserves lifecycle/layout/links and cr
   input.restart(); assert.deepEqual(await input.coordinator.attach(first), result); assert.equal((await input.control.read()).nodes.length, 3);
 }));
 
+test('URL attachment brings an item back from Undermap instead of leaving it below', () => fixture(async input => {
+  await input.apply([{ type: 'project.create', id: 'project', title: 'Billing', summary: '', position: { x: 0, y: 0 } }, { type: 'item.add', id: 'below', resourceId: 'pr', pluginId: 'github.pull-request', title: 'Old title', projectId: 'project', position: { x: 50, y: 80 }, data: { owner: 'fixture', repo: 'billing', number: 42 } }, { type: 'node.below', id: 'below' }]);
+  const before = await input.control.read();
+  const result = await input.coordinator.attach({ ...request('project'), expectedRevision: before.revision });
+  assert.deepEqual(result, { nodeId: 'below', resourceId: 'pr' });
+  const state = await input.control.read(), node = state.nodes.find(candidate => candidate.id === 'below')!;
+  assert.equal(node.belowAt, undefined, 'the item is back on the map');
+  assert.equal(state.nodes.length, before.nodes.length, 'no second item');
+}));
+
+test('URL attachment prefers the item on the map over a copy in Undermap', () => fixture(async input => {
+  const pr = (id: string): WorkspaceCommand => ({ type: 'item.add', id, resourceId: 'pr', pluginId: 'github.pull-request', title: id, projectId: 'project', position: { x: 50, y: id === 'below' ? 80 : 400 }, data: { owner: 'fixture', repo: 'billing', number: 42 } });
+  await input.apply([{ type: 'project.create', id: 'project', title: 'Billing', summary: '', position: { x: 0, y: 0 } }, pr('below'), { type: 'node.below', id: 'below' }]);
+  await input.apply([pr('shown')]);
+  const before = await input.control.read();
+  assert.deepEqual(await input.coordinator.attach({ ...request('project'), expectedRevision: before.revision }), { nodeId: 'shown', resourceId: 'pr' });
+  assert.ok((await input.control.read()).nodes.find(node => node.id === 'below')!.belowAt, 'the copy below stays below');
+}));
+
 test('URL attachment saves every requested connection with the item in one revision, or nothing at all', () => fixture(async input => {
   const note = (id: string): WorkspaceCommand => ({ type: 'item.add', id, resourceId: `${id}-r`, pluginId: 'workspace.note', title: id, data: { text: id }, position: { x: 900, y: 400 } });
   await input.apply([note('one'), note('two'), note('three')]);
