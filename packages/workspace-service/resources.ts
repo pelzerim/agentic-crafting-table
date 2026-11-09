@@ -237,8 +237,11 @@ export class ResourceCoordinator {
         if (!prepared) {
           const state = await this.control.read(), resource = resolved.resource;
           const { matches, commands } = this.resolution(state, resource, resolved.snapshot);
-          const existing = state.nodes.find(node => matches.some(candidate => candidate.id === node.resourceId) && node.projectId === request.projectId && !node.archivedAt);
+          const reusable = state.nodes.filter(node => matches.some(candidate => candidate.id === node.resourceId) && node.projectId === request.projectId && !node.archivedAt);
+          /** An item on the map wins; one only in Undermap is brought back to the map rather than left below. */
+          const existing = reusable.find(node => !node.belowAt) ?? reusable[0];
           const nodeId = existing?.id ?? request.nodeId;
+          if (existing?.belowAt) commands.push({ type: 'node.surface', id: existing.id });
           if (!existing) commands.push({ type: 'item.create', id: nodeId, resource, position: request.position, projectId: request.projectId, ...creationNear(request) });
           // An item the map already has keeps the connections it holds; only missing ones are saved.
           commands.push(...creationConnections(requestConnections(request), nodeId).filter(command => !existing || !existingRelationship(state.nodes, state.links, command.link)));

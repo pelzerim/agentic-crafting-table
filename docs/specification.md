@@ -330,6 +330,9 @@ brings back the members that went below with it to their map positions), setting
 return while its project is below, archived, or deleted (deleting a project marks
 its items below as unable to return). **Archive** keeps the previous behavior;
 restoring from the archive returns an item below if it was archived from there.
+Adding an item by URL that its project holds only below brings that item back to the map the
+same way (Bring back to map) instead of leaving it below or adding a second one; a copy
+already on the map in that project is reused first.
 The archive list groups entries by project. Sending or returning an item plays a
 ~900 ms portal sink/rise with particles. Travelling between layers is brief (default
 260 ms); Settings → Map (advanced) sets that travel duration or turns all of these
