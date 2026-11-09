@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Fixes
+- **Starts after a crash or restart**: the workspace service and session supervisor no longer refuse to start with “Workspace service did not start” when, after a crash or a restart of the computer, another process or a Linux thread got the process ID that the earlier service recorded. The service now records when its process started and compares that too. (#22, @timohuovinen)
+
 ## 0.18.1 — 2026-11-05
 
 ### Item views
