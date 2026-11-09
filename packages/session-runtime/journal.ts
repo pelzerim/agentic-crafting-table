@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { chmodSync, existsSync } from 'node:fs';
 import { canonical } from '../core/control.ts';
+import { currentProcessStart, isProcessRunning } from '../platform/process-identity.ts';
 import { outputSuffix } from './output-tail.ts';
 import { TerminalModes, restartOffset } from './replay-tail.ts';
 import type { LaunchRequest, SessionRecord, OutputChunk, SessionListView, SessionManagementAction, RecordingPage, SessionPage, SessionPageRequest, SessionPageView } from './protocol.ts';
@@ -31,13 +32,10 @@ export class RuntimeJournal {
       // v3 requires readers to respect recording-deletion tombstones. Older
       // supervisors must reject a downgrade rather than replay a stale cache.
       this.db.exec('CREATE TABLE IF NOT EXISTS output (session_id TEXT NOT NULL REFERENCES sessions(id), sequence INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(session_id,sequence)); PRAGMA user_version=3');
-      const prior = this.db.prepare('SELECT * FROM owner WHERE id=1').get();
-      if (prior) {
-        let alive = true;
-        try { process.kill(Number(prior.pid), 0); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') alive = false; }
-        if (alive) throw Object.assign(new Error('Session supervisor is already running'), { code: 'SERVICE_RUNNING' });
-      }
-      this.db.prepare('INSERT OR REPLACE INTO owner(id,instance,pid) VALUES(1,?,?)').run(owner, process.pid);
+      if (!this.db.prepare('PRAGMA table_info(owner)').all().some(column => column.name === 'started')) this.db.exec('ALTER TABLE owner ADD COLUMN started TEXT');
+      const prior = this.db.prepare('SELECT pid, started FROM owner WHERE id=1').get();
+      if (prior && isProcessRunning(Number(prior.pid), typeof prior.started === 'string' ? prior.started : null)) throw Object.assign(new Error('Session supervisor is already running'), { code: 'SERVICE_RUNNING' });
+      this.db.prepare('INSERT OR REPLACE INTO owner(id,instance,pid,started) VALUES(1,?,?,?)').run(owner, process.pid, currentProcessStart());
       for (const session of this.list()) if (['running', 'starting'].includes(session.state)) this.update(session.id, { state: 'lost', error: 'Supervisor stopped; the process can no longer be attached. Start a new shell or resume the native agent conversation.' });
       this.db.exec('COMMIT');
     } catch (error) { try { this.db.exec('ROLLBACK'); } catch {} this.db.close(); throw error; }

@@ -975,3 +975,14 @@ test('a rollout validation or event change is announced once it is committed', (
     assert.equal(announced.length, 3);
   } finally { store.close(); }
 }));
+
+test('a service owner whose process ID now names another process is replaced, while a running owner is kept', () => fixture(async directory => {
+  const file = join(directory, 'owner.sqlite'), store = new SqliteStore(file);
+  try {
+    store.claimService('running');
+    assert.throws(() => store.claimService('second'), /already running/);
+    const db = new DatabaseSync(file);
+    try { db.prepare(`UPDATE service_owner SET started = 'a process before restart'`).run(); } finally { db.close(); }
+    assert.doesNotThrow(() => store.claimService('after-restart'));
+  } finally { store.close(); }
+}));

@@ -300,7 +300,7 @@ async function main() {
     if (!counts) { counts = new Map(); watches.set(sender, counts); sender.once('destroyed', () => { for (const [sessionId, count] of counts!) for (let i = 0; i < count; i++) void wake.detach(sessionId).catch(() => {}); }); }
     return counts;
   };
-  const lifecycle = spike ? undefined : installLifecycle(workspace, runtime, closeHidesWindow(process.platform) ? window => presence.hide(window) : undefined);
+  const lifecycle = spike ? undefined : installLifecycle(workspace, runtime, closeHidesWindow(process.platform) ? window => presence.hide(window) : undefined, { app, dialog });
   ipcMain.handle('session:request', async (event, request) => {
     assertCaller(event);
     try {

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { RotatingLog } from './rotating-log.ts';
+import { currentProcessStart, isProcessRunning } from '../platform/process-identity.ts';
 import { DEFAULT_LOG_POLICY, logPolicySchema } from '../core/log-policy.ts';
 
 /** One detached log owner per service directory. The service's own lease still
@@ -20,13 +21,10 @@ export async function runLoggedService(options: { directory: string; entrypoint:
   let log: RotatingLog | undefined, claimed = false;
   try {
     db.exec('PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS policy (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL); CREATE TABLE IF NOT EXISTS owner (id INTEGER PRIMARY KEY CHECK(id=1), instance TEXT NOT NULL, pid INTEGER NOT NULL); BEGIN IMMEDIATE');
-    const previous = db.prepare('SELECT pid FROM owner WHERE id=1').get();
-    if (previous) {
-      let alive = true;
-      try { process.kill(Number(previous.pid), 0); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') alive = false; }
-      if (alive) { db.exec('ROLLBACK'); return 0; }
-    }
-    db.prepare('INSERT OR REPLACE INTO owner(id, instance, pid) VALUES(1, ?, ?)').run(owner, process.pid);
+    if (!db.prepare('PRAGMA table_info(owner)').all().some(column => column.name === 'started')) db.exec('ALTER TABLE owner ADD COLUMN started TEXT');
+    const previous = db.prepare('SELECT pid, started FROM owner WHERE id=1').get();
+    if (previous && isProcessRunning(Number(previous.pid), typeof previous.started === 'string' ? previous.started : null)) { db.exec('ROLLBACK'); return 0; }
+    db.prepare('INSERT OR REPLACE INTO owner(id, instance, pid, started) VALUES(1, ?, ?, ?)').run(owner, process.pid, currentProcessStart());
     db.exec('COMMIT'); claimed = true;
     const saved = db.prepare('SELECT body FROM policy WHERE id=1').get();
     const policy = saved ? logPolicySchema.parse(JSON.parse(String(saved.body))) : DEFAULT_LOG_POLICY;
