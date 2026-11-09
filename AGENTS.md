@@ -40,6 +40,14 @@ file, say), ask a maintainer before allowing it; do not weaken the scan to get a
 Note every user-facing change in `CHANGELOG.md` under `## Unreleased` at the top, ending each entry
 with your pull request and GitHub login, e.g. `(#12, @octocat)`.
 
+A pull request that changes anything on screen (a card, a view, a menu, a setting, a colour, a
+glyph) shows it with screenshots in its description: before and after, or only after for something
+new. Render them from the end-to-end tests with fixture data, never from a real board. A
+`toHaveScreenshot` baseline the change adds or updates under `tests/visual/baselines/` counts; otherwise
+add `await page.screenshot({ path: 'test-results/pr/<name>.png' })` to the spec that covers the change
+and run it with `npm run build && npx playwright test tests/e2e/<spec>.spec.ts`. The pull request
+template (`.github/pull_request_template.md`) asks for them.
+
 Any maintainer may cut a release once `main` is green:
 
 1. Pull `main` and check the newest tag: `git fetch --tags && git tag --sort=-v:refname | head -1`.
