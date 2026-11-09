@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { test } from './visual-fixture.ts';
 import { expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
@@ -81,6 +82,8 @@ test('a pasted claude.ai artifact link becomes one card whose page opens inside 
   await expect.poll(() => guest(app)).toEqual({ url: URL, ownSession: true });
   await expect.poll(() => inGuest(app, 'document.body.textContent')).toBe('Fixture artifact');
   expect(await inGuest(app, 'typeof window.craftingTable + typeof require')).toBe('undefinedundefined');
+  const clipboardWrite = () => inGuest(app, "navigator.permissions.query({ name: 'clipboard-write' }).then(status => status.state)");
+  expect(await clipboardWrite()).toBe('granted');
   await region.getByRole('button', { name: 'Open in browser', exact: true }).click();
   await expect.poll(opened).toEqual([URL, URL]);
 
@@ -90,6 +93,7 @@ test('a pasted claude.ai artifact link becomes one card whose page opens inside 
   await inGuest(app, "location.href = 'https://idp.example.com/authorize'");
   await expect(address).toHaveText('idp.example.com');
   await expect(address).toBeVisible();
+  expect(await clipboardWrite()).toBe('denied');
   await inGuest(app, "location.replace('https://claude.ai/auth/callback')");
   await expect.poll(served).toEqual(expect.arrayContaining(['idp.example.com/authorize', 'claude.ai/auth/callback', 'claude.ai/auth/done']));
   await expect.poll(async () => (await guest(app))?.url).toBe(URL);
@@ -122,6 +126,21 @@ test('a pasted claude.ai artifact link becomes one card whose page opens inside 
   await expect.poll(opened).toEqual([URL, URL, 'https://example.com/from-sign-in', 'https://example.com/popup', 'http://example.com/']);
   await inGuest(app, "Object.assign(document.createElement('a'), { href: 'https://claude.ai/files/notes.txt', download: 'notes.txt' }).click()");
   await expect.poll(opened).toEqual([URL, URL, 'https://example.com/from-sign-in', 'https://example.com/popup', 'http://example.com/', 'https://claude.ai/files/notes.txt']);
+  expect((await guest(app))?.url).toBe(URL);
+  // A file the page makes itself is saved in the app; the test picks the path so no save dialog shows.
+  const saved = test.info().outputPath('export.txt');
+  await app.evaluate(({ session }, saved) => {
+    const outcomes: string[] = (globalThis as any).downloadOutcomes = [];
+    session.fromPartition('persist:claude-artifacts').on('will-download', (_event, item) => {
+      item.setSavePath(saved); item.once('done', (_done, state) => outcomes.push(`${item.getURL().split(':')[0]}:${state}`));
+    });
+  }, saved);
+  await inGuest(app, "Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob(['exported'])), download: 'export.txt' }).click()");
+  await expect.poll(() => app.evaluate(() => (globalThis as any).downloadOutcomes.slice())).toEqual(['blob:completed']);
+  expect(readFileSync(saved, 'utf8')).toBe('exported');
+  // A page the embedder loads is held to the same rule as one the page navigates to.
+  await app.evaluate(({ webContents }) => { webContents.getAllWebContents().find(item => item.getType() === 'webview')!.loadURL('http://example.com/embedder').catch(() => {}); });
+  await expect.poll(opened).toEqual([URL, URL, 'https://example.com/from-sign-in', 'https://example.com/popup', 'http://example.com/', 'https://claude.ai/files/notes.txt', 'http://example.com/embedder']);
   expect((await guest(app))?.url).toBe(URL);
 
   // Closing the view removes the page; opening it again loads it again.

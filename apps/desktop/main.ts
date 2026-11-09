@@ -4,7 +4,7 @@ import type { DesktopAnnouncement, NotificationTarget } from './notifications.ts
 import type { WorkspaceSnapshot } from '../../packages/workspace-service/protocol.ts';
 import { isOffMap } from '../../src/graph/archive.ts';
 import { browserUrl, clipboardUrls } from './browser-url.ts';
-import { EMBEDDED_SITES, GUEST_PREFERENCES, attachEmbeddedPage, browserUserAgent, embeddedNavigation, embeddedPermissionAllowed } from './embedded-sites.ts';
+import { EMBEDDED_SITES, GUEST_PREFERENCES, attachEmbeddedPage, browserUserAgent, embeddedDownload, embeddedNavigation, embeddedPermissionAllowed } from './embedded-sites.ts';
 import { savePastedImage } from './pasted-images.ts';
 import { pluginDiscoverySchema } from '../../src/resource-plugins/url-input.ts';
 import { createKeepAwake } from './keep-awake.ts';
@@ -131,9 +131,9 @@ async function main() {
   for (const site of EMBEDDED_SITES) {
     const pages = session.fromPartition(site.partition);
     pages.setUserAgent(userAgent);
-    pages.setPermissionRequestHandler((_contents, permission, callback) => callback(embeddedPermissionAllowed(permission)));
-    pages.setPermissionCheckHandler((_contents, permission) => embeddedPermissionAllowed(permission));
-    pages.on('will-download', (event, item) => { event.preventDefault(); openOutside(item.getURL()); });
+    pages.setPermissionRequestHandler((contents, permission, callback) => callback(embeddedPermissionAllowed(site, permission, contents.getURL())));
+    pages.setPermissionCheckHandler((contents, permission) => embeddedPermissionAllowed(site, permission, contents?.getURL()));
+    pages.on('will-download', (event, item) => { if (embeddedDownload(item.getURL()) === 'browser') { event.preventDefault(); openOutside(item.getURL()); } });
   }
   // Any page in a site's session (the item's page and its sign-in windows): sign-in popups open in a small window in
   // that session, other popups go to the browser, top-level pages stay https, and it never hosts a webview.
@@ -158,6 +158,11 @@ async function main() {
       event.preventDefault(); openOutside(event.url);
     };
     contents.on('will-navigate', keepHttps); contents.on('will-redirect', keepHttps);
+    // Loads the embedder starts (`src`, `loadURL`) skip will-navigate; stopping inside this event crashes, so it waits a tick.
+    contents.on('did-start-navigation', ({ url, isMainFrame, isSameDocument, initiator }) => {
+      if (initiator || isSameDocument || embeddedNavigation(url, isMainFrame) === 'allow') return;
+      setImmediate(() => { if (!contents.isDestroyed()) contents.stop(); }); openOutside(url);
+    });
   });
   ipcMain.handle('app:focused', event => { assertCaller(event); return backgroundTest || Boolean(BrowserWindow.fromWebContents(event.sender)?.isFocused()); });
   ipcMain.handle('app:info', async event => {

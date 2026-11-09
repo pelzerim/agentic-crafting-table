@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { attachEmbeddedPage, embeddedNavigation, embeddedPermissionAllowed, embeddedSite } from './embedded-sites.ts';
+import { attachEmbeddedPage, embeddedDownload, embeddedNavigation, embeddedPermissionAllowed, embeddedSite } from './embedded-sites.ts';
 
 const ARTIFACT = 'https://claude.ai/code/artifact/00000000-0000-4000-8000-000000000042';
 
@@ -32,7 +32,16 @@ test('only Google sign-in and the site itself open as a sign-in window in the si
   for (const url of ['https://accounts.google.com.evil.example/o/oauth2', 'http://accounts.google.com/o/oauth2', 'https://evilaccounts.google.com/', 'https://example.com/popup', 'not a url']) assert.equal(signIn(url), false, url);
 });
 
-test('embedded pages get no device or notification permissions', () => {
-  assert.equal(embeddedPermissionAllowed('clipboard-sanitized-write'), true);
-  for (const permission of ['media', 'geolocation', 'notifications', 'clipboard-read', 'openExternal', 'display-capture']) assert.equal(embeddedPermissionAllowed(permission), false);
+test('only the site\'s own pages may write to the clipboard, and no page gets device or notification permissions', () => {
+  const site = embeddedSite('claude')!;
+  assert.equal(embeddedPermissionAllowed(site, 'clipboard-sanitized-write', ARTIFACT), true);
+  for (const url of ['https://accounts.google.com/o/oauth2', 'https://idp.example.com/authorize', 'https://claude.ai.example.com/', 'http://claude.ai/', '', undefined]) {
+    assert.equal(embeddedPermissionAllowed(site, 'clipboard-sanitized-write', url), false, String(url));
+  }
+  for (const permission of ['media', 'geolocation', 'notifications', 'clipboard-read', 'openExternal', 'display-capture']) assert.equal(embeddedPermissionAllowed(site, permission, ARTIFACT), false);
+});
+
+test('downloads the browser can fetch open there; files the page made are saved in the app', () => {
+  for (const url of ['https://claude.ai/files/notes.txt', 'http://example.com/file.zip', 'not a url']) assert.equal(embeddedDownload(url), 'browser', url);
+  for (const url of ['blob:https://claude.ai/00000000-0000-4000-8000-000000000001', 'data:text/plain,hello']) assert.equal(embeddedDownload(url), 'save', url);
 });

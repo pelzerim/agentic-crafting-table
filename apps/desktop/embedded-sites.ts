@@ -46,8 +46,15 @@ export const embeddedNavigation = (url: string, isMainFrame: boolean): 'allow' |
   try { return new URL(url).protocol === 'https:' ? 'allow' : 'external'; } catch { return 'external'; }
 };
 
-/** Embedded pages may write to the clipboard and nothing else: no camera, microphone, location or notifications. */
-export const embeddedPermissionAllowed = (permission: string) => permission === 'clipboard-sanitized-write';
+/** A page of the site itself may write to the clipboard and nothing else: no camera, microphone, location or
+ * notifications. `pageUrl` is the top-level page, so frames the site embeds keep what it delegates to them. */
+export const embeddedPermissionAllowed = (site: EmbeddedSite, permission: string, pageUrl: string | undefined) =>
+  permission === 'clipboard-sanitized-write' && typeof pageUrl === 'string' && site.allows(pageUrl);
+
+/** A download the browser can fetch again opens there; one the page made itself (blob:, data:) is saved in the app. */
+export const embeddedDownload = (url: string): 'browser' | 'save' => {
+  try { return /^https?:$/.test(new URL(url).protocol) ? 'browser' : 'save'; } catch { return 'browser'; }
+};
 
 /** The user agent without the `Electron/x` and app-name tokens: Google refuses to sign in agents it sees as embedded. */
 export const browserUserAgent = (userAgent: string) =>
