@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Undermap
+- **Adding a link brings it back**: adding an item by URL that its project holds only in Undermap now brings that item back to the map, instead of doing nothing visible. (#23, @MegaMaddin)
+
 ## 0.18.1 — 2026-11-05
 
 ### Item views
