@@ -28,6 +28,8 @@ import todoManifest from '../items/todo/act-plugin.json' with { type: 'json' };
 import todo from '../items/todo/plugin.ts';
 import noteManifest from '../items/note/act-plugin.json' with { type: 'json' };
 import note from '../items/note/plugin.ts';
+import githubIssueManifest from '../items/github-issue/act-plugin.json' with { type: 'json' };
+import githubIssue from '../items/github-issue/plugin.ts';
 
 export const bundledPackages: readonly { manifest: unknown; module: PluginDefinitionsModule }[] = [
   { manifest: agentSessionManifest, module: agentSession },
@@ -44,4 +46,5 @@ export const bundledPackages: readonly { manifest: unknown; module: PluginDefini
   { manifest: webLinkManifest, module: webLink },
   { manifest: todoManifest, module: todo },
   { manifest: noteManifest, module: note },
+  { manifest: githubIssueManifest, module: githubIssue },
 ];

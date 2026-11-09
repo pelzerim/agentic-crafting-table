@@ -10,6 +10,7 @@ import bookmark from '../items/bookmark/service.ts';
 import webLink from '../items/web-link/service.ts';
 import todo from '../items/todo/service.ts';
 import note from '../items/note/service.ts';
+import githubIssue from '../items/github-issue/service.ts';
 
 export const bundledServiceModules: Readonly<Record<string, ServiceModule>> = {
   'github.pull-request': githubPullRequest,
@@ -22,4 +23,5 @@ export const bundledServiceModules: Readonly<Record<string, ServiceModule>> = {
   'web.link': webLink,
   'workspace.todo': todo,
   'workspace.note': note,
+  'github.issue': githubIssue,
 };

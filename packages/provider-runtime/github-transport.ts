@@ -21,6 +21,8 @@ export const DISABLE_AUTO_MERGE_MUTATION = 'mutation DisablePullRequestAutoMerge
 export const UPDATE_BRANCH_MUTATION = 'mutation UpdatePullRequestBranch($pullRequestId: ID!, $expectedHeadOid: GitObjectID!) { updatePullRequestBranch(input: { pullRequestId: $pullRequestId, expectedHeadOid: $expectedHeadOid, updateMethod: REBASE }) { pullRequest { id headRefOid } } }';
 export const READY_MUTATION = 'mutation MarkPullRequestReady($pullRequestId: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $pullRequestId }) { pullRequest { id isDraft } } }';
 export const DRAFT_MUTATION = 'mutation ConvertPullRequestToDraft($pullRequestId: ID!) { convertPullRequestToDraft(input: { pullRequestId: $pullRequestId }) { pullRequest { id isDraft } } }';
+/** Pull requests that close an issue (its Development list) and pull requests that mention it. */
+export const ISSUE_PULLS_QUERY = 'query IssueLinkedPulls($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { issue(number: $number) { closedByPullRequestsReferences(first: 50, includeClosedPrs: true) { nodes { number repository { name owner { login } } } } timelineItems(first: 100, itemTypes: [CROSS_REFERENCED_EVENT, CONNECTED_EVENT]) { nodes { __typename ... on CrossReferencedEvent { source { __typename ... on PullRequest { number repository { name owner { login } } } } } ... on ConnectedEvent { subject { __typename ... on PullRequest { number repository { name owner { login } } } } } } } } } }';
 const NODE_ID = /^[A-Za-z0-9_=-]{1,200}$/, OID = /^[a-f0-9]{40,64}$/i;
 /** Exactly the merge, merge-when-ready, branch update and draft/ready GraphQL documents this app sends, with their variables' shapes. */
 export function mergeDocument(payload: object): 'read' | 'write' | undefined {
@@ -49,6 +51,13 @@ export function stateUpdate(path: string, payload: object) {
   const { state, ...extra } = payload as { state?: unknown };
   return /^\/repos\/[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9_.-]+\/pulls\/[1-9]\d*$/.test(path) && !path.split('/').some(part => part === '.' || part === '..') && !Object.keys(extra).length
     && (state === 'open' || state === 'closed');
+}
+/** The issue PATCH: one issue's state with its reason, exactly { state: "closed", state_reason: "completed" | "not_planned" }
+ * or { state: "open", state_reason: "reopened" }. */
+export function issueStateUpdate(path: string, payload: object) {
+  const { state, state_reason: reason, ...extra } = payload as { state?: unknown; state_reason?: unknown };
+  return /^\/repos\/[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9_.-]+\/issues\/[1-9]\d*$/.test(path) && !path.split('/').some(part => part === '.' || part === '..') && !Object.keys(extra).length
+    && (state === 'closed' ? reason === 'completed' || reason === 'not_planned' : state === 'open' && reason === 'reopened');
 }
 const LOGIN = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/;
 /** GitHub can take a while, above all on merges into busy repositories; a slow reply is waited for, not abandoned. */
@@ -94,7 +103,7 @@ function observeLimits(budget: RequestBudget, resource: string, response: Respon
   budget.observe(response.headers.get('x-ratelimit-resource') ?? resource, { status: response.status, limit: header('x-ratelimit-limit'), remaining, resetAt: reset === undefined ? undefined : reset * 1000,
     ...(limited ? { retryAt: retry !== undefined && retry >= 0 ? Date.now() + retry * 1000 : reset ? reset * 1000 : Date.now() + 60_000 } : {}) });
 }
-function transport(login: string, credentials: GitHubCredentials = githubCredentials(), fetcher: typeof fetch = fetch, workflows = false, rollouts = false, comments = false, approvals = false, merges = false, titles = false) {
+function transport(login: string, credentials: GitHubCredentials = githubCredentials(), fetcher: typeof fetch = fetch, workflows = false, rollouts = false, comments = false, approvals = false, merges = false, titles = false, issues = false) {
   if (!LOGIN.test(login)) throw new GitHubError('GITHUB_AUTH', 'Select a valid GitHub account.');
   return { async request(path: string, signal: AbortSignal, method: 'GET' | 'POST' | 'PATCH' = 'GET', payload: object = { body: '/review' }, html = false) {
     // Only relative REST paths, with no encoded traversal, fragments or authority.
@@ -111,14 +120,15 @@ function transport(login: string, credentials: GitHubCredentials = githubCredent
     const approvalPath = approvals && method === 'POST' && /^\/repos\/[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*\/actions\/runs\/[1-9]\d*\/pending_deployments$/.test(path)
       && (payload as { state?: unknown }).state === 'approved' && Object.keys(payload).sort().join() === 'comment,environment_ids,state';
     const editPath = titles && method === 'PATCH' && (titleUpdate(path, payload) || stateUpdate(path, payload));
+    const issuePath = issues && method === 'PATCH' && issueStateUpdate(path, payload);
     // GraphQL is limited to the fixed merge-queue/head-checks read and, for merge-capable transports, the fixed merge documents.
     const merge = merges && method === 'POST' && path === '/graphql' ? mergeDocument(payload) : undefined;
-    const queryPath = method === 'POST' && path === '/graphql' && ([MERGE_QUEUE_QUERY, MERGE_COMMIT_QUERY].includes((payload as { query?: string }).query ?? '') || merge === 'read');
+    const queryPath = method === 'POST' && path === '/graphql' && ([MERGE_QUEUE_QUERY, MERGE_COMMIT_QUERY, ISSUE_PULLS_QUERY].includes((payload as { query?: string }).query ?? '') || merge === 'read');
     const read = method === 'GET' || queryPath;
     /** Rendered HTML only of the description, one comment or one review; its signed image links expire, so it is never cached. */
     const htmlPath = /^\/repos\/[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9_.-]+\/(?:pulls\/[1-9]\d*(?:\/reviews\/[1-9]\d*)?|(?:issues|pulls)\/comments\/[1-9]\d*)$/.test(path);
     if (html && (method !== 'GET' || !htmlPath || path.split('/').some(part => part === '.' || part === '..'))) throw new GitHubError('GITHUB_INVALID_PATH', 'Unsupported GitHub API path.');
-    if (!html && (method === 'PATCH' ? !editPath : method === 'POST' ? !writePath && !commentPath && !queryPath && !approvalPath && merge !== 'write' : !resourcePath && !commitRunsPath && !inboxPath && !assignedPath && !workflowPath && !rolloutPath) || path.split(/[/?]/).some(part => part === '.' || part === '..')) throw new GitHubError('GITHUB_INVALID_PATH', 'Unsupported GitHub API path.');
+    if (!html && (method === 'PATCH' ? !editPath && !issuePath : method === 'POST' ? !writePath && !commentPath && !queryPath && !approvalPath && merge !== 'write' : !resourcePath && !commitRunsPath && !inboxPath && !assignedPath && !workflowPath && !rolloutPath) || path.split(/[/?]/).some(part => part === '.' || part === '..')) throw new GitHubError('GITHUB_INVALID_PATH', 'Unsupported GitHub API path.');
     // Every caller of this account shares one budget; writes are counted, never throttled.
     const budget = requestBudget('github', login), limited = path === '/graphql' ? 'graphql' : inboxPath ? 'search' : 'core';
     const release = await budget.acquire(limited, signal, !read);
@@ -180,6 +190,12 @@ function transport(login: string, credentials: GitHubCredentials = githubCredent
   }, setState(identity: PullIdentity, state: 'open' | 'closed', signal: AbortSignal) {
     pullKey(identity);
     return this.request(`/repos/${identity.owner}/${identity.repo}/pulls/${identity.number}`, signal, 'PATCH', { state });
+  }, setIssueState(identity: PullIdentity, change: { state: 'open' | 'closed'; state_reason: string }, signal: AbortSignal) {
+    pullKey(identity);
+    return this.request(`/repos/${identity.owner}/${identity.repo}/issues/${identity.number}`, signal, 'PATCH', change);
+  }, issuePulls(identity: PullIdentity, signal: AbortSignal) {
+    pullKey(identity);
+    return this.request('/graphql', signal, 'POST', { query: ISSUE_PULLS_QUERY, variables: { owner: identity.owner, repo: identity.repo, number: identity.number } });
   }, setDraft(pullRequestId: string, draft: boolean, signal: AbortSignal) {
     return this.request('/graphql', signal, 'POST', { query: draft ? DRAFT_MUTATION : READY_MUTATION, variables: { pullRequestId } });
   } };
@@ -230,6 +246,13 @@ export function githubMergeTransport(login: string, credentials: GitHubCredentia
     mergeOptions: (identity, signal) => api.mergeOptions(identity, signal), merge: (request, signal) => api.merge(request, signal), disableAutoMerge: (pullRequestId, signal) => api.disableAutoMerge(pullRequestId, signal), updateBranch: (request, signal) => api.updateBranch(request, signal), setTitle: (identity, title, signal) => api.setTitle(identity, title, signal),
     setState: (identity, state, signal) => api.setState(identity, state, signal), setDraft: (pullRequestId, draft, signal) => api.setDraft(pullRequestId, draft, signal),
     html: (path, signal) => api.request(path, signal, 'GET', undefined, true), image: (url, signal) => githubImage(url, signal, fetcher) };
+}
+
+/** Issue reader: the issue, its comments and linked pull requests, plus its state (PATCH of exactly
+ * { state, state_reason }). No comment, merge, title or workflow endpoint. */
+export function githubIssueTransport(login: string, credentials: GitHubCredentials = githubCredentials(), fetcher: typeof fetch = fetch): GitHubTransport {
+  const api = transport(login, credentials, fetcher, false, false, false, false, false, false, true);
+  return { get: (path, signal) => api.request(path, signal), issuePulls: (identity, signal) => api.issuePulls(identity, signal), setIssueState: (identity, change, signal) => api.setIssueState(identity, change, signal) };
 }
 
 /** A signed attachment copy from a GitHub image host: no token or cookie, no redirect, a raster type and a size bound. */
