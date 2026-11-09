@@ -1973,7 +1973,11 @@ When on, Quit (and window close where it quits) warns that active work will stop
 and offers Cancel by default. Leaving it off skips only confirmation; errors remain
 visible and orderly shutdown and startup recovery remain mandatory. After confirmation (or when disabled), save a durable checkpoint of active sessions/jobs before
 stopping managed processes and their tools. Do not close successfully until they
-have stopped. Retain the table, layout, settings and session identities across
+have stopped. If closing fails, for example because the workspace service crashed
+and cannot start again, show the error with **Keep open** (the default) and **Quit
+anyway**. Quit anyway exits without the checkpoint or stopping sessions and skips a
+pending update restart; sessions that still run are reattached at the next start.
+Retain the table, layout, settings and session identities across
 restarts and application updates; app updates must never create an empty workspace.
 
 On startup, resume the agent sessions that were active at confirmed close, using

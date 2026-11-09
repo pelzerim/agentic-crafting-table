@@ -1,13 +1,15 @@
-import { app, BrowserWindow, dialog } from 'electron';
+import type { App, BrowserWindow, Dialog } from 'electron';
 import type { SettingsSnapshot } from '../../packages/core/settings.ts';
 import { once } from 'node:events';
 import type { WorkspaceConnection } from '../../packages/workspace-service/connection.ts';
 import type { SupervisorConnection } from '../../packages/session-runtime/client.ts';
 import type { SessionRecord } from '../../packages/session-runtime/protocol.ts';
 
+export type LifecycleElectron = { app: Pick<App, 'on' | 'quit'>; dialog: Pick<Dialog, 'showMessageBox'> };
+
 /** One close path for Cmd+Q, the app menu Quit and application updates. On macOS the
  * window button and Cmd+W only hide the window (`hideWindow`); sessions keep running. */
-export function installLifecycle(workspace: WorkspaceConnection, runtime: SupervisorConnection, hideWindow?: (window: BrowserWindow) => void) {
+export function installLifecycle(workspace: WorkspaceConnection, runtime: SupervisorConnection, hideWindow: ((window: BrowserWindow) => void) | undefined, { app, dialog }: LifecycleElectron) {
   let allowed = false, pending: Promise<void> | undefined;
   const close = (after?: () => Promise<void> | void) => {
     if (pending || allowed) return;
@@ -33,7 +35,14 @@ export function installLifecycle(workspace: WorkspaceConnection, runtime: Superv
         }
         allowed = true; workspace.close(); runtime.close(); await after?.(); app.quit();
       } catch (error) {
-        await dialog.showMessageBox({ type: 'error', message: 'The app could not finish closing.', detail: (error as Error).message, buttons: ['Keep open'] });
+        // A crashed service that cannot start again fails every close, so the person must still be able to quit.
+        const choice = await dialog.showMessageBox({ type: 'error', message: 'The app could not finish closing.',
+          detail: `${(error as Error).message}\n\nQuit anyway closes the app without stopping active sessions. Sessions that still run are picked up when the app opens again.`,
+          buttons: ['Keep open', 'Quit anyway'], defaultId: 0, cancelId: 0, noLink: true });
+        if (choice.response === 1) {
+          // `after` (an update restart) is skipped: it needs both services stopped.
+          allowed = true; workspace.close(); runtime.close(); app.quit(); return;
+        }
         await workspace.call('lifecycle.recover').catch(() => {});
       }
     })().finally(() => { pending = undefined; });

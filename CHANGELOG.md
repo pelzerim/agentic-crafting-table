@@ -7,6 +7,7 @@ their pull request and author.
 
 ### Fixes
 - **Starts after a crash or restart**: the workspace service and session supervisor no longer refuse to start with “Workspace service did not start” when, after a crash or a restart of the computer, another process or a Linux thread got the process ID that the earlier service recorded. The service now records when its process started and compares that too. (#22, @timohuovinen)
+- **Quit anyway**: when the app could not finish closing, for example because the workspace service crashed and cannot start again, the error now offers **Quit anyway** next to **Keep open**; before, the app could not be closed. Quit anyway leaves running sessions to be picked up at the next start. (#22, @timohuovinen)
 
 ## 0.18.1 — 2026-11-05
 
