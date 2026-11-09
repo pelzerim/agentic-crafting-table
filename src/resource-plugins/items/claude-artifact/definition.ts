@@ -6,7 +6,7 @@ export const claudeArtifact = defineResourcePlugin({
   id: 'claude.artifact', apiVersion: 1, schemaVersion: 2,
   name: 'Claude artifact', icon: 'workflow', preferredView: 'focus',
   context: { parentField: 'sourcePrId', fields: ['headSha', 'artifactId', 'url'] },
-  view: { width: 900, height: 640 },
+  view: { width: 1280, height: 840 },
   webLink: { label: 'Open on claude.ai', template: '{url}' },
   mapSizes: { defaultSize: 'small', sizes: {
     small: { width: 150, height: 48, summaryLines: 0, description: "Artifact title and progress/attention." },
