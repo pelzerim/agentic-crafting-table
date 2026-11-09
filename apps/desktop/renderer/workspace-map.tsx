@@ -40,6 +40,7 @@ import { patchedData, savedSnapshot } from '../../../src/resource-plugins/views.
 import type { ResourcePluginRegistry } from '../../../src/resource-plugins/registry.ts';
 import { ProjectMap } from './project-map.tsx';
 import { pinNeighborhoodStyle, pinnedNeighborhoodStyle } from '../neighborhood-style-pin.ts';
+import { embeddedSite } from '../embedded-sites.ts';
 import type { ProjectMapProps } from './project-map.tsx';
 import { InlineEditor } from './inline-editor.tsx';
 import { useUrlCandidates } from './use-url-candidates.ts';
@@ -149,6 +150,7 @@ function PluginDetail({ resource, registry, active, nodeId, onOpen, onShow, onEd
       },
       frameToolbar: () => container.current?.closest('[data-expanded-item-id],[data-item-id]')?.querySelector<HTMLElement>('.item-frame-slot') ?? undefined,
       openUrl: url => { void window.craftingTable.openUrl(url); },
+      mountWebPage: mountEmbeddedPage,
       openResource: id => openRef.current(id), showOnMap: id => showRef.current(id), runAction: async (action, input) => window.craftingTable.runtimeRun({ action: action as 'agent.resume', nodeId, arguments: input ?? {} }) as Promise<any>, attachTerminal: mountNativeTerminal,
     }, (element, presentation) => {
       const content = document.createElement('div');
@@ -179,6 +181,29 @@ function PluginDetail({ resource, registry, active, nodeId, onOpen, onShow, onEd
     const link = (event.target as HTMLElement).closest('a');
     if (link) { event.preventDefault(); void window.craftingTable.openUrl(link.href); }
   }} />;
+}
+
+/** A `<webview>` in the site's own session; the main process checks the site and URL before it attaches. */
+function mountEmbeddedPage(container: HTMLElement, { site, url }: { site: string; url: string }) {
+  const known = embeddedSite(site);
+  if (!known || !known.allows(url)) return undefined;
+  const document = container.ownerDocument, frame = document.createElement('div'), address = document.createElement('div');
+  const page = document.createElement('webview');
+  frame.className = 'embedded-frame';
+  // There is no address bar, so a page off the site shows its host.
+  address.className = 'embedded-address'; address.setAttribute('aria-label', 'Page address'); address.hidden = true;
+  // The partition must be set before the first navigation.
+  page.className = 'embedded-page'; page.dataset.site = known.id; page.setAttribute('partition', known.partition); page.setAttribute('src', url);
+  const navigated = (event: Event) => {
+    const { url: current, isMainFrame } = event as Event & { url: string; isMainFrame?: boolean };
+    if (isMainFrame === false) return;
+    let host = current;
+    try { host = new URL(current).host; } catch { /* shown as is */ }
+    address.textContent = host; address.hidden = known.allows(current);
+  };
+  page.addEventListener('did-navigate', navigated); page.addEventListener('did-navigate-in-page', navigated);
+  frame.append(address, page); container.append(frame);
+  return { dispose() { frame.remove(); } };
 }
 
 const PINNED_NEIGHBORHOOD_STYLE = pinnedNeighborhoodStyle(location.search);

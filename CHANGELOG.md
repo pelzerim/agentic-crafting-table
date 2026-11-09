@@ -10,6 +10,8 @@ their pull request and author.
 - **Change state and Mark done**: right-click → **Change state** (or the state chip in the open issue) closes it as completed or not planned, or reopens it, on GitHub. As a to-do, Mark done closes the issue and Reopen reopens it; closing it on GitHub ticks the to-do.
 - **Linked pull requests**: right-click → **Linked pull requests → Add to the map** places the pull requests that close or mention the issue beside it.
 - **Assigned issues in the to-do inbox**: turn on **Settings → Items → GitHub issue → Show my assigned GitHub issues in the to-do inbox** (off by default) and your open assigned issues wait there like Linear tickets. The inbox is called From GitHub, From Linear, or Assigned to you when it holds both. (#21, @MegaMaddin)
+### Claude artifacts
+- **The page opens inside the item**: an open Claude artifact shows its claude.ai page in the item view. Sign in to claude.ai inside the item once; the sign-in is kept apart from the app and survives restarts. Google sign-in opens in a small window inside the app; other links that open a new window go to your browser, and **Open in browser** is still in the header. (#19, @shiini2)
 
 ## 0.18.1 — 2026-11-05
 

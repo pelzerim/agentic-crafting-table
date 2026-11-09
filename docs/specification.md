@@ -4254,9 +4254,17 @@ Artifact tool, the session hook adds the card below that agent, linked from it a
 its source PR (an architecture run's PR, or the one PR the agent is connected to), with
 the session and, for architecture runs, the head revision. The title is the publishing
 call's title, else the published page's `<title>`, else `Claude artifact · <id prefix>`;
-a person's rename is kept. The card is the host's to add: the agent guide tells agents not to add an artifact they published, an agent that adds it anyway is answered with the existing card (MAP-14) instead of a second one, and a publication seen after the agent added the artifact itself reuses that card. The app never fetches the page (it needs the user's claude.ai
-sign-in): clicking opens a small panel with title, link, provenance and **Open in
-browser**, and the menu offers **Open on claude.ai**; both use the system browser.
+a person's rename is kept. The card is the host's to add: the agent guide tells agents not to add an artifact they published, an agent that adds it anyway is answered with the existing card (MAP-14) instead of a second one, and a publication seen after the agent added the artifact itself reuses that card. The service never fetches the page. Clicking opens the claude.ai page itself
+inside the item view, in its own persistent session; the person signs in to claude.ai
+inside the item once, kept apart from the app's session and across restarts. The page
+is an embedded site page (`claude`, the only site the app embeds): it always starts on a
+claude.ai page, without the app's preload or Node. It may move to other https pages, so a
+sign-in through another provider comes back inside the item. A sign-in popup (Google's, or
+claude.ai's own) opens in a small app window in the same session and reports back to the
+page; other popups and anything that is not https go to the system browser. The page's
+user agent leaves out the Electron and app tokens, since Google refuses embedded agents. The view keeps **Open in browser** in its header; the
+menu offers **Open on claude.ai**. Both use
+the system browser. Without a saved link the view is a small panel saying so.
 
 **MAP-SELECT — Multiple items.** Shift-click toggles items in a selection;
 Shift-left-drag on empty map selects a rectangle, also while a rail panel such as
