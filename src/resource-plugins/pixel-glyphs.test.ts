@@ -60,3 +60,14 @@ test('the interface draws pixel glyphs, never emoji', async () => {
   const found = files.flatMap(file => readFileSync(file, 'utf8').split('\n').flatMap((line, index) => emoji.test(line) ? [`${file}:${index + 1}`] : []));
   assert.deepEqual(found, [], 'draw icons as glyphs in src/resource-plugins/pixel-glyphs.ts; see the design guide in AGENTS.md');
 });
+
+test('the GitHub issue is a 12×12 glyph of its own: a ring around a dot, symmetric both ways', () => {
+  const issue: readonly string[] = (PIXEL_GLYPHS[12] as Record<string, readonly string[]>)['circle-dot'];
+  assert.ok(issue, 'PIXEL_GLYPHS[12][circle-dot] exists');
+  assert.equal(issue.length, 12);
+  assert.ok(issue.every(row => row.length === 12 && /^[.X]+$/.test(row)));
+  assert.deepEqual(mirror(issue), issue);
+  assert.deepEqual([...issue].reverse(), [...issue]);
+  assert.equal(issue[0], '............'); assert.equal(issue[11], '............');
+  for (const [name, rows] of Object.entries(PIXEL_GLYPHS[12])) if (name !== 'circle-dot') assert.notDeepEqual(rows, issue, `circle-dot differs from ${name}`);
+});

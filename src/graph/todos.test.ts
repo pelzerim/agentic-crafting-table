@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { archiveDue, groupWorkspaceTodos, oldestTodo, todoEntries, todoList, untouchedDays, withoutMuted } from './todos.ts';
+import { archiveDue, groupWorkspaceTodos, inboxName, oldestTodo, todoEntries, todoList, untouchedDays, withoutMuted } from './todos.ts';
 import type { GraphNode } from './graph.ts';
 
 const nodes: GraphNode[] = [
@@ -121,4 +121,12 @@ test('the list leaves out to-dos of muted projects in every group and keeps the 
   assert.deepEqual(ids(list.done), []);
   assert.deepEqual(ids(list.inbox), ['ticket']);
   assert.deepEqual(withoutMuted(todoList(state), state.nodes), todoList(state));
+});
+
+test('the inbox is named after the provider its tickets came from, and plainly when they came from several', () => {
+  const from = (source: string) => ({ triage: { source, key: source, label: source } });
+  assert.equal(inboxName([from('linear'), from('linear')]), 'From Linear');
+  assert.equal(inboxName([from('github')]), 'From GitHub');
+  assert.equal(inboxName([from('linear'), from('github')]), 'Assigned to you');
+  assert.equal(inboxName([from('elsewhere')]), 'Assigned to you');
 });

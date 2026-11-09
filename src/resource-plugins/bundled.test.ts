@@ -18,7 +18,7 @@ test('bundled packages keep every persisted item type id and its registration or
   const packages = createPluginPackageRegistry();
   assert.deepEqual(createResourcePluginRegistry().list().map(type => type.id), [
     'agent.session', 'terminal.session', 'github.pull-request', 'github.rollout', 'claude.artifact', 'code.review', 'github.review-run',
-    'linear.ticket', 'notion.page', 'slack.message', 'web.bookmark', 'web.link', 'workspace.todo', 'workspace.note',
+    'linear.ticket', 'notion.page', 'slack.message', 'web.bookmark', 'web.link', 'workspace.todo', 'workspace.note', 'github.issue',
   ]);
   for (const type of packages.types.list()) assert.ok(packages.ownerOf(type.id), `${type.id} has an owning package`);
   for (const { manifest } of packages.list()) {
@@ -44,7 +44,7 @@ test('every bundled stylesheet exists and is loaded once', () => {
 test('one registration path supplies connectors and views for every bundled type that has them', () => {
   const registry = createResourcePluginRegistry(), host = createResourcePluginHost(registry), views = createResourceViews(registry);
   for (const id of ['web.bookmark', 'web.link', 'workspace.todo', 'workspace.note']) assert.equal(host.capabilities(id).load, true, `${id} connector`);
-  for (const id of ['github.pull-request', 'linear.ticket']) assert.equal(host.capabilities(id).load, false, `${id} needs connections`);
+  for (const id of ['github.pull-request', 'github.issue', 'linear.ticket']) assert.equal(host.capabilities(id).load, false, `${id} needs connections`);
   const resource = { id: 'r', pluginId: 'web.link', schemaVersion: 1, title: 'Example', data: { url: 'https://example.com' } };
   assert.match(views.identity(resource), /^r:web\.link:1:/);
 });

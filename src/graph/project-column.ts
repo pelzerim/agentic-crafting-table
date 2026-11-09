@@ -35,7 +35,7 @@ export const COLUMN_KINDS = ['agents', 'prs', 'rollouts', 'tickets', 'notes', 'o
 export type ColumnKind = typeof COLUMN_KINDS[number];
 export const columnKindNames: Record<ColumnKind, string> = { agents: 'Agents', prs: 'PRs', rollouts: 'Rollouts', tickets: 'Tickets', notes: 'Notes', other: 'Other' };
 const KIND_OF = new Map<string, ColumnKind>([['agent.session', 'agents'], ['terminal.session', 'agents'], ['github.pull-request', 'prs'], ['code.review', 'prs'], ['github.review-run', 'prs'],
-  ['github.rollout', 'rollouts'], ['linear.ticket', 'tickets'], ['workspace.note', 'notes'], ['workspace.todo', 'notes']]);
+  ['github.rollout', 'rollouts'], ['linear.ticket', 'tickets'], ['github.issue', 'tickets'], ['workspace.note', 'notes'], ['workspace.todo', 'notes']]);
 export const columnKind = (pluginId: string | undefined): ColumnKind => (pluginId && KIND_OF.get(pluginId)) || 'other';
 /** `needsMe: false` lists every item instead of what waits on the person; `off` hides those types either way. */
 export interface ColumnFilters { needsMe?: boolean; off?: readonly ColumnKind[] }

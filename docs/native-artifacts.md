@@ -22,11 +22,26 @@ lookalike hosts fall through to Web link. Identity is the artifact URL, so the s
 artifact always resolves to one item. Saved v1 records upgrade unchanged (url and
 provenance are optional; `artifactId` stays required).
 
-Nothing fetches the page: it needs the user's claude.ai sign-in. The title is the
+The service never fetches the page. The title is the
 default `Claude artifact · <first 8 id chars>`, the publishing agent's title, or a
-person's rename. Clicking the card opens a small panel (title, link, revision/session
-when known, connected PR/agent, **Open in browser**); the menu offers **Open on
-claude.ai**. Both use the validated `openExternal` bridge; nothing is embedded.
+person's rename. Clicking the card opens the page itself in the item view through the
+host's `mountWebPage` service (site `claude`): an Electron `<webview>` in that site's own
+persistent session (`persist:claude-artifacts`), where the person signs in to claude.ai
+once (not every sign-in method is promised to work there). `apps/desktop/embedded-sites.ts` is the site registry: the main process attaches a
+webview only for a registered site's partition and a URL that site allows, rebuilds the
+guest's preferences from a fixed list (no preload, no Node, context isolation, sandbox, no
+nested webviews), and grants no permission but clipboard writes, and those only to the site's own pages. The top-level page may
+go to any https page, so a sign-in through an identity provider leaves the site and comes
+back inside the item, with its cookies in the site's session; any other top-level page is
+cancelled, a browser link among them opens in the browser (also when the app loads it), and popups open in the
+browser. While the page is off its site, a strip above it shows the host it is on, since
+there is no address bar. A download from a link is cancelled and the link opens in the browser; a file the page
+makes itself (`blob:`, `data:`) is saved through the usual save dialog. The
+page starts on its site at every open, and a link the site does not allow gets the panel. Only `claude` is registered; another site is one more entry. Only the open view
+holds a live page. The header keeps **Open in browser**, the connected PR/agent sit under
+the page, and the menu offers **Open on claude.ai**; both browser actions use the
+validated `openExternal` bridge. Without a saved link, or on a host without
+`mountWebPage`, the view is the small panel with **Open in browser**.
 
 ## Explain architecture
 

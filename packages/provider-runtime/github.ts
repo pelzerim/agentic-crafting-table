@@ -97,12 +97,34 @@ export const isActivityPath = (path: string) => /^\/search\/issues\?q=is%3Apr%20
 export interface ActivityPull extends Omit<InboxPull, 'reasons'> { reasons: (typeof ACTIVITY_REASONS)[ActivityQualifier][] }
 const commit = z.object({ sha: z.string().regex(/^[a-f0-9]{40,64}$/i), commit: z.object({ message: text, author: z.object({ date: short }).nullable().optional(), committer: z.object({ date: short }).nullable().optional() }) });
 const assignedIssue = z.object({ number: z.number().int().positive(), title: z.string().min(1).max(500), state: z.enum(['open', 'closed']),
-  assignees: z.array(user), repository: z.object({ full_name: short }), pull_request: z.object({}).optional() });
+  assignees: z.array(user), repository: z.object({ full_name: short }), pull_request: z.object({}).optional(), updated_at: short.optional(),
+  labels: z.array(z.union([short, z.object({ name: short }).passthrough()])).default([]) });
+const issue = z.object({
+  id: z.number().int().positive(), number: z.number().int().positive(), title: z.string().min(1).max(500), body: text.nullable(),
+  state: z.enum(['open', 'closed']), state_reason: z.enum(['completed', 'not_planned', 'reopened', 'duplicate']).nullable().optional(),
+  user: user.nullable(), assignees: z.array(user).default([]), labels: z.array(z.object({ name: short, color: z.string().max(20).nullable().optional() })).default([]),
+  comments: z.number().int().nonnegative().default(0), created_at: short, updated_at: short, closed_at: short.nullable().optional(), pull_request: z.object({}).passthrough().optional(),
+});
+const linkedPull = z.object({ __typename: z.literal('PullRequest').optional(), number: z.number().int().positive(), repository: z.object({ name: short, owner: z.object({ login: short }) }) });
+const issuePulls = z.object({ data: z.object({ repository: z.object({ issue: z.object({
+  closedByPullRequestsReferences: z.object({ nodes: z.array(linkedPull.nullable()).max(50) }),
+  timelineItems: z.object({ nodes: z.array(z.object({ __typename: short, source: z.unknown().optional(), subject: z.unknown().optional() }).nullable()).max(100) }),
+}).nullable() }).nullable() }) });
 export type GitHubPullRequest = z.infer<typeof pull>;
 export type GitHubFile = z.infer<typeof file>;
 export type GitHubComment = z.infer<typeof comment>;
 export type GitHubReview = z.infer<typeof review>;
 export interface PullIdentity { owner: string; repo: string; number: number }
+export type GitHubIssue = z.infer<typeof issue>;
+/** An issue as GitHub shows it: open, or closed as completed, not planned or a duplicate. */
+export type IssueLifecycle = 'open' | 'completed' | 'not_planned' | 'duplicate';
+/** The states a person can choose; a duplicate is closed from GitHub itself. */
+export const ISSUE_STATES = ['open', 'completed', 'not_planned'] as const;
+export type IssueStateChoice = typeof ISSUE_STATES[number];
+export function issueLifecycle(value: Pick<GitHubIssue, 'state' | 'state_reason'>): IssueLifecycle {
+  return value.state === 'open' ? 'open' : value.state_reason === 'not_planned' ? 'not_planned' : value.state_reason === 'duplicate' ? 'duplicate' : 'completed';
+}
+export interface AssignedGitHubIssue extends PullIdentity { title: string; url: string; updatedAt: string; labels: string[] }
 export interface AssignedGitHubPull extends PullIdentity { title: string; assignees: string[]; state: 'open' | 'closed' }
 export interface GitHubResponse { status: number; headers: Headers; body: unknown }
 export interface PullChecks { head: string; failing: string[] }
@@ -119,6 +141,8 @@ export interface GitHubTransport { postComment?(path: string, body: string, sign
   setTitle?(identity: PullIdentity, title: string, signal: AbortSignal): Promise<GitHubResponse>;
   setState?(identity: PullIdentity, state: 'open' | 'closed', signal: AbortSignal): Promise<GitHubResponse>;
   setDraft?(pullRequestId: string, draft: boolean, signal: AbortSignal): Promise<GitHubResponse>;
+  setIssueState?(identity: PullIdentity, change: { state: 'open' | 'closed'; state_reason: 'completed' | 'not_planned' | 'reopened' }, signal: AbortSignal): Promise<GitHubResponse>;
+  issuePulls?(identity: PullIdentity, signal: AbortSignal): Promise<GitHubResponse>;
   approveDeployments?(run: { owner: string; repo: string; runId: number }, environmentIds: number[], signal: AbortSignal): Promise<GitHubResponse> }
 const METHOD_LABELS = { SQUASH: 'Squash and merge', MERGE: 'Create a merge commit', REBASE: 'Rebase and merge' } as const;
 /** A Merge menu choice: merge or queue now, the same when ready (GitHub's auto-merge), or turn merge when ready off. */
@@ -194,6 +218,11 @@ export class GitHubError extends Error {
 export function pullKey(identity: PullIdentity) {
   if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/.test(identity.owner) || !/^[A-Za-z0-9_.-]{1,100}$/.test(identity.repo) || ['.', '..'].includes(identity.repo) || !Number.isSafeInteger(identity.number) || identity.number < 1) throw new GitHubError('INVALID_PULL_REQUEST', 'Use a valid GitHub pull request URL.');
   return `${identity.owner.toLowerCase()}/${identity.repo.toLowerCase()}/pull/${identity.number}`;
+}
+/** The stable key of an issue, as `owner/repo/issues/N` in lower case. */
+export function issueKey(identity: PullIdentity) {
+  try { pullKey(identity); } catch { throw new GitHubError('INVALID_ISSUE', 'Use a valid GitHub issue URL.'); }
+  return `${identity.owner.toLowerCase()}/${identity.repo.toLowerCase()}/issues/${identity.number}`;
 }
 export function checkedGitHubResponse(response: GitHubResponse, now: number) {
   if (response.status >= 200 && response.status < 300) return response.body;
@@ -489,6 +518,66 @@ export class GitHubClient {
     pullKey(identity);
     return (await this.pages(`/repos/${identity.owner}/${identity.repo}/pulls/${identity.number}/commits`, commit, signal, 3))
       .map(entry => ({ sha: entry.sha, message: entry.commit.message, date: entry.commit.committer?.date ?? entry.commit.author?.date ?? '' }));
+  }
+  async issue(identity: PullIdentity, signal: AbortSignal): Promise<GitHubIssue> {
+    issueKey(identity);
+    let value: GitHubIssue;
+    try { value = (await this.get(`/repos/${identity.owner}/${identity.repo}/issues/${identity.number}`, issue, signal)).value; }
+    catch (error) { if ((error as GitHubError).code === 'GITHUB_NOT_FOUND') throw new GitHubError('GITHUB_NOT_FOUND', 'Issue unavailable. Check its URL and this account’s repository access.'); throw error; }
+    if (value.number !== identity.number) throw new GitHubError('GITHUB_INVALID_RESPONSE', 'GitHub returned a different issue.');
+    if (value.pull_request) throw new GitHubError('GITHUB_NOT_AN_ISSUE', 'This is a pull request. Attach it as a pull request instead.');
+    return value;
+  }
+  /** One state PATCH, sent without re-reading so GitHub decides; never retried. A reply that does not
+   * show the new state is outcome-unknown. */
+  async setIssueState(identity: PullIdentity, target: IssueStateChoice, signal: AbortSignal): Promise<GitHubIssue> {
+    issueKey(identity);
+    if (!ISSUE_STATES.includes(target)) throw new GitHubError('GITHUB_INVALID_STATE', 'Choose open, completed or not planned.');
+    if (!this.transport.setIssueState) throw new GitHubError('GITHUB_FORBIDDEN', 'Changing the issue state is unavailable for this connection.');
+    signal.throwIfAborted();
+    const uncertain = () => Object.assign(new Error('GitHub may have changed it. Check the issue before trying again.'), { outcomeUnknown: true });
+    const change = target === 'open' ? { state: 'open' as const, state_reason: 'reopened' as const } : { state: 'closed' as const, state_reason: target };
+    let response: GitHubResponse;
+    try { response = await this.transport.setIssueState(identity, change, signal); }
+    catch (error) { if ((error as GitHubError).code === 'GITHUB_POST_UNCERTAIN') throw uncertain(); throw error; }
+    if (response.status === 422) throw new GitHubError('GITHUB_REJECTED', 'GitHub declined to change the issue.');
+    if (response.status === 403 && !response.headers.get('retry-after') && response.headers.get('x-ratelimit-remaining') !== '0') throw new GitHubError('GITHUB_FORBIDDEN', 'This GitHub account doesn’t have permission to change this issue. Check its repository access.');
+    if (response.status >= 400 && response.status < 500) checkedGitHubResponse(response, this.now());
+    const changed = response.status === 200 ? issue.safeParse(response.body).data : undefined;
+    if (changed?.number !== identity.number || changed.state !== change.state || target !== 'open' && issueLifecycle(changed) !== target) throw uncertain();
+    return changed;
+  }
+  /** Pull requests GitHub links to an issue: those that close it (the Development list) and those that
+   * mention it, in that order, each once, at most 50. Read through one fixed GraphQL query. */
+  async issuePulls(identity: PullIdentity, signal: AbortSignal): Promise<PullIdentity[]> {
+    issueKey(identity);
+    if (!this.transport.issuePulls) throw new GitHubError('GITHUB_UNAVAILABLE', 'Linked pull requests are unavailable for this connection.');
+    signal.throwIfAborted();
+    const response = await this.transport.issuePulls(identity, signal); signal.throwIfAborted();
+    const parsed = issuePulls.safeParse(checkedGitHubResponse(response, this.now())), found = parsed.data?.data.repository?.issue;
+    // A missing or hidden issue comes back as a null issue with an error, not as a 404.
+    if (parsed.success && !found && graphError.safeParse(response.body).success) throw new GitHubError('GITHUB_NOT_FOUND', 'Issue unavailable. Check its URL and this account’s repository access.');
+    if (!found) throw new GitHubError('GITHUB_INVALID_RESPONSE', 'GitHub returned an unsupported response. No saved content was replaced.');
+    const mentioned = found.timelineItems.nodes.flatMap(node => [node?.source, node?.subject]).map(value => linkedPull.safeParse(value).data).filter(value => value?.__typename === 'PullRequest');
+    const pulls = new Map<string, PullIdentity>();
+    for (const value of [...found.closedByPullRequestsReferences.nodes, ...mentioned]) {
+      if (!value || pulls.size >= 50) continue;
+      const key = { owner: value.repository.owner.login, repo: value.repository.name, number: value.number };
+      try { if (!pulls.has(pullKey(key))) pulls.set(pullKey(key), key); } catch { /* not a repository name GitHub could link */ }
+    }
+    return [...pulls.values()];
+  }
+  /** Open issues assigned to the signed-in account, most recently updated first, at most `limit`;
+   * `truncated` when more exist. The same read as assigned pull requests, keeping the issues. */
+  async assignedIssues(signal: AbortSignal, limit = 100): Promise<{ issues: AssignedGitHubIssue[]; truncated: boolean }> {
+    const issues = (await this.pages('/issues?filter=assigned&state=open&sort=created&direction=asc', assignedIssue, signal, 20)).filter(value => value.pull_request === undefined && value.state === 'open').map(value => {
+      const parts = value.repository.full_name.split('/');
+      if (parts.length !== 2) throw new GitHubError('GITHUB_INVALID_RESPONSE', 'GitHub returned an invalid repository identity.');
+      const identity = { owner: parts[0], repo: parts[1], number: value.number }; issueKey(identity);
+      return { ...identity, title: value.title, url: `https://github.com/${identity.owner}/${identity.repo}/issues/${identity.number}`, updatedAt: value.updated_at ?? '',
+        labels: value.labels.map(label => typeof label === 'string' ? label : label.name) };
+    }).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return { issues: issues.slice(0, limit), truncated: issues.length > limit };
   }
   async assignedPulls(signal: AbortSignal): Promise<AssignedGitHubPull[]> {
     const issues = await this.pages('/issues?filter=assigned&state=open&sort=created&direction=asc', assignedIssue, signal, 20);

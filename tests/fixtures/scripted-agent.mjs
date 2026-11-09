@@ -9,6 +9,6 @@ lines.on('line', line => {
   if (line === 'exit') process.exit(0);
   if (line === 'colors') console.log(`COLORS:${process.env.TERM}:${process.env.COLORTERM}:${process.env.NO_COLOR ?? 'unset'}:${process.env.FORCE_COLOR ?? 'unset'}\x1b[32m GREEN\x1b[0m`);
   if (line === 'size') console.log(`SIZE:${process.stdout.columns}:${process.stdout.rows}`);
-  else if (line === 'flood' || line === 'flood-large') { process.stdout.write('x'.repeat(1024 * 1024 * (line === 'flood-large' ? 20 : 1))); console.log('\nFLOOD_DONE'); }
+  else if (line === 'flood' || line === 'flood-large') { process.stdout.write('x'.repeat(1024 * 1024 * (line === 'flood-large' ? 80 : 1))); console.log('\nFLOOD_DONE'); }
   else console.log(`RECEIVED:${line}`);
 });

@@ -519,7 +519,7 @@ items; muted projects stay absent), grouped by plot in map order with a header p
 in each group items waiting on the person first, then by title; a row shows the item's icon, title and
 state (Asking me, My turn, Working). Type chips, all on by default, hide items and Needs me rows of their
 kind: **Agents** (agent and terminal sessions), **PRs** (pull requests, code reviews, review runs),
-**Rollouts**, **Tickets** (Linear), **Notes** (notes, to-dos), **Other**. The panel stays open while an
+**Rollouts**, **Tickets** (Linear tickets, GitHub issues), **Notes** (notes, to-dos), **Other**. The panel stays open while an
 item is open, and M toggles it then too; an item row opens its item (closing the open one), a project or
 plot row closes the open item and flies there. **Pinned** (“Keep the projects panel open”), it also stays
 open with Needs me, To-dos, Reminders, the GitHub inbox or the Controls card, moving left of an open rail
@@ -1140,7 +1140,7 @@ product/workspace text. Use the selected product icon only for the macOS
 application/Dock icon; do not display a floating product icon on the map.
 
 **VIS-02:** Type identity uses consistent icon/color cues. Agents and Terminal are
-large; PRs are medium; boxes are small attached icons; Linear, Notion, Slack, Web link, to-dos,
+large; PRs are medium; boxes are small attached icons; Linear, GitHub issues, Notion, Slack, Web link, to-dos,
 reviews and artifacts are compact. Linear retains enough width for identifier and
 title. Notes are paper tiles whose text is the card face (RES-09); paper colour is
 decoration and never status, and there is no yellow paper. All types have usable
@@ -3339,6 +3339,7 @@ carry a plain tooltip instead.
 | RES-08 | Review/artifact | Each run/output has its own compact item, state, originating session and explicit PR link. Completed outputs remain navigable and retain the revision actually analyzed. |
 | RES-09 | Note | A sticky paper tile whose text is the card face. Create from the ring (Note, hotkey N while the ring is open) with the caret already in an unsaved tile, or by pasting plain text over the map; nothing is saved until it has text; a size given to the unsaved tile stays with it, writing goes on, and its first text saves both. A click edits with the caret where it landed; a drag past 6px moves the tile; tape and margin drag while editing. Esc, ⌘↵, blur or zooming out commit (Esc never discards); typing saves after 600 ms; ⌘Z undoes. Delete edits text while writing and archives a selected tile with Undo. Light markdown on the idle face (bold first line, lists, clickable checkboxes, code, guarded links; HTML inert); raw text while editing; no full view. Mint paper by default plus moss, ice, sky, lilac, rose, peach, sand, fog and slate, or a custom `#rrggbb` from the colour picker (COLOR-PICKER); a dark paper (slate, or a custom one dark ink would not read on) takes light ink. Agent-written notes get copper tape and a byline. A local label, then a Haiku title for mid zoom, dashboards and MCP. Supports floating/project placement, links, archive/restore/delete and agent context of saved text only; separate from to-dos. |
 | RES-10 | Link upgrade | A web link (the URL fallback type) whose URL a more specific URL type claims becomes an item of that type in place, e.g. an `app.notion.com` page saved before those links were recognised. The rule is the shared URL matching of From URL and drops (`registry.conversions`), never a provider branch; exactly one claiming type is required for the automatic path. **What stays:** node id, resource id, position, size (a preset the new type lacks falls back to its default), project, links, to-do attachments, archive/done state and Needs me. **What changes:** the resource's type, its data (the type's normalized identity, so the original URL spelling is not kept) and its account binding (the provider's default connection); the old summary and status cues are cleared and the first read fills them. **Migration note:** persisted identities stay valid because the resource id is kept and only `pluginId`, `schemaVersion`, `data` and `connectionId` are rewritten by one atomic `item.convert` command; nothing is renamed, no table changes, and caches are keyed by resource id plus a fingerprint that includes the type, so the old type's snapshot is never shown for the new one. **Order:** the provider is read first and the item changes only after that read succeeds, so an unreadable page stays a working link and is asked again at the next start. **Automatic:** once at service start and when accounts change, for links on the map whose provider has an enabled account; quiet (no notice, no Needs me from the upgrade itself; the first read records existing comments as read) and idempotent (nothing to upgrade means no provider request and no workspace change). Archived and Undermap links are not upgraded automatically. **Duplicate guard:** if the provider item is already on the map under the same account, the link stays as it is. **Title:** a title the link got on its own (its saved page title, host name or a type name) is replaced by the provider title; a title that differs from the saved page title was chosen by the person and is kept; when no saved page title exists the title is not treated as chosen. **Manual:** the item menu of such a link offers “Convert to <type name>” beside Open in browser (one entry per claiming type; not in Undermap or for selections); it runs the shared `resource.convert` runtime action, available to the app and to agents under the same policy as attaching an item, and reports a missing account (“Connect … in Settings”), an unreadable page or a duplicate instead of changing anything. |
+| RES-11 | GitHub issue | URL-only creation from `github.com/{owner}/{repo}/issues/{number}`; the item is named after the issue's title, its frame reads “owner/repo #N” and its card carries “#N” as its reference tag. The view shows the state chip, “#N · opened by … · updated …”, labels, the Markdown body (rendered like RES-04, provider HTML inert) and the latest 100 comments (at most 1 MiB, oldest first, with the full count). The card's status is the state with a coloured cue: Open (green), Closed (violet), Not planned or Duplicate (neutral). **Change state** (map menu, or the status chip in the view) offers Open, Close as completed and Close as not planned with the current one marked; a choice is checked against the state the menu read and refused when the issue changed meanwhile. **Done sync** as for Linear: closing on GitHub (any reason) checks Mark done, reopening unchecks it; Mark done closes the issue as completed and Reopen reopens it; a refused or unconfirmed write reverts the check. **Linked pull requests ▸ Add to the map** reads, when asked, the pull requests that close the issue (GitHub's Development list) and those that mention it, at most 50, and attaches each beside the issue with its GitHub account, linked from it (one already in the project is reused). An issue URL that is in fact a pull request is refused with a pointer to attach it as one. Reads use the account's request budget and poll like other items; there is no comment writer. Assigned issues reach the to-do inbox through TODO-09. |
 
 **Linear workflow updates.** Cache the available status catalogue
 across items and projects, scoped to Linear account/team. Reuse it for the service
@@ -4257,9 +4258,17 @@ Artifact tool, the session hook adds the card below that agent, linked from it a
 its source PR (an architecture run's PR, or the one PR the agent is connected to), with
 the session and, for architecture runs, the head revision. The title is the publishing
 call's title, else the published page's `<title>`, else `Claude artifact · <id prefix>`;
-a person's rename is kept. The card is the host's to add: the agent guide tells agents not to add an artifact they published, an agent that adds it anyway is answered with the existing card (MAP-14) instead of a second one, and a publication seen after the agent added the artifact itself reuses that card. The app never fetches the page (it needs the user's claude.ai
-sign-in): clicking opens a small panel with title, link, provenance and **Open in
-browser**, and the menu offers **Open on claude.ai**; both use the system browser.
+a person's rename is kept. The card is the host's to add: the agent guide tells agents not to add an artifact they published, an agent that adds it anyway is answered with the existing card (MAP-14) instead of a second one, and a publication seen after the agent added the artifact itself reuses that card. The service never fetches the page. Clicking opens the claude.ai page itself
+inside the item view, in its own persistent session; the person signs in to claude.ai
+inside the item once, kept apart from the app's session and across restarts. The page
+is an embedded site page (`claude`, the only site the app embeds): it always starts on a
+claude.ai page, without the app's preload or Node. It may move to other https pages, so a
+sign-in through another provider comes back inside the item. A sign-in popup (Google's, or
+claude.ai's own) opens in a small app window in the same session and reports back to the
+page; other popups and anything that is not https go to the system browser. The page's
+user agent leaves out the Electron and app tokens, since Google refuses embedded agents. The view keeps **Open in browser** in its header; the
+menu offers **Open on claude.ai**. Both use
+the system browser. Without a saved link the view is a small panel saying so.
 
 **MAP-SELECT — Multiple items.** Shift-click toggles items in a selection;
 Shift-left-drag on empty map selects a rectangle, also while a rail panel such as
@@ -4453,6 +4462,17 @@ dismissed while its ticket is assigned and through any change of the settings; i
 is forgotten only when the ticket itself leaves the list under unchanged settings.
 Only a list cut off at the 100-ticket cap adds tickets but removes none; a
 narrower selection is a complete list.
+
+**GitHub issues** come into the same inbox the same way, from GitHub's assigned list
+(the read assigned pull requests already make, keeping its issues: open, newest
+update first, at most 100), once **Settings → Items → GitHub issue → Assigned
+issues → “Show my assigned GitHub issues in the to-do inbox”** is on; it is off by
+default, so connecting GitHub adds nothing to the inbox by itself. A ticket shows
+the issue's title, a “repo#N” chip that opens it and the state chip Open; its key is
+`owner/repo/issues/N`, and an issue already present as a GitHub issue item under any
+account is not imported. Every other rule above holds unchanged; there is no status
+or priority selection. The inbox is named after where its tickets came from: **From
+Linear**, **From GitHub**, or **Assigned to you** when it holds both.
 
 **Settings → Items → Linear ticket → Assigned tickets** has “Show my assigned
 Linear tickets in the to-do inbox”, on by default. Turning it off stops the reads

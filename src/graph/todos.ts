@@ -114,6 +114,13 @@ export function withoutMuted(list: TodoList, nodes: readonly GraphNode[]): TodoL
 const time = (value: string | undefined) => value ? Date.parse(value) || 0 : 0;
 const doneTime = (entry: Pick<TodoEntry, 'doneAt' | 'touchedAt'>) => Math.max(time(entry.doneAt), time(entry.touchedAt));
 /** A Done row goes to Archive `days` after it was ticked or last touched, whichever is later; undefined days is never. */
+const INBOX_SOURCES: Record<string, string> = { linear: 'Linear', github: 'GitHub' };
+/** The inbox heading for the providers its tickets came from: "From Linear", "From GitHub", or
+ * "Assigned to you" when they came from several (or one this app has no name for). */
+export function inboxName(entries: readonly Pick<TodoEntry, 'triage'>[]) {
+  const sources = new Set(entries.map(entry => entry.triage?.source ?? '')), [only] = sources;
+  return sources.size === 1 && INBOX_SOURCES[only] ? `From ${INBOX_SOURCES[only]}` : 'Assigned to you';
+}
 export const archiveDue = (entry: Pick<TodoEntry, 'completed' | 'doneAt' | 'touchedAt'>, days: number | undefined, now: number) =>
   entry.completed && days !== undefined && doneTime(entry) > 0 && now - doneTime(entry) >= days * DAY;
 /** Whole days since a person last touched the row; none recorded is no age. */
