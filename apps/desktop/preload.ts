@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { DesktopBridge } from './bridge.ts';
 
 async function invoke(method: string, args?: unknown) {
@@ -48,6 +48,7 @@ const bridge: DesktopBridge = {
   setBadgeCount: count => ipcRenderer.invoke('app:badge', count),
   copyUrl: url => ipcRenderer.invoke('app:copy-url', url),
   savePastedImage: bytes => ipcRenderer.invoke('app:save-pasted-image', bytes),
+  droppedFilePath: file => webUtils.getPathForFile(file),
   chooseDirectory: () => ipcRenderer.invoke('app:choose-directory'),
   recentDirectories: () => invoke('directories.recent'),
   workspaceCapabilities: () => invoke('capabilities'),

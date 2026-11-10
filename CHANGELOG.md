@@ -13,6 +13,7 @@ their pull request and author.
 ### Claude artifacts
 - **The page opens inside the item**: an open Claude artifact shows its claude.ai page in the item view. Sign in to claude.ai inside the item once; the sign-in is kept apart from the app and survives restarts. Google sign-in opens in a small window inside the app; other links that open a new window go to your browser, and **Open in browser** is still in the header. (#19, @shiini2)
 ### Fixes
+- **Drop images and files on a session**: dragging a screenshot or any file from Finder onto an agent's terminal types its path, which Claude and Codex attach, as in a terminal app; an image dragged from a web page is saved first. Before, the drop did nothing. (@MegaMaddin)
 - **Starts after a crash or restart**: the workspace service and session supervisor no longer refuse to start with “Workspace service did not start” when, after a crash or a restart of the computer, another process or a Linux thread got the process ID that the earlier service recorded. The service now records when its process started and compares that too. (#22, @timohuovinen)
 - **Quit anyway**: when the app could not finish closing, for example because the workspace service crashed and cannot start again, the error now offers **Quit anyway** next to **Keep open**; before, the app could not be closed. Quit anyway leaves running sessions to be picked up at the next start. (#22, @timohuovinen)
 ### Undermap

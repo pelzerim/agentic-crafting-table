@@ -1,5 +1,5 @@
 import type { NativeTerminalOptions } from '../../../src/resource-plugins/types.ts';
-import { pastedImage, pastedPath } from './terminal-input.ts';
+import { droppedPaths, pastedImage, pastedPath } from './terminal-input.ts';
 import { TuiDrag, dragIsEditable, dragText, lineDeletion } from './terminal-selection.ts';
 import { terminalKey } from './terminal-keys.ts';
 import { bindTerminalLinks } from './terminal-links.ts';
@@ -92,6 +92,22 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
         error => window.craftingTable.reportError({ kind: 'recoverable', message: `Image paste failed: ${(error as Error).message}` }));
     };
     element.addEventListener('paste', pasteImage, true);
+    // The map leaves drops over a terminal alone; files arrive as their paths, which an agent attaches.
+    const dragFiles = (event: DragEvent) => {
+      if (!event.dataTransfer?.types.includes('Files')) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = terminal.options.disableStdin ? 'none' : 'copy';
+    };
+    const dropFiles = (event: DragEvent) => {
+      if (!event.dataTransfer?.types.includes('Files')) return;
+      event.preventDefault(); event.stopPropagation();
+      if (terminal.options.disableStdin) return;
+      const saveImage = (file: File) => file.arrayBuffer().then(bytes => window.craftingTable.savePastedImage(new Uint8Array(bytes)));
+      void droppedPaths([...event.dataTransfer.files], window.craftingTable.droppedFilePath, saveImage).then(paths => { if (paths) { terminal.paste(paths); terminal.focus(); } },
+        error => window.craftingTable.reportError({ kind: 'recoverable', message: `File drop failed: ${(error as Error).message}` }));
+    };
+    element.addEventListener('dragover', dragFiles);
+    element.addEventListener('drop', dropFiles);
     const links = bindTerminalLinks(terminal, link => { if (activeRef.current) setLinkMenu(link); });
     const renderer = createTerminalRenderer(terminal, mode => { element.dataset.terminalRenderer = mode; });
     renderer.setActive(active);
@@ -124,7 +140,7 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
     if (active && host.current!.clientWidth > 0 && host.current!.clientHeight > 0) fit.fit();
     terminal.write(channel.history);
     instance.current = { terminal, fit, search, renderer, wheel: input };
-    return () => { dragInput.dispose(); element.removeEventListener('paste', pasteImage, true); unsubscribe(); reset?.(); input.dispose(); identity.dispose(); links(); resize.dispose(); renderer.dispose(); terminal.dispose(); for (const resolve of pending) resolve(); pending.clear(); instance.current = null; };
+    return () => { dragInput.dispose(); element.removeEventListener('paste', pasteImage, true); element.removeEventListener('dragover', dragFiles); element.removeEventListener('drop', dropFiles); unsubscribe(); reset?.(); input.dispose(); identity.dispose(); links(); resize.dispose(); renderer.dispose(); terminal.dispose(); for (const resolve of pending) resolve(); pending.clear(); instance.current = null; };
   }, [channel]);
   useLayoutEffect(() => {
     const terminal = instance.current?.terminal;

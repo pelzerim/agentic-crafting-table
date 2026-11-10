@@ -1810,6 +1810,11 @@ CLI’s submit behavior. Agent views send distinct Shift+Enter (CSI-u) for the
 native CLI to interpret. Plain terminals use a bracketed newline when supported,
 otherwise the distinct key; never substitute a plain submit key.
 Do not send input from inactive/stopped/read-only surfaces or while composing text.
+Files dropped on a terminal are typed as their paths, shell-escaped and one space
+apart, as a terminal app does; an agent attaches a dropped image from its path. An image
+with no file on disk behind it, as dragged from a web page, is saved like a pasted one
+(a private PNG kept seven days). A stopped or read-only terminal refuses the drop, and
+the map never takes a drop that lands on a terminal.
 Recognize printed HTTP(S) URLs (including wrapped URLs) and OSC 8 hyperlinks with
 xterm’s link support. Hover underlines the link and shows a pointer. Left-click
 opens a compact menu with **Copy link** and **Open in browser**, displaying the
