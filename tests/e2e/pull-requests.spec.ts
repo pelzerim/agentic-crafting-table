@@ -313,7 +313,7 @@ test('PR conversation defaults to human comments and settings persist bot/activi
     await page.getByRole('button', { name: 'Back to project', exact: true }).click();
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Settings' });
-    await dialog.getByRole('treeitem', { name: 'Items', exact: true }).click();
+    await dialog.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
     await page.keyboard.press('ArrowRight');
     await dialog.getByRole('treeitem', { name: 'GitHub pull request', exact: true }).click();
     await expect(dialog.getByLabel('Include bots and GitHub Actions')).not.toBeChecked();
@@ -414,13 +414,13 @@ test('map comment pill disappears at zero unseen, survives restart and returns f
     const beforeSettings = providers.requests;
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Settings' });
-    await dialog.getByRole('treeitem', { name: 'Items', exact: true }).click();
+    await dialog.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
     await dialog.getByRole('treeitem', { name: 'GitHub pull request', exact: true }).click();
     await dialog.getByLabel('Include bots and GitHub Actions').check();
     await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();
     await expect(pill).toHaveAttribute('aria-label', '1 unseen comment');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await dialog.getByRole('treeitem', { name: 'Items', exact: true }).click();
+    await dialog.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
     await dialog.getByRole('treeitem', { name: 'GitHub pull request', exact: true }).click();
     await dialog.getByLabel('Human discussion comments').uncheck();
     await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();

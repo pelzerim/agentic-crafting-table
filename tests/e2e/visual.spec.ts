@@ -173,7 +173,7 @@ test('pixel controls retain clear normal, selected, disabled, hover and keyboard
   await expect(settings.locator('.settings-field:focus-within')).not.toHaveCSS('box-shadow', 'none');
   await expect(settings.getByRole('treeitem', { name: 'Map', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(settings).toHaveScreenshot('pixel-controls-states.png');
-  await settings.getByRole('treeitem', { name: 'Items', exact: true }).click();
+  await settings.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
   await settings.getByText('New item shortcuts', { exact: true }).click();
   await expect(settings.getByRole('button', { name: 'Move Project earlier' })).toBeDisabled();
 });

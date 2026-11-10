@@ -588,7 +588,7 @@ export function WorkspaceMap() {
     const field = registry.get(paperPlugin)?.appearance?.paper?.textField ?? 'text';
     void apply([{ type: 'item.add', id: crypto.randomUUID(), resourceId: crypto.randomUUID(), pluginId: paperPlugin, data: { [field]: text }, projectId, position }]).catch(error => setError(error.message));
   } : undefined;
-  const openConnections = () => { setSessionListView(undefined); setSettingsOpen(true); };
+  const openConnections = () => { setSessionListView(undefined); setSettingsSection('Connections'); setSettingsOpen(true); };
   const createProject = () => {
     const camera = view?.camera ?? { x: 70, y: 80, zoom: .85 };
     setEditor({ mode: 'create', initialType: 'project', screen: { x: 35, y: 60 }, position: { x: (innerWidth / 2 - camera.x) / camera.zoom, y: (innerHeight / 2 - 80 - camera.y) / camera.zoom } });

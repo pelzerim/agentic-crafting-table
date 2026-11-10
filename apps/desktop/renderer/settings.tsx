@@ -58,6 +58,9 @@ function LaunchArguments({ value, change }: { value: string; change(value: strin
 const DASHBOARD_SECTION_CHOICES: [keyof DashboardSections, string][] = [['needsYou', 'Needs me'], ['working', 'Working'], ['todos', 'To-dos'], ['plots', 'Plots'], ['pipelines', 'Pull requests'], ['tallies', 'Tickets']];
 const percent = (value: number) => `${Math.round(value * 100)}%`, pixels = (value: number) => `${value} px`;
 
+/** The page Settings last showed; reopening returns there until the app restarts. */
+let lastSection = 'Connections';
+
 export function Settings({ close, providers, plugins, openArchive, clearOverlaps, nodeTitles, initialSessionView, sessionRequestId, installRequest, initialSection, updates: updatesProp }: { nodeTitles: Map<string, string>; initialSessionView?: 'active' | 'archived'; sessionRequestId?: number; installRequest?: PluginInstallRequest; initialSection?: string; updates?: { status?: UpdateStatus; check(): Promise<unknown> }; close(): void; providers: ProviderDescription[]; plugins: PluginDescription[]; openArchive(): void; clearOverlaps(): Promise<void> }) {
   const [saved, setSaved] = useState<SettingsSnapshot>(), [remote, setRemote] = useState(true), [awake, setAwake] = useState(false), [workAwake, setWorkAwake] = useState(false);
   const [notifications, setNotifications] = useState(notificationSettingsSchema.parse({}));
@@ -77,10 +80,12 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
   const updateAndRestart = () => { setRestartError(undefined); window.craftingTable.updatesRestart().catch(error => setRestartError(error.message)); };
   useEffect(() => { let mounted = true; window.craftingTable.appInfo().then(info => { if (mounted) setAppInfo(info); }).catch(error => { if (mounted) setInfoError(String(error)); }); return () => { mounted = false; }; }, []);
   const sections = ['Connections', 'Items', 'Map', 'Corners', 'Notifications', 'AI features', 'General', 'Plugins', 'Data & diagnostics'] as const;
-  const [section, setSection] = useState<string>(installRequest ? 'Plugins' : initialSessionView ? 'Data & diagnostics' : initialSection ?? 'Connections');
+  const [section, setSection] = useState<string>(() => installRequest ? 'Plugins' : initialSessionView ? 'Data & diagnostics' : initialSection
+    ?? (([...sections] as string[]).includes(lastSection) || plugins.flatMap(itemViewProfiles).some(profile => profile.key === lastSection) ? lastSection : 'Connections'));
+  useEffect(() => { lastSection = section; }, [section]);
   useEffect(() => { if (initialSessionView) setSection('Data & diagnostics'); }, [initialSessionView, sessionRequestId]);
   useEffect(() => { if (installRequest) setSection('Plugins'); }, [installRequest?.id]);
-  const [expanded, setExpanded] = useState(new Set<string>());
+  const [expanded, setExpanded] = useState(() => new Set<string>(section === 'Items' || !([...sections] as string[]).includes(section) ? ['Items'] : []));
   const content = useRef<HTMLDivElement>(null);
   const invalidField = useRef<HTMLInputElement | undefined>(undefined);
   const profiles = useMemo(() => plugins.flatMap(itemViewProfiles).sort((a, b) => a.name.localeCompare(b.name)), [plugins]);

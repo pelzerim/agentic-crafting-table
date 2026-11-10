@@ -45,7 +45,7 @@ test('Done rows go to Archive after the days chosen in Settings, counted on the 
     now += 2 * DAY;
     const dialog = page.getByRole('dialog', { name: 'Settings' }), tree = dialog.getByRole('tree', { name: 'Settings', exact: true });
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await tree.getByRole('treeitem', { name: 'Items', exact: true }).click(); await tree.getByRole('treeitem', { name: 'To-do', exact: true }).click();
+    await tree.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click(); await tree.getByRole('treeitem', { name: 'To-do', exact: true }).click();
     const days = dialog.getByRole('combobox', { name: 'Move done to-dos to Archive after', exact: true });
     await expect(days).toHaveValue('3'); await expect(days.locator('option')).toHaveText(['1 day', '3 days', '7 days', 'Never']);
     await page.waitForTimeout(200); expect((await read(page)).todos.find(todo => todo.id === 'shipped')?.archivedAt).toBeUndefined();

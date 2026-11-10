@@ -46,6 +46,7 @@ test('settings persist, reject managed flags and release the real display assert
     await work([{ type: 'node.update', id: 'memo', activity: 'idle' }]);
     await expect.poll(() => held('prevent-app-suspension')).toBe(false);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await expect(page.getByRole('treeitem', { name: 'Claude', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(remote).not.toBeChecked(); await expect(awake).toBeChecked(); await expect(workAwake).toBeChecked();
     await expect(autoMode).not.toBeChecked();
     await page.getByRole('treeitem', { name: 'General', exact: true }).click(); await awake.uncheck(); await page.getByRole('button', { name: 'Save settings' }).click();

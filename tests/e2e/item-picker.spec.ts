@@ -184,7 +184,7 @@ test('edge-of-canvas rings stay reachable and retain the floating creation point
 test('settings reorder shortcuts, persist them and keep removed types discoverable in All', async ({ visual: { page } }) => {
   const legacy = ['project', 'agent.session', 'terminal.session', 'github.pull-request', 'slack.message', 'workspace.todo'];
   await page.evaluate(async quickItemTypes => { const saved = await window.craftingTable.settingsRead(); await window.craftingTable.settingsWrite({ expectedRevision: saved.revision, value: { ...saved.value, quickItemTypes } }); }, legacy);
-  await page.getByRole('button', { name: 'Settings', exact: true }).click(); await page.getByRole('treeitem', { name: 'Items', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click(); await page.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
   const settings = page.getByRole('dialog', { name: 'Settings' });
   await settings.getByText('New item shortcuts', { exact: true }).click();
   await expect(settings.getByRole('checkbox', { name: 'From URL', exact: true })).toBeChecked();

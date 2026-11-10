@@ -216,6 +216,8 @@ test('Seen moves a pull request out of the Inbox tab into the reason tabs until 
 });
 
 visualTest('without a GitHub account the inbox offers Open Connections, which opens Settings on Connections', async ({ visual: { page } }) => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click(); await page.getByRole('treeitem', { name: 'General', exact: true }).click(); await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(0);
   await page.locator('.github-inbox-toggle').click();
   const panel = page.getByRole('dialog', { name: 'GitHub inbox' });
   await expect(panel).toContainText('Connect GitHub to see pull requests that involve you.');
