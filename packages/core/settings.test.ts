@@ -124,6 +124,12 @@ test('snapping to the grid is off by default and only accepts a boolean', () => 
   for (const value of ['yes', 1, null]) assert.equal(settingsSchema.safeParse({ snapToGrid: value }).success, false, String(value));
 });
 
+test('open finding counts on review cards are off by default and only accept a boolean', () => {
+  assert.equal(settingsSchema.parse({}).reviewOpenCounts, false);
+  assert.equal(settingsSchema.parse({ reviewOpenCounts: true }).reviewOpenCounts, true);
+  for (const value of ['yes', 1, null]) assert.equal(settingsSchema.safeParse({ reviewOpenCounts: value }).success, false, String(value));
+});
+
 test('the ground ring on right click is off by default and only accepts a boolean', () => {
   assert.equal(settingsSchema.parse({}).groundRightClickRing, false);
   assert.equal(settingsSchema.parse({ groundRightClickRing: true }).groundRightClickRing, true);

@@ -17,6 +17,7 @@ import type { ReviewProvider } from '../../src/pull-requests/reviews.ts';
 import type { AgentCapability } from '../session-runtime/agent-plan.ts';
 import type { ProjectContext } from '../../src/agents/project-context.ts';
 import { isArchived, isOffMap } from '../../src/graph/archive.ts';
+import { findById } from '../../src/graph/lookup.ts';
 
 export interface ReviewResult { state: 'running' | 'complete' | 'failed'; markdown?: string; truncated?: boolean; startedAt?: string; endedAt?: string }
 const REVIEW_RESULT_BYTES = 1024 * 1024;
@@ -73,8 +74,8 @@ export class ReviewCoordinator {
   /** The finished review as Markdown: Codex's last-message file, or Claude's
    * --print output without terminal control sequences. */
   async result(nodeId: string): Promise<ReviewResult> {
-    const state = await this.control.read(), node = state.nodes.find(candidate => candidate.id === nodeId);
-    const resource = state.resources.find(candidate => candidate.id === node?.resourceId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId);
+    const resource = findById(state.resources, node?.resourceId);
     if (resource?.pluginId !== 'code.review') throw new Error('This item is not a code review.');
     if (resource.data.phase) return resource.data.phase === 'failed' ? { state: 'failed', markdown: '', truncated: false } : { state: 'running' };
     const sessionId = String(resource.data.sessionId);
@@ -119,13 +120,13 @@ export class ReviewCoordinator {
     const requestKey = `review:${args.requestId}`, input = { action: 'review.prepare', nodeId, arguments: { ...args, provider } };
     const previous = this.store.listJobs().find(job => job.requestKey === requestKey);
     if (previous) { if (canonical(previous.input) !== canonical(input)) throw new Error('Review request ID was reused with different input'); if (previous.correlation.run || ['failed', 'cancelled', 'succeeded'].includes(previous.state)) return previous; }
-    const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId), resource = findById(state.resources, node?.resourceId);
     if (!node || !resource || isArchived(node, state.nodes)) throw new Error('Open an available pull request before starting a review');
     if (args.sourceResourceId && args.sourceResourceId !== resource.id) throw new Error('The source PR no longer matches this review request. Reopen the PR and start a new review.');
-    const target = args.reviewNodeId ? state.nodes.find(node => node.id === args.reviewNodeId) : undefined, targetResource = state.resources.find(resource => resource.id === target?.resourceId);
+    const target = args.reviewNodeId ? findById(state.nodes, args.reviewNodeId) : undefined, targetResource = findById(state.resources, target?.resourceId);
     if (args.reviewNodeId && (!target || !targetResource || isOffMap(target, state.nodes) || targetResource.pluginId !== 'code.review' || targetResource.data.sourcePrId !== nodeId || !targetResource.data.phase)) throw new Error('This review item can no longer be retried. Start a new review from the pull request.');
-    const previousRound = args.loop?.from ? state.nodes.find(node => node.id === args.loop!.from) : undefined;
-    if (args.loop?.from && (!previousRound || isOffMap(previousRound, state.nodes) || state.resources.find(resource => resource.id === previousRound.resourceId)?.pluginId !== 'code.review')) throw new Error('The previous round of this review loop is no longer on the map.');
+    const previousRound = args.loop?.from ? findById(state.nodes, args.loop!.from) : undefined;
+    if (args.loop?.from && (!previousRound || isOffMap(previousRound, state.nodes) || findById(state.resources, previousRound.resourceId)?.pluginId !== 'code.review')) throw new Error('The previous round of this review loop is no longer on the map.');
     const source = this.sources[resource.pluginId]; if (!source) throw new Error('This item does not support revision-pinned reviews');
     const [catalog, capability] = await Promise.all([this.runtime.models(provider), this.runtime.probe(provider)]);
     const model = args.model ?? catalog.default;
@@ -135,7 +136,7 @@ export class ReviewCoordinator {
     // A retry belongs to its own item, so it never joins another active run.
     for (const candidate of args.reviewNodeId || previousRound ? [] : this.store.listJobs().filter(job => job.input.action === 'review.prepare')) {
       const run = candidate.correlation.run as FrozenRun | undefined;
-      if (!run || (run.sourceResourceId ?? state.nodes.find(node => node.id === candidate.input.nodeId)?.resourceId) !== resource.id
+      if (!run || (run.sourceResourceId ?? findById(state.nodes, candidate.input.nodeId)?.resourceId) !== resource.id
         || run.provider !== provider || run.model !== model || run.source.connectionId !== frozen.connectionId
         || canonical(run.source.comparison) !== canonical(frozen.comparison)) continue;
       if (this.pending.has(candidate.id) || sessions.some(session => session.nodeId === run.nodeId && ['running', 'starting'].includes(session.state))) {
@@ -146,7 +147,7 @@ export class ReviewCoordinator {
         return candidate;
       }
     }
-    const projectNode = state.nodes.find(item => item.id === node.projectId);
+    const projectNode = findById(state.nodes, node.projectId);
     const run: FrozenRun = { sourceData: resource.data, source: frozen, sourceResourceId: resource.id, pluginId: resource.pluginId, provider, model, capability, nodeId: target?.id ?? randomUUID(), resourceId: targetResource?.id ?? randomUUID(), projectId: node.projectId,
       position: target?.position ?? { x: (previousRound ?? node).position.x + 280, y: (previousRound ?? node).position.y }, startedAt: new Date().toISOString(), ...(args.loop ? { loop: args.loop } : {}), project: { id: projectNode?.id ?? node.id, name: projectNode?.title ?? 'Floating pull request', goal: projectNode?.summary ?? '', repository: frozen.comparison.repository } };
     let job = this.store.enqueueJob(requestKey, input);
@@ -154,8 +155,8 @@ export class ReviewCoordinator {
     return this.store.transitionJob(job.id, job.state, 'running', { correlation: { run } });
   }
   private async assertBinding(nodeId: string, run: FrozenRun) {
-    const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId);
-    const resource = state.resources.find(resource => resource.id === node?.resourceId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId);
+    const resource = findById(state.resources, node?.resourceId);
     if (!node || !resource || isArchived(node, state.nodes) || node.projectId !== run.projectId
       || (run.sourceResourceId && resource.id !== run.sourceResourceId) || resource.pluginId !== run.pluginId
       || canonical(resource.data) !== canonical(run.sourceData)
@@ -202,7 +203,7 @@ export class ReviewCoordinator {
       signal.throwIfAborted();
       // Earlier jobs created their item in the launch commit instead of placing it first.
       const placedFirst = !prepared.commands.some(command => command.type === 'item.create');
-      const current = await this.control.read(), attached = current.resources.find(resource => resource.id === run.resourceId)?.data;
+      const current = await this.control.read(), attached = findById(current.resources, run.resourceId)?.data;
       if (placedFirst && !(attached?.sessionId === requestId && !attached.phase)) this.assertItem(current, run);
       let result: SessionSnapshot | undefined;
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -227,7 +228,7 @@ export class ReviewCoordinator {
     }
   }
   private assertItem(state: Awaited<ReturnType<WorkspaceControl['read']>>, run: FrozenRun) {
-    const node = state.nodes.find(node => node.id === run.nodeId);
+    const node = findById(state.nodes, run.nodeId);
     if (!node || isOffMap(node, state.nodes)) throw removed();
   }
   /** Places the review item on first use, then reports preparation progress on it. A
@@ -236,7 +237,7 @@ export class ReviewCoordinator {
     const data = { sourceConnectionId: run.source.connectionId ?? '', provider: run.provider, model: run.model, sourcePrId: job.input.nodeId, headSha: run.source.comparison.headSha, baseTipSha: run.source.comparison.baseTipSha,
       launchMode: 'review', reviewJobId: job.id, phase, preparingSince: run.startedAt ?? job.updatedAt };
     for (let attempt = 0; attempt < 5; attempt++) {
-      const state = await this.control.read(), node = state.nodes.find(node => node.id === run.nodeId);
+      const state = await this.control.read(), node = findById(state.nodes, run.nodeId);
       if (node ? isOffMap(node, state.nodes) : job.correlation.placed === true || job.input.arguments.reviewNodeId) throw removed();
       const later = run.loop?.from ? run.loop : undefined;
       const commands: WorkspaceCommand[] = node ? [{ type: 'item.update', id: run.nodeId, data }] : [
@@ -252,7 +253,7 @@ export class ReviewCoordinator {
   private async patch(nodeId: string, phase: ReviewPhase, error?: string) {
     const message = error?.slice(0, 500);
     for (let attempt = 0; attempt < 5; attempt++) {
-      const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+      const state = await this.control.read(), node = findById(state.nodes, nodeId), resource = findById(state.resources, node?.resourceId);
       if (!node || resource?.pluginId !== 'code.review' || !resource.data.phase) return;
       const data = { ...resource.data }, failed = phase === 'failed'; delete data.error;
       try {
@@ -266,9 +267,9 @@ export class ReviewCoordinator {
   /** Restarts a failed preparation on the same review item under a new request. */
   async retry(nodeId: string, input: unknown, track: (work: () => Promise<unknown>) => Promise<unknown>) {
     const { requestId } = z.object({ requestId: z.string().uuid() }).parse(input);
-    const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId), resource = findById(state.resources, node?.resourceId);
     if (!node || resource?.pluginId !== 'code.review') throw new Error('This item is not a code review.');
-    const source = state.nodes.find(candidate => candidate.id === resource.data.sourcePrId);
+    const source = findById(state.nodes, resource.data.sourcePrId);
     const args = { requestId, model: String(resource.data.model), sourceResourceId: source?.resourceId, reviewNodeId: nodeId }, provider = resource.data.provider as ReviewProvider;
     if (this.store.listJobs().some(job => job.requestKey === `review:${requestId}`)) return this.start(String(resource.data.sourcePrId), provider, args, track);
     // A finished review whose output could not be read as findings runs again on its item.
@@ -287,7 +288,7 @@ export class ReviewCoordinator {
   }
   async restore(nodeId: string, requestId: string): Promise<SessionSnapshot> {
     z.string().uuid().parse(requestId);
-    const state = await this.control.read(), resource = state.resources.find(resource => resource.id === state.nodes.find(node => node.id === nodeId)?.resourceId);
+    const state = await this.control.read(), resource = state.resources.find(resource => resource.id === findById(state.nodes, nodeId)?.resourceId);
     if (!resource || typeof resource.data.reviewJobId !== 'string') throw new Error('No saved review run for this item');
     const job = this.store.getJob(resource.data.reviewJobId), original = typeof job?.correlation.processId === 'string' ? readReviewProcess(this.directory, job.correlation.processId) : undefined;
     if (!original || original.input.nodeId !== nodeId) throw new Error('Review launch snapshot is unavailable');

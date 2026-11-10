@@ -15,6 +15,7 @@ import type { SqliteStore } from './sqlite-store.ts';
 import { fieldDefaults } from '../../src/resource-plugins/define.ts';
 import { applyAtHead } from './apply-at-head.ts';
 import { defaultDirectory } from '../core/working-directories.ts';
+import { findById } from '../../src/graph/lookup.ts';
 
 export const terminalCreateSchema = z.object({
   requestId: z.string().uuid(), nodeId: z.string().uuid(), resourceId: z.string().uuid(), sessionId: z.string().uuid(),
@@ -111,8 +112,8 @@ export class SessionCoordinator {
     try { return await pending; } finally { if (this.restarting.get(nodeId) === pending) this.restarting.delete(nodeId); }
   }
   private async restartTerminalOnce(nodeId: string, requestId: string): Promise<SessionSnapshot> {
-    const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId);
-    const resource = state.resources.find(resource => resource.id === node?.resourceId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId);
+    const resource = findById(state.resources, node?.resourceId);
     if (!node || resource?.pluginId !== 'terminal.session') throw new Error('No saved terminal for this item');
     if (isOffMap(node, state.nodes)) throw new Error(isBelow(node, state.nodes) ? 'Bring this terminal back to the map before restarting it.' : 'Restore this archived terminal before restarting it.');
     type SavedRestart = { nodeId: string; requestId: string } & ({ kind: 'attach'; sessionId: string } | { kind: 'launch'; plan: PreparedSession });
@@ -149,7 +150,7 @@ export class SessionCoordinator {
     // A replay first resolves the committed graph command, then the durable launch.
     // A crash between those writes can be recovered without another map item.
     const state = request.action === 'terminal.resume' ? await this.control.read() : undefined;
-    const updated = state?.resources.some(resource => resource.id === state.nodes.find(node => node.id === request.nodeId)?.resourceId && resource.data.sessionId === launch.sessionId);
+    const updated = state?.resources.some(resource => resource.id === findById(state.nodes, request.nodeId)?.resourceId && resource.data.sessionId === launch.sessionId);
     if (!updated) {
       const envelope = { commandId: request.requestId + ':node', actor: { kind: 'user' as const, id: 'desktop' }, commands: request.commands };
       if (request.expectedRevision === undefined) await applyAtHead(this.control, envelope);
@@ -178,9 +179,9 @@ export class SessionCoordinator {
   }
   /** Brings one session's status onto its item. Reports whether it wrote, so a caller holding `seen` reads again. */
   private async updateSession(session: SessionRecord, seen?: Awaited<ReturnType<WorkspaceControl['read']>>): Promise<boolean> {
-    const state = seen ?? await this.control.read(), node = state.nodes.find(node => node.id === session.nodeId);
+    const state = seen ?? await this.control.read(), node = findById(state.nodes, session.nodeId);
     if (!node) return false; // Deleting a map item never terminates the process.
-    const resource = state.resources.find(resource => resource.id === node.resourceId);
+    const resource = findById(state.resources, node.resourceId);
     if (resource?.data.sessionId !== session.id) return false; // Ignore old processes after a native resume.
     const commands: WorkspaceCommand[] = [];
     let nativeKey: string | undefined;
@@ -236,8 +237,8 @@ export class SessionCoordinator {
     const records = sessions ?? await this.runtime.call<SessionRecord[]>('sessions.list');
     for (const session of records) {
       if (!['starting', 'running'].includes(session.state)) continue;
-      const node = state.nodes.find(node => node.id === session.nodeId);
-      const resource = state.resources.find(resource => resource.id === node?.resourceId);
+      const node = findById(state.nodes, session.nodeId);
+      const resource = findById(state.resources, node?.resourceId);
       const below = node && isBelow(node, state.nodes);
       if (!below && !session.stopOnArchive && resource?.data.provider !== 'claude') continue;
       const archived = below || session.archivedAt || state.nodes.some(alias => resource && alias.resourceId === resource.id && isArchived(alias, state.nodes));
@@ -279,8 +280,8 @@ export class SessionCoordinator {
         continue;
       }
       try {
-        const graph = await this.control.read(), node = graph.nodes.find(node => node.id === job.input.nodeId);
-        const resource = graph.resources.find(resource => resource.id === node?.resourceId);
+        const graph = await this.control.read(), node = findById(graph.nodes, job.input.nodeId);
+        const resource = findById(graph.resources, node?.resourceId);
         if (node && ((resource?.data.provider === 'claude' && isArchived(node, graph.nodes)) || isBelow(node, graph.nodes))) {
           const current = job.state === 'queued' ? this.store.transitionJob(job.id, 'queued', 'running') : job;
           this.store.transitionJob(job.id, current.state, 'failed', { error: isBelow(node, graph.nodes) ? 'Session sent to Undermap before launch recovery; bring it back and resume explicitly.' : 'Session archived before launch recovery; restore and resume explicitly.' });

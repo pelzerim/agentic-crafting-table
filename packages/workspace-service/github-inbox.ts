@@ -8,6 +8,7 @@ import type { ProviderConnection } from '../core/connections.ts';
 import { isArchived, isBelow } from '../../src/graph/archive.ts';
 import { canonical } from '../core/control.ts';
 import { inBackground, knownBudget } from '../provider-runtime/request-budget.ts';
+import { findById, nodesOfResource } from '../../src/graph/lookup.ts';
 
 export const INBOX_REFRESH_MS = 60_000;
 /** Refresh interval as multiples of a minute, by consecutive unchanged lists. */
@@ -111,10 +112,10 @@ export class GitHubInbox {
       if (existing) return { nodeId: existing.id, created: false };
       const repository = `${item.owner}/${item.repo}`.toLowerCase(), projects = new Set<string>();
       for (const node of state.nodes) {
-        const resource = state.resources.find(record => record.id === node.resourceId);
+        const resource = findById(state.resources, node.resourceId);
         if (node.projectId && !isArchived(node, state.nodes) && resource?.pluginId === 'github.pull-request' && `${resource.data.owner}/${resource.data.repo}`.toLowerCase() === repository) projects.add(node.projectId);
       }
-      const projectId = projects.size === 1 ? [...projects][0] : undefined, project = state.nodes.find(node => node.id === projectId);
+      const projectId = projects.size === 1 ? [...projects][0] : undefined, project = findById(state.nodes, projectId);
       const nodeId = randomUUID();
       try {
         await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'user', id: 'github-inbox' }, commands: [
@@ -130,5 +131,5 @@ export class GitHubInbox {
 
 function mapNode(state: WorkspaceState, key: string) {
   const resource = state.resources.find(record => record.pluginId === 'github.pull-request' && (() => { try { return pullKey({ owner: String(record.data.owner), repo: String(record.data.repo), number: Number(record.data.number) }) === key; } catch { return false; } })());
-  return resource ? state.nodes.find(node => node.resourceId === resource.id && !isArchived(node, state.nodes)) : undefined;
+  return resource ? nodesOfResource(state.nodes, resource.id).find(node => !isArchived(node, state.nodes)) : undefined;
 }

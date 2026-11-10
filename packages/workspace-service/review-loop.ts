@@ -14,6 +14,7 @@ import { defaultReviewModels } from '../../src/pull-requests/reviews.ts';
 import type { JsonObject, JsonValue } from '../../src/resource-plugins/types.ts';
 import { armLoop, decide, DEFAULT_LOOP_ROUNDS, findingFingerprint, loopReviewContext, MAX_LOOP_ROUNDS, nextRound, seenIn, settle, statusLine, withSend } from '../../src/resource-plugins/items/code-review/review-loop.ts';
 import type { LoopFinding, ReviewLoopDecision, ReviewLoopFacts, ReviewLoopRecord, ReviewProviderId } from '../../src/resource-plugins/items/code-review/review-loop.ts';
+import { findById, nodesOfResource } from '../../src/graph/lookup.ts';
 
 /** The code.review package's plugin storage collection holding one record per pull request resource. */
 export const REVIEW_LOOP_COLLECTION = 'review-loop';
@@ -60,8 +61,8 @@ export class ReviewLoops {
   constructor(options: ReviewLoopOptions) { this.options = options; this.now = options.now ?? Date.now; this.allowed = options.allowed ?? (() => true); }
 
   async run(nodeId: string, input: unknown): Promise<unknown> {
-    const args = reviewLoopInput.parse(input), state = await this.options.control.read(), node = state.nodes.find(candidate => candidate.id === nodeId);
-    const resource = state.resources.find(record => record.id === node?.resourceId);
+    const args = reviewLoopInput.parse(input), state = await this.options.control.read(), node = findById(state.nodes, nodeId);
+    const resource = findById(state.resources, node?.resourceId);
     if (!node || !resource || isOffMap(node, state.nodes)) throw new Error('Open a pull request on the map to start a review loop.');
     if (resource.pluginId === 'code.review' && args.operation === 'status') return this.reviewStatus(state, node);
     if (resource.pluginId !== 'github.pull-request') throw new Error('A review loop starts from a pull request.');
@@ -100,7 +101,7 @@ export class ReviewLoops {
       const record = entry.value as unknown as ReviewLoopRecord, round = record.rounds.find(candidate => candidate.reviewNodeId === node.id);
       if (!round) continue;
       const pull = this.pullNode(state, record), listed = await this.list(node.id).catch(() => undefined);
-      const number = Number(state.resources.find(resource => resource.id === record.pullResourceId)?.data.number) || undefined;
+      const number = Number(findById(state.resources, record.pullResourceId)?.data.number) || undefined;
       return { ...this.view(record), round: round.round, seen: seenIn(record, loopFindings(listed), round.round), ...(pull ? { pullNodeId: pull.id } : {}), ...(number ? { pullNumber: number } : {}) };
     }
     return { state: 'off' };
@@ -193,7 +194,7 @@ export class ReviewLoops {
     }
     facts.ignored = [...new Set(ignored.map(entry => entry.fingerprint))];
     if (current) {
-      const job = this.options.reviews?.status(pr.id, current.requestId)[0], node = current.reviewNodeId ? state.nodes.find(candidate => candidate.id === current.reviewNodeId) : undefined;
+      const job = this.options.reviews?.status(pr.id, current.requestId)[0], node = current.reviewNodeId ? findById(state.nodes, current.reviewNodeId) : undefined;
       if (job && ['failed', 'cancelled'].includes(job.state)) facts.review = { state: 'failed', reason: job.error ?? 'it did not start', findings: [] };
       else if (current.reviewNodeId && (!node || isOffMap(node, state.nodes))) facts.review = { state: 'failed', reason: 'its review item was removed from the map', findings: [] };
       else if (current.reviewNodeId && listed) facts.review = listed.state === 'running' ? { state: 'running', findings: [] } : listed.state === 'failed' ? { state: 'failed', reason: 'the run ended with an error', findings: [] }
@@ -204,7 +205,7 @@ export class ReviewLoops {
       }
     }
     if (record.fixerNodeId) {
-      const node = state.nodes.find(candidate => candidate.id === record.fixerNodeId), sessionId = state.resources.find(resource => resource.id === node?.resourceId)?.data.sessionId;
+      const node = findById(state.nodes, record.fixerNodeId), sessionId = findById(state.resources, node?.resourceId)?.data.sessionId;
       facts.fixer = !node || isOffMap(node, state.nodes) ? { state: 'gone', title: node?.title ?? record.fixerTitle ?? 'The fixer' }
         : { state: typeof sessionId === 'string' && await this.readiness(state, { nodeId: node.id, sessionId }) === 'idle' ? 'ready' : 'working', title: node.title };
     }
@@ -311,7 +312,7 @@ export class ReviewLoops {
 
   private pullNode(state: WorkspaceState, record: Pick<ReviewLoopRecord, 'pullNodeId' | 'pullResourceId'>) {
     const onMap = (node: Node | undefined) => node && !isOffMap(node, state.nodes) ? node : undefined;
-    return onMap(state.nodes.find(node => node.id === record.pullNodeId && node.resourceId === record.pullResourceId)) ?? state.nodes.find(node => node.resourceId === record.pullResourceId && !isOffMap(node, state.nodes));
+    return onMap(state.nodes.find(node => node.id === record.pullNodeId && node.resourceId === record.pullResourceId)) ?? nodesOfResource(state.nodes, record.pullResourceId).find(node => !isOffMap(node, state.nodes));
   }
   private read(pullResourceId: string) { return this.options.storage.get(REVIEW_LOOP_COLLECTION, pullResourceId)?.value as unknown as ReviewLoopRecord | undefined; }
   private save(record: ReviewLoopRecord) { this.options.storage.put(REVIEW_LOOP_COLLECTION, record.pullResourceId, record as unknown as JsonValue); }

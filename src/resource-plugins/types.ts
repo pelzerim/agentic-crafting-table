@@ -18,6 +18,8 @@ export interface MapSizePreset {
   pips?: string;
   /** Draws the card pips the type's presentation sets on the node (`ServiceHost.presentation` `pips`), with their count line. */
   presentationPips?: boolean;
+  /** Dotted data path to `{ tone, count }` entries drawn as coloured numbers in the cue row when the person turns on open finding counts; an empty list draws a quiet check. */
+  counts?: string;
   /** Height follows the wrapped text of `field` between `min` and `max` lines; a stored
    * height never overrides it. `footerField` reserves one more line while present. */
   growLines?: { field: string; min: number; max: number; footerField?: string };

@@ -10,11 +10,12 @@ import { createActivitySummarizer } from '../../src/agents/activity-summary.ts';
 import type { ActivitySample, ActivitySummaryClient } from '../../src/agents/activity-summary.ts';
 import { isOffMap } from '../../src/graph/archive.ts';
 import { sessionLost } from '../../src/graph/attention.ts';
+import { findById, nodesOfResource } from '../../src/graph/lookup.ts';
 
 type Source = { nodeId: string; resourceId: string; sessionId: string; status: ActivitySample['status']; activity: string; attention: string; summary: string };
 function sources(state: WorkspaceState): Source[] {
   return state.resources.filter(resource => ['agent.session', 'terminal.session'].includes(resource.pluginId) && typeof resource.data.sessionId === 'string').flatMap(resource => {
-    const node = state.nodes.find(node => node.resourceId === resource.id && !isOffMap(node, state.nodes));
+    const node = nodesOfResource(state.nodes, resource.id).find(node => !isOffMap(node, state.nodes));
     if (!node) return [];
     return [{ nodeId: node.id, resourceId: resource.id, sessionId: String(resource.data.sessionId), activity: node.activity, attention: node.attention, summary: node.summary,
       status: node.attention === 'input' ? 'waiting' : node.attention === 'error' || sessionLost(node) ? 'disconnected' : node.activity === 'working' ? 'working' : node.activity === 'complete' ? 'complete' : 'idle' }];
@@ -97,7 +98,7 @@ export class ActivitySummaries {
       const summarizer = createActivitySummarizer(this.client, 20_000, policy.model);
       const pending = { source, cancel: () => summarizer.dispose(source.resourceId) }; this.pending = pending;
       try {
-        const resource = state.resources.find(resource => resource.id === source.resourceId)!;
+        const resource = findById(state.resources, source.resourceId)!;
         const result = await summarizer.summarize({ resourceId: source.resourceId, revision: fingerprint, kind: resource.pluginId === 'terminal.session' ? 'terminal' : 'agent', status: source.status, recentOutput: text });
         if (!result || this.closed || this.paused || !this.allowed() || canonical(this.store.readSettings().value.summaries) !== canonical(policy)) return;
         if (!this.store.finishSummary(source.resourceId, fingerprint, result.text, result.generated)) return;

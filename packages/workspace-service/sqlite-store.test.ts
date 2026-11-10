@@ -84,6 +84,30 @@ test('a refused stale command is recorded with the commits that landed after the
   } finally { store.close(); }
 }));
 
+test('a job this connection writes replaces only its own entry in the kept list, without decoding the others again', () => fixture(async directory => {
+  const store = new SqliteStore(join(directory, 'jobs.sqlite'));
+  try {
+    for (let i = 0; i < 20; i++) store.enqueueJob(`request-${i}`, { action: 'review.workflow', nodeId: `node-${i}`, arguments: { i } });
+    const first = store.listJobs();
+    const db = (store as unknown as { db: DatabaseSync }).db, prepare = db.prepare.bind(db);
+    let full = 0;
+    db.prepare = (sql: string) => { if (sql.startsWith('SELECT * FROM jobs ORDER BY rowid')) full++; return prepare(sql); };
+    const running = store.transitionJob(first[3].id, 'queued', 'running');
+    const added = store.enqueueJob('request-new', { action: 'review.workflow', nodeId: 'node-new', arguments: {} });
+    const after = store.listJobs();
+    assert.equal(full, 0, 'the list is patched, not read again');
+    assert.deepEqual(after.map(job => job.id), [...first.map(job => job.id), added.id]);
+    assert.equal(after[3].state, 'running'); assert.deepEqual(after[3], running);
+    assert.equal(after[4], first[4], 'untouched jobs keep their decoded records');
+    assert.equal(first[3].state, 'queued', 'a list handed out earlier does not change');
+    assert.throws(() => store.transitionJob(first[5].id, 'running', 'succeeded'), /state conflict/);
+    assert.deepEqual(store.listJobs().map(job => job.state), after.map(job => job.state));
+    store.recoverInterruptedJobs();
+    assert.equal(store.listJobs()[3].state, 'outcome-unknown');
+    assert.equal(full, 0);
+  } finally { store.close(); }
+}));
+
 test('jobs are decoded once and kept until a job is written, so a poller listing them every second costs nothing', () => fixture(async directory => {
   const store = new SqliteStore(join(directory, 'jobs.sqlite'));
   try {
@@ -100,6 +124,38 @@ test('jobs are decoded once and kept until a job is written, so a poller listing
     const other = new SqliteStore(join(directory, 'jobs.sqlite'));
     try { other.enqueueJob('request-other', { action: 'review.workflow', nodeId: 'node-other', arguments: {} }); } finally { other.close(); }
     assert.equal(store.listJobs().length, 52, 'a write from another connection is seen too');
+  } finally { store.close(); }
+}));
+
+test('succeeded rollout approvals are picked once and kept until a job is written, so every rollout of a pass shares them', () => fixture(async directory => {
+  const store = new SqliteStore(join(directory, 'jobs.sqlite'));
+  try {
+    const approve = (key: string, nodeId: string) => store.enqueueJob(key, { action: 'resource.action', nodeId, arguments: { actionId: 'rollout.approve', input: { runId: 1, attempt: 1, environmentIds: '7' } } });
+    store.enqueueJob('other', { action: 'resource.action', nodeId: 'rollout', arguments: { actionId: 'rollout.rerun', input: {} } });
+    const done = (key: string, nodeId: string) => { const job = approve(key, nodeId); store.transitionJob(job.id, 'queued', 'running'); store.transitionJob(job.id, 'running', 'succeeded', { result: {} }); return job; };
+    const first = done('approve-1', 'rollout'); approve('approve-queued', 'rollout');
+    const listed = store.rolloutApprovalJobs();
+    assert.deepEqual(listed.map(job => job.id), [first.id]);
+    assert.equal(store.rolloutApprovalJobs(), listed, 'the same list comes back while nothing changed');
+    const second = done('approve-2', 'rollout-2');
+    assert.deepEqual(store.rolloutApprovalJobs().map(job => job.id), [first.id, second.id]);
+  } finally { store.close(); }
+}));
+
+test('readers share one frozen workspace until it changes, and a command still gets a copy it may change', () => fixture(async directory => {
+  const store = new SqliteStore(join(directory, 'shared.sqlite')), control = new WorkspaceControl(store);
+  try {
+    await control.dispatch(create());
+    const first = await store.read();
+    assert.equal(await store.read(), first, 'the same state comes back while nothing changed');
+    assert.equal((await store.snapshot()).state, first);
+    assert.ok(Object.isFrozen(first) && Object.isFrozen(first.nodes) && Object.isFrozen(first.nodes[0]) && Object.isFrozen(first.nodes[0].position));
+    assert.throws(() => { (first.nodes[0] as { title: string }).title = 'changed'; }, TypeError);
+    const moved = await store.update(state => { state.nodes[0].position.x += 10; state.revision++; return state; });
+    assert.equal(moved.nodes[0].position.x, first.nodes[0].position.x + 10);
+    const after = await store.read();
+    assert.notEqual(after, first);
+    assert.equal(after.nodes[0].position.x, first.nodes[0].position.x + 10);
   } finally { store.close(); }
 }));
 
@@ -165,7 +221,7 @@ test('failed batch rolls back graph, receipt and event; independent writers reje
   } finally { a.close(); b.close(); }
 }));
 
-test('reads decode the workspace once per change, hand out copies and see other connections and rollbacks', () => fixture(async directory => {
+test('reads decode the workspace once per change, cannot change it for other readers and see other connections and rollbacks', () => fixture(async directory => {
   const file = join(directory, 'workspace.sqlite');
   const a = new SqliteStore(file), b = new SqliteStore(file);
   try {
@@ -174,7 +230,8 @@ test('reads decode the workspace once per change, hand out copies and see other 
     const db = (a as unknown as { db: DatabaseSync }).db, prepare = db.prepare.bind(db);
     let decodes = 0;
     db.prepare = (sql: string) => { if (sql.startsWith('SELECT body FROM nodes')) decodes++; return prepare(sql); };
-    const first = await a.read(); first.nodes[0].title = 'mutated by a reader';
+    const first = await a.read();
+    assert.throws(() => { first.nodes[0].title = 'mutated by a reader'; }, TypeError);
     const second = await a.read();
     assert.equal(decodes, 1);
     assert.notEqual(second.nodes[0].title, 'mutated by a reader');

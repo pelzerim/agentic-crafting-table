@@ -77,7 +77,9 @@ export function resolveMapSize(node: Pick<GraphNode, 'mapSize' | 'mapDimensions'
   const size = dimensions ? supported.findLast(size => fits(profile.sizes[size]!)) ?? supported[0]
     : node.mapSize && profile.sizes[node.mapSize] ? node.mapSize : profile.defaultSize;
   const resolved = { key, size, profile, ...profile.sizes[size]!, ...dimensions };
-  return resolved.growLines ? { ...resolved, height: grownHeight(resolved.growLines, resource.data, resolved.width) } : resolved;
+  if (!resolved.growLines) return resolved;
+  // A size the person gave the item is kept; only an item never resized grows with its text.
+  return dimensions ? { ...resolved, growLines: undefined } : { ...resolved, height: grownHeight(resolved.growLines, resource.data, resolved.width) };
 }
 export interface MapSizePin { id: string; size?: ItemSize; dimensions?: { width: number; height: number } }
 /** Use size as default for one item (MAP-18): `itemMapSizes` are the settings in which the item's tier is the default
@@ -101,7 +103,7 @@ export function sizeAsDefault(node: Pick<GraphNode, 'id' | 'resourceId' | 'mapSi
     const before = resolveMapSize(other, record, kind, settings), same = (size: { width: number; height: number }) => size.width === before.width && size.height === before.height;
     if (same(resolveMapSize(other, record, kind, itemMapSizes))) return [];
     if (same(resolveMapSize({ mapSize: before.size }, record, kind, itemMapSizes))) return [{ id: other.id, size: before.size }];
-    return [{ id: other.id, dimensions: clampItemDimensions({ width: before.width, height: before.growLines ? before.profile.sizes[before.size]!.height : before.height }, itemResizeLimits(kind)) }];
+    return [{ id: other.id, dimensions: clampItemDimensions({ width: before.width, height: before.height }, itemResizeLimits(kind)) }];
   });
   return { itemMapSizes, pins };
 }

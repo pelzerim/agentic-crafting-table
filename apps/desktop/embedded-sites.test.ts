@@ -14,7 +14,7 @@ test('a page attaches only as a known site and on a URL that site allows, with p
   });
   assert.deepEqual(params, { src: ARTIFACT, partition: 'persist:claude-artifacts' });
   for (const partition of [undefined, '', 'persist:github', 'persist:other']) assert.equal(attachEmbeddedPage({}, { src: ARTIFACT, ...(partition === undefined ? {} : { partition }) }), undefined, String(partition));
-  for (const src of [undefined, '', 'craft://app/index.html', 'https://example.com/', 'http://claude.ai/artifact/abc', 'https://claude.ai:8443/', 'https://claude.ai.example.com/artifact/abc', 'https://user:pw@claude.ai/', 'file:///etc/passwd']) {
+  for (const src of [undefined, '', 'craft://app/index.html', 'https://example.com/', 'http://claude.ai/artifact/abc', 'https://claude.ai:8443/', 'https://claude.ai.example.com/artifact/abc', 'https://user:@claude.ai/', 'file:///etc/passwd']) {
     assert.equal(attachEmbeddedPage({}, { partition: 'persist:claude-artifacts', ...(src === undefined ? {} : { src }) }), undefined, String(src));
   }
   assert.equal(embeddedSite('claude')?.partition, 'persist:claude-artifacts'); assert.equal(embeddedSite('github'), undefined);

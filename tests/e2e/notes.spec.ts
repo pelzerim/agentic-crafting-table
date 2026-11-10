@@ -330,34 +330,41 @@ async function dragGrip(page: Page, tile: ReturnType<Page['locator']>, dx: numbe
   await page.mouse.move(x + dx, y + dy, { steps: 8 }); await page.mouse.up();
 }
 
-test('resizing a note keeps its top-left corner: its height follows the text and its width stops at the minimum', async ({ visual: { page } }) => {
+test('resizing a note keeps its top-left corner and gives it any size within the limits; text that does not fit fades', async ({ visual: { page } }) => {
   await page.getByRole('slider', { name: 'Map zoom' }).fill('1');
-  await apply(page, [note('plan', 'Keep the public API stable\nShip in small steps\nRetain rollback\nVerify sessions', { x: 520, y: 700 })]);
+  await apply(page, [note('plan', 'Keep the public API stable\nShip in small steps\nRetain rollback\nVerify sessions', { x: 400, y: 300 })]);
   const tile = page.locator('[data-item-id="plan"]'), corner = async () => { const box = (await tile.boundingBox())!; return [Math.round(box.x), Math.round(box.y)]; };
   const resting = (await tile.boundingBox())!, origin = await corner();
-  for (const [dx, dy] of [[0, 120], [0, -80], [-200, 0], [-120, -120]]) {
-    await dragGrip(page, tile, dx, dy);
-    await expect(tile).toHaveCSS('width', '160px'); await expect(tile).toHaveCSS('height', `${resting.height}px`);
-    expect(await corner()).toEqual(origin);
-  }
+  await dragGrip(page, tile, 0, 120);
+  await expect(tile).toHaveCSS('width', '160px'); await expect(tile).toHaveCSS('height', `${Math.round(resting.height) + 120}px`);
+  expect(await corner()).toEqual(origin);
+  await expect(tile.getByRole('button', { name: /lines?$/ })).toHaveCount(0);
+  await expect.poll(async () => (await read(page)).nodes.find(node => node.id === 'plan')?.mapDimensions?.height).toBe(Math.round(resting.height) + 120);
+  await dragGrip(page, tile, 0, -250);
+  await expect(tile).toHaveCSS('width', '160px'); await expect(tile).toHaveCSS('height', '88px');
+  expect(await corner()).toEqual(origin);
+  await expect(tile.locator('.paper-face')).toHaveAttribute('data-faded', 'true');
+  const more = tile.getByRole('button', { name: /^\+ \d+ lines?$/ });
+  await expect(more).toBeVisible();
+  await more.click(); await expect(tile.locator('.paper-face')).not.toHaveAttribute('data-faded', 'true');
+  await tile.getByRole('button', { name: 'Show less' }).click();
+  await expect.poll(async () => (await read(page)).nodes.find(node => node.id === 'plan')?.mapDimensions?.height).toBe(88);
   await dragGrip(page, tile, 120, 60);
-  await expect(tile).toHaveCSS('width', '280px');
-  await expect.poll(async () => (await read(page)).nodes.find(node => node.id === 'plan')?.mapDimensions?.width).toBe(280);
-  expect((await tile.boundingBox())!.height).toBeLessThan(resting.height);
+  await expect(tile).toHaveCSS('width', '280px'); await expect(tile).toHaveCSS('height', '148px');
+  await expect.poll(async () => (await read(page)).nodes.find(node => node.id === 'plan')?.mapDimensions).toEqual({ width: 280, height: 148 });
   expect(await corner()).toEqual(origin);
+  await apply(page, [{ type: 'item.update', id: 'plan', data: { text: 'Short now' } }]);
+  await expect(tile).toHaveCSS('height', '148px');
   await dragGrip(page, tile, 900, 900);
-  await expect(tile).toHaveCSS('width', '640px');
+  await expect.poll(async () => (await read(page)).nodes.find(node => node.id === 'plan')?.mapDimensions).toEqual({ width: 640, height: 480 });
+  await expect(tile).toHaveCSS('width', '640px'); await expect(tile).toHaveCSS('height', '480px');
   expect(await corner()).toEqual(origin);
-  const grip = tile.getByRole('button', { name: /^Resize / });
-  await grip.focus(); await page.keyboard.press('Shift+ArrowLeft');
-  await expect(tile).toHaveCSS('width', '616px');
-  await page.keyboard.press('ArrowDown');
-  await page.waitForTimeout(300);
-  expect(await corner()).toEqual(origin);
+  await page.reload();
+  await expect(page.locator('[data-item-id="plan"]')).toHaveCSS('height', '480px');
   await expect(page.getByRole('button', { name: 'Dismiss error' })).toHaveCount(0);
 });
 
-test('resizing a note while writing keeps the caret in it and fits the text to the new width', async ({ visual: { page } }) => {
+test('resizing a note while writing keeps the caret in it and the height it was given', async ({ visual: { page } }) => {
   await page.getByRole('slider', { name: 'Map zoom' }).fill('1');
   await apply(page, [note('draft', 'Keep the public API stable while replacing the billing internals', { x: 520, y: 700 })]);
   const tile = page.locator('[data-item-id="draft"]'), editor = tile.getByRole('textbox', { name: 'Note text' });
@@ -367,8 +374,26 @@ test('resizing a note while writing keeps the caret in it and fits the text to t
   await dragGrip(page, tile, 140, 0);
   await expect(tile).toHaveCSS('width', '300px');
   await expect(editor).toBeFocused();
-  expect((await tile.boundingBox())!.height).toBeLessThan(narrow.height);
+  expect((await tile.boundingBox())!.height).toBe(narrow.height);
   await page.keyboard.type(' today'); await page.keyboard.press('Escape');
   await expect.poll(async () => (await read(page)).resources.find(resource => resource.id === 'draft-resource')?.data.text).toBe('Keep the public API stable while replacing the billing internals today');
   expect((await read(page)).nodes.find(node => node.id === 'draft')?.mapDimensions?.width).toBe(300);
+});
+
+test('writing on a note again after saving and resizing it starts from the saved text', async ({ visual: { page } }) => {
+  await page.getByRole('slider', { name: 'Map zoom' }).fill('1');
+  await apply(page, [note('todo-list', 'Low prio todos:\n- Compare predictions', { x: 700, y: 560 })]);
+  const tile = page.locator('[data-item-id="todo-list"]'), editor = tile.getByRole('textbox', { name: 'Note text' });
+  for (const line of ['- Check replicas', '- Ship it']) {
+    await tile.locator('.paper-face').click(); await expect(editor).toBeFocused();
+    await page.keyboard.press('Meta+ArrowDown'); await page.keyboard.type(`\n${line}`);
+    await page.mouse.click(200, 700); await expect(editor).toHaveCount(0);
+    await expect.poll(() => textOf(page, 'todo-list')).toContain(line);
+    await apply(page, [{ type: 'node.update', id: 'todo-list', title: `Generated ${line}` }]);
+    await dragGrip(page, tile, 30, 20);
+  }
+  const saved = await textOf(page, 'todo-list');
+  expect(saved).toBe('Low prio todos:\n- Compare predictions\n- Check replicas\n- Ship it');
+  await tile.locator('.paper-face').click(); await expect(editor).toBeFocused();
+  await expect(editor).toHaveValue(saved as string);
 });

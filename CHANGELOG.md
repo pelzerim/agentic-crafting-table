@@ -3,18 +3,33 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
-## Unreleased
+## 0.19.0 — 2026-11-10
+
+### Map
+- **Trackpad pans**: two fingers on a trackpad now move the map, and a pinch zooms it. A mouse wheel still zooms.
+
+### Workspace service
+- **No more “apply timed out” on a large map**: with hundreds of rollouts under the map the service spent seconds on every check of the few still on it, and handed every reader its own copy of the whole workspace, so it missed replies to your changes. A rollout check now follows only its own links, readers share one copy until the workspace changes, background checks find a card or its resource by id instead of searching the whole map, and a job update no longer reloads every job.
+
+### Notes
+- **Resize a note to any size**: dragging a note's corner now sets its height as well as its width, and it keeps that size whatever you write. Text that does not fit fades, with “+ N lines” to read the rest. A note you never resized still grows with its text.
+
+### Code reviews
+- **Open findings on the card**: turn on Settings → Map → **Open findings on review cards** and a review's map card shows one coloured number per severity for the findings not yet sent to an agent or ignored, such as a red 2 and an orange 1 for two critical and one high. Once all are dealt with, a faint check takes their place. Off by default.
 
 ### GitHub issues
 - **GitHub issues as items**: paste a `github.com/…/issues/N` link (From URL, or a drop) to keep an issue on the map. It shows its title, its state (Open, Closed, Not planned), labels, description and latest comments, and refreshes like a pull request; issue links saved as web links become issues once GitHub is connected.
 - **Change state and Mark done**: right-click → **Change state** (or the state chip in the open issue) closes it as completed or not planned, or reopens it, on GitHub. As a to-do, Mark done closes the issue and Reopen reopens it; closing it on GitHub ticks the to-do.
 - **Linked pull requests**: right-click → **Linked pull requests → Add to the map** places the pull requests that close or mention the issue beside it.
 - **Assigned issues in the to-do inbox**: turn on **Settings → Items → GitHub issue → Show my assigned GitHub issues in the to-do inbox** (off by default) and your open assigned issues wait there like Linear tickets. The inbox is called From GitHub, From Linear, or Assigned to you when it holds both. (#21, @MegaMaddin)
+
 ### Claude artifacts
 - **The page opens inside the item**: an open Claude artifact shows its claude.ai page in the item view. Sign in to claude.ai inside the item once; the sign-in is kept apart from the app and survives restarts. Google sign-in opens in a small window inside the app; other links that open a new window go to your browser, and **Open in browser** is still in the header. (#19, @shiini2)
+
 ### Fixes
 - **Starts after a crash or restart**: the workspace service and session supervisor no longer refuse to start with “Workspace service did not start” when, after a crash or a restart of the computer, another process or a Linux thread got the process ID that the earlier service recorded. The service now records when its process started and compares that too. (#22, @timohuovinen)
 - **Quit anyway**: when the app could not finish closing, for example because the workspace service crashed and cannot start again, the error now offers **Quit anyway** next to **Keep open**; before, the app could not be closed. Quit anyway leaves running sessions to be picked up at the next start. (#22, @timohuovinen)
+
 ### Undermap
 - **Adding a link brings it back**: adding an item by URL that its project holds only in Undermap now brings that item back to the map, instead of doing nothing visible. (#23, @MegaMaddin)
 

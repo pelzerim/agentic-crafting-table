@@ -5,6 +5,7 @@ import { stableUuid } from './resources.ts';
 import { isArchived, isOffMap } from '../../src/graph/archive.ts';
 import type { ReviewAgentId } from '../../src/pull-requests/review-agents.ts';
 import type { JsonObject } from '../../src/resource-plugins/types.ts';
+import { findById } from '../../src/graph/lookup.ts';
 
 /** The code.review package's plugin storage collection; one record, `state`. */
 export const AUTO_REVIEW_COLLECTION = 'auto-review';
@@ -40,7 +41,7 @@ export class AutoReviews {
   private async reconcileOnce() {
     const setting = this.options.store.readSettings().value.autoReview, record = this.read(), state = await this.options.control.read();
     const pulls = state.nodes.filter(node => node.resourceId && !isArchived(node, state.nodes) && !isOffMap(node, state.nodes)
-      && state.resources.find(resource => resource.id === node.resourceId)?.pluginId === 'github.pull-request');
+      && findById(state.resources, node.resourceId)?.pluginId === 'github.pull-request');
     if (!setting.enabled) { if (record.on) this.save({ on: false, settled: [] }); return; }
     if (!record.on) { this.save({ on: true, settled: [...new Set(pulls.map(node => node.resourceId!))] }); return; }
     const known = new Set(state.resources.map(resource => resource.id)), settled = new Set(record.settled.filter(id => known.has(id)));

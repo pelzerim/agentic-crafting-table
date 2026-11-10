@@ -9,6 +9,7 @@ import { localItemTitle } from '../../src/resource-plugins/generated-title.ts';
 import type { ActivitySummaryClient } from '../../src/agents/activity-summary.ts';
 import { nativeSummaryClient, summaryEvidence } from '../session-runtime/activity-summary.ts';
 import { isOffMap } from '../../src/graph/archive.ts';
+import { findById, nodesOfResource } from '../../src/graph/lookup.ts';
 
 /** Saving is synchronous/local. This optional enrichment uses the same isolated
  * tool-free Claude adapter and durable request allowance as activity summaries. */
@@ -42,7 +43,7 @@ export class ItemTitles {
   }
   observe(state: WorkspaceState) {
     if (!this.pending) return;
-    const resource = state.resources.find(r => r.id === this.pending!.resource.id);
+    const resource = findById(state.resources, this.pending!.resource.id);
     if (!resource || !this.eligible(state, resource) || canonical(resource) !== canonical(this.pending.resource)) this.pending.abort.abort();
   }
   start() {
@@ -91,9 +92,9 @@ export class ItemTitles {
       }
       if (text === resource.title) continue; // A matching generated label is already applied.
       if (text && !this.closed && !this.paused && this.allowed()) {
-        const latest = await this.control.read(), current = latest.resources.find(r => r.id === resource.id);
+        const latest = await this.control.read(), current = findById(latest.resources, resource.id);
         if (current && canonical(current) === canonical(resource) && this.eligible(latest, current)) {
-          const commands = latest.nodes.filter(node => node.resourceId === resource.id).map(node => ({ type: 'node.update' as const, id: node.id, title: text! }));
+          const commands = nodesOfResource(latest.nodes, resource.id).map(node => ({ type: 'node.update' as const, id: node.id, title: text! }));
           await this.control.dispatch({ commandId: randomUUID(), expectedRevision: latest.revision, actor: { kind: 'system', id: 'item-title' }, commands });
           await this.changed();
         }

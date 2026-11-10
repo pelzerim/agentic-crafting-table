@@ -75,8 +75,8 @@ function PaperColors({ paper, choose }: { paper: string; choose(paper: string): 
   </span>;
 }
 
-export function PaperFace({ title, text, width, grow, mode, paper, writer, expanded, expand, onHeight, actions }: {
-  title: string; text: string; width: number; grow?: Grow; mode: PaperMode; paper: string; writer?: { name: string; at: string }; expanded: boolean; expand(open: boolean): void;
+export function PaperFace({ title, text, width, height: frame, grow, mode, paper, writer, expanded, expand, onHeight, actions }: {
+  title: string; text: string; width: number; /** The tile's height on the map; a resized note keeps it whatever its text. */ height: number; grow?: Grow; mode: PaperMode; paper: string; writer?: { name: string; at: string }; expanded: boolean; expand(open: boolean): void;
   onHeight(height: number | undefined): void; actions: PaperActions;
 }) {
   const [conflict, setConflict] = useState<string>(), [comparing, setComparing] = useState(false), [flash, setFlash] = useState(false);
@@ -88,6 +88,8 @@ export function PaperFace({ title, text, width, grow, mode, paper, writer, expan
   const saved = useRef(text), caret = useRef<number>(undefined), timer = useRef<ReturnType<typeof setTimeout>>(undefined), queue = useRef(Promise.resolve());
   const active = useRef(false), pointer = useRef({ x: 0, y: 0, moved: false }), latest = useRef({ actions, onHeight }); latest.current = { actions, onHeight };
   const display = shown ?? text;
+  /** Lines the face shows before it fades: a growing note's cap, or what a resized note's height holds. */
+  const fits = grow ? PAPER_SHOWN_LINES : Math.max(1, Math.floor((frame - GROW_LINE.chrome) / GROW_LINE.height) - (writer ? 1 : 0));
   useEffect(() => {
     if (!active.current) saved.current = text;
     else if (text !== saved.current && !sent.current.has(text)) setConflict(text);
@@ -100,7 +102,7 @@ export function PaperFace({ title, text, width, grow, mode, paper, writer, expan
   }, [writer?.at]);
   const measure = (value: string) => {
     const next = grow ? grownHeight(grow, { [grow.field]: value }, width) : undefined;
-    setOverflow(Boolean(grow && wrappedLines(value, width) > grow.max)); setHeight(next ?? 0); latest.current.onHeight(next);
+    setOverflow(wrappedLines(value, width) > (grow ? grow.max : fits)); setHeight(next ?? frame); latest.current.onHeight(next);
   };
   const save = (value: string) => {
     queue.current = queue.current.then(async () => {
@@ -167,7 +169,7 @@ export function PaperFace({ title, text, width, grow, mode, paper, writer, expan
     applyTextChange(element, { from: 0, to: element.value.length, insert: theirs, start: theirs.length, end: theirs.length });
   };
   const change = (value: string) => { measure(value); clearTimeout(timer.current); timer.current = setTimeout(() => void save(value), PAPER_SAVE_MS); };
-  const lines = wrappedLines(display, width), hidden = lines - PAPER_SHOWN_LINES;
+  const lines = wrappedLines(display, width), hidden = lines - fits;
   if (mode === 'mid' && !editing) {
     const tasks = taskProgress(display), count = display.split(/\r?\n/).length;
     return <>

@@ -260,6 +260,8 @@
 .card-pips i[data-tone=hardening]{--c:var(--act-review-hardening)}.card-pips i[data-tone=security]{--c:var(--act-review-security)}.card-pips i[data-tone=question]{--c:var(--act-review-question)}
 .card-pips i[data-style=sent],.card-pips i[data-style=queued]{background:transparent;box-shadow:inset 0 0 0 1.5px var(--c)}
 .card-pips i[data-style=fixed]{background:repeating-linear-gradient(90deg,var(--act-accent) 0 2px,transparent 2px 4px);box-shadow:inset 0 0 0 1.5px var(--act-accent)}
+.card-counts b[data-tone=critical]{color:var(--act-bad)}.card-counts b[data-tone=high]{color:var(--act-review-high)}.card-counts b[data-tone=medium]{color:var(--act-review-medium)}.card-counts b[data-tone=low]{color:var(--act-review-low)}
+.card-counts b[data-tone=hardening]{color:var(--act-review-hardening)}.card-counts b[data-tone=security]{color:var(--act-review-security)}.card-counts b[data-tone=question]{color:var(--act-review-question)}
 .map-card .card-summary.pip-summary{white-space:pre-line}
 .map-card .card-pips+.card-summary{margin-top:2px}
 

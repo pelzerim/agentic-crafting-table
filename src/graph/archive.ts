@@ -1,13 +1,14 @@
 import type { GraphLink, GraphNode } from './graph.ts';
+import { findById } from './lookup.ts';
 
 /** Project archiving hides descendants without overwriting their own archive state. */
 export function isArchived(node: GraphNode, nodes: readonly GraphNode[]): boolean {
-  return Boolean(node.archivedAt || nodes.find(parent => parent.id === node.projectId)?.archivedAt);
+  return Boolean(node.archivedAt || findById(nodes, node.projectId)?.archivedAt);
 }
 
 /** Below the map, directly or through its project, and not archived. */
 export function isBelow(node: GraphNode, nodes: readonly GraphNode[]): boolean {
-  return !isArchived(node, nodes) && Boolean(node.belowAt || nodes.find(parent => parent.id === node.projectId)?.belowAt);
+  return !isArchived(node, nodes) && Boolean(node.belowAt || findById(nodes, node.projectId)?.belowAt);
 }
 /** Not on the map: archived or below it. Background work pauses for these. */
 export function isOffMap(node: GraphNode, nodes: readonly GraphNode[]): boolean {

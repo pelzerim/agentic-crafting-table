@@ -27,6 +27,7 @@ import type { BackgroundState, BackgroundTask } from './agent-background.ts';
 import { attachPublishedArtifact } from './agent-artifacts.ts';
 import { applyAtHead } from './apply-at-head.ts';
 import { parseClaudeArtifactUrl } from '../../src/resource-plugins/items/claude-artifact/url.ts';
+import { findById } from '../../src/graph/lookup.ts';
 
 /** Hooks that say something about the session without being a step of its turn: they are recorded and never change the item's status. */
 const NOTED = ['SubagentStart', 'PreCompact', 'PostCompact', 'PostToolUseFailure', 'PermissionDenied', 'TaskCreated', 'TaskCompleted', 'PostModelSwitch'] as const;
@@ -81,7 +82,7 @@ export class AgentCoordinator {
   async settleQuiet(now = Date.now) {
     const state = await this.control.read(), commands: WorkspaceCommand[] = [];
     for (const node of state.nodes) {
-      const session = node.activity === 'working' || node.beside || node.pose ? state.resources.find(resource => resource.id === node.resourceId) : undefined;
+      const session = node.activity === 'working' || node.beside || node.pose ? findById(state.resources, node.resourceId) : undefined;
       // A window that ran out (a quiet helper, a command's hold) changes the scene without any hook; the update below replaces it
       // when the item settles too. Only a session this service has heard from, or a node it has already written, is its to settle.
       if (session?.data.provider === 'claude' && typeof session.data.sessionId === 'string') {
@@ -91,7 +92,7 @@ export class AgentCoordinator {
       }
       const prompted = node.attention === 'input' && node.attentionNote === 'Agent needs permission';
       if (!prompted && (node.activity !== 'working' || node.attention === 'input')) continue;
-      const resource = state.resources.find(resource => resource.id === node.resourceId);
+      const resource = findById(state.resources, node.resourceId);
       if (resource?.data.provider !== 'claude' || typeof resource.data.sessionId !== 'string') continue;
       const sessionId = resource.data.sessionId, waiting = this.waitingInBackground(sessionId, now());
       if (prompted ? !isPermissionPrompt(this.observations.agentObservation(sessionId)?.event) : waiting.length) continue;
@@ -112,7 +113,7 @@ export class AgentCoordinator {
   async models(provider: unknown) { return agentProvider(provider).models(); }
   async injectContext(nodeId: string, input: unknown) {
     const args = z.object({ operation: z.enum(['queue', 'status']), sessionId: z.string().min(1), requestId: z.string().uuid().optional() }).strict().parse(input);
-    const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId), resource = findById(state.resources, node?.resourceId);
     const unavailable = (message: string) => {
       if (args.operation === 'queue') throw new Error(message);
       return { state: 'unavailable' as const, message };
@@ -137,7 +138,7 @@ export class AgentCoordinator {
     const current = await this.sessions.runtime.call<SessionSnapshot>('sessions.read', { sessionId: args.sessionId, after: Number.MAX_SAFE_INTEGER });
     if (current.session.state !== 'running' || current.session.stopRequestedAt || current.session.readOnly || !current.session.native) return unavailable('Resume the session before adding workbench context.');
     if (args.operation === 'status') return { state: 'none' as const, message: 'Adds the workbench guide and current project context to this conversation now, without starting a turn. Codex’s own instructions stay intact.' };
-    const state = await this.control.read(), node = state.nodes.find(candidate => candidate.id === nodeId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId);
     const project = state.nodes.find(candidate => candidate.id === node?.projectId && !candidate.resourceId);
     const guide = codexGuide(project && { id: project.id, title: project.title, summary: project.summary }, { agentNodeId: nodeId, workspaceId: String(resource.data.workspaceId) });
     await this.sessions.runtime.call('sessions.inject', { sessionId: args.sessionId, instructions: guide.systemPrompt, context: guide.referenceContext });
@@ -229,15 +230,15 @@ export class AgentCoordinator {
     while (true) {
       const current = await this.sessions.runtime.call<SessionSnapshot>('sessions.read', { sessionId: result.session.id });
       if (!['running', 'starting'].includes(current.session.state)) throw Object.assign(new Error('The agent could not resume. Open the terminal history for details.'), { code: 'LAUNCH_FAILED' });
-      const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId);
-      const resource = state.resources.find(resource => resource.id === node?.resourceId);
+      const state = await this.control.read(), node = findById(state.nodes, nodeId);
+      const resource = findById(state.resources, node?.resourceId);
       if (resource?.data.sessionId === result.session.id && resource.data.nativeStartedAt) return current;
       if (Date.now() > deadline) throw new Error('The agent has not confirmed the resumed conversation. Open its terminal to check for a sign-in or startup prompt, then retry recovery.');
       await new Promise(resolve => setTimeout(resolve, 100));
     }
   }
   private async resumeOnce(nodeId: string, requestId: string, projectId?: string, originRequest?: ResourceCreate, continueWork = false) {
-    const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId), resource = findById(state.resources, node?.resourceId);
     if (!node || !resource || typeof resource.data.nativeSessionId !== 'string') throw new Error('No saved native conversation for this item');
     if (isArchived(node, state.nodes)) throw new Error('Restore this archived item before resuming it.');
     if (isBelow(node, state.nodes)) throw new Error('Bring this item back from Undermap before resuming it.');
@@ -269,7 +270,7 @@ export class AgentCoordinator {
     if (this.switching.has(processSessionId)) return;
     this.switching.add(processSessionId);
     try {
-      const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+      const state = await this.control.read(), node = findById(state.nodes, nodeId), resource = findById(state.resources, node?.resourceId);
       if (!node || !resource || resource.data.sessionId !== processSessionId || typeof resource.data.nativeSessionId !== 'string') return;
       const provider = String(resource.data.provider), left = resource.data.nativeSessionId, isMoved = this.moved.delete(processSessionId);
       // `/new` or `/clear` with nothing said yet changes nothing for a person, so the item stays and only follows the id.
@@ -306,14 +307,14 @@ export class AgentCoordinator {
   /** `/resume` of a conversation no item holds: the item where it was typed becomes that conversation. */
   private async adopt(nodeId: string, provider: string, nativeSessionId: string) {
     const native = await agentProvider(provider).resolve(nativeSessionId), state = await this.control.read();
-    const node = state.nodes.find(node => node.id === nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+    const node = findById(state.nodes, nodeId), resource = findById(state.resources, node?.resourceId);
     if (!resource) return;
     await applyAtHead(this.control, { commandId: randomUUID(), actor: { kind: 'system', id: 'agent-switch' }, commands: [{ type: 'item.update', id: nodeId, data: { ...resource.data, nativeSessionId, cwd: native.cwd } }] });
     await this.resume(nodeId, randomUUID());
   }
   private async follow(nodeId: string, processSessionId: string, provider: string, nativeSessionId: string) {
     agentProvider(provider).followConversation?.(this.directory, processSessionId, nativeSessionId);
-    const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId), resource = findById(state.resources, node?.resourceId);
     if (!resource) return;
     await applyAtHead(this.control, { commandId: randomUUID(), actor: { kind: 'system', id: 'agent-switch' }, commands: [{ type: 'item.update', id: nodeId, data: { ...resource.data, nativeSessionId, nativeStartedAt: new Date().toISOString() } }] });
     await this.changed();
@@ -356,7 +357,7 @@ export class AgentCoordinator {
     // Subagents use tools constantly; only one that follows a permission prompt matters.
     if (!stopped && !isPermissionPrompt(this.observations.agentObservation(event.processSessionId)?.event)) return {};
     for (let attempt = 0; attempt < 3; attempt++) {
-      const state = await this.control.read(), node = state.nodes.find(node => node.id === event.nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+      const state = await this.control.read(), node = findById(state.nodes, event.nodeId), resource = findById(state.resources, node?.resourceId);
       if (!node || !resource || resource.data.sessionId !== event.processSessionId || resource.data.nativeSessionId !== event.nativeSessionId || resource.data.provider !== 'claude') return { ignored: true };
       if (!background) {
         const before = this.observations.agentBackground(event.processSessionId);
@@ -387,7 +388,7 @@ export class AgentCoordinator {
     const idle = event.event === 'TeammateIdle', key = event.teammate ?? (event.agentId ? teammateKey(event.agentId) : 'teammate');
     let background: BackgroundState | undefined, before: BackgroundTask[] = [];
     for (let attempt = 0; attempt < 3; attempt++) {
-      const state = await this.control.read(), node = state.nodes.find(node => node.id === event.nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+      const state = await this.control.read(), node = findById(state.nodes, event.nodeId), resource = findById(state.resources, node?.resourceId);
       if (!node || !resource || resource.data.sessionId !== event.processSessionId || resource.data.nativeSessionId !== event.nativeSessionId || resource.data.provider !== 'claude') return { ignored: true };
       if (!background) {
         const known = this.observations.agentBackground(event.processSessionId);
@@ -416,7 +417,7 @@ export class AgentCoordinator {
     const noted = (NOTED as readonly string[]).includes(event.event), result = noted ? {} : await this.observed(event);
     const happened = event.event === 'PostToolUseFailure' && !event.interrupt ? 'stumble' : event.event === 'PermissionDenied' ? 'bump' : undefined;
     for (let attempt = 0; attempt < 3 && !('ignored' in result); attempt++) {
-      const state = await this.control.read(), node = state.nodes.find(node => node.id === event.nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+      const state = await this.control.read(), node = findById(state.nodes, event.nodeId), resource = findById(state.resources, node?.resourceId);
       if (!node || !resource || resource.data.sessionId !== event.processSessionId || resource.data.nativeSessionId !== event.nativeSessionId || resource.data.provider !== 'claude') break;
       if (!attempt && event.agentId && (event.event === 'SubagentToolStart' || event.event === 'SubagentToolUse' || event.event === 'SubagentStart')) this.observations.observeBackground(event.processSessionId, { observedAt: event.observedAt, helper: { id: event.agentId, state: event.event === 'SubagentToolUse' ? 'quiet' : 'tool' } });
       else if (!attempt && noted) this.observations.observeBackground(event.processSessionId, { observedAt: event.observedAt,
@@ -437,7 +438,7 @@ export class AgentCoordinator {
     // A publish is its own fact, independent of how this observation orders against others.
     if (event.event === 'PostToolUse' && event.artifact) await attachPublishedArtifact(this.control, this.changed, { nodeId: event.nodeId, processSessionId: event.processSessionId, nativeSessionId: event.nativeSessionId, ...event.artifact });
     for (let attempt = 0; attempt < 3; attempt++) {
-      const state = await this.control.read(), node = state.nodes.find(node => node.id === event.nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+      const state = await this.control.read(), node = findById(state.nodes, event.nodeId), resource = findById(state.resources, node?.resourceId);
       if (!node || !resource || resource.data.sessionId !== event.processSessionId || resource.data.nativeSessionId !== event.nativeSessionId || resource.data.provider !== 'claude') return { ignored: true };
       if (!this.observations.observeAgent(event.processSessionId, event.observedAt, event.event === 'Notification' && event.notificationType ? `Notification:${event.notificationType}` : event.event)) return { ignored: true };
       const waiting = this.background(event), waitingSummary = event.event === 'Stop' ? backgroundSummary(waiting) : undefined;

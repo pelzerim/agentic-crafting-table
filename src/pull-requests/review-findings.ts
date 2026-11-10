@@ -129,7 +129,9 @@ export function locationUrl(repository: string, headSha: string, place: FindingL
 }
 
 const short: Record<string, [string, string]> = { hardening: ['hard.', 'hard.'], security: ['sec.', 'sec.'], question: ['question', 'questions'] };
-export interface FindingsRollup { counts: string; progress: string; pips: { tone: string; style: 'open' | 'queued' | 'sent' | 'fixed' }[]; urgent: boolean; mix: { key: string; count: number; label: string }[] }
+export interface FindingsRollup { counts: string; progress: string; pips: { tone: string; style: 'open' | 'queued' | 'sent' | 'fixed' }[]; urgent: boolean; mix: { key: string; count: number; label: string }[];
+  /** Per severity or kind, most severe first: findings nobody has queued, sent, fixed or ignored yet. Absent when the review found nothing. */
+  open?: { tone: string; count: number }[] }
 /** The person's mark is stored as `fixed` by actor `user` and means they ignore the
  * finding; only an agent's report means it was fixed. The latest event decides. */
 export const ignoredByPerson = (last?: { status: string; actor: string }) => last?.status === 'fixed' && last.actor === 'user';
@@ -151,6 +153,7 @@ export function findingsRollup(review: ReviewFindings, statuses: Record<string, 
     progress: [queued ? `${queued} queued` : '', sent ? `${sent} sent` : '', fixed ? `${fixed} fixed` : '', dropped ? `${dropped} ignored` : ''].filter(Boolean).join(' · ') || (total ? 'None sent yet' : `${review.checked.length} area${review.checked.length === 1 ? '' : 's'} checked`),
     pips: ordered.slice(0, 24).map(item => ({ tone: findingKey(item), style: statuses[item.id] ?? 'open' })),
     urgent: ordered.some(item => item.kind === 'bug' && (item.severity === 'critical' || item.severity === 'high')), mix,
+    ...(total ? { open: mix.map(({ key }) => ({ tone: key, count: ordered.filter(item => findingKey(item) === key && (statuses[item.id] ?? 'open') === 'open').length })).filter(entry => entry.count) } : {}),
   };
 }
 

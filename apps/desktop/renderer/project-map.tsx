@@ -50,6 +50,7 @@ import { placeProjectLabels } from '../../../src/graph/label-placement.ts';
 import { clampItemViewPosition, clampItemViewSize, expandedItemBounds, filledItemView } from '../../../packages/core/item-views.ts';
 import type { ItemViewProfile, ItemViewSizes } from '../../../packages/core/item-views.ts';
 import { splitViewBounds } from './item-view-bounds.ts';
+import { MapWheelGestures } from './map-wheel.ts';
 import type { ItemViewBounds, ViewPlace, ViewSize } from './item-view-bounds.ts';
 import { useMapObstacles } from './use-map-obstacles.ts';
 import { BiomeGround, NeighborhoodField } from './neighborhood-field.tsx';
@@ -222,6 +223,8 @@ export interface ProjectMapProps {
   attentionCounting?: AttentionCounting;
   /** Circles on the edge of the view for waiting items outside it (MAP-32). */
   offscreenAttention?: boolean;
+  /** Draws the open counts a map size declares with `counts` (Settings → Map → Code reviews). */
+  reviewOpenCounts?: boolean;
   /** Mute or unmute a project (MAP-25). Without it no project is drawn covered. */
   onMute?(projectId: string, muted: boolean): void;
   /** The Undermap's mirror layout (MAP-18): areas, month lines and far plates come from these computed boxes, the
@@ -238,10 +241,12 @@ const COVERED = 'muted-member', PEEKED = 'muted-member muted-peek nopan';
 /** A press may slip this far and still be a click; further, it drags. */
 const CLICK_SLIP = 6;
 type MapPip = { tone: string; style: string };
+type MapCount = { tone: string; count: number };
+const dataAt = (path: string, data: Record<string, unknown>) => path.split('.').reduce<unknown>((value, key) => (value as Record<string, unknown> | undefined)?.[key], data);
 /** Paper tiles keep their size at mid zoom and become a paper square only when far. */
 const PAPER_FAR_ZOOM = .35;
 type HeaderData = { needsMe: number; working: number; muted?: true } & Pick<AttentionCounts, AttentionTier>;
-type CardData = { /** Where an open item lives, for its header breadcrumb. */ location?: ItemPlace; /** Badges from short notes connected to this item, and their font size in map pixels. */ badges?: readonly Badge[]; badgeSize?: number; far: boolean; /** The card stands at its full map size, so its title may take the lines the card leaves it. */ titleFill?: boolean; /** A far-zoom icon under 16px on screen: the tier shape replaces the icon and frames are dropped. */ takeover: boolean; needsMe?: boolean; /** Close and keep in Needs me is offered at this tier. */ keep?: AttentionTier; header?: HeaderData; projectColor?: string; pips?: MapPip[]; /** The count line after pips a type's presentation drew. */ pipsLabel?: string; frameTitle?: string; /** The short reference the type declares, shown as the card's tag when the title has none. */ reference?: string; viewSurface?: boolean; viewOpen?: boolean; mapSize?: ReturnType<typeof resolveMapSize>; mapFields: string; tiny: boolean; iconOpens: boolean; completionToggle: boolean; undermapWhenComplete?: boolean; resizable: boolean; resizing: boolean; morph?: BubbleBounds; editableTitle: boolean; /** The open view's title is edited in place. */ editableViewTitle: boolean; showFullTitle: boolean; paper?: string; paperText?: string; paperMode?: PaperMode; paperWriter?: string; paperWrittenAt?: string; item: MapItem; icon: string; brand?: string; tint?: boolean; typeName: string; tone: string; width: number; height: number; compact: boolean; expanded: boolean; visited: boolean; scale: number; projectLabel: boolean; labelOverOutline: boolean; attentionSize: number; projectNeedsMe: number; status?: string; dragging: boolean; blocked?: Blocked; linkEnd?: boolean; selected?: boolean; /** Under a closed cover: drawn as an empty box of the card's size. */ covered?: boolean };
+type CardData = { /** Where an open item lives, for its header breadcrumb. */ location?: ItemPlace; /** Badges from short notes connected to this item, and their font size in map pixels. */ badges?: readonly Badge[]; badgeSize?: number; far: boolean; /** The card stands at its full map size, so its title may take the lines the card leaves it. */ titleFill?: boolean; /** A far-zoom icon under 16px on screen: the tier shape replaces the icon and frames are dropped. */ takeover: boolean; needsMe?: boolean; /** Close and keep in Needs me is offered at this tier. */ keep?: AttentionTier; header?: HeaderData; projectColor?: string; pips?: MapPip[]; /** The count line after pips a type's presentation drew. */ pipsLabel?: string; /** Coloured numbers in the cue row; empty draws a quiet check. */ counts?: MapCount[]; frameTitle?: string; /** The short reference the type declares, shown as the card's tag when the title has none. */ reference?: string; viewSurface?: boolean; viewOpen?: boolean; mapSize?: ReturnType<typeof resolveMapSize>; mapFields: string; tiny: boolean; iconOpens: boolean; completionToggle: boolean; undermapWhenComplete?: boolean; resizable: boolean; resizing: boolean; morph?: BubbleBounds; editableTitle: boolean; /** The open view's title is edited in place. */ editableViewTitle: boolean; showFullTitle: boolean; paper?: string; paperText?: string; paperMode?: PaperMode; paperWriter?: string; paperWrittenAt?: string; item: MapItem; icon: string; brand?: string; tint?: boolean; typeName: string; tone: string; width: number; height: number; compact: boolean; expanded: boolean; visited: boolean; scale: number; projectLabel: boolean; labelOverOutline: boolean; attentionSize: number; projectNeedsMe: number; status?: string; dragging: boolean; blocked?: Blocked; linkEnd?: boolean; selected?: boolean; /** Under a closed cover: drawn as an empty box of the card's size. */ covered?: boolean };
 type Blocked = { text: string; blockers: { id: string; name: string }[] };
 type ItemPlace = { project?: { id: string; title: string; color: string }; plot?: { id: string; name: string } };
 type CardNode = Node<CardData, 'card'>;
@@ -316,7 +321,7 @@ function CardFace({ data }: { data: CardData }) {
   const cue = item.indicators?.[0], badge = data.far && compact && !expanded && (cue ?? (working ? { id: 'working', label: 'Working', icon: 'working', tone: 'mint' } : undefined));
   const muted = data.header?.muted;
   const titleRoom = data.titleFill && !compact && !expanded && !data.projectLabel && data.paper === undefined && !data.editableTitle
-    ? [data.width, data.height, data.mapSize?.size, item.title, item.summary, agentSaid(item), data.status, running, need?.details[0], age, data.mapFields, data.pips?.length, data.pipsLabel, item.indicators?.map(cue => `${cue.id}:${cue.label}:${cue.showLabel}`).join()].join('\n') : '';
+    ? [data.width, data.height, data.mapSize?.size, item.title, item.summary, agentSaid(item), data.status, running, need?.details[0], age, data.mapFields, data.pips?.length, data.pipsLabel, data.counts?.map(entry => `${entry.tone}:${entry.count}`).join() ?? '-', item.indicators?.map(cue => `${cue.id}:${cue.label}:${cue.showLabel}`).join()].join('\n') : '';
   useLayoutEffect(() => { const card = surface.current; if (card) (titleRoom ? fitTitle : releaseTitle)(card); }, [titleRoom]);
   useLayoutEffect(() => { const card = surface.current; return () => { if (card) releaseTitle(card); }; }, []);
   if (data.projectLabel) return <article className="project-neighborhood-title" aria-label={muted ? `${item.title}, muted` : item.title} data-item-id={item.id} data-project-label={item.id} data-muted={muted} data-over-outline={data.labelOverOutline} data-dragging={data.dragging}
@@ -339,15 +344,15 @@ function CardFace({ data }: { data: CardData }) {
       if (data.viewSurface) { if (!data.needsMe || !markSeen || (event.target as HTMLElement).closest('a[href]')) return; event.preventDefault(); event.stopPropagation(); markSeen(item.id); return; }
       event.preventDefault(); event.stopPropagation(); middleClick(item.id);
     }}
-    style={{ width: data.width, height: !paper || compact ? data.height : paperHeight ?? (paperOpen ? expandedPaperHeight(data.paperText!, data.width) : data.height), transform: `scale(${data.scale})`, transformOrigin: 'top left', ...paperColor ? { '--paper': paperColor.color } : {} }}>
+    style={{ width: data.width, height: !paper || compact ? data.height : paperHeight ?? (paperOpen ? Math.max(data.height, expandedPaperHeight(data.paperText!, data.width)) : data.height), transform: `scale(${data.scale})`, transformOrigin: 'top left', ...paperColor ? { '--paper': paperColor.color } : {} }}>
     {marked && !compact && !data.viewSurface && <WorkingMark width={data.width} height={data.height} tiny={data.tiny} state={markState} moment={item.moment} />}
     {data.blocked && !expanded && <span className="blocked-badge" role="img" aria-label={data.blocked.text} title={data.blocked.text} style={{ fontSize: data.attentionSize * .75 }}><i aria-hidden="true" /></span>}
     {mark}
     {done && !attention && !compact && <span className="done-check" role="img" aria-label="Done" title="Done" style={{ width: data.attentionSize, height: data.attentionSize }}>
       <svg viewBox="0 0 8 8" aria-hidden="true" shapeRendering="crispEdges"><path fill="currentColor" d="M6 1h1v2H6v1H5v1H4v1H3V5H2V4H1V3h1v1h1v1h1V4h1V3h1Z" /></svg></span>}
     {badge ? <span className="status-badge" role="img" style={{ fontSize: data.attentionSize * 1.25 }} data-indicator={badge.id} data-tone={badge.tone} title={badge.label} aria-label={badge.label}><StatusGlyph icon={badge.icon} tone={badge.tone} /></span>
-      : !expanded && (item.indicators?.length || ticket) ? <CardIndicators cues={item.indicators ?? []} icons={cueIcons} width={data.width - (data.height < 65 ? 54 : 28)} reference={ticket?.reference} reason={reason} reasonLength={need ? need.details[0].length + (age ? age.length + 3 : 0) : 0} /> : null}
-    {paper ? compact ? <span className="paper-fold" aria-hidden="true" /> : <PaperFace title={item.title} text={data.paperText!} width={data.width} grow={data.mapSize?.growLines} mode={data.paperMode!} paper={data.paper!} writer={data.paperWriter ? { name: data.paperWriter, at: data.paperWrittenAt ?? '' } : undefined} expanded={paperOpen} expand={setPaperOpen} onHeight={setPaperHeight}
+      : !expanded && (item.indicators?.length || ticket || data.counts) ? <CardIndicators cues={item.indicators ?? []} counts={data.counts} icons={cueIcons} width={data.width - (data.height < 65 ? 54 : 28)} reference={ticket?.reference} reason={reason} reasonLength={need ? need.details[0].length + (age ? age.length + 3 : 0) : 0} /> : null}
+    {paper ? compact ? <span className="paper-fold" aria-hidden="true" /> : <PaperFace title={item.title} text={data.paperText!} width={data.width} height={data.height} grow={data.mapSize?.growLines} mode={data.paperMode!} paper={data.paper!} writer={data.paperWriter ? { name: data.paperWriter, at: data.paperWrittenAt ?? '' } : undefined} expanded={paperOpen} expand={setPaperOpen} onHeight={setPaperHeight}
       actions={{ write: (patch, base) => paperWrite(item.id, patch, base), discard: () => paperDiscard(item.id),
         done: () => { surface.current?.closest<HTMLElement>('.react-flow__node')?.focus({ preventScroll: true }); select(item.id); }, openUrl: url => paperOpenUrl(url) }} />
     : <>{expanded && data.location && <ItemLocation place={data.location} />}<div className="card-heading" tabIndex={expanded ? 0 : undefined} aria-label={expanded ? `Move view: ${item.title}` : undefined} title={expanded ? "Drag to move view; arrow keys move it with the keyboard" : undefined}>
@@ -408,13 +413,20 @@ function CompletionToggle({ done, toggle, children }: { done: boolean; toggle():
 }
 /** In priority order, when the row runs out of width, count labels shrink to icon plus number and other labels truncate.
  * While the card needs me the row leads with the `reason` in words; the cues follow in whatever form still fits. */
-function CardIndicators({ cues, icons, width, reference, reason, reasonLength = 0 }: { cues: NonNullable<MapItem['indicators']>; icons: boolean; width: number; reference?: string; reason?: React.ReactNode; reasonLength?: number }) {
+function CardIndicators({ cues, counts, icons, width, reference, reason, reasonLength = 0 }: { cues: NonNullable<MapItem['indicators']>; counts?: MapCount[]; icons: boolean; width: number; reference?: string; reason?: React.ReactNode; reasonLength?: number }) {
   const lead = icons ? undefined : reason, tag = icons ? undefined : reference;
   // The reference is never shortened: the cue labels give way first.
-  const room = width - (tag ? tag.length * REFERENCE_CHAR + 7 : 0) - (lead ? reasonLength * REASON_CHAR + 7 : 0);
+  const room = width - (tag ? tag.length * REFERENCE_CHAR + 7 : 0) - (lead ? reasonLength * REASON_CHAR + 7 : 0) - (counts ? countsWidth(counts) + 7 : 0);
   const forms = icons ? undefined : fitIndicators(cues.map(cue => cue.label), Math.max(0, room));
   return <div className={`item-indicators ${icons ? 'indicator-icons' : 'indicator-labels'}${lead ? ' card-reason-row' : ''}`} aria-label="Item status">{tag && <span className="card-reference">{tag}</span>}{lead}{cues.map((cue, index) => <span key={cue.id} role="img" data-indicator={cue.id} data-tone={cue.tone} data-short={forms?.[index].short ? forms[index].text === cue.label ? 'truncated' : 'count' : undefined} title={cue.label} aria-label={cue.label}>
-    <ItemIcon icon={cue.icon} size={8} />{forms?.[index].text !== '' && <span>{forms ? forms[index].text : cue.label}</span>}</span>)}</div>;
+    <ItemIcon icon={cue.icon} size={8} />{forms?.[index].text !== '' && <span>{forms ? forms[index].text : cue.label}</span>}</span>)}{counts && <OpenCounts counts={counts} />}</div>;
+}
+/** Layout pixels the open counts take in the cue row. */
+const countsWidth = (counts: MapCount[]) => counts.length ? counts.reduce((sum, entry) => sum + String(entry.count).length * 6 + 6, 4) : 16;
+/** One number per severity in its colour; nothing left open reads as a quiet check. */
+function OpenCounts({ counts }: { counts: MapCount[] }) {
+  const label = counts.length ? `${counts.map(entry => `${entry.count} ${entry.tone}`).join(', ')} open` : 'Nothing open';
+  return <span className="card-counts" role="img" aria-label={label} title={label}>{counts.length ? counts.map(entry => <b key={entry.tone} data-tone={entry.tone}>{entry.count}</b>) : <ItemIcon icon="check" size={8} />}</span>;
 }
 /** Screen pixels a character takes in the cue row: the reason's 10px semibold text, the reference's 10px mono. */
 const REASON_CHAR = 5.8, REFERENCE_CHAR = 6.1;
@@ -545,7 +557,23 @@ function MapCanvas(props: ProjectMapProps) {
   };
   const viewport = useViewport();
   const lastZoom = useRef(viewport.zoom);
-  const { setCenter, zoomTo, zoomIn, zoomOut, screenToFlowPosition, fitBounds, setViewport } = useReactFlow();
+  const { setCenter, zoomTo, zoomIn, zoomOut, screenToFlowPosition, fitBounds, setViewport, getViewport } = useReactFlow();
+  // Two fingers on a trackpad pan the map; a pinch and a mouse wheel zoom it, as React Flow does on its own.
+  const wheelPans = !itemResize.preview && !viewInteracting;
+  useEffect(() => {
+    const flow = container.current?.querySelector<HTMLElement>('.react-flow');
+    if (!flow || !wheelPans) return;
+    const gestures = new MapWheelGestures();
+    const wheel = (event: WheelEvent) => {
+      if ((event.target as HTMLElement).closest('.nowheel')) return;
+      if (gestures.classify(event) !== 'pan') return;
+      event.preventDefault(); event.stopPropagation();
+      const current = getViewport();
+      void setViewport({ x: current.x - event.deltaX, y: current.y - event.deltaY, zoom: current.zoom });
+    };
+    flow.addEventListener('wheel', wheel, { capture: true, passive: false });
+    return () => flow.removeEventListener('wheel', wheel, { capture: true });
+  }, [wheelPans, getViewport, setViewport]);
   const [ownOverview, setOwnOverview] = useState(false);
   // The project column is not shown below (MAP-22), so there is nothing to unfold there.
   const cornerShown = props.mapCorner === 'atlas' || props.layer !== 'below';
@@ -655,14 +683,16 @@ function MapCanvas(props: ProjectMapProps) {
     const mapSize = record ? resolveMapSize(item, record, (props.registry ?? registry).get(record.pluginId), props.itemMapSizes) : undefined;
     const fields = mapSize?.fields?.map(key => view?.fields.find(field => field.key === key)).filter(field => field && field.value !== undefined && field.value !== '') ?? [];
     const mapFields = fields.map(field => `${fields.length > 1 ? field!.label + ": " : ""}${String(field!.value).replace(/\s+/g, " ")}`).join(" · ").slice(0, 1000);
-    const pipValue = mapSize?.pips && record ? mapSize.pips.split('.').reduce<unknown>((value, key) => (value as Record<string, unknown> | undefined)?.[key], record.data) : undefined;
+    const pipValue = mapSize?.pips && record ? dataAt(mapSize.pips, record.data) : undefined;
+    const countValue = mapSize?.counts && record ? dataAt(mapSize.counts, record.data) : undefined;
+    const counts = Array.isArray(countValue) ? countValue.filter((entry): entry is MapCount => typeof entry?.tone === 'string' && Number.isInteger(entry?.count) && entry.count > 0).slice(0, 8) : undefined;
     const presented = mapSize?.presentationPips ? item.pips : undefined;
     const pips = Array.isArray(pipValue) ? pipValue.filter((pip): pip is MapPip => typeof pip?.tone === 'string' && typeof pip?.style === 'string').slice(0, 24) : presented?.pips;
     // An unsaved tile has no text yet, so it is read from its type rather than its validated presentation.
     const paperType = record && (props.registry ?? registry).get(record.pluginId), spec = paperType?.appearance?.paper;
     const paper = spec && record ? { color: String(record.data[spec.paperField ?? ''] ?? '') || 'mint', text: String(record.data[spec.textField] ?? '') } : undefined;
     const writer = paperType?.authorship && record?.data[paperType.authorship.field] as { name?: unknown; at?: unknown } | undefined;
-    return { item, record, presentation: view, paper: paper?.color, paperText: paper?.text, paperWriter: typeof writer?.name === 'string' ? writer.name : undefined, paperWrittenAt: typeof writer?.at === 'string' ? writer.at : undefined, mapSize, mapFields, pips: pips?.length ? pips : undefined, pipsLabel: presented?.label, frameTitle: view?.frameTitle, reference: view?.reference, view: view?.view, tiny: Boolean(mapSize && mapSize.height <= 36 && !mapSize.iconOnly), iconOpens: view?.appearance.openFromIcon === true, completionToggle: view?.appearance.completionToggle === true, undermapWhenComplete: view?.appearance.undermapWhenComplete === true, showFullTitle: view?.appearance.showFullTitle === true, editableTitle: view?.appearance.editableTitle === true, editableViewTitle: view?.appearance.editableViewTitle === true, width, height, x: item.position.x, y: item.position.y, icon: presentationIcon(view, Boolean(item.completedAt)), brand: view?.brand, tint: view?.appearance.brandTint === true, tone: view?.appearance.tone ?? 'mint', typeName: paper ? paperType!.name : view?.typeName ?? 'Project' };
+    return { item, record, presentation: view, paper: paper?.color, paperText: paper?.text, paperWriter: typeof writer?.name === 'string' ? writer.name : undefined, paperWrittenAt: typeof writer?.at === 'string' ? writer.at : undefined, mapSize, mapFields, pips: pips?.length ? pips : undefined, pipsLabel: presented?.label, counts, frameTitle: view?.frameTitle, reference: view?.reference, view: view?.view, tiny: Boolean(mapSize && mapSize.height <= 36 && !mapSize.iconOnly), iconOpens: view?.appearance.openFromIcon === true, completionToggle: view?.appearance.completionToggle === true, undermapWhenComplete: view?.appearance.undermapWhenComplete === true, showFullTitle: view?.appearance.showFullTitle === true, editableTitle: view?.appearance.editableTitle === true, editableViewTitle: view?.appearance.editableViewTitle === true, width, height, x: item.position.x, y: item.position.y, icon: presentationIcon(view, Boolean(item.completedAt)), brand: view?.brand, tint: view?.appearance.brandTint === true, tone: view?.appearance.tone ?? 'mint', typeName: paper ? paperType!.name : view?.typeName ?? 'Project' };
   };
   // Items a drag preview leaves in place keep their box, so their cards do not re-render per frame.
   const measured = useRef<{ inputs: unknown[]; boxes: WeakMap<MapItem, ReturnType<typeof measureBox>> }>(undefined);
@@ -831,7 +861,7 @@ function MapCanvas(props: ProjectMapProps) {
       // A card never pans the map, even while it cannot be dragged (Undermap, a save, a resize).
       className: quiet ? peek?.id === box.item.projectId ? PEEKED : COVERED : projectLabel ? 'nopan project-title-node' : 'nopan',
       zIndex: quiet ? -2 : itemResize.preview?.id === box.item.id ? 5 : projectLabel ? 0 : 1,
-      data: { badges: projectLabel ? undefined : props.badges?.get(box.item.id), badgeSize: Math.min(20, Math.max(11, 11 / viewport.zoom)), far: !projectLabel && level === 'overview', titleFill: !projectLabel && (fullSize || detail >= 1), takeover: !projectLabel && !fullSize && attentionTakesOver(width, viewport.zoom), header: header?.header, projectColor: projectLabel ? (props.neighborhoodColor ?? (color => color))(projectColor(box.item)) : undefined, pips: box.pips, pipsLabel: box.pipsLabel, frameTitle: box.frameTitle, reference: box.reference, mapSize: box.mapSize, mapFields: box.mapFields, tiny: box.tiny, iconOpens: box.iconOpens, completionToggle: box.completionToggle && Boolean(props.onComplete), undermapWhenComplete: box.undermapWhenComplete, resizable: Boolean(props.onResize && !mirror && !focus && !projectLabel && !quiet && detail >= .35), resizing: itemResize.preview?.id === box.item.id, viewOpen: box.item.id === focus, showFullTitle: box.showFullTitle, editableTitle: box.editableTitle && Boolean(props.onRename), editableViewTitle: box.editableViewTitle && Boolean(props.onRename), paper: box.paper, paperText: box.paperText, paperMode, paperWriter: box.paperWriter, paperWrittenAt: box.paperWrittenAt, item: box.item, icon: box.icon, brand: box.brand, tint: box.tint, typeName: box.typeName, tone: box.tone, width, height, compact: box.mapSize?.iconOnly || !project && (paperMode ? paperMode === 'far' : detail < .35), expanded: false, visited: false, scale, projectLabel, labelOverOutline: projectLabel, projectNeedsMe: rollups.get(box.item.id)?.needsMe ?? 0, attentionSize: projectLabel ? 14 : Math.max(14, 8 / viewport.zoom), dragging: drag?.id === box.item.id, blocked: projectLabel ? undefined : blocking.blocked.get(box.item.id), linkEnd: inspectedBlock && (inspectedBlock.sourceId === box.item.id || inspectedBlock.targetId === box.item.id), selected: !projectLabel && selection.has(box.item.id), covered } });
+      data: { badges: projectLabel ? undefined : props.badges?.get(box.item.id), badgeSize: Math.min(20, Math.max(11, 11 / viewport.zoom)), far: !projectLabel && level === 'overview', titleFill: !projectLabel && (fullSize || detail >= 1), takeover: !projectLabel && !fullSize && attentionTakesOver(width, viewport.zoom), header: header?.header, projectColor: projectLabel ? (props.neighborhoodColor ?? (color => color))(projectColor(box.item)) : undefined, pips: box.pips, pipsLabel: box.pipsLabel, counts: props.reviewOpenCounts ? box.counts : undefined, frameTitle: box.frameTitle, reference: box.reference, mapSize: box.mapSize, mapFields: box.mapFields, tiny: box.tiny, iconOpens: box.iconOpens, completionToggle: box.completionToggle && Boolean(props.onComplete), undermapWhenComplete: box.undermapWhenComplete, resizable: Boolean(props.onResize && !mirror && !focus && !projectLabel && !quiet && detail >= .35), resizing: itemResize.preview?.id === box.item.id, viewOpen: box.item.id === focus, showFullTitle: box.showFullTitle, editableTitle: box.editableTitle && Boolean(props.onRename), editableViewTitle: box.editableViewTitle && Boolean(props.onRename), paper: box.paper, paperText: box.paperText, paperMode, paperWriter: box.paperWriter, paperWrittenAt: box.paperWrittenAt, item: box.item, icon: box.icon, brand: box.brand, tint: box.tint, typeName: box.typeName, tone: box.tone, width, height, compact: box.mapSize?.iconOnly || !project && (paperMode ? paperMode === 'far' : detail < .35), expanded: false, visited: false, scale, projectLabel, labelOverOutline: projectLabel, projectNeedsMe: rollups.get(box.item.id)?.needsMe ?? 0, attentionSize: projectLabel ? 14 : Math.max(14, 8 / viewport.zoom), dragging: drag?.id === box.item.id, blocked: projectLabel ? undefined : blocking.blocked.get(box.item.id), linkEnd: inspectedBlock && (inspectedBlock.sourceId === box.item.id || inspectedBlock.targetId === box.item.id), selected: !projectLabel && selection.has(box.item.id), covered } });
   });
   const nodes = projected.length === previousNodes.current.length && projected.every((node, index) => node === previousNodes.current[index]) ? previousNodes.current : projected;
   // Detail surfaces are screen-space siblings, never graph nodes or edge endpoints.

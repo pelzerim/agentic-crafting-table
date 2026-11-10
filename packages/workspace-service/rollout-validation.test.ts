@@ -9,7 +9,7 @@ import { WorkspaceControl } from '../core/control.ts';
 import type { WorkspaceCommand } from '../core/control.ts';
 import type { ResourceCoordinator } from './resources.ts';
 import type { SessionCoordinator } from './sessions.ts';
-import { connectedAgents, RolloutValidations, validationAttentionCommand } from './rollout-validation.ts';
+import { connectedAgents, discoveringPulls, RolloutValidations, validationAttentionCommand } from './rollout-validation.ts';
 import { discoveredLinkId } from './resources.ts';
 import { rolloutDiscoveryKey } from '../provider-runtime/github-status.ts';
 import type { RolloutObservation } from '../provider-runtime/github-rollout.ts';
@@ -812,4 +812,21 @@ test('an attention event already recorded on the node is settled, whether or not
   assert.deepEqual((validationAttentionCommand({ id: 'n', ...newer }, source, wanted) as { eventId?: string } | undefined)?.eventId, wanted.eventId, 'a new event is raised');
   assert.deepEqual(validationAttentionCommand({ id: 'n', ...alerted }, source, { reason: null }), { type: 'attention.set', id: 'n', source, reason: null }, 'a resolved validation clears its source');
   assert.equal(validationAttentionCommand({ id: 'n', ...acknowledged }, source, { reason: null }), undefined, 'nothing to clear once the source is gone');
+});
+
+test('finding the pull requests that discovered a rollout looks only at the rollout\'s own links, not every link on the map', () => {
+  let lookups = 0;
+  class Counted<T> extends Array<T> { override find(...args: Parameters<T[]['find']>) { lookups++; return super.find(...(args as [never])); } }
+  const node = (id: string, resourceId: string) => ({ id, resourceId, title: id, position: { x: 0, y: 0 } });
+  const nodes = Counted.from([node('rollout', 'rollout-r'), node('pull', 'pull-r'), ...Array.from({ length: 400 }, (_, i) => node(`other-${i}`, `other-r-${i}`))]) as Counted<ReturnType<typeof node>>;
+  const resources = Counted.from([{ id: 'rollout-r', pluginId: 'github.rollout', data: { runId: 5 } }, { id: 'pull-r', pluginId: 'github.pull-request', data: {} },
+    ...Array.from({ length: 400 }, (_, i) => ({ id: `other-r-${i}`, pluginId: 'agent.session', data: {} }))]);
+  const links = [{ id: discoveredLinkId('pull-r', rolloutDiscoveryKey(5)), sourceId: 'pull', targetId: 'rollout' },
+    ...Array.from({ length: 2000 }, (_, i) => ({ id: `link-${i}`, sourceId: `other-${i % 400}`, targetId: `other-${(i + 1) % 400}` }))];
+  const state = { nodes, resources, links } as never;
+  lookups = 0;
+  assert.deepEqual(discoveringPulls(state, 'rollout').map(entry => entry.node.id), ['pull']);
+  assert.ok(lookups < 20, `${lookups} lookups`);
+  lookups = 0; discoveringPulls(state, 'pull');
+  assert.ok(lookups < 20, `${lookups} lookups for a node that is no rollout`);
 });

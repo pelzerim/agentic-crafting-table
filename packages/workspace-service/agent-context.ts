@@ -10,6 +10,7 @@ import { summarizeProject } from '../../src/agents/project-context.ts';
 import { buildAgentToolContext } from '../../src/agents/tool-context.ts';
 import { contextHierarchy } from '../../src/agents/context-hierarchy.ts';
 import { groupWorkspaceTodos } from '../../src/graph/todos.ts';
+import { findById } from '../../src/graph/lookup.ts';
 
 /** Characters of to-do context one delivery carries; the rest is read with workspace_read. */
 const TODO_CONTEXT_BUDGET = 24_000;
@@ -36,8 +37,8 @@ export class AgentContextCoordinator {
   }
   private async capture(nodeId: string) {
     for (let attempt = 0; attempt < 3; attempt++) {
-      const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId);
-      const resource = state.resources.find(resource => resource.id === node?.resourceId);
+      const state = await this.control.read(), node = findById(state.nodes, nodeId);
+      const resource = findById(state.resources, node?.resourceId);
       if (!node || !resource || !this.control.registry.get(resource.pluginId)?.acceptsContext) throw new Error('This item does not accept agent context');
       const project = state.nodes.find(candidate => candidate.id === node.projectId && !candidate.resourceId);
       const sources = incomingContextSources(nodeId, state.nodes, state.links);
@@ -46,7 +47,7 @@ export class AgentContextCoordinator {
       const signal = AbortSignal.timeout(3000);
       let next = 0;
       const load = async (entry: typeof hierarchy.entries[number]) => {
-        const record = state.resources.find(resource => resource.id === entry.resourceId);
+        const record = findById(state.resources, entry.resourceId);
         if (!record || !this.plugins.capabilities(record.pluginId).context) {
           briefs.set(entry.nodeId, { text: entry.summary, contentState: 'summary-only' }); return;
         }

@@ -11,6 +11,7 @@ import { agentReadiness, connectedAgents, heldAtPrompt } from './rollout-validat
 import { isArchived, isBelow, isOffMap } from '../../src/graph/archive.ts';
 import { findingsPrompt, findingsRollup, ignoredFindings, parseReviewOutput } from '../../src/pull-requests/review-findings.ts';
 import type { FindingStatus, ParsedReview } from '../../src/pull-requests/review-findings.ts';
+import { findById, nodesOfResource } from '../../src/graph/lookup.ts';
 
 const CLEAN_REVIEW_CUE = { id: 'findings', label: 'No findings', icon: 'check', tone: 'green', stage: 'done' } as const;
 
@@ -114,7 +115,7 @@ export class ReviewFindingsCoordinator {
     let state = await this.control.read(), dirty = false;
     for (const send of this.store.reviewSends({ states: ['queued'] })) {
       if (this.closed) return;
-      const node = state.nodes.find(candidate => candidate.id === send.agentNodeId), resource = state.resources.find(candidate => candidate.id === node?.resourceId);
+      const node = findById(state.nodes, send.agentNodeId), resource = findById(state.resources, node?.resourceId);
       const gone = !node || resource?.pluginId !== 'agent.session' || typeof resource.data.sessionId !== 'string' ? 'was removed from the map'
         : isBelow(node, state.nodes) ? 'was sent to the Undermap' : isArchived(node, state.nodes) || isOffMap(node, state.nodes) ? 'was archived' : undefined;
       if (gone) { this.store.transitionReviewSend(send.id, ['queued'], 'failed', Date.now(), { status: 'open', error: `${node?.title ?? 'The agent'} ${gone} before it could receive the findings.` }); dirty = true; continue; }
@@ -123,7 +124,7 @@ export class ReviewFindingsCoordinator {
     if (dirty) state = await this.control.read();
     const commands: WorkspaceCommand[] = [];
     for (const resource of state.resources.filter(record => record.pluginId === 'code.review' && typeof record.data.sessionId === 'string' && !record.data.phase)) {
-      const node = state.nodes.find(candidate => candidate.resourceId === resource.id && !isOffMap(candidate, state.nodes));
+      const node = nodesOfResource(state.nodes, resource.id).find(candidate => !isOffMap(candidate, state.nodes));
       if (!node || node.activity !== 'complete') continue;
       const sessionId = String(resource.data.sessionId), parsed = await this.parse(node.id, sessionId).catch(() => undefined);
       if (!parsed) continue;
@@ -150,7 +151,7 @@ export class ReviewFindingsCoordinator {
     if (parsed.kind === 'text') return { sessionId, format: 'text', summary: 'Result as text', counts: 'Result as text', progress: '', pips: [], mix: [], urgent: false };
     const rollup = findingsRollup(parsed.review, this.statuses(sessionId), ignoredFindings(this.store.reviewFindingEvents(sessionId)));
     const last = this.store.reviewSends({ reviewSessionId: sessionId }).filter(send => ['queued', 'delivering', 'sent'].includes(send.state)).at(-1);
-    const recipient = last ? state.nodes.find(node => node.id === last.agentNodeId)?.title : undefined;
+    const recipient = last ? findById(state.nodes, last.agentNodeId)?.title : undefined;
     return { sessionId, format: 'findings', summary: `${rollup.counts}\n${rollup.progress}`, ...rollup, ...(recipient ? { recipient } : {}) };
   }
 
@@ -158,8 +159,8 @@ export class ReviewFindingsCoordinator {
     const claimed = this.store.transitionReviewSend(sendId, ['queued'], 'delivering', Date.now());
     if (!claimed) return;
     try {
-      const state = await this.control.read(), node = state.nodes.find(candidate => candidate.id === claimed.agentNodeId);
-      const sessionId = state.resources.find(resource => resource.id === node?.resourceId)?.data.sessionId;
+      const state = await this.control.read(), node = findById(state.nodes, claimed.agentNodeId);
+      const sessionId = findById(state.resources, node?.resourceId)?.data.sessionId;
       if (!this.sessions || typeof sessionId !== 'string') throw new Error('The agent has no running session.');
       await promptAgent(this.sessions, sessionId, `${FROM_TABLE} Please handle the review findings as the pasted request describes:`, claimed.prompt);
       this.store.transitionReviewSend(sendId, ['delivering'], 'sent', Date.now(), { status: 'sent' });
@@ -222,7 +223,7 @@ export class ReviewFindingsCoordinator {
   private async completeWhenResolved(review: Awaited<ReturnType<ReviewFindingsCoordinator['load']>>) {
     const sent = new Set(this.store.reviewSends({ reviewSessionId: review.sessionId }).filter(send => send.state === 'sent').flatMap(send => send.findingIds)), statuses = this.statuses(review.sessionId);
     if (!sent.size || [...sent].some(id => statuses[id] !== 'fixed')) return;
-    const state = await this.control.read(), node = state.nodes.find(candidate => candidate.id === review.nodeId);
+    const state = await this.control.read(), node = findById(state.nodes, review.nodeId);
     if (!node || node.completedAt) return;
     await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'system', id: 'review-findings' }, commands: [{ type: 'node.complete', id: node.id }] }).catch(() => {});
   }
@@ -250,9 +251,9 @@ export class ReviewFindingsCoordinator {
   }
 
   private async load(nodeId: string) {
-    const state = await this.control.read(), node = state.nodes.find(candidate => candidate.id === nodeId), resource = state.resources.find(candidate => candidate.id === node?.resourceId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId), resource = findById(state.resources, node?.resourceId);
     if (!node || resource?.pluginId !== 'code.review') throw new Error('This item is not a code review.');
-    const pr = state.nodes.find(candidate => candidate.id === resource.data.sourcePrId), prData = state.resources.find(candidate => candidate.id === pr?.resourceId)?.data ?? {};
+    const pr = findById(state.nodes, resource.data.sourcePrId), prData = findById(state.resources, pr?.resourceId)?.data ?? {};
     const sessionId = typeof resource.data.sessionId === 'string' && !resource.data.phase ? resource.data.sessionId : '';
     const running = !sessionId || node.activity === 'working';
     const parsed = running ? undefined : await this.parse(nodeId, sessionId);
@@ -263,11 +264,11 @@ export class ReviewFindingsCoordinator {
   }
 
   private async options(review: Awaited<ReturnType<ReviewFindingsCoordinator['load']>>) {
-    const { state, prNodeId } = review, pr = state.nodes.find(node => node.id === prNodeId);
-    const isPr = (id: string) => id === prNodeId || Boolean(pr?.resourceId && state.nodes.find(node => node.id === id)?.resourceId === pr.resourceId);
+    const { state, prNodeId } = review, pr = findById(state.nodes, prNodeId);
+    const isPr = (id: string) => id === prNodeId || Boolean(pr?.resourceId && findById(state.nodes, id)?.resourceId === pr.resourceId);
     const found = connectedAgents(state, review.nodeId, isPr).filter(agent => agent.direct || agent.path.nodes.length === 3 && isPr(agent.path.nodes[1]));
     const agents = await Promise.all(found.map(async agent => {
-      const node = state.nodes.find(candidate => candidate.id === agent.nodeId)!, provider = state.resources.find(resource => resource.id === node.resourceId)?.data.provider;
+      const node = findById(state.nodes, agent.nodeId)!, provider = findById(state.resources, node.resourceId)?.data.provider;
       const status = await agentReadiness(this.sessions, state, agent, sessionId => this.store.agentObservation(sessionId));
       return { nodeId: agent.nodeId, title: agent.title, provider: provider === 'codex' ? 'codex' : 'claude', direct: agent.direct, via: agent.direct ? 'review' : 'pr',
         linkedToPr: agent.direct && state.links.some(link => [link.sourceId, link.targetId].includes(agent.nodeId) && [link.sourceId, link.targetId].some(isPr)),

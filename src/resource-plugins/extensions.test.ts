@@ -54,6 +54,8 @@ test('plugin map sizes survive discovery and reject undeclared fields without ho
   assert.throws(() => createResourcePluginRegistry([{ ...plugin, mapSizes: { defaultSize: 'small', sizes: { small: { ...plugin.mapSizes.sizes.small, fields: ['privateUndeclaredField'] } } } }]), /Invalid map/);
   assert.throws(() => createResourcePluginRegistry([{ ...plugin, mapSizes: { defaultSize: 'small', sizes: { small: { ...plugin.mapSizes.sizes.small, presentationPips: 'yes' as never } } } }]), /Invalid map/);
   assert.ok(createResourcePluginRegistry([{ ...plugin, mapSizes: { defaultSize: 'small', sizes: { small: { ...plugin.mapSizes.sizes.small, presentationPips: true } } } }]));
+  assert.throws(() => createResourcePluginRegistry([{ ...plugin, mapSizes: { defaultSize: 'small', sizes: { small: { ...plugin.mapSizes.sizes.small, counts: 7 as never } } } }]), /Invalid map/);
+  assert.ok(createResourcePluginRegistry([{ ...plugin, mapSizes: { defaultSize: 'small', sizes: { small: { ...plugin.mapSizes.sizes.small, counts: 'findings.open' } } } }]));
   assert.equal(mapSizeLimits({ width: 120, height: 80, summaryLines: 1, description: 'Native narrow plugin.' }).minWidth, 120);
 });
 

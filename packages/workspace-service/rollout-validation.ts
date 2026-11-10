@@ -22,6 +22,7 @@ import { currentPhase } from '../../src/resource-plugins/items/github-rollout/ph
 import { componentOf, dueStage, environmentStates, reachedStage, stageRule } from '../../src/resource-plugins/items/github-rollout/stages.ts';
 import type { Component, DueStage, EnvironmentStatus, StagePlan, StageRule } from '../../src/resource-plugins/items/github-rollout/stages.ts';
 import { VALIDATION_LINK } from './validation-link-migration.ts';
+import { findById, nodesOfResource } from '../../src/graph/lookup.ts';
 
 const label = z.string().regex(/^V[1-9][0-9]{0,5}$/);
 export const rolloutValidationInput = z.discriminatedUnion('operation', [
@@ -64,7 +65,7 @@ const UNREADY_MS = 30_000;
 export type AgentStatus = 'idle' | 'working' | 'stopped';
 export interface ValidationAgent { nodeId: string; title: string; sessionId: string; direct: boolean; ready: boolean; status: AgentStatus; prompt: boolean; path: { nodes: string[]; links: string[] } }
 /** Whether an agent that cannot take a prompt is held at a question or dialog in its terminal. */
-export const heldAtPrompt = (state: WorkspaceState, nodeId: string, status: AgentStatus) => status === 'working' && state.nodes.find(node => node.id === nodeId)?.attention === 'input';
+export const heldAtPrompt = (state: WorkspaceState, nodeId: string, status: AgentStatus) => status === 'working' && findById(state.nodes, nodeId)?.attention === 'input';
 const availability = (agent: Pick<ValidationAgent, 'status' | 'prompt'>) => agent.status === 'idle' ? 'Ready' : agent.status === 'stopped' ? 'Stopped' : agent.prompt ? 'Waiting for you to answer a prompt in its terminal' : 'Working';
 const unavailable = (agent: Pick<ValidationAgent, 'status' | 'prompt'>) => agent.status === 'stopped' ? 'The agent is stopped. Resume it, then try again.'
   : agent.prompt ? 'Answer the prompt in the agent\'s terminal first.' : 'Wait until the agent is ready for a new prompt.';
@@ -74,7 +75,7 @@ type ConnectedAgent = Omit<ValidationAgent, 'ready' | 'status' | 'prompt'>;
  * shortest connecting path. Undermap/archived items neither appear nor connect.
  * `through` limits which reached items the search continues from. */
 export function connectedAgents(state: WorkspaceState, rolloutNodeId: string, through?: (nodeId: string) => boolean): ConnectedAgent[] {
-  const rollout = state.nodes.find(node => node.id === rolloutNodeId);
+  const rollout = findById(state.nodes, rolloutNodeId);
   if (!rollout) return [];
   const onMap = new Set(state.nodes.filter(node => !isOffMap(node, state.nodes)).map(node => node.id));
   const starts = state.nodes.filter(node => onMap.has(node.id) && (node.id === rolloutNodeId || rollout.resourceId && node.resourceId === rollout.resourceId)).map(node => node.id);
@@ -89,7 +90,7 @@ export function connectedAgents(state: WorkspaceState, rolloutNodeId: string, th
   }
   const resources = new Map(state.resources.map(resource => [resource.id, resource])), seen = new Set<string>(), agents: ConnectedAgent[] = [];
   for (const id of queue) {
-    const node = state.nodes.find(candidate => candidate.id === id)!, resource = resources.get(node.resourceId ?? '');
+    const node = findById(state.nodes, id)!, resource = resources.get(node.resourceId ?? '');
     if (resource?.pluginId !== 'agent.session' || typeof resource.data.sessionId !== 'string' || seen.has(resource.id)) continue;
     seen.add(resource.id);
     const nodes: string[] = [], links: string[] = [];
@@ -112,12 +113,12 @@ export const chatRequestId = (rolloutResourceId: string, ordinal: number) => sta
 type Discovery = { node: WorkspaceState['nodes'][number]; pull: WorkspaceState['resources'][number] };
 /** Pull requests on the map that discovered this rollout after their merge. */
 export function discoveringPulls(state: WorkspaceState, rolloutNodeId: string): Discovery[] {
-  const resource = state.resources.find(record => record.id === state.nodes.find(node => node.id === rolloutNodeId)?.resourceId), runId = Number(resource?.data.runId);
+  const resourceId = findById(state.nodes, rolloutNodeId)?.resourceId, resource = resourceId === undefined ? undefined : findById(state.resources, resourceId), runId = Number(resource?.data.runId);
   if (!resource || !Number.isSafeInteger(runId)) return [];
-  const aliases = new Set(state.nodes.filter(node => node.resourceId === resource.id).map(node => node.id));
-  return state.links.flatMap(link => {
-    const node = state.nodes.find(candidate => candidate.id === (aliases.has(link.targetId) ? link.sourceId : aliases.has(link.sourceId) ? link.targetId : undefined));
-    const pull = state.resources.find(record => record.id === node?.resourceId);
+  const aliases = new Set(nodesOfResource(state.nodes, resource.id).map(node => node.id));
+  return state.links.filter(link => aliases.has(link.targetId) || aliases.has(link.sourceId)).flatMap(link => {
+    const node = state.nodes.find(candidate => candidate.id === (aliases.has(link.targetId) ? link.sourceId : link.targetId));
+    const pull = findById(state.resources, node?.resourceId);
     return node && pull?.pluginId === 'github.pull-request' && !isOffMap(node, state.nodes) && link.id === discoveredLinkId(pull.id, rolloutDiscoveryKey(runId)) ? [{ node, pull }] : [];
   });
 }
@@ -212,7 +213,7 @@ const permissionAnswered = (last: AgentObservation | undefined, current: Session
 const parked = (state: BackgroundState | undefined, now: number) => Boolean(state?.turnEnded && !state.waking && state.tasks.length && !outstanding(state, now).length);
 export async function agentReadiness(sessions: SessionCoordinator | undefined, state: WorkspaceState, agent: { nodeId: string; sessionId: string },
   lastEvent: (sessionId: string) => AgentObservation | undefined = () => undefined, now = Date.now, background: (sessionId: string) => BackgroundState | undefined = () => undefined): Promise<AgentStatus> {
-  const target = state.nodes.find(candidate => candidate.id === agent.nodeId);
+  const target = findById(state.nodes, agent.nodeId);
   const current = sessions && await sessions.runtime.call<SessionSnapshot>('sessions.read', { sessionId: agent.sessionId, after: Number.MAX_SAFE_INTEGER }).catch(() => undefined);
   if (!target || !current || current.session.state !== 'running' || current.session.stopRequestedAt || current.session.readOnly) return 'stopped';
   if (current.session.native) return target.activity === 'idle' && target.attention !== 'input' && current.session.native.status === 'idle' ? 'idle' : 'working';
@@ -371,7 +372,7 @@ export class RolloutValidations {
           commands: [{ type: 'link.save', link: { id: randomUUID(), sourceId: nodeId, targetId: agent.nodeId, kind: 'context', ...VALIDATION_LINK } }] });
         linked = true;
       }
-      const provider = state.resources.find(record => record.id === state.nodes.find(candidate => candidate.id === agent.nodeId)?.resourceId)?.data.provider;
+      const provider = state.resources.find(record => record.id === findById(state.nodes, agent.nodeId)?.resourceId)?.data.provider;
       const validation = this.store.createRolloutValidation({ id: randomUUID(), rolloutResourceId: resourceId, agentNodeId: agent.nodeId, agent: { title: agent.title, ...(typeof provider === 'string' ? { provider } : {}) },
         requestId: args.requestId, scope: { runId: run.id, attempt: run.run_attempt, headSha: run.head_sha, ...stageScope(stage), ...phaseScope(args, stage?.due.focus) }, requestedAt: this.now() });
       const id = `V${validation.ordinal}`, context = await this.resources.context(nodeId, AbortSignal.timeout(10_000)).catch(() => undefined);
@@ -402,7 +403,7 @@ export class RolloutValidations {
    * rollout, then any. */
   private async validateAutomatically(state: WorkspaceState, node: WorkspaceState['nodes'][number], resourceId: string, observation: RolloutObservation & { run: RolloutRun }, firstSeen: boolean) {
     // A pull request whose Auto deploy is armed asks for this rollout's validations itself; asking here too would validate each stage twice.
-    const deployed = (id: string) => { const resourceId = state.nodes.find(candidate => candidate.id === id)?.resourceId; return Boolean(resourceId && this.deploying(resourceId)); };
+    const deployed = (id: string) => { const resourceId = findById(state.nodes, id)?.resourceId; return Boolean(resourceId && this.deploying(resourceId)); };
     const run = observation.run, pulls = autoValidatingPulls(state, node.id).filter(id => !deployed(id)), scope = { runId: run.id, attempt: run.run_attempt, headSha: run.head_sha };
     if (!pulls.length || !this.sessions) return false;
     const rule = stageRule(observation, this.stageRules()), due = rule && dueStage(rule, observation.jobs, this.now());
@@ -422,7 +423,7 @@ export class RolloutValidations {
     if (own) return this.request(state, node, resourceId, own, { ...args, value: own.nodeId }, stage, true).then(() => true, () => false);
     if (!(await this.cannotStart(node.id))) return this.spawn(state, node, resourceId, args, stage).then(() => true, () => false);
     // Through the pull request: reached from it without passing the rollout, so an earlier direct link does not hide it.
-    const aliases = new Set(state.nodes.filter(candidate => candidate.resourceId === resourceId).map(candidate => candidate.id));
+    const aliases = new Set(nodesOfResource(state.nodes, resourceId).map(candidate => candidate.id));
     const preferred = new Set(pulls.flatMap(pull => connectedAgents(state, pull, id => !aliases.has(id)).map(candidate => candidate.nodeId)));
     const previous = earlier.at(-1)?.agentNodeId;
     const agent = ready.find(candidate => candidate.nodeId === previous) ?? ready.find(candidate => preferred.has(candidate.nodeId)) ?? ready[0];
@@ -487,7 +488,7 @@ export class RolloutValidations {
     const state = await this.control.read(), now = this.now(), commands: WorkspaceCommand[] = [], repaint: string[] = [];
     let stored = false;
     for (const resource of state.resources.filter(record => record.pluginId === 'github.rollout')) {
-      const node = state.nodes.find(candidate => candidate.resourceId === resource.id && !isOffMap(candidate, state.nodes));
+      const node = nodesOfResource(state.nodes, resource.id).find(candidate => !isOffMap(candidate, state.nodes));
       if (!node) continue;
       const observation = await this.observation(node.id), known = this.store.rolloutEvents(resource.id), events = observation ? observedEvents(observation, known, now, this.approvals(state, resource.id)) : [];
       if (events.length) { this.store.addRolloutEvents(resource.id, events); repaint.push(node.id); stored = true; }
@@ -531,7 +532,7 @@ export class RolloutValidations {
     const commands: WorkspaceCommand[] = [];
     for (const id of this.idleHidden.keys()) if (!agents.has(id)) this.idleHidden.delete(id);
     for (const [id, { open, latest }] of agents) {
-      const agent = state.nodes.find(node => node.id === id);
+      const agent = findById(state.nodes, id);
       if (!agent?.hiddenAt || isOffMap(agent, state.nodes) || open || !this.atPrompt(state, agent)) { this.idleHidden.delete(id); continue; }
       const since = this.idleHidden.get(id) ?? now; this.idleHidden.set(id, since);
       if (now - Math.max(since, latest) < HIDDEN_AGENT_IDLE_MS) continue;
@@ -543,18 +544,18 @@ export class RolloutValidations {
   private atPrompt(state: WorkspaceState, agent: WorkspaceState['nodes'][number]) {
     if (agent.activity === 'working' || agent.beside || agent.helpers) return false;
     if (agent.attention !== 'input') return true;
-    const sessionId = state.resources.find(record => record.id === agent.resourceId)?.data.sessionId;
+    const sessionId = findById(state.resources, agent.resourceId)?.data.sessionId;
     return typeof sessionId === 'string' && this.store.agentObservation(sessionId)?.event === 'Notification:idle_prompt';
   }
 
   /** Since when the validation's agent has been idle without reporting, or undefined while it works. Claude at its idle prompt
    * is idle since it got there, even across a restart; a question or permission prompt waits on the person. */
   private idleSince(state: WorkspaceState, validation: Validation & { idleSince?: number }, now: number) {
-    const agent = state.nodes.find(candidate => candidate.id === validation.agentNodeId);
+    const agent = findById(state.nodes, validation.agentNodeId);
     if (!agent || isOffMap(agent, state.nodes)) return validation.idleSince ?? now;
     if (agent.activity === 'working') return undefined;
     if (agent.attention !== 'input') return validation.idleSince ?? now;
-    const sessionId = state.resources.find(record => record.id === agent.resourceId)?.data.sessionId, last = typeof sessionId === 'string' ? this.store.agentObservation(sessionId) : undefined;
+    const sessionId = findById(state.resources, agent.resourceId)?.data.sessionId, last = typeof sessionId === 'string' ? this.store.agentObservation(sessionId) : undefined;
     if (last?.event !== 'Notification:idle_prompt') return undefined;
     return validation.idleSince ?? Math.min(now, Math.max(last.observedAt, validation.updatedAt));
   }
@@ -618,7 +619,7 @@ export class RolloutValidations {
       requestedAt: this.now() });
   }
   private async reporter(agentNodeId: string, refusal: string) {
-    const state = await this.control.read(), agent = state.nodes.find(node => node.id === agentNodeId), resource = state.resources.find(record => record.id === agent?.resourceId);
+    const state = await this.control.read(), agent = findById(state.nodes, agentNodeId), resource = findById(state.resources, agent?.resourceId);
     if (!agent || resource?.pluginId !== 'agent.session' || isOffMap(agent, state.nodes)) throw new Error(refusal);
     return { agent, provider: resource.data.provider };
   }
@@ -652,7 +653,7 @@ export class RolloutValidations {
 
   /** The rollout a hidden agent was started to validate, if it is one. */
   private validationAgentOf(state: WorkspaceState, agentNodeId: string) {
-    const agent = state.nodes.find(node => node.id === agentNodeId), data = state.resources.find(record => record.id === agent?.resourceId)?.data;
+    const agent = findById(state.nodes, agentNodeId), data = findById(state.resources, agent?.resourceId)?.data;
     const started = data?.validation as { rolloutNodeId?: unknown } | undefined;
     return agent?.hiddenAt && typeof started?.rolloutNodeId === 'string' ? started.rolloutNodeId : undefined;
   }
@@ -661,7 +662,7 @@ export class RolloutValidations {
   private async visibility(state: WorkspaceState, nodeId: string, resourceId: string, operation: 'show' | 'hide', validationId: string) {
     const validation = this.store.rolloutValidations({ rolloutResourceId: resourceId }).find(entry => `V${entry.ordinal}` === validationId);
     if (!validation) throw new Error(`${validationId} was not requested on this rollout.`);
-    const agent = state.nodes.find(candidate => candidate.id === validation.agentNodeId);
+    const agent = findById(state.nodes, validation.agentNodeId);
     if (!agent) throw new Error('The agent of this validation is no longer on your table.');
     if (operation === 'hide' && !agent.hideLabel) throw new Error('Only an agent started for a validation can be hidden here.');
     const wanted = operation === 'show' ? Boolean(agent.hiddenAt) : !agent.hiddenAt;
@@ -691,7 +692,7 @@ export class RolloutValidations {
     return this.store.rolloutEvents(resourceId).filter(event => event.kind === 'jobs-snapshot' && event.runId === validation.scope.runId && event.attempt === validation.scope.attempt).at(-1)?.body.jobs as SnapshotJob[] | undefined;
   }
   private approvals(state: WorkspaceState, resourceId: string): AppApproval[] {
-    const aliases = new Set(state.nodes.filter(node => node.resourceId === resourceId).map(node => node.id));
+    const aliases = new Set(nodesOfResource(state.nodes, resourceId).map(node => node.id));
     return this.store.rolloutApprovalJobs().filter(job => aliases.has(job.input.nodeId)).map(job => {
       const input = job.input.arguments.input as Record<string, unknown>;
       return { runId: Number(input.runId), attempt: Number(input.attempt), environmentIds: String(input.environmentIds).split(',').map(Number), at: Date.parse(job.updatedAt) };
@@ -703,7 +704,7 @@ export class RolloutValidations {
     return detail && 'jobs' in detail ? detail : undefined;
   }
   private async rollout(nodeId: string) {
-    const state = await this.control.read(), node = state.nodes.find(candidate => candidate.id === nodeId), resource = state.resources.find(record => record.id === node?.resourceId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId), resource = findById(state.resources, node?.resourceId);
     if (!node || resource?.pluginId !== 'github.rollout' || isOffMap(node, state.nodes)) throw new Error('Open a rollout on the map to validate it.');
     return { state, node, resource };
   }

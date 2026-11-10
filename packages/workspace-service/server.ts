@@ -97,6 +97,7 @@ import { StandupReports } from './standup.ts';
 import { UpdateChecker, tagsSource } from './updates.ts';
 import type { UpdateCheckerOptions } from './updates.ts';
 import { STANDUP_ENABLED } from '../core/standup.ts';
+import { findById } from '../../src/graph/lookup.ts';
 
 /** Each package's settings presets, once per workspace, when the package loads (a preset for the app sets allowed app settings); a preset whose target
  * package is not loaded waits for a later start, and one its target refuses is skipped and logged. */
@@ -457,7 +458,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
           }
           case 'runtime.run': {
             const request = runtimeTransportSchema.parse(args), state = await control.read(), handled = servicePlugins.operation(request.action);
-            const node = state.nodes.find(node => node.id === request.nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+            const node = findById(state.nodes, request.nodeId), resource = findById(state.resources, node?.resourceId);
             if (handled?.options.requiresNode !== false && !node) throw new Error('Node not found');
             if (!handled) throw new Error('This runtime action is not connected');
             result = await handled.handler({ nodeId: request.nodeId, node, resource, arguments: request.arguments, signal: AbortSignal.timeout(10_000), execute: work => lifecycle.execute(work) });

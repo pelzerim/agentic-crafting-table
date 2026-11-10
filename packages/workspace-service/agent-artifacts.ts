@@ -3,6 +3,7 @@ import type { WorkspaceControl, WorkspaceCommand, WorkspaceState } from '../core
 import { isArchived } from '../../src/graph/archive.ts';
 import { defaultArtifactTitle, parseClaudeArtifactUrl } from '../../src/resource-plugins/items/claude-artifact/url.ts';
 import type { ClaudeArtifactUrl } from '../../src/resource-plugins/items/claude-artifact/url.ts';
+import { findById } from '../../src/graph/lookup.ts';
 
 export interface PublishedArtifact { nodeId: string; processSessionId: string; nativeSessionId: string; url: string; title?: string }
 
@@ -13,8 +14,8 @@ const identity = (artifact: ClaudeArtifactUrl) => `${artifact.kind}:${artifact.i
  * the one pull request the agent is connected to. Several connected PRs are ambiguous. */
 function sourcePullRequest(state: WorkspaceState, agentId: string, architecture: { sourcePrId?: unknown } | undefined) {
   const available = (id: unknown) => {
-    const node = state.nodes.find(node => node.id === id);
-    return node && !isArchived(node, state.nodes) && state.resources.find(resource => resource.id === node.resourceId)?.pluginId === 'github.pull-request' ? node : undefined;
+    const node = findById(state.nodes, id);
+    return node && !isArchived(node, state.nodes) && findById(state.resources, node.resourceId)?.pluginId === 'github.pull-request' ? node : undefined;
   };
   if (architecture?.sourcePrId) return available(architecture.sourcePrId);
   const connected = [...new Set(state.links.flatMap(link => link.sourceId === agentId ? [link.targetId] : link.targetId === agentId ? [link.sourceId] : []))].map(available).filter(Boolean);
@@ -27,8 +28,8 @@ export async function attachPublishedArtifact(control: WorkspaceControl, changed
   const artifact = parseClaudeArtifactUrl(published.url);
   if (!artifact) throw new Error('Not a claude.ai artifact URL');
   for (let attempt = 0; attempt < 5; attempt++) {
-    const state = await control.read(), agent = state.nodes.find(node => node.id === published.nodeId);
-    const session = state.resources.find(resource => resource.id === agent?.resourceId);
+    const state = await control.read(), agent = findById(state.nodes, published.nodeId);
+    const session = findById(state.resources, agent?.resourceId);
     if (!agent || !session || isArchived(agent, state.nodes) || session.data.sessionId !== published.processSessionId
       || session.data.nativeSessionId !== published.nativeSessionId || session.data.provider !== 'claude') return { ignored: true };
     const architecture = session.data.architecture as { sourcePrId?: unknown; headSha?: unknown } | undefined;
@@ -45,7 +46,7 @@ export async function attachPublishedArtifact(control: WorkspaceControl, changed
       if (published.title && existing.title === defaultArtifactTitle(artifact.id)) commands.push({ type: 'node.update', id: existing.id, title: published.title });
     } else {
       targetId = randomUUID();
-      const placed = state.links.filter(link => link.sourceId === agent.id && state.resources.find(resource => resource.id === state.nodes.find(node => node.id === link.targetId)?.resourceId)?.pluginId === 'claude.artifact').length;
+      const placed = state.links.filter(link => link.sourceId === agent.id && state.resources.find(resource => resource.id === findById(state.nodes, link.targetId)?.resourceId)?.pluginId === 'claude.artifact').length;
       commands.push({ type: 'item.create', id: targetId, ...(agent.projectId ? { projectId: agent.projectId } : {}), position: { x: agent.position.x, y: agent.position.y + 150 + placed * 70 },
         resource: { id: randomUUID(), pluginId: 'claude.artifact', schemaVersion: 2, title: published.title ?? defaultArtifactTitle(artifact.id), data: {
           url: artifact.url, artifactId: artifact.id, sessionId: published.processSessionId,

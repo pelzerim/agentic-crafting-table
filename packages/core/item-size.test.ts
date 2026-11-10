@@ -209,13 +209,13 @@ test('Use size as default saves a hand-resized item as its tier dimensions', () 
   assert.deepEqual(narrow.sizes(pinned(narrow.state.nodes, small.pins), small.itemMapSizes), narrow.sizes(narrow.state.nodes, {}));
 });
 
-test('Use size as default keeps the text height of notes that are pinned to their width', () => {
+test('Use size as default pins other notes at the size they show, text height included', () => {
   const note = (id: string, size: object = {}) => ({ id, resourceId: `${id}-r`, title: id, position: { x: 0, y: 0 }, ...size });
   const state = stateSchema.parse({ ...emptyState(), nodes: [note('picked', { mapDimensions: { width: 200, height: 88 } }), note('plain')],
     resources: ['picked', 'plain'].map(id => ({ id: `${id}-r`, pluginId: 'workspace.note', schemaVersion: 1, title: id, data: { text: 'One line\nTwo\nThree\nFour\nFive\nSix' } })) });
   const result = sizeAsDefault(state.nodes[0], state.nodes, state.resources, registry)!, plugin = registry.get('workspace.note');
   assert.deepEqual(result.itemMapSizes, { 'workspace.note': { defaultSize: 'small', sizes: { small: { width: 200, height: 88 } } } });
-  assert.deepEqual(result.pins, [{ id: 'plain', dimensions: { width: 160, height: 88 } }]);
+  assert.deepEqual(result.pins, [{ id: 'plain', dimensions: { width: 160, height: resolveMapSize(state.nodes[1], state.resources[1], registry.get('workspace.note')).height } }]);
   const before = resolveMapSize(state.nodes[1], state.resources[1], plugin), after = resolveMapSize(pinned(state.nodes, result.pins)[1], state.resources[1], plugin, result.itemMapSizes);
   assert.deepEqual([after.width, after.height], [before.width, before.height]);
 });

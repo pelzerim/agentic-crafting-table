@@ -14,6 +14,7 @@ import { buildArchitectureLaunch } from '../../src/pull-requests/architecture.ts
 import type { ArchitectureLaunch } from '../../src/pull-requests/architecture.ts';
 import type { ResourceRecord } from '../../src/resource-plugins/types.ts';
 import { isArchived } from '../../src/graph/archive.ts';
+import { findById } from '../../src/graph/lookup.ts';
 
 const inputSchema = z.object({ requestId: z.string().uuid() }).strict();
 const prepared = 'The PR comparison is saved. Launching starts a read-only Claude session that publishes one private artifact.';
@@ -138,7 +139,7 @@ export class ArchitectureRequests {
         const existing = state.nodes.find(node => !isArchived(node, state.nodes) && state.resources.some(resource => resource.id === node.resourceId
           && resource.pluginId === 'agent.session' && (resource.data.architecture as { key?: unknown } | undefined)?.key === key));
         if (existing) { this.store.transitionJob(job.id, 'running', 'succeeded', { result: { nodeId: existing.id, resourceId: existing.resourceId!, reused: true } satisfies LaunchedRun }); return; }
-        const source = state.nodes.find(node => node.id === nodeId);
+        const source = findById(state.nodes, nodeId);
         if (!source || isArchived(source, state.nodes)) throw new Error('Open an available pull request before explaining its architecture.');
         const sourceDirectory = this.sourceDirectory(request), checkout = join(sourceDirectory, 'repository');
         if (!this.checkoutExists(request)) throw new Error('The captured PR source is no longer available. Start Explain architecture again.');
@@ -185,8 +186,8 @@ export class ArchitectureRequests {
     this.pending.set(job.id, work); this.tail = work.catch(() => {}); return work;
   }
   private async assertBinding(nodeId: string, frozen?: FrozenRequest) {
-    const state = await this.control.read(), node = state.nodes.find(item => item.id === nodeId);
-    const resource = state.resources.find(item => item.id === node?.resourceId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId);
+    const resource = findById(state.resources, node?.resourceId);
     if (!node || !resource || isArchived(node, state.nodes) || !this.sources[resource.pluginId]) throw new Error('Open an available pull request before preparing its architecture request');
     if (frozen && (node.projectId !== frozen.projectId || resource.id !== frozen.resource.id || resource.pluginId !== frozen.resource.pluginId
       || resource.connectionId !== frozen.resource.connectionId || canonical(resource.data) !== canonical(frozen.resource.data))) {
@@ -208,7 +209,7 @@ export class ArchitectureRequests {
       if (!frozen) {
         const source = await this.sources[resource.pluginId].freeze(resource, signal);
         comparisonInput.parse(source.comparison); signal.throwIfAborted();
-        const project = state.nodes.find(item => item.id === node.projectId);
+        const project = findById(state.nodes, node.projectId);
         frozen = { resource, source, projectId: node.projectId, project: { id: project?.id ?? node.id, name: project?.title ?? 'Floating pull request', goal: project?.summary ?? '', repository: source.comparison.repository } };
         await this.assertBinding(node.id, frozen);
         job = this.store.transitionJob(job.id, 'running', 'running', { correlation: { frozen } });

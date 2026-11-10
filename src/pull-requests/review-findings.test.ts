@@ -73,6 +73,13 @@ test('orders by severity then kind and verification; labels and roll-up summaris
   assert.equal(findingsRollup({ ...sampleReview, findings: [] }, {}).counts, 'No findings');
 });
 
+test('the open roll-up counts, most severe first, only findings not yet queued, sent, fixed or ignored', () => {
+  assert.deepEqual(findingsRollup(sampleReview, {}).open, [{ tone: 'critical', count: 1 }, { tone: 'low', count: 1 }, { tone: 'hardening', count: 1 }]);
+  assert.deepEqual(findingsRollup(sampleReview, { F1: 'queued', F3: 'sent' }).open, [{ tone: 'hardening', count: 1 }]);
+  assert.deepEqual(findingsRollup(sampleReview, { F1: 'sent', F2: 'fixed', F3: 'fixed' }, new Set(['F2'])).open, []);
+  assert.equal(findingsRollup({ ...sampleReview, findings: [] }, {}).open, undefined);
+});
+
 test('a finding the person marked counts as ignored; only an agent report counts as fixed', () => {
   const events = [{ findingId: 'F1', status: 'fixed', actor: 'agent' }, { findingId: 'F2', status: 'fixed', actor: 'user' }, { findingId: 'F3', status: 'fixed', actor: 'user' }, { findingId: 'F3', status: 'sent', actor: 'system' }] as const;
   const ignored = ignoredFindings(events);

@@ -8,8 +8,8 @@ export const codeReview = defineResourcePlugin({
   view: { width: 1040, height: 720, minWidth: 750 },
   providerBrands: { claude: 'claude', codex: 'codex' },
   mapSizes: { defaultSize: 'small', sizes: {
-    small: { width: 150, height: 48, summaryLines: 0, description: "Review title and progress/attention." },
-    medium: { width: 240, height: 112, summaryLines: 2, pips: 'findings.pips', description: "Findings by severity, what was sent, fixed and ignored, or the review's progress." },
+    small: { width: 150, height: 48, summaryLines: 0, counts: 'findings.open', description: "Review title and progress/attention." },
+    medium: { width: 240, height: 112, summaryLines: 2, pips: 'findings.pips', counts: 'findings.open', description: "Findings by severity, what was sent, fixed and ignored, or the review's progress." },
   } },
   appearance: { tone: 'copper', shape: 'artifact', size: 'small', brandTint: true },
   acceptsContext: false,

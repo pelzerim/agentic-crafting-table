@@ -9,6 +9,7 @@ import { nativeSummaryClient, summaryEvidence } from '../session-runtime/activit
 import type { ActivitySummaryClient } from '../../src/agents/activity-summary.ts';
 import { AGENT_TITLE_MODEL, buildAgentTitleRequest, normalizeAgentTitle, sameAgentTitle } from '../../src/agents/agent-title.ts';
 import { isOffMap } from '../../src/graph/archive.ts';
+import { findById, nodesOfResource } from '../../src/graph/lookup.ts';
 
 /** At most one automatic attempt per item in this window; a long turn is named after the shorter one. */
 export const AGENT_TITLE_INTERVAL_MS = 10 * 60_000, AGENT_TITLE_WORKING_MS = 60_000;
@@ -57,7 +58,7 @@ export class AgentTitles {
   }
   private candidates(state: WorkspaceState) {
     return state.resources.flatMap(resource => {
-      const node = this.control.registry.get(resource.pluginId)?.activityTitle && state.nodes.find(node => node.resourceId === resource.id && !isOffMap(node, state.nodes));
+      const node = this.control.registry.get(resource.pluginId)?.activityTitle && nodesOfResource(state.nodes, resource.id).find(node => !isOffMap(node, state.nodes));
       return node && this.owned(node, resource) ? [{ node, resource }] : [];
     });
   }
@@ -65,7 +66,7 @@ export class AgentTitles {
     const now = this.clock();
     for (const { node, resource } of this.candidates(state)) if (node.activity === 'working' && !this.worked.has(resource.id)) this.worked.set(resource.id, now);
     if (!this.pending) return;
-    const node = state.nodes.find(node => node.id === this.pending!.nodeId);
+    const node = findById(state.nodes, this.pending!.nodeId);
     if (!node || isOffMap(node, state.nodes) || node.title !== this.pending.sourceTitle) this.pending.abort.abort();
   }
   start() {
@@ -86,7 +87,7 @@ export class AgentTitles {
   /** Hands the title back to automation and names the item on the next tick. */
   async request(nodeId: string) {
     if (!this.store.readSettings().value.summaries.agentTitles) throw new Error('Turn on Auto-title agents in Settings → Display first.');
-    const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId), resource = findById(state.resources, node?.resourceId);
     if (!node || !resource || !this.control.registry.get(resource.pluginId)?.activityTitle) throw new Error('Only agent items can be named from their activity.');
     if (isOffMap(node, state.nodes)) throw new Error('Bring this agent back to the map first.');
     if (node.generatedTitle !== node.title) {
@@ -134,7 +135,7 @@ export class AgentTitles {
     } catch { /* Failed or uncertain requests consume their attempt and are not repeated for this evidence. */ }
     finally { clearTimeout(timeout); if (this.pending === pending) this.pending = undefined; }
     if (!title || title === 'KEEP' || abort.signal.aborted || this.closed || this.paused || !this.allowed() || !this.store.readSettings().value.summaries.agentTitles) return;
-    const latest = await this.control.read(), current = latest.nodes.find(other => other.id === node.id), currentResource = latest.resources.find(other => other.id === resource.id);
+    const latest = await this.control.read(), current = findById(latest.nodes, node.id), currentResource = findById(latest.resources, resource.id);
     if (!current || !currentResource || isOffMap(current, latest.nodes) || current.title !== node.title || !this.owned(current, currentResource) || sameAgentTitle(title, current.title)) return;
     try {
       await this.control.dispatch({ commandId: randomUUID(), expectedRevision: latest.revision, actor: { kind: 'system', id: 'agent-title' }, commands: [{ type: 'node.title.generated', id: node.id, title, sourceTitle: node.title }] });

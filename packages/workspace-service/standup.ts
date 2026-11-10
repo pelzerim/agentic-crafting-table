@@ -19,6 +19,7 @@ import { isArchived, isOffMap } from '../../src/graph/archive.ts';
 import { attentionItems } from '../../src/graph/attention.ts';
 import { todoList } from '../../src/graph/todos.ts';
 import { resourceWebPage } from '../../src/resource-plugins/web-page.ts';
+import { findById, nodesOfResource } from '../../src/graph/lookup.ts';
 
 export const DIGEST_MODEL = 'haiku', REPORT_MODEL = 'sonnet';
 /** Background digests cover the days before today, this far back; digests are kept a week longer for Last week. */
@@ -164,7 +165,7 @@ export class StandupReports {
   private sessions(state: WorkspaceState): Session[] {
     return state.resources.flatMap(resource => {
       if (resource.pluginId !== 'agent.session' || resource.data.provider !== 'claude' || typeof resource.data.nativeSessionId !== 'string') return [];
-      const node = state.nodes.find(node => node.resourceId === resource.id);
+      const node = nodesOfResource(state.nodes, resource.id)[0];
       return node ? [{ resourceId: resource.id, nodeId: node.id, title: node.title, sessionId: resource.data.nativeSessionId }] : [];
     });
   }
@@ -226,15 +227,15 @@ export class StandupReports {
   }
   private pullEvidence(state: WorkspaceState, pull: Pick<ActivityPull, 'key' | 'number' | 'url'>, label: string): StandupEvidence {
     const resource = state.resources.find(resource => resource.pluginId === 'github.pull-request' && (() => { try { return pullKey({ owner: String(resource.data.owner), repo: String(resource.data.repo), number: Number(resource.data.number) }) === pull.key; } catch { return false; } })());
-    const node = resource && state.nodes.find(node => node.resourceId === resource.id && !isOffMap(node, state.nodes));
+    const node = resource && nodesOfResource(state.nodes, resource.id).find(node => !isOffMap(node, state.nodes));
     return { id: `pr:${pull.key}`, kind: 'pr', label: `#${pull.number} ${label}`, url: pull.url, ...(node ? { nodeId: node.id } : {}) };
   }
 
   /** What the table already knows, without a model: to-dos, reminders, rollout validations, reviews, tickets, open PRs and Needs me. */
   private facts(state: WorkspaceState, window: StandupWindow, now: number): Fact[] {
     const facts: Fact[] = [], inRange = (at: number | undefined) => at !== undefined && at >= window.from && at < window.to;
-    const projectOf = (nodeId?: string) => { const node = state.nodes.find(node => node.id === nodeId), project = node?.projectId && state.nodes.find(candidate => candidate.id === node.projectId); return project ? project.title : undefined; };
-    const urlOf = (resourceId?: string) => resourceWebPage(state.resources.find(resource => resource.id === resourceId), this.control.registry, nodeId => state.resources.find(resource => resource.id === state.nodes.find(node => node.id === nodeId)?.resourceId))?.url;
+    const projectOf = (nodeId?: string) => { const node = findById(state.nodes, nodeId), project = node?.projectId && findById(state.nodes, node.projectId); return project ? project.title : undefined; };
+    const urlOf = (resourceId?: string) => resourceWebPage(findById(state.resources, resourceId), this.control.registry, nodeId => state.resources.find(resource => resource.id === findById(state.nodes, nodeId)?.resourceId))?.url;
     const add = (fact: Fact) => { if (!facts.some(existing => existing.evidence.id === fact.evidence.id)) facts.push(fact); };
     for (const todo of state.todos) if (todo.completed && inRange(todo.doneAt ? Date.parse(todo.doneAt) : undefined) && !todo.archivedAt)
       add({ evidence: { id: `todo:${todo.id}`, kind: 'todo', label: `To-do · ${todo.title}` }, title: todo.title, text: `Done to-do: ${todo.title}`, state: 'done', open: false });
@@ -250,7 +251,7 @@ export class StandupReports {
     }
     for (const validation of this.store.rolloutValidations()) {
       if (!inRange(validation.finishedAt) || !validation.verdict) continue;
-      const resource = state.resources.find(resource => resource.id === validation.rolloutResourceId), node = resource && state.nodes.find(node => node.resourceId === resource.id);
+      const resource = findById(state.resources, validation.rolloutResourceId), node = resource && nodesOfResource(state.nodes, resource.id)[0];
       const blocked = validation.verdict !== 'passed', label = `${resource?.title ?? 'Rollout'} · V${validation.ordinal} ${validation.verdict}`, url = urlOf(resource?.id);
       add({ evidence: { id: `rollout:${validation.id}`, kind: 'rollout', label, ...(url ? { url } : {}), ...(node ? { nodeId: node.id } : {}) }, title: label, text: `Rollout validation ${label}${validation.report?.summary ? `: ${validation.report.summary}` : ''}`, state: blocked ? 'blocked' : 'done', open: false, project: projectOf(node?.id) });
     }
@@ -260,11 +261,11 @@ export class StandupReports {
       const entry = reviews.get(send.reviewSessionId) ?? { fixed: 0, open: 0, nodeId: send.reviewNodeId }; entry[event.status]++; reviews.set(send.reviewSessionId, entry);
     }
     for (const [id, review] of reviews) {
-      const node = state.nodes.find(node => node.id === review.nodeId), label = `${node?.title ?? 'Code review'} · ${review.fixed} fixed`;
+      const node = findById(state.nodes, review.nodeId), label = `${node?.title ?? 'Code review'} · ${review.fixed} fixed`;
       add({ evidence: { id: `review:${id}`, kind: 'review', label, ...(node && !isOffMap(node, state.nodes) ? { nodeId: node.id } : {}) }, title: label, text: `Review findings: ${review.fixed} fixed, ${review.open} reopened in ${node?.title ?? 'a code review'}`, state: 'done', open: false, project: projectOf(node?.id) });
     }
     for (const node of state.nodes) {
-      const resource = state.resources.find(resource => resource.id === node.resourceId);
+      const resource = findById(state.resources, node.resourceId);
       if (resource?.pluginId !== 'linear.ticket' || isArchived(node, state.nodes)) continue;
       const url = urlOf(resource.id), evidence: StandupEvidence = { id: `ticket:${resource.id}`, kind: 'ticket', label: node.title, ...(url ? { url } : {}), ...(!isOffMap(node, state.nodes) ? { nodeId: node.id } : {}) };
       if (inRange(node.completedAt ? Date.parse(node.completedAt) : undefined)) add({ evidence, title: node.title, text: `Ticket done: ${node.title}`, state: 'done', open: false, project: projectOf(node.id) });
@@ -319,7 +320,7 @@ export class StandupReports {
     state = await this.control.read();
     const digests = this.store.standupDigests(window.days), read = readLine(digests);
     const evidence = new Map<string, StandupEvidence>([...digests.flatMap(row => row.evidence), ...facts.map(fact => fact.evidence)].map(entry => [entry.id, entry]));
-    const projectOf = (nodeId?: string) => { const node = state.nodes.find(node => node.id === nodeId), project = node?.projectId && state.nodes.find(candidate => candidate.id === node.projectId); return project ? project.title : undefined; };
+    const projectOf = (nodeId?: string) => { const node = findById(state.nodes, nodeId), project = node?.projectId && findById(state.nodes, node.projectId); return project ? project.title : undefined; };
     const entries = digests.map(row => ({ evidence: row.evidence.map(entry => entry.id), day: row.day, kind: row.kind, text: row.text!, ...(projectOf(row.evidence[0]?.nodeId) ? { project: projectOf(row.evidence[0]?.nodeId) } : {}) }));
     const input = { standup: 'report', range: window.label, today: localDate(now), voice: 'first person', digests: entries, facts: facts.map(fact => ({ evidence: fact.evidence.id, text: fact.text, state: fact.state, open: fact.open, ...(fact.project ? { project: fact.project } : {}) })), ...(request.instruction ? { instruction: request.instruction } : {}) };
     let left = 0;

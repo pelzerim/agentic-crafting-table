@@ -6,6 +6,7 @@ import type { JsonObject } from '../../src/resource-plugins/types.ts';
 import type { SqliteStore } from './sqlite-store.ts';
 import { isArchived } from '../../src/graph/archive.ts';
 import { inBackground } from '../provider-runtime/request-budget.ts';
+import { findById } from '../../src/graph/lookup.ts';
 
 export interface DiscoveredAssignment { data: JsonObject; title: string; assigned: boolean }
 export interface AssignmentEntry extends DiscoveredAssignment { key: string; cycle: string; viewedAt?: string; nodeId?: string }
@@ -92,7 +93,7 @@ export class AssignmentCoordinator {
     const group = adapter.group(data), matches = new Set<string>();
     for (const node of state.nodes) {
       if (!node.projectId || isArchived(node, state.nodes)) continue;
-      const resource = state.resources.find(resource => resource.id === node.resourceId);
+      const resource = findById(state.resources, node.resourceId);
       if (resource?.pluginId === adapter.pluginId && (!resource.connectionId || resource.connectionId === connection.id) && adapter.group(resource.data) === group) matches.add(node.projectId);
     }
     return matches.size === 1 ? [...matches][0] : undefined;
@@ -111,7 +112,7 @@ export class AssignmentCoordinator {
         let node = aliases.find(node => !isArchived(node, state.nodes)) ?? aliases[0];
         // A deliberate deletion stays deleted until a new assignment cycle.
         if (!node && assigned && (!old?.nodeId || newCycle)) {
-          const projectId = this.project(adapter, connection, item.data, state), project = state.nodes.find(node => node.id === projectId);
+          const projectId = this.project(adapter, connection, item.data, state), project = findById(state.nodes, projectId);
           entry.nodeId = randomUUID();
           commands.push({ type: 'item.add', id: entry.nodeId, resourceId: randomUUID(), pluginId: adapter.pluginId, connectionId: connection.id, title: item.title, data: item.data, projectId, position: project?.position ?? { x: 0, y: 0 } });
           commands.push({ type: 'attention.set', id: entry.nodeId, source: `${adapter.providerId}.assignment`, reason: 'assigned', note: adapter.attentionNote });
@@ -136,7 +137,7 @@ export class AssignmentCoordinator {
     throw new Error('The workspace kept changing. Assignment sync will retry.');
   }
   async receipt(nodeId: string): Promise<AssignmentReceipt | undefined> {
-    const state = await this.control.read(), resource = state.resources.find(resource => resource.id === state.nodes.find(node => node.id === nodeId)?.resourceId);
+    const state = await this.control.read(), resource = state.resources.find(resource => resource.id === findById(state.nodes, nodeId)?.resourceId);
     if (!resource) return;
     const adapter = this.adapters.find(adapter => adapter.pluginId === resource.pluginId); if (!adapter) return;
     const connection = this.readConnections().find(connection => connection.providerId === adapter.providerId && connection.enabled && (resource.connectionId ? connection.id === resource.connectionId : connection.isDefault)); if (!connection) return;
@@ -147,7 +148,7 @@ export class AssignmentCoordinator {
     for (let attempt = 0; attempt < 5; attempt++) {
       const actual = await this.receipt(nodeId); if (canonical(actual) !== canonical(receipt)) return { acknowledged: false };
       const connection = this.connection(receipt.connectionId), saved = this.checkpoint(connection), state = await this.control.read();
-      const entry = saved.value.entries.find(entry => entry.key === receipt.key), resource = state.resources.find(resource => resource.id === state.nodes.find(node => node.id === nodeId)?.resourceId);
+      const entry = saved.value.entries.find(entry => entry.key === receipt.key), resource = state.resources.find(resource => resource.id === findById(state.nodes, nodeId)?.resourceId);
       const adapter = this.adapters.find(adapter => adapter.providerId === connection.providerId && adapter.pluginId === resource?.pluginId);
       if (!entry?.assigned || entry.viewedAt || entry.cycle !== receipt.cycle || resource?.connectionId !== connection.id || !adapter || adapter.key(resource.data) !== receipt.key) return { acknowledged: false };
       const entries = saved.value.entries.map(entry => entry.key === receipt.key && entry.cycle === receipt.cycle ? { ...entry, viewedAt: new Date(this.now()).toISOString() } : entry);

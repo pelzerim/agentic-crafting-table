@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import type { SqliteStore } from './sqlite-store.ts';
 import type { WorkspaceControl } from '../core/control.ts';
 import type { SessionRecord, SessionSnapshot } from '../session-runtime/protocol.ts';
+import { findById } from '../../src/graph/lookup.ts';
 
 export interface RecoveryEntry {
   sessionId: string; nodeId: string; resourceId?: string; title: string;
@@ -71,7 +72,7 @@ export class WorkspaceLifecycle {
   }
   private recoveryItem(entry: RecoveryEntry, graph: WorkspaceState) {
     const node = graph.nodes.find(node => node.id === entry.nodeId && node.resourceId === entry.resourceId);
-    const resource = entry.resourceId && graph.resources.find(resource => resource.id === entry.resourceId);
+    const resource = entry.resourceId && findById(graph.resources, entry.resourceId);
     // A muted project stays quiet across a restart: its sessions wait for the person to resume them.
     return node && resource && !isOffMap(node, graph.nodes) && !isMuted(node, graph.nodes) ? { node, resource } : undefined;
   }
@@ -82,7 +83,7 @@ export class WorkspaceLifecycle {
     // A manual Stop may still be draining an agent. Wait below without selecting
     // it for recovery. Plain terminals always stay stopped.
     const entries: RecoveryEntry[] = active.filter(session => !session.stopRequestedAt).flatMap(session => {
-      const node = graph.nodes.find(node => node.id === session.nodeId);
+      const node = findById(graph.nodes, session.nodeId);
       const resource = graph.resources.find(resource => resource.id === node?.resourceId && resource.data.sessionId === session.id);
       if (!node || !resource || isOffMap(node, graph.nodes) || session.archivedAt || session.removedAt || resource.pluginId === 'terminal.session') return [];
       const kind = resource?.pluginId === 'agent.session' && ['claude', 'codex'].includes(String(resource.data.provider)) && typeof resource.data.nativeSessionId === 'string' ? 'agent'

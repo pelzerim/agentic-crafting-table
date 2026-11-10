@@ -26,6 +26,7 @@ import type { ListedEvent, ListedValidation } from '../../src/resource-plugins/i
 import { stageRule } from '../../src/resource-plugins/items/github-rollout/stages.ts';
 import type { StageRule } from '../../src/resource-plugins/items/github-rollout/stages.ts';
 import { VALIDATION_AGENT } from '../../src/resource-plugins/items/github-rollout/validation.ts';
+import { findById, nodesOfResource } from '../../src/graph/lookup.ts';
 
 /** The plugin storage collection holding one record per pull request resource. */
 export const AUTO_DEPLOY_COLLECTION = 'auto-deploy';
@@ -94,7 +95,7 @@ export class AutoDeploys {
       for (const validation of this.options.store.rolloutValidations({ rolloutResourceId: rollout.resourceId }))
         if (validation.requestedAt >= record.armedAt || record.checks.some(check => check.validationId === `V${validation.ordinal}`)) agents.add(validation.agentNodeId);
     }
-    const resourceOf = (id: string) => state.nodes.find(node => node.id === id)?.resourceId;
+    const resourceOf = (id: string) => findById(state.nodes, id)?.resourceId;
     const agentResources = new Set([...agents].map(resourceOf).filter(Boolean));
     return commands.map(command => {
       if (command.type !== 'attention.set' || !muffled(command)) return command;
@@ -105,8 +106,8 @@ export class AutoDeploys {
   }
 
   async run(nodeId: string, input: unknown): Promise<unknown> {
-    const args = autoDeployInput.parse(input), state = await this.options.control.read(), node = state.nodes.find(candidate => candidate.id === nodeId);
-    const resource = state.resources.find(record => record.id === node?.resourceId);
+    const args = autoDeployInput.parse(input), state = await this.options.control.read(), node = findById(state.nodes, nodeId);
+    const resource = findById(state.resources, node?.resourceId);
     if (!node || !resource || isOffMap(node, state.nodes)) throw new Error('Open a pull request or a rollout on the map to deploy it automatically.');
     if (resource.pluginId === 'github.rollout') return this.runRollout(state, node, resource, args);
     if (resource.pluginId !== 'github.pull-request') throw new Error('Auto deploy starts from a pull request or a rollout.');
@@ -138,7 +139,7 @@ export class AutoDeploys {
     const fresh = pull ? armRecord({ id: args.requestId, pullResourceId: pull.resourceId!, pullNodeId: pull.id, now: this.now(), takeover })
       : armRecord({ id: args.requestId, rolloutResourceId: resource.id, rolloutNodeId: node.id, now: this.now(), takeover });
     const owned = this.read(recordKey(fresh));
-    if (owned?.state === 'armed') throw new Error(`Auto deploy is already armed on #${Number(state.resources.find(entry => entry.id === owned.pullResourceId)?.data.number)}. Stop it there first.`);
+    if (owned?.state === 'armed') throw new Error(`Auto deploy is already armed on #${Number(findById(state.resources, owned.pullResourceId)?.data.number)}. Stop it there first.`);
     return this.rolloutStatus(state, node, await this.arm(fresh, [facts]));
   }
 
@@ -168,19 +169,19 @@ export class AutoDeploys {
       const track = phaseTrack(undefined, { ...await this.rolloutFacts(node), autoValidate: autoValidatingPulls(state, node.id).length > 0 });
       return { ...this.view(record), track, ...(record?.state === 'done' ? { events: await this.events(state, record) } : {}) };
     }
-    const pull = record.pullResourceId ? this.pullNode(state, record) : undefined, number = Number(state.resources.find(entry => entry.id === record.pullResourceId)?.data.number);
+    const pull = record.pullResourceId ? this.pullNode(state, record) : undefined, number = Number(findById(state.resources, record.pullResourceId)?.data.number);
     const track = phaseTrack(record, await this.rolloutFacts(node));
     return { ...this.view(record), ...(pull ? { pullNodeId: pull.id, pullTitle: pull.title, ...(Number.isSafeInteger(number) ? { pullNumber: number } : {}) } : {}), track, next: trackNext(track), events: await this.events(state, record) };
   }
   /** What auto deploy did, with links to what each action touched (an agent, a review, a commit) and, for an action on a rollout,
    * the run it belongs to (“On run #1842”). */
   private async events(state: WorkspaceState, record: AutoDeployRecord) {
-    const pull = state.resources.find(entry => entry.id === record.pullResourceId)?.data, repository = pull ? `https://github.com/${String(pull.owner)}/${String(pull.repo)}` : undefined;
-    const item = (nodeId: string | undefined) => { const node = state.nodes.find(entry => entry.id === nodeId); return node?.resourceId && !isOffMap(node, state.nodes) ? { label: node.title, resourceId: node.resourceId } : undefined; };
+    const pull = findById(state.resources, record.pullResourceId)?.data, repository = pull ? `https://github.com/${String(pull.owner)}/${String(pull.repo)}` : undefined;
+    const item = (nodeId: string | undefined) => { const node = findById(state.nodes, nodeId); return node?.resourceId && !isOffMap(node, state.nodes) ? { label: node.title, resourceId: node.resourceId } : undefined; };
     const runs = new Map<string, { label: string; resourceId?: string }>();
     const run = async (nodeId: string) => {
       if (!runs.has(nodeId)) {
-        const node = state.nodes.find(entry => entry.id === nodeId), observation = (await this.options.resources.cached(nodeId).catch(() => null))?.detail as { run?: { run_number?: unknown } } | undefined;
+        const node = findById(state.nodes, nodeId), observation = (await this.options.resources.cached(nodeId).catch(() => null))?.detail as { run?: { run_number?: unknown } } | undefined;
         const number = Number(observation?.run?.run_number);
         runs.set(nodeId, { label: Number.isSafeInteger(number) && number > 0 ? `On run #${number}` : `On ${node?.title ?? 'the rollout'}`, ...(node?.resourceId ? { resourceId: node.resourceId } : {}) });
       }
@@ -199,7 +200,7 @@ export class AutoDeploys {
   private async rolloutChoices(state: WorkspaceState, node: Node, resource: WorkspaceState['resources'][number], record: AutoDeployRecord | undefined) {
     const context = { sourceResourceId: resource.id, from: 'here' };
     if (record?.state === 'armed') {
-      const number = Number(state.resources.find(entry => entry.id === record.pullResourceId)?.data.number);
+      const number = Number(findById(state.resources, record.pullResourceId)?.data.number);
       return { current: '', prompt: `Under auto deploy${record.pullResourceId && Number.isSafeInteger(number) ? ` from #${number}` : ''} · ${statusLine(record).replace(/^Auto deploy · /, '')}`, context, options: [STOP] };
     }
     const facts = await this.rolloutFacts(node), refusal = takeoverRefusal(facts), prompt = `Auto deploy ${facts.run?.number ? `run #${facts.run.number}` : 'this rollout'} from here?`;
@@ -327,7 +328,7 @@ export class AutoDeploys {
   /** A validation recorded but not confirmed (the pass stopped in between) is asked for again with the same journaled request. */
   private async requestMissing(state: WorkspaceState, record: AutoDeployRecord) {
     for (const check of record.checks.filter(entry => !entry.validationId && !entry.accepted)) {
-      const rollout = state.nodes.find(node => node.id === check.rolloutNodeId);
+      const rollout = findById(state.nodes, check.rolloutNodeId);
       try {
         const result = await this.options.validations.run(check.rolloutNodeId, { operation: 'trigger', sourceResourceId: rollout?.resourceId ?? '', value: check.agent ?? VALIDATION_AGENT, requestId: check.requestId, phase: { focus: clip(check.label, PHASE_LABEL), jobs: check.jobs ?? [] } }) as { validationId?: unknown };
         if (typeof result?.validationId !== 'string') throw new Error('The validation was not recorded.');
@@ -365,7 +366,7 @@ export class AutoDeploys {
     const list = (nodeId: string) => findings.run(nodeId, { operation: 'list' }).then(value => value as ListedFindings, () => undefined);
     const linked = state.nodes.filter(entry => !isOffMap(entry, state.nodes) && state.resources.some(resource => resource.id === entry.resourceId && resource.pluginId === 'code.review' && resource.data.sourcePrId === node.id));
     for (const entry of linked.reverse()) {
-      const listed = await list(entry.id), provider = state.resources.find(resource => resource.id === entry.resourceId)?.data.provider === 'codex' ? 'Codex' : 'Claude';
+      const listed = await list(entry.id), provider = findById(state.resources, entry.resourceId)?.data.provider === 'codex' ? 'Codex' : 'Claude';
       if (!listed || listed.state === 'failed' || listed.state === 'complete' && listed.format !== 'findings') continue;
       found.review = { nodeId: entry.id, title: `${provider} review`, state: listed.state === 'running' ? 'running' : 'findings', findings: (listed.review?.findings ?? []).map(finding => ({ id: finding.id, kind: finding.kind, ...(finding.severity ? { severity: finding.severity } : {}),
         title: finding.title, ...(finding.locations[0] ? { path: finding.locations[0].path } : {}), status: listed.statuses[finding.id] ?? 'open', ignored: listed.ignored.includes(finding.id) })) };
@@ -436,7 +437,7 @@ export class AutoDeploys {
   /** Asks for the validation of one phase from the rollout's own validation agent: its idle hidden agent again, else one started
    * hidden. The request is recorded before it is sent. */
   private async validate(state: WorkspaceState, record: AutoDeployRecord, decision: Extract<AutoDeployDecision, { kind: 'validate' }>) {
-    const rollout = state.nodes.find(node => node.id === decision.rolloutNodeId)!;
+    const rollout = findById(state.nodes, decision.rolloutNodeId)!;
     const check = { key: decision.key, rolloutNodeId: rollout.id, label: decision.label, requestId: stableUuid(`auto-deploy:${record.id}:validate:${decision.key}`), agent: VALIDATION_AGENT, requestedAt: this.now(), jobs: decision.jobs };
     this.save(settle({ ...record, checks: [...record.checks, check] }, decision, this.now())); await this.options.changed();
     return (await this.requestMissing(state, this.read(recordKey(record))!)).state === 'armed';
@@ -455,7 +456,7 @@ export class AutoDeploys {
       const refusal = !starter ? `No connected agent is ready to ${rebase ? 'rebase the branch' : 'fix CI'}, and starting one is not available here.` : await starter.ready().then(() => undefined, error => errorText(error));
       if (refusal) { await this.finish(record, { kind: 'halt', code: 'agent-unavailable', reason: clip(`No agent can ${rebase ? 'rebase the branch' : 'fix the failing checks'}: ${refusal}`, 300) }); return false; }
     }
-    const resource = state.resources.find(entry => entry.id === record.pullResourceId)!, branch = await this.branch(node), url = pullUrl(resource.data);
+    const resource = findById(state.resources, record.pullResourceId)!, branch = await this.branch(node), url = pullUrl(resource.data);
     const prompt = rebase ? [`Rebase the branch ${branch ?? 'of the pull request'} of pull request ${node.title} (${url}) onto the current head of ${decision.base}: it has merge conflicts with ${decision.base}. Its head commit is ${decision.head.slice(0, 12)}.`,
       `Fetch ${decision.base}, rebase the branch onto it and resolve every conflict, keeping what both sides meant. Run the checks you can run locally.`,
       'Push the rebased branch with --force-with-lease to the same branch.',
@@ -511,7 +512,7 @@ export class AutoDeploys {
       writes: [...record.writes.filter(write => write.key !== key), { key, kind: 'findings', requestId: sendId, at: existing?.at ?? this.now(), state: 'sending' }] }, decision, this.now());
     if (agentTitle) sending.detail = `${agentTitle} is fixing ${decision.findingIds.length} finding${decision.findingIds.length === 1 ? '' : 's'}`;
     this.save(sending); await this.options.changed();
-    const resource = state.resources.find(entry => entry.id === record.pullResourceId)!, branch = await this.branch(node);
+    const resource = findById(state.resources, record.pullResourceId)!, branch = await this.branch(node);
     const note = clip(`Auto deploy merges pull request ${node.title} (${pullUrl(resource.data)}) once its checks pass. Push the fixes to its branch${branch ? ` ${branch}` : ''}, then report them fixed. Do not merge, approve or close the pull request.`, 2000);
     try {
       if (!spawn) {
@@ -578,12 +579,12 @@ export class AutoDeploys {
   private pullNode(state: WorkspaceState, record: Pick<AutoDeployRecord, 'pullNodeId' | 'pullResourceId'>) {
     if (!record.pullResourceId) return undefined;
     const onMap = (node: Node | undefined) => node && !isOffMap(node, state.nodes) ? node : undefined;
-    return onMap(state.nodes.find(node => node.id === record.pullNodeId && node.resourceId === record.pullResourceId)) ?? state.nodes.find(node => node.resourceId === record.pullResourceId && !isOffMap(node, state.nodes));
+    return onMap(state.nodes.find(node => node.id === record.pullNodeId && node.resourceId === record.pullResourceId)) ?? nodesOfResource(state.nodes, record.pullResourceId).find(node => !isOffMap(node, state.nodes));
   }
   private rolloutNode(state: WorkspaceState, record: Pick<AutoDeployRecord, 'rolloutNodeId' | 'rolloutResourceId'>) {
     if (!record.rolloutResourceId) return undefined;
     const onMap = (node: Node | undefined) => node && !isOffMap(node, state.nodes) ? node : undefined;
-    return onMap(state.nodes.find(node => node.id === record.rolloutNodeId && node.resourceId === record.rolloutResourceId)) ?? state.nodes.find(node => node.resourceId === record.rolloutResourceId && !isOffMap(node, state.nodes));
+    return onMap(state.nodes.find(node => node.id === record.rolloutNodeId && node.resourceId === record.rolloutResourceId)) ?? nodesOfResource(state.nodes, record.rolloutResourceId).find(node => !isOffMap(node, state.nodes));
   }
   /** The item a record belongs to, where its Needs me shows: the pull request, or the rollout for a rollout's own record. */
   private ownerNode(state: WorkspaceState, record: AutoDeployRecord) { return record.pullResourceId ? this.pullNode(state, record) : this.rolloutNode(state, record); }
@@ -601,11 +602,11 @@ export class AutoDeploys {
   }
   /** The pull request on the map whose merge discovered this rollout (PR-05), if any. */
   private discoverer(state: WorkspaceState, node: Node) {
-    const runId = Number(state.resources.find(entry => entry.id === node.resourceId)?.data.runId);
+    const runId = Number(findById(state.resources, node.resourceId)?.data.runId);
     if (!Number.isSafeInteger(runId)) return undefined;
     for (const link of state.links) {
-      const otherId = link.sourceId === node.id ? link.targetId : link.targetId === node.id ? link.sourceId : undefined, other = state.nodes.find(entry => entry.id === otherId);
-      const resource = state.resources.find(entry => entry.id === other?.resourceId);
+      const otherId = link.sourceId === node.id ? link.targetId : link.targetId === node.id ? link.sourceId : undefined, other = findById(state.nodes, otherId);
+      const resource = findById(state.resources, other?.resourceId);
       if (other && resource?.pluginId === 'github.pull-request' && !isOffMap(other, state.nodes) && link.id === discoveredLinkId(resource.id, rolloutDiscoveryKey(runId))) return other;
     }
     return undefined;
@@ -622,9 +623,9 @@ export class AutoDeploys {
   /** Rollouts the pull request's merge discovered (PR-05), on the map. */
   private rollouts(state: WorkspaceState, record: Pick<AutoDeployRecord, 'pullResourceId'>) {
     if (!record.pullResourceId) return [];
-    const pullResourceId = record.pullResourceId, pulls = new Set(state.nodes.filter(node => node.resourceId === pullResourceId).map(node => node.id));
+    const pullResourceId = record.pullResourceId, pulls = new Set(nodesOfResource(state.nodes, pullResourceId).map(node => node.id));
     return state.nodes.filter(node => {
-      const resource = state.resources.find(entry => entry.id === node.resourceId), runId = Number(resource?.data.runId);
+      const resource = findById(state.resources, node.resourceId), runId = Number(resource?.data.runId);
       if (resource?.pluginId !== 'github.rollout' || !Number.isSafeInteger(runId) || isOffMap(node, state.nodes)) return false;
       const id = discoveredLinkId(pullResourceId, rolloutDiscoveryKey(runId));
       return state.links.some(link => link.id === id && (pulls.has(link.sourceId) && link.targetId === node.id || pulls.has(link.targetId) && link.sourceId === node.id));

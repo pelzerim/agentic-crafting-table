@@ -127,7 +127,7 @@ test('resize accounts for zoom, cancels on Escape, supports keyboard and preserv
   await expect(page.locator('.map-card.expanded')).toHaveCount(0);
 });
 
-test('notes take a resized width and keep their text height, to-dos remain inline and done items restore their saved footprint', async ({ visual: { page } }) => {
+test('notes take the size they are given, to-dos remain inline and done items restore their saved footprint', async ({ visual: { page } }) => {
   await page.getByRole('slider', { name: 'Map zoom' }).fill('1');
   await apply(page, [
     { type: 'item.add', id: 'note', resourceId: 'note-r', pluginId: 'workspace.note', title: 'Decision', data: { text: 'Keep the public API stable while replacing the billing internals. Ship the migration in small steps and retain a rollback path. Verify existing sessions, project links and customer workflows before enabling the new behavior. Record the reasoning beside the implementation so future reviews can follow the decision.' }, projectId: 'billing', position: { x: 570, y: 650 } },
@@ -143,13 +143,12 @@ test('notes take a resized width and keep their text height, to-dos remain inlin
   await page.mouse.move(start.x, start.y); await page.mouse.down();
   await page.mouse.move(agent.x + agent.width / 2, agent.y + agent.height / 2, { steps: 8 }); await page.mouse.up();
   await expect.poll(async () => (await read(page)).links.some(link => link.sourceId === 'note' && link.targetId === 'agent' && link.kind === 'context')).toBe(true);
-  const resting = (await note.boundingBox())!;
   await resizeItemOnMap(page, 'note', 280, 160);
   await expect(note.locator('.paper-face')).toContainText('Keep the public API stable');
   await expect(note).toHaveCSS('width', '280px');
-  const wide = (await note.boundingBox())!;
-  expect(wide.height).toBeLessThan(resting.height); expect(wide.height).not.toBeCloseTo(160, 0);
-  expect(await note.locator('.paper-face').evaluate(face => face.scrollHeight <= face.clientHeight)).toBe(true);
+  await expect(note).toHaveCSS('height', '160px');
+  await expect(note.locator('.paper-face')).toHaveAttribute('data-faded', 'true');
+  await expect(note.getByRole('button', { name: /^\+ \d+ lines?$/ })).toBeVisible();
   await resizeItemOnMap(page, 'todo', 300, 56);
   const todo = page.locator('[data-item-id="todo"]');
   await expect(todo).toHaveAttribute('data-map-size', 'small');

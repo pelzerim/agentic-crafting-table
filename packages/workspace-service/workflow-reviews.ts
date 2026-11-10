@@ -8,6 +8,7 @@ import type { WorkflowSource, WorkflowBinding } from '../provider-runtime/workfl
 import type { WorkflowPreflight, WorkflowProgress, WorkflowCandidate } from '../provider-runtime/github-workflow.ts';
 import { isArchived } from '../../src/graph/archive.ts';
 import { inBackground } from '../provider-runtime/request-budget.ts';
+import { findById } from '../../src/graph/lookup.ts';
 
 const request = z.object({ requestId: z.string().uuid(), sourceResourceId: z.string().min(1).optional() });
 const terminal = (job: JobRecord) => ['succeeded', 'failed', 'cancelled'].includes(job.state);
@@ -35,7 +36,7 @@ export class WorkflowReviewCoordinator {
     return this.store.transitionJob(job.id, job.state, state, { correlation: { ...job.correlation, ...patch }, ...(error !== undefined ? { error } : {}) });
   }
   private async source(nodeId: string) {
-    const state = await this.control.read(), node = state.nodes.find(n => n.id === nodeId), resource = state.resources.find(r => r.id === node?.resourceId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId), resource = findById(state.resources, node?.resourceId);
     if (!node || !resource || isArchived(node, state.nodes)) throw new Error('Open an available pull request to request a workflow review.');
     if (!this.sources[resource.pluginId]) throw new Error('Workflow reviews are unavailable for this provider.');
     const binding = this.sources[resource.pluginId].freeze(resource); return { state, node, resource, binding };
@@ -68,7 +69,7 @@ export class WorkflowReviewCoordinator {
     return { requestId: args.requestId, nodeId: this.journal(job).itemCreated ? this.journal(job).nodeId : undefined };
   }
   async status(nodeId: string, requestId?: string) {
-    const state = await this.control.read(), resourceId = state.nodes.find(n => n.id === nodeId)?.resourceId;
+    const state = await this.control.read(), resourceId = findById(state.nodes, nodeId)?.resourceId;
     return this.store.listJobs().filter(job => job.input.action === ACTION && (this.journal(job).nodeId === nodeId ? !this.journal(job).aliasOf : job.input.nodeId === nodeId || (!!resourceId && this.journal(job).sourceResourceId === resourceId)) && (!requestId || job.input.arguments.requestId === requestId)).slice(-50).map(job => {
       const alias = this.journal(job).aliasOf, resolved = alias ? this.store.getJob(alias) ?? job : job, journal = this.journal(resolved);
       return { requestId: job.input.arguments.requestId as string, jobId: resolved.id, nodeId: journal.itemCreated ? journal.nodeId : undefined,

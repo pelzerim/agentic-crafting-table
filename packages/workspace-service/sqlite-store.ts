@@ -27,6 +27,7 @@ import type { Reminder, ReminderDay } from '../core/reminders.ts';
 import type { StandupEvidence } from '../core/standup.ts';
 import { migrateTodoHorizons } from './todo-horizon-migration.ts';
 import { migrateValidationLinks } from './validation-link-migration.ts';
+import { findById } from '../../src/graph/lookup.ts';
 
 /** Marks settings saved before package settings existed, so the values they relied on can be kept. */
 const SETTINGS_BEFORE_PLUGINS = 'settings:before-plugin-settings';
@@ -204,9 +205,9 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
         if (current > 0 && current < TODO_HORIZONS_VERSION) {
           const imported = new Map(this.db.prepare("SELECT body FROM provider_observations WHERE scope LIKE 'triage:%'").all()
             .flatMap(row => (decode<{ entries?: { todoId?: string; title?: string }[] }>(row.body).entries ?? []).flatMap(entry => entry.todoId && entry.title !== undefined ? [[entry.todoId, entry.title] as const] : [])));
-          this.writeState(migrateTodoHorizons(this.readState(), imported, new Date(this.now()).toISOString()));
+          this.writeState(migrateTodoHorizons(this.draftState(), imported, new Date(this.now()).toISOString()));
         }
-        if (current > 0 && current < VALIDATION_LINKS_VERSION) this.writeState(migrateValidationLinks(this.readState()));
+        if (current > 0 && current < VALIDATION_LINKS_VERSION) this.writeState(migrateValidationLinks(this.draftState()));
         if (current < PLOT_COLORS_VERSION) {
           const columns = new Set(this.db.prepare('PRAGMA table_info(plots)').all().map(row => String(row.name)));
           for (const column of ['color', 'chosen_color']) if (!columns.has(column)) this.db.exec(`ALTER TABLE plots ADD COLUMN ${column} TEXT`);
@@ -815,7 +816,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       }
       const next = { revision: current.revision + 1, value: request.value };
       if (canonical(current.value.itemMapSizes) !== canonical(next.value.itemMapSizes)) {
-        const state = this.readState();
+        const state = this.draftState();
         const before = new Map(layoutFootprints(state.nodes, state.resources, registry, current.value.itemMapSizes).map(box => [box.id, box]));
         const after = layoutFootprints(state.nodes, state.resources, registry, next.value.itemMapSizes);
         if (after.some(box => box.width > before.get(box.id)!.width || box.height > before.get(box.id)!.height)) {
@@ -943,9 +944,10 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
   /** Never await or call external services inside these synchronous transactions. */
   private transaction<T>(change: () => T, readOnly = false): T {
     this.db.exec(readOnly ? 'BEGIN' : 'BEGIN IMMEDIATE');
+    this.keptJobs = false;
     let result: T;
     try { result = change(); this.db.exec('COMMIT'); }
-    catch (error) { this.changedRollouts.clear(); this.decoded = undefined; this.db.exec('ROLLBACK'); throw error; }
+    catch (error) { this.changedRollouts.clear(); this.decoded = undefined; if (this.keptJobs) this.jobs = undefined; this.db.exec('ROLLBACK'); throw error; }
     if (this.changedRollouts.size) {
       const changed = [...this.changedRollouts]; this.changedRollouts.clear();
       for (const id of changed) for (const listener of this.rolloutListeners) try { listener(id); } catch { /* A committed change stands whatever a listener does. */ }
@@ -954,14 +956,17 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
   }
 
   /** The decoded workspace as of a SQLite `data_version`; another connection's commit changes that version,
-   * and this connection's writes and rollbacks drop the copy. Readers get their own deep copy. */
+   * and this connection's writes and rollbacks drop it. Readers share it frozen; a change works on its own copy (`draftState`). */
   private decoded?: { version: number; state: WorkspaceState };
-  private jobs?: { version: number; list: JobRecord[] };
+  private jobs?: { version: number; list: JobRecord[]; approvals?: JobRecord[] };
+  /** Whether the open transaction put a job into the kept list, which a rollback then drops. */
+  private keptJobs = false;
   private readState(): WorkspaceState {
     const version = Number(this.db.prepare('PRAGMA data_version').get()!.data_version);
-    if (this.decoded?.version !== version) this.decoded = { version, state: this.decodeState() };
-    return structuredClone(this.decoded.state);
+    if (this.decoded?.version !== version) this.decoded = { version, state: deepFreeze(this.decodeState()) };
+    return this.decoded.state;
   }
+  private draftState(): WorkspaceState { return structuredClone(this.readState()); }
   private decodeState(): WorkspaceState {
     const metadata = this.db.prepare('SELECT revision, view FROM workspace WHERE id = 1').get()!;
     const records = (table: string, order: string) => this.db.prepare(`SELECT body FROM ${table} ORDER BY ${order}`).all().map(row => decode(row.body));
@@ -975,7 +980,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     const nodeIds = new Set(state.nodes.map(node => node.id));
     for (const node of state.nodes) {
       if (node.projectId) {
-        const project = state.nodes.find(candidate => candidate.id === node.projectId);
+        const project = findById(state.nodes, node.projectId);
         if (!node.resourceId || !project || project.resourceId || project.projectId) throw new Error('Invalid project membership in saved state');
       }
     }
@@ -1030,7 +1035,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
   async read() { return this.transaction(() => this.readState(), true); }
   async update(change: (state: WorkspaceState) => WorkspaceState) {
     return this.transaction(() => {
-      const before = this.readState(), active = attentionCycles(before);
+      const before = this.draftState(), active = attentionCycles(before);
       const next = this.writeState(change(before));
       this.recordAttention(active, next);
       this.appendEvent('workspace.changed', next.revision, randomUUID());
@@ -1069,7 +1074,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
         if (receipt.input !== input) throw new CommandIdConflict();
         return { state: receipt.result === '' ? this.readState() : stateSchema.parse(decode(receipt.result)), replayed: true };
       }
-      const before = this.readState(), active = attentionCycles(before);
+      const before = this.draftState(), active = attentionCycles(before);
       const next = this.writeState(change(before));
       this.recordAttention(active, next);
       this.db.prepare(`INSERT INTO receipts(command_id, input, result) VALUES (?, ?, '')`).run(envelope.commandId, input);
@@ -1132,15 +1137,24 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
   }
   getJob(id: string): JobRecord | undefined { const row = this.db.prepare('SELECT * FROM jobs WHERE id = ?').get(id); return row ? this.job(row) : undefined; }
   jobByRequest(requestKey: string): JobRecord | undefined { const row = this.db.prepare('SELECT * FROM jobs WHERE request_key = ?').get(requestKey); return row ? this.job(row) : undefined; }
-  /** Every job, decoded once per change: pollers list the jobs every second, and decoding thousands of rows each time blocked the service. Callers never change the records they get. */
+  /** Every job, decoded once per change from another connection: pollers list the jobs every second, and decoding thousands of rows each time
+   * blocked the service. This connection's own writes replace just their entry (`keepJob`). Callers never change the records they get. */
   listJobs(): JobRecord[] {
     const version = Number(this.db.prepare('PRAGMA data_version').get()!.data_version);
     if (this.jobs?.version !== version) this.jobs = { version, list: this.db.prepare('SELECT * FROM jobs ORDER BY rowid').all().map(row => this.job(row)) };
     return this.jobs.list;
   }
-  /** Succeeded rollout approvals, picked out in SQL: decoding every job on each rollout pass blocked the service. */
+  /** Succeeded rollout approvals, picked once per change of the jobs: every rollout of a pass asks, and scanning the jobs for each blocked the service. */
   rolloutApprovalJobs(): JobRecord[] {
-    return this.db.prepare(`SELECT * FROM jobs WHERE state = 'succeeded' AND json_extract(input, '$.action') = 'resource.action' AND json_extract(input, '$.arguments.actionId') = 'rollout.approve' ORDER BY rowid`).all().map(row => this.job(row));
+    const list = this.listJobs();
+    return this.jobs!.approvals ??= list.filter(job => job.state === 'succeeded' && job.input.action === 'resource.action' && job.input.arguments.actionId === 'rollout.approve');
+  }
+  /** Puts a job this connection just wrote into a new kept list, in its row order, leaving the other decoded records as they are. */
+  private keepJob(job: JobRecord) {
+    if (!this.jobs) return;
+    const index = this.jobs.list.findIndex(entry => entry.id === job.id), list = [...this.jobs.list];
+    if (index < 0) list.push(job); else list[index] = job;
+    this.jobs = { version: this.jobs.version, list }; this.keptJobs = true;
   }
   enqueueJob(requestKey: string, input: JobInput): JobRecord {
     if (!requestKey.trim() || requestKey.length > 200 || !input.action.trim() || !input.nodeId.trim()) throw new Error('Invalid job request');
@@ -1149,9 +1163,9 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       const saved = this.db.prepare('SELECT * FROM jobs WHERE request_key = ?').get(requestKey);
       if (saved) { if (saved.input !== encoded) throw new CommandIdConflict(); return this.job(saved); }
       const id = randomUUID();
-      this.jobs = undefined; this.db.prepare("INSERT INTO jobs(id, request_key, input, state, updated_at) VALUES (?, ?, ?, 'queued', ?)").run(id, requestKey, encoded, new Date().toISOString());
+      this.db.prepare("INSERT INTO jobs(id, request_key, input, state, updated_at) VALUES (?, ?, ?, 'queued', ?)").run(id, requestKey, encoded, new Date().toISOString());
       this.appendEvent('job.changed', this.readState().revision, id);
-      return this.getJob(id)!;
+      const job = this.getJob(id)!; this.keepJob(job); return job;
     });
   }
   transitionJob(id: string, expected: JobState, next: JobState, patch: { correlation?: Record<string, unknown>; result?: unknown; error?: string } = {}): JobRecord {
@@ -1161,12 +1175,12 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       if (job.state !== expected) throw new Error(`Job state conflict: expected ${expected}, current ${job.state}`);
       if (!transitions[job.state].includes(next)) throw new Error(`Invalid job transition: ${job.state} → ${next}`);
       if (job.state === 'outcome-unknown' && next === 'queued' && patch.correlation?.reconciledAbsent !== true) throw new Error('Reconcile uncertain external outcomes before retrying');
-      this.jobs = undefined; this.db.prepare('UPDATE jobs SET state = ?, attempts = ?, correlation = ?, result = ?, error = ?, updated_at = ? WHERE id = ?').run(
+      this.db.prepare('UPDATE jobs SET state = ?, attempts = ?, correlation = ?, result = ?, error = ?, updated_at = ? WHERE id = ?').run(
         next, job.attempts + Number(next === 'running' && expected !== 'running'), canonical({ ...job.correlation, ...patch.correlation }),
         patch.result === undefined ? (job.result === undefined ? null : JSON.stringify(job.result)) : JSON.stringify(patch.result),
         patch.error ?? (['queued', 'running', 'succeeded'].includes(next) ? null : job.error ?? null), new Date().toISOString(), id);
       this.appendEvent('job.changed', this.readState().revision, id);
-      return this.getJob(id)!;
+      const saved = this.getJob(id)!; this.keepJob(saved); return saved;
     });
   }
   recoverInterruptedJobs(): JobRecord[] {
@@ -1174,10 +1188,16 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     return this.transaction(() => {
       const interrupted = this.listJobs().filter(job => job.state === 'running');
       for (const job of interrupted) {
-        this.jobs = undefined; this.db.prepare("UPDATE jobs SET state = 'outcome-unknown', updated_at = ? WHERE id = ?").run(new Date().toISOString(), job.id);
+        this.db.prepare("UPDATE jobs SET state = 'outcome-unknown', updated_at = ? WHERE id = ?").run(new Date().toISOString(), job.id);
         this.appendEvent('job.changed', this.readState().revision, job.id);
       }
-      return interrupted.map(job => this.getJob(job.id)!);
+      return interrupted.map(job => { const saved = this.getJob(job.id)!; this.keepJob(saved); return saved; });
     });
   }
+}
+
+/** Freezes a decoded JSON value in place, all the way down. */
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) { for (const child of Object.values(value)) deepFreeze(child); Object.freeze(value); }
+  return value;
 }

@@ -33,7 +33,7 @@ test('paper is an optional choice of ten named colours, never yellow or amber, o
     type: 'string', title: 'Paper', anyOf: [{ enum: ['mint', 'moss', 'ice', 'sky', 'lilac', 'rose', 'peach', 'sand', 'fog', 'slate'] }, { pattern: '^#[0-9a-fA-F]{6}$' }] });
 });
 
-test('stored size ids map to S160, M220 and L300 tiles whose height follows the text from 3 to 14 lines', () => {
+test('stored size ids map to S160, M220 and L300 tiles whose height follows the text from 3 to 14 lines until the note is resized', () => {
   const described = registryFromDescriptions(registry.describe()).get(note.id)!;
   const short = record({ text: 'One line' });
   assert.deepEqual(['small', 'medium', 'large'].map(size => resolveMapSize({ mapSize: size as 'small' }, short, described).width), [160, 220, 300]);
@@ -47,9 +47,12 @@ test('stored size ids map to S160, M220 and L300 tiles whose height follows the 
   const capped = resolveMapSize({}, record({ text: long }), described).height;
   assert.equal(capped, resolveMapSize({}, record({ text: long.split('\n').slice(0, 14).join('\n') }), described).height);
   assert.ok(capped > five);
-  const wide = resolveMapSize({ mapDimensions: { width: 310, height: 32 } }, record({ text: 'a\nb\nc\nd\ne' }), described);
+  const wide = resolveMapSize({ mapDimensions: { width: 310, height: 400 } }, record({ text: 'a\nb\nc\nd\ne' }), described);
   assert.equal(wide.width, 310); assert.equal(wide.size, 'large');
-  assert.equal(wide.height, five, 'a stored height never overrides the text height');
+  assert.equal(wide.height, 400, 'a resized note keeps the height it was given, whatever its text');
+  assert.equal(wide.growLines, undefined);
+  assert.equal(resolveMapSize({ mapDimensions: { width: 200, height: 100 } }, record({ text: long }), described).height, 100, 'long text does not grow it either');
+  assert.equal(resolveMapSize({ mapDimensions: { width: 310, height: 32 } }, short, described).height, 88, 'never shorter than the smallest note');
   assert.equal(resolveMapSize({ mapSize: 'small' }, record({ text: 'x'.repeat(200) }), described).height > three, true, 'long lines wrap');
   assert.ok(wrappedLines('x'.repeat(200), 160) > wrappedLines('x'.repeat(200), 300));
 });

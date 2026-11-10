@@ -1889,6 +1889,24 @@
   text-overflow: ellipsis;
 }
 
+.item-indicators>.card-counts {
+  gap: 6px;
+  flex: none;
+  color: var(--act-ink-faint);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* On a card whose cue row sits beside the title, open counts take the title's second line. */
+.map-card:has(> .indicator-icons > .card-counts):not(.expanded):not(.compact) .card-label strong {
+  -webkit-line-clamp: 1;
+}
+
+.item-indicators>.card-counts>b {
+  color: var(--act-ink-dim);
+  font-weight: inherit;
+}
+
 .item-indicators>span[data-short=truncated] {
   flex-shrink: 100;
 }

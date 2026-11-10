@@ -18,6 +18,7 @@ import type { ProviderConnections } from '../provider-runtime/connections.ts';
 import type { SqliteStore } from './sqlite-store.ts';
 import { inBackground, knownBudget } from '../provider-runtime/request-budget.ts';
 import { OUTCOME_UNKNOWN, PROVIDER_ACTION_MS } from './protocol.ts';
+import { findById, nodesOfResource } from '../../src/graph/lookup.ts';
 
 export const stableUuid = (seed: string) => {
   const hex = createHash('sha256').update(seed).digest('hex');
@@ -120,7 +121,7 @@ export class ResourceCoordinator {
         if (!this.allowed() || signal.aborted || this.closing.signal.aborted) return;
         if (!node.resourceId || seen.has(node.resourceId) || isOffMap(node, state.nodes)) continue;
         seen.add(node.resourceId);
-        const resource = state.resources.find(record => record.id === node.resourceId)!, aliases = state.nodes.filter(alias => alias.resourceId === resource.id);
+        const resource = findById(state.resources, node.resourceId)!, aliases = nodesOfResource(state.nodes, resource.id);
         const muted = quiet.size > 0 && aliases.every(alias => isOffMap(alias, state.nodes) || isMuted(alias, state.nodes, quiet));
         if (muted) this.mutedResources.add(resource.id);
         // An unmuted resource starts over at the first step and reads now.
@@ -171,7 +172,7 @@ export class ResourceCoordinator {
   }
   private async record(nodeId: string, bind = true): Promise<ResourceRecord> {
     this.closing.signal.throwIfAborted();
-    const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId), resource = state.resources.find(resource => resource.id === node?.resourceId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId), resource = findById(state.resources, node?.resourceId);
     if (!resource) throw new Error('Resource item not found');
     const provider = this.control.registry.get(resource.pluginId)?.connectionProvider;
     if (provider) {
@@ -179,7 +180,7 @@ export class ResourceCoordinator {
       if (bind && !resource.connectionId) {
         const work = this.binding.then(async () => {
           for (let attempt = 0; attempt < 5; attempt++) {
-            const current = await this.control.read(), node = current.nodes.find(node => node.id === nodeId), saved = current.resources.find(record => record.id === node?.resourceId);
+            const current = await this.control.read(), node = findById(current.nodes, nodeId), saved = findById(current.resources, node?.resourceId);
             if (!saved || saved.connectionId) return this.record(nodeId, false);
             this.connections.resolve(provider, connection.id);
             try {
@@ -203,7 +204,7 @@ export class ResourceCoordinator {
     const matches = state.resources.filter(candidate => (!candidate.connectionId || candidate.connectionId === connectionId) && keys.has(registry.identity({ ...candidate, connectionId })));
     const commands: WorkspaceCommand[] = [];
     for (const candidate of matches) {
-      const node = state.nodes.find(node => node.resourceId === candidate.id);
+      const node = nodesOfResource(state.nodes, candidate.id)[0];
       if (!node) continue;
       if (!candidate.connectionId && connectionId) commands.push({ type: 'item.bind', id: node.id, connectionId });
       if (snapshot.resolution && canonical(candidate.data) !== canonical(snapshot.resolution.data)) commands.push({ type: 'item.resolve', id: node.id, data: snapshot.resolution.data });
@@ -246,8 +247,8 @@ export class ResourceCoordinator {
           // An item the map already has keeps the connections it holds; only missing ones are saved.
           commands.push(...creationConnections(requestConnections(request), nodeId).filter(command => !existing || !existingRelationship(state.nodes, state.links, command.link)));
           for (const id of new Set([nodeId, ...state.nodes.filter(node => matches.some(candidate => candidate.id === node.resourceId)).map(node => node.id)])) {
-            const titled = state.nodes.find(node => node.id === id)?.generatedTitle !== undefined;
-            const shown = matches.find(candidate => state.nodes.find(node => node.id === id)?.resourceId === candidate.id) ?? matches[0] ?? resource, pips = resourceMapPips(this.host, shown, resolved.snapshot, this.store);
+            const titled = findById(state.nodes, id)?.generatedTitle !== undefined;
+            const shown = matches.find(candidate => findById(state.nodes, id)?.resourceId === candidate.id) ?? matches[0] ?? resource, pips = resourceMapPips(this.host, shown, resolved.snapshot, this.store);
             commands.push({ type: 'node.update', id, ...(titled ? {} : { title: resolved.snapshot.title }), activity: resolved.snapshot.activity, summary: resolved.snapshot.label, indicators: resourceMapIndicators(this.host, shown, resolved.snapshot, this.store), ...(pips ? { pips } : {}) });
           }
           this.observeAttention(commands, state, nodeId, resource, resolved.snapshot);
@@ -255,8 +256,8 @@ export class ResourceCoordinator {
           job = this.store.transitionJob(job.id, 'running', 'running', { correlation: { prepared } });
         }
         try {
-          const result = await this.control.dispatch(prepared.envelope), node = result.state.nodes.find(node => node.id === prepared.nodeId)!;
-          const resource = result.state.resources.find(resource => resource.id === node.resourceId)!;
+          const result = await this.control.dispatch(prepared.envelope), node = findById(result.state.nodes, prepared.nodeId)!;
+          const resource = findById(result.state.resources, node.resourceId)!;
           this.store.cacheResource(resource.id, 'snapshot', fingerprint(resource), resolved.snapshot, this.now());
           if (prepared.created) this.queueAttachTitle(resource, node.title, resolved.snapshot);
           const value = { nodeId: node.id, resourceId: resource.id };
@@ -277,7 +278,7 @@ export class ResourceCoordinator {
   convert(nodeId: string, pluginId?: string) { return this.once(`convert:${nodeId}`, pluginId ?? null, () => this.convertOnce(nodeId, pluginId, { kind: 'user', id: 'resource-conversion' })); }
   private async convertOnce(nodeId: string, pluginId: string | undefined, actor: CommandEnvelope['actor'], background?: AbortSignal) {
     const signal = background ? AbortSignal.any([this.signal(), background]) : this.signal(), registry = this.control.registry;
-    const state = await this.control.read(), node = state.nodes.find(candidate => candidate.id === nodeId), resource = state.resources.find(record => record.id === node?.resourceId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId), resource = findById(state.resources, node?.resourceId);
     if (!node || !resource) throw new Error('Resource item not found');
     const candidates = registry.conversions(resource), candidate = pluginId ? candidates.find(match => match.pluginId === pluginId) : candidates.length === 1 ? candidates[0] : undefined;
     if (!candidate) throw new Error(candidates.length > 1 && !pluginId ? 'Choose the type to convert this link to.' : 'This item has no more specific type to convert to.');
@@ -294,7 +295,7 @@ export class ResourceCoordinator {
     if (snapshot.connection !== 'connected' || !snapshot.title?.trim()) throw new Error('The provider could not resolve this item title');
     for (let attempt = 0; ; attempt++) {
       signal.throwIfAborted();
-      const current = await this.control.read(), saved = current.resources.find(record => record.id === resource.id), target = current.nodes.find(candidate => candidate.id === nodeId);
+      const current = await this.control.read(), saved = findById(current.resources, resource.id), target = findById(current.nodes, nodeId);
       if (!saved || !target || fingerprint(saved) !== fingerprint(resource)) throw new Error('The item changed while converting. Try again.');
       const keepTitle = this.namedByPerson(target.title, saved, [definition.name, candidate.title, definition.creation?.shortLabel]);
       try {
@@ -332,7 +333,7 @@ export class ResourceCoordinator {
         if (!this.allowed() || signal.aborted || this.closing.signal.aborted) break;
         if (!node.resourceId || seen.has(node.resourceId) || isOffMap(node, state.nodes)) continue;
         seen.add(node.resourceId);
-        const candidates = registry.conversions(state.resources.find(record => record.id === node.resourceId)!);
+        const candidates = registry.conversions(findById(state.resources, node.resourceId)!);
         if (candidates.length !== 1) continue;
         const provider = registry.get(candidates[0].pluginId)?.connectionProvider;
         try { if (provider) this.connections.resolve(provider); } catch { continue; }
@@ -355,8 +356,8 @@ export class ResourceCoordinator {
    * Exact resource/account fingerprints prevent showing another PR's content. */
   async cached(nodeId: string): Promise<ResourceSnapshot | null> {
     this.closing.signal.throwIfAborted();
-    const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId);
-    const resource = state.resources.find(resource => resource.id === node?.resourceId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId);
+    const resource = findById(state.resources, node?.resourceId);
     if (!node || isArchived(node, state.nodes) || !resource) return null;
     const cache = this.store.resourceCache(resource.id, 'snapshot', fingerprint(resource));
     if (!cache?.value) return null;
@@ -377,12 +378,12 @@ export class ResourceCoordinator {
   }
   private observeAttention(commands: WorkspaceCommand[], state: WorkspaceState, nodeId: string, resource: ResourceRecord, snapshot: ResourceSnapshot) {
     if (snapshot.attentionReason === undefined) return;
-    const command = providerAttentionCommand(state.nodes.find(node => node.id === nodeId), nodeId, `provider:${resource.pluginId}`, snapshot);
+    const command = providerAttentionCommand(findById(state.nodes, nodeId), nodeId, `provider:${resource.pluginId}`, snapshot);
     if (command) commands.push(command);
   }
   private observePresentationAttention(commands: WorkspaceCommand[], state: WorkspaceState, resource: ResourceRecord, snapshot: ResourceSnapshot) {
     const attention = presentationAttention(this.host, resource, snapshot, this.store);
-    const target = state.nodes.find(node => node.resourceId === resource.id && !isOffMap(node, state.nodes));
+    const target = nodesOfResource(state.nodes, resource.id).find(node => !isOffMap(node, state.nodes));
     if (!attention || !target) return;
     if (attention.reason === null ? target.attentionSources?.[attention.source] : target.attentionEvents?.[attention.source] !== attention.eventId)
       commands.push({ type: 'attention.set', id: target.id, source: attention.source, reason: attention.reason, ...(attention.note ? { note: attention.note } : {}), ...(attention.eventId ? { eventId: attention.eventId } : {}) });
@@ -427,7 +428,7 @@ export class ResourceCoordinator {
       signal.throwIfAborted();
       const current = await this.record(nodeId, false); if (fingerprint(current) !== key) throw new Error('The item changed while loading. Open it again.');
       const state = await this.control.read();
-      if (caller && isArchived(state.nodes.find(node => node.id === nodeId)!, state.nodes)) return snapshot;
+      if (caller && isArchived(findById(state.nodes, nodeId)!, state.nodes)) return snapshot;
       const { matches, commands } = snapshot.resolution ? this.resolution(state, { ...resource, data: snapshot.resolution.data }, snapshot) : { matches: [resource], commands: [] as WorkspaceCommand[] };
       for (const node of state.nodes.filter(node => matches.some(record => record.id === node.resourceId))) {
         const shown = matches.find(record => record.id === node.resourceId)!, indicators = resourceMapIndicators(this.host, shown, snapshot, this.store), pips = resourceMapPips(this.host, shown, snapshot, this.store);
@@ -448,7 +449,7 @@ export class ResourceCoordinator {
       try {
         let saved = state;
         if (commands.length) saved = (await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'system', id: 'providers' }, commands })).state;
-        const savedResource = saved.resources.find(record => record.id === saved.nodes.find(node => node.id === nodeId)?.resourceId)!;
+        const savedResource = saved.resources.find(record => record.id === findById(saved.nodes, nodeId)?.resourceId)!;
         this.store.cacheResource(savedResource.id, 'snapshot', fingerprint(savedResource), snapshot, now);
         if (commands.length) await this.changed();
         break;
@@ -461,7 +462,7 @@ export class ResourceCoordinator {
   private async attachDiscovered(nodeId: string, source: ResourceRecord, snapshot: ResourceSnapshot) {
     const found = (snapshot.discovered ?? []).slice(0, 10);
     if (!found.length) return;
-    const state = await this.control.read(), node = state.nodes.find(candidate => candidate.id === nodeId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId);
     if (!node || isArchived(node, state.nodes)) return;
     for (const [index, item] of found.entries()) {
       const id = (part: string) => stableUuid(`${source.id}:${item.key}:${part}`);
@@ -475,7 +476,7 @@ export class ResourceCoordinator {
   /** The person opened this item's provider page from the app. Its type records local read
    * state from the saved snapshot; nothing is fetched or written to the provider. */
   async opened(nodeId: string) {
-    const state = await this.control.read(), node = state.nodes.find(candidate => candidate.id === nodeId), resource = state.resources.find(record => record.id === node?.resourceId);
+    const state = await this.control.read(), node = findById(state.nodes, nodeId), resource = findById(state.resources, node?.resourceId);
     if (!node || !resource) throw new Error('Resource item not found');
     const hook = this.host.presentation(resource.pluginId)?.opened;
     if (!hook) return { recorded: false };
@@ -486,14 +487,14 @@ export class ResourceCoordinator {
   /** Repaint durable local state from cached content without fetching or acknowledging providers. */
   async refreshPresentation(nodeId?: string) {
     for (let attempt = 0, batches = 0; ; attempt++) {
-      const state = await this.control.read(), resourceId = state.nodes.find(node => node.id === nodeId)?.resourceId;
+      const state = await this.control.read(), resourceId = findById(state.nodes, nodeId)?.resourceId;
       const commands: WorkspaceCommand[] = [];
       for (const resource of state.resources.filter(resource => hasResourceMapPresentation(this.host, resource) && (!nodeId || resource.id === resourceId))) {
         const cache = this.store.resourceCache(resource.id, 'snapshot', fingerprint(resource));
         if (!cache?.value) continue;
         this.observePresentationAttention(commands, state, resource, cache.value as ResourceSnapshot);
         const indicators = resourceMapIndicators(this.host, resource, cache.value as ResourceSnapshot, this.store), pips = resourceMapPips(this.host, resource, cache.value as ResourceSnapshot, this.store);
-        for (const node of state.nodes.filter(node => node.resourceId === resource.id)) {
+        for (const node of nodesOfResource(state.nodes, resource.id)) {
           // Keep the independent disconnected cue until a successful provider read.
           const paused = node.indicators?.find(cue => cue.id === 'connection');
           const next = indicators && paused && !indicators.some(cue => cue.id === 'connection') ? [...indicators, paused] : indicators;
@@ -565,7 +566,7 @@ export class ResourceCoordinator {
     try {
       // Drain an older poll before dispatching; new reads wait for this write.
       await this.pending.get(`read:${resource.id}`)?.promise.catch(() => {});
-      const state = await this.control.read(), node = state.nodes.find(node => node.id === nodeId);
+      const state = await this.control.read(), node = findById(state.nodes, nodeId);
       if (!node || isArchived(node, state.nodes)) throw new Error('Restore this item before changing its provider state.');
       if (fingerprint(await this.record(nodeId, false)) !== fingerprint(resource)) throw new Error('The item changed. Reopen its menu.');
       const base = this.store.resourceCache(resource.id, 'snapshot', fingerprint(resource))?.value as ResourceSnapshot | undefined;
@@ -628,7 +629,7 @@ export class ResourceCoordinator {
     this.restore(state);
     if (!this.writes.size) return state;
     return { ...state, nodes: state.nodes.map(node => {
-      const write = node.resourceId ? this.writes.get(node.resourceId) : undefined, resource = write && state.resources.find(record => record.id === node.resourceId);
+      const write = node.resourceId ? this.writes.get(node.resourceId) : undefined, resource = write && findById(state.resources, node.resourceId);
       if (!write || !resource) return node;
       const expected = write.optimism.snapshot, indicators = [...(resourceMapIndicators(this.host, resource, expected, this.store) ?? []).slice(0, 3), PENDING_CUE];
       return { ...node, ...(node.generatedTitle === undefined && expected.title ? { title: expected.title } : {}), summary: expected.label, activity: expected.activity, indicators };
@@ -676,7 +677,7 @@ export class ResourceCoordinator {
   private async expire() {
     const state = await this.control.read();
     for (const [resourceId, write] of [...this.writes]) {
-      const resource = state.resources.find(record => record.id === resourceId);
+      const resource = findById(state.resources, resourceId);
       if (write.writing || this.now() - write.since < PENDING_WRITE_MS) continue;
       if (resource) await this.revert(resource, write, 'Check it before trying again.', true);
       else this.writes.delete(resourceId);
@@ -686,8 +687,8 @@ export class ResourceCoordinator {
    * completion. A refused or unconfirmed write reverts the local change and throws. */
   async mirrorCompletion(before: WorkspaceState, after: WorkspaceState, commandId: string, caller: AbortSignal) {
     const failures: Error[] = [];
-    for (const node of after.nodes.filter(node => node.resourceId && Boolean(node.completedAt) !== Boolean(before.nodes.find(old => old.id === node.id)?.completedAt))) {
-      const done = Boolean(node.completedAt), resource = after.resources.find(record => record.id === node.resourceId);
+    for (const node of after.nodes.filter(node => node.resourceId && Boolean(node.completedAt) !== Boolean(findById(before.nodes, node.id)?.completedAt))) {
+      const done = Boolean(node.completedAt), resource = findById(after.resources, node.resourceId);
       // Items not bound to a provider account (legacy or never connected) complete locally.
       const bound = resource && (resource.connectionId || !this.control.registry.get(resource.pluginId)?.connectionProvider);
       const action = bound && this.host.capabilities(resource.pluginId).actions && this.control.registry.resolve(resource).available ? this.host.actions(resource, caller).find(action => action.completion) : undefined;
@@ -700,7 +701,7 @@ export class ResourceCoordinator {
         failures.push(error as Error);
         for (let attempt = 0; attempt < 5; attempt++) {
           const state = await this.control.read();
-          if (Boolean(state.nodes.find(current => current.id === node.id)?.completedAt) !== done) break;
+          if (Boolean(findById(state.nodes, node.id)?.completedAt) !== done) break;
           try { await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'system', id: 'providers' }, commands: [{ type: done ? 'node.reopen' : 'node.complete', id: node.id }] }); await this.changed(); break; }
           catch (conflict) { if ((conflict as { code?: string }).code !== 'REVISION_CONFLICT') throw conflict; }
         }
@@ -712,7 +713,7 @@ export class ResourceCoordinator {
   private async blockers(nodeId: string) {
     const state = await this.control.read();
     return blockedBy(nodeId, state.nodes, state.links).map(node => {
-      const resource = state.resources.find(record => record.id === node.resourceId);
+      const resource = findById(state.resources, node.resourceId);
       const reference = resource && resourceReference(this.control.registry.get(resource.pluginId), resource);
       return { id: node.id, name: blockerName(node.title, reference), status: (node.indicators?.[0]?.label ?? 'open').toLowerCase() };
     });
@@ -720,7 +721,7 @@ export class ResourceCoordinator {
   private async markStale(resource: ResourceRecord) {
     for (let attempt = 0; attempt < 5; attempt++) {
       const state = await this.control.read();
-      const saved = state.resources.find(record => record.id === resource.id);
+      const saved = findById(state.resources, resource.id);
       if (!saved || fingerprint(saved) !== fingerprint(resource)) return;
       const commands: WorkspaceCommand[] = state.nodes.filter(node => node.resourceId === resource.id && node.indicators && !node.indicators.some(cue => cue.id === 'connection'))
         .map(node => ({ type: 'node.update', id: node.id, indicators: [...node.indicators!.slice(0, 3), { id: 'connection', label: 'Updates paused', icon: 'clock', tone: 'amber' }] }));

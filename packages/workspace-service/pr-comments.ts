@@ -10,6 +10,7 @@ import type { PullComment } from '../../src/resource-plugins/items/github-pull-r
 import { commentKey, commentVersion, commentUrl } from '../../src/resource-plugins/items/github-pull-request/comment-state.ts';
 import { relatedResourceItems } from '../core/related-items.ts';
 import { isArchived } from '../../src/graph/archive.ts';
+import { findById } from '../../src/graph/lookup.ts';
 const listed = z.object({ kind: z.enum(['discussion', 'inline', 'review']), id: z.number().int().positive(), version: z.string().max(250_000) }).strict();
 const schema = z.object({ operation: z.enum(['read', 'seen', 'seen-all', 'fix']), comments: z.array(listed).max(2000).optional(), sourceResourceId: z.string().min(1),
   kind: z.enum(['discussion', 'inline', 'review']).optional(), id: z.number().int().positive().optional(),
@@ -17,8 +18,8 @@ const schema = z.object({ operation: z.enum(['read', 'seen', 'seen-all', 'fix'])
 /** Local receipts never change GitHub. Prompt dispatch is bound to a live linked
  * agent and journaled before input, so a lost response cannot send it twice. */
 export async function prComments(control: WorkspaceControl, store: SqliteStore, resources: ResourceCoordinator, sessions: SessionCoordinator | undefined, nodeId: string, input: unknown) {
-  const args = schema.parse(input), state = await control.read(), node = state.nodes.find(n => n.id === nodeId);
-  const resource = state.resources.find(r => r.id === node?.resourceId);
+  const args = schema.parse(input), state = await control.read(), node = findById(state.nodes, nodeId);
+  const resource = findById(state.resources, node?.resourceId);
   if (!node || isArchived(node, state.nodes) || resource?.pluginId !== 'github.pull-request' || resource.id !== args.sourceResourceId) throw new Error('This comment belongs to another or archived pull request.');
   const fingerprint = commentReceiptFingerprint(resource);
   // Reading local Seen receipts must not wait behind a slow background refresh.
@@ -54,11 +55,11 @@ export async function prComments(control: WorkspaceControl, store: SqliteStore, 
   if (!target || !sessions || target.resource?.data.sessionId !== sessionId) throw new Error('Choose a connected, running agent.');
   if (target.activity !== 'idle' || target.attention === 'input') throw new Error('Wait until the agent is ready for a new prompt.');
   const current = await sessions.runtime.call<SessionSnapshot>('sessions.read', { sessionId, after: Number.MAX_SAFE_INTEGER });
-  if (state.nodes.find(n => n.id === current.session.nodeId)?.resourceId !== target.resource.id) throw new Error('The process belongs to a different agent.');
+  if (findById(state.nodes, current.session.nodeId)?.resourceId !== target.resource.id) throw new Error('The process belongs to a different agent.');
   if (current.session.native && current.session.native.status !== 'idle') throw new Error('Wait until the agent is ready for a new prompt.');
   if (current.session.state !== 'running' || current.session.stopRequestedAt || current.session.readOnly) throw new Error('Resume the agent before sending a fix request.');
   const fresh = await control.read();
-  const freshResource = fresh.resources.find(r => r.id === resource.id);
+  const freshResource = findById(fresh.resources, resource.id);
   if (!freshResource || JSON.stringify([freshResource.connectionId, freshResource.data.owner, freshResource.data.repo, freshResource.data.number]) !== fingerprint) throw new Error('The source PR changed. Reopen the comment.');
   const stillLinked = relatedResourceItems(fresh, nodeId, control.registry).find(r => r.nodeId === target.nodeId);
   if (stillLinked?.resource?.data.sessionId !== sessionId || stillLinked.activity !== 'idle' || stillLinked.attention === 'input') throw new Error('The agent changed. Reopen the comment action.');
