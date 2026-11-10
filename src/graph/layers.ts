@@ -3,7 +3,7 @@ import type { GraphLink, GraphNode } from './graph.ts';
 /** The map and the Undermap below it (MAP-18). */
 export type MapLayer = 'map' | 'below';
 /** What a layer's snapshot says about the Undermap without carrying it: the items below and the projects drawn there. */
-export interface LayerSummary { below: { items: number; projects: string[] } }
+export interface LayerSummary { below: { items: number; projects: string[]; working: number } }
 interface LayeredState<N extends GraphNode, L extends GraphLink, R extends { id: string }> { nodes: N[]; links: L[]; resources: R[]; todos: readonly { nodeIds: readonly string[] }[] }
 
 /** Below the map, directly or through its project, and not archived; one pass over the projects keeps it linear. */
@@ -22,9 +22,10 @@ export function layerNodes<N extends GraphNode>(nodes: readonly N[], layer: MapL
 }
 
 /** How many items lie below and which projects the Undermap draws. */
-export function belowSummary(nodes: readonly GraphNode[]): LayerSummary['below'] {
+export function belowSummary(nodes: readonly (GraphNode & { activity?: string })[]): LayerSummary['below'] {
   const below = belowTest(nodes);
-  return { items: nodes.filter(node => node.resourceId && below(node)).length, projects: layerNodes(nodes, 'below').filter(node => !node.resourceId).map(node => node.id).sort() };
+  const items = nodes.filter(node => node.resourceId && below(node));
+  return { items: items.length, working: items.filter(node => node.activity === 'working').length, projects: layerNodes(nodes, 'below').filter(node => !node.resourceId).map(node => node.id).sort() };
 }
 
 /** The workspace as a subscriber on one layer receives it. The map leaves out the items below except those a node it keeps
@@ -32,7 +33,7 @@ export function belowSummary(nodes: readonly GraphNode[]): LayerSummary['below']
  * Resources and links follow the kept nodes. Below, the whole workspace is sent: Needs me, the badge, notifications and
  * the to-do list keep counting the map there. */
 export function presentLayer<N extends GraphNode, L extends GraphLink, R extends { id: string }, S extends LayeredState<N, L, R>>(state: S, layer: MapLayer): { state: S; layers: LayerSummary } {
-  if (![state.nodes, state.links, state.resources, state.todos].every(Array.isArray)) return { state, layers: { below: { items: 0, projects: [] } } };
+  if (![state.nodes, state.links, state.resources, state.todos].every(Array.isArray)) return { state, layers: { below: { items: 0, projects: [], working: 0 } } };
   const layers = { below: belowSummary(state.nodes) };
   if (layer === 'below' || !layers.below.items) return { state, layers };
   const below = belowTest(state.nodes), kept = new Set(state.nodes.filter(node => !node.resourceId || !below(node)).map(node => node.id));

@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Settings
+- **Keep the Mac awake while work is running**: a new switch in Settings → General stops idle sleep while any item on the board is working, and lets the Mac sleep once everything is idle.
+
 ## 0.19.0 — 2026-11-10
 
 ### Map

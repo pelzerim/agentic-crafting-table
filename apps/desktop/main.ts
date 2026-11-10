@@ -7,7 +7,7 @@ import { browserUrl, clipboardUrls } from './browser-url.ts';
 import { EMBEDDED_SITES, GUEST_PREFERENCES, attachEmbeddedPage, browserUserAgent, embeddedDownload, embeddedNavigation, embeddedPermissionAllowed } from './embedded-sites.ts';
 import { savePastedImage } from './pasted-images.ts';
 import { pluginDiscoverySchema } from '../../src/resource-plugins/url-input.ts';
-import { createKeepAwake } from './keep-awake.ts';
+import { createKeepAwake, createWorkAwake } from './keep-awake.ts';
 import { ScreenReaderWatch, assistiveTechnologyOverride, voiceOverRunning } from './assistive-technology.ts';
 import { NEIGHBORHOOD_STYLE_PARAMETER, neighborhoodStylePin } from './neighborhood-style-pin.ts';
 import { COLOR_SCHEME_PARAMETER, WINDOW_BACKGROUND, fillWindowBackground, themeSource } from './appearance.ts';
@@ -17,7 +17,7 @@ import type { Appearance, SettingsSnapshot } from '../../packages/core/settings.
 import { clockTime, reminderDoneSchema, reminderSaveSchema, reminderSnoozeSchema } from '../../packages/core/reminders.ts';
 import type { ReminderDue } from '../../packages/core/reminders.ts';
 import { standupRequestSchema } from '../../packages/core/standup.ts';
-import { app, BrowserWindow, ipcMain, nativeImage, net, protocol, session, shell, dialog, screen, clipboard, Notification, Menu, MenuItem, nativeTheme } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeImage, net, protocol, session, shell, dialog, screen, clipboard, Notification, Menu, MenuItem, nativeTheme, powerSaveBlocker } from 'electron';
 import { join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readFile, realpath, writeFile } from 'node:fs/promises';
@@ -249,7 +249,7 @@ async function main() {
   ipcMain.handle('app:notification-target', event => { assertCaller(event); const target = notificationTarget; notificationTarget = null; return target; });
   ipcMain.handle('app:install-link', event => { assertCaller(event); const link = installLink; installLink = null; return link; });
   app.on('will-quit', () => { notifications.dispose(); for (const notice of nativeNotices.values()) notice.close(); nativeNotices.clear(); });
-  const keepAwake = createKeepAwake();
+  const keepAwake = createKeepAwake(powerSaveBlocker), workAwake = createWorkAwake(powerSaveBlocker);
   const applyAppearance = (appearance: Appearance) => { nativeTheme.themeSource = themeSource(Boolean(testDirectory), process.env.ACT_TEST_APPEARANCE, appearance); };
   applyAppearance('system');
   nativeTheme.on('updated', () => {
@@ -258,10 +258,10 @@ async function main() {
   let settingsRevision = -1;
   const applySettings = (snapshot: SettingsSnapshot) => {
     if (snapshot.revision < settingsRevision) return;
-    settingsRevision = snapshot.revision; keepAwake.apply(snapshot.value.keepAwake); applyAppearance(snapshot.value.appearance); notifications.preferences = snapshot.value.notifications;
+    settingsRevision = snapshot.revision; keepAwake.apply(snapshot.value.keepAwake); workAwake.setting(snapshot.value.keepAwakeWhileWorking); applyAppearance(snapshot.value.appearance); notifications.preferences = snapshot.value.notifications;
     broadcast('workspace:settings', snapshot);
   };
-  app.on('will-quit', () => keepAwake.apply(false));
+  app.on('will-quit', () => { keepAwake.apply(false); workAwake.release(); });
   const workspace = new WorkspaceConnection(app.getPath('userData'), process.execPath, join(app.getAppPath(), 'dist', 'workspace-service.cjs'), true);
   void workspace.setLayer('map');
   const rendererErrorSchema = z.object({ kind: z.enum(['uncaught', 'caught', 'recoverable']), message: z.string().max(2000), stack: z.string().max(8000).optional() });
@@ -335,7 +335,7 @@ async function main() {
   workspace.on('status', value => { if (value === 'connected') void workspace.call<SettingsSnapshot>('settings.read').then(applySettings).catch(() => {}); });
   workspace.on('snapshot', (value: WorkspaceSnapshot, parse?: FrameParse) => {
     const started = performance.now();
-    notifications.snapshot(value); broadcast('workspace:snapshot', value);
+    notifications.snapshot(value); workAwake.nodes(value.state.nodes, value.layers?.below.working); broadcast('workspace:snapshot', value);
     workspace.recordSnapshotDelivery(parse, performance.now() - started);
   });
   let appLog: RotatingLog | undefined;

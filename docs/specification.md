@@ -2281,6 +2281,12 @@ Release the assertion immediately when disabled or the app exits. Use a scoped O
 assertion, without changing global sleep preferences, defeating manual lock or
 bypassing managed security policy. Reflect the setting accurately on restart.
 
+**SETTINGS-01b — Keep the Mac awake while work is running.** A separate persistent
+toggle in Settings → General, default off. While on, the app holds a scoped
+"prevent app suspension" assertion whenever any unarchived item on the board, in any
+project, is working, and releases it once nothing is working, when turned off, or on
+quit. The display may still sleep and lock; closing the lid still sleeps.
+
 **SETTINGS-APPEARANCE — Light and dark colours.** Settings → General, section
 **Appearance**, has **Colours**: **System** (default) / Light / Dark (additive
 `appearance`; older settings read System; other values are rejected). System follows
@@ -2407,7 +2413,7 @@ is on (auto-titles and plot names default on) and are shown disabled, not hidden
 off. The privacy caveat appears once, as a page note, and says plot names send item
 titles and agent summaries only, project summaries send project, item and agent titles, Needs me
 reasons, agent recaps and agent summaries, and Slack titles send the attached message. Settings → General holds
-Keep screen awake and the closing warning.
+Keep screen awake, Keep the Mac awake while work is running and the closing warning.
 
 **SETTINGS-DASHBOARDS — Project dashboards.** Settings → Map (not advanced) has
 **Show project dashboards when zoomed out** (on by default), **Show below**

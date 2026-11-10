@@ -61,7 +61,7 @@ test('a subscriber on the map layer receives the map without the 600 items below
     assert.deepEqual(first.state.nodes.map(node => node.id), ['live', 'old', 'card']);
     assert.deepEqual(first.state.resources.map(resource => resource.id), ['card-r']);
     assert.deepEqual(first.state.links, []);
-    assert.deepEqual(first.layers, { below: { items: 600, projects: ['old'] } });
+    assert.deepEqual(first.layers, { below: { items: 600, projects: ['old'], working: 0 } });
     const whole = await legacy.subscribe();
     assert.equal(whole.state.nodes.length, 603); assert.equal(whole.layers, undefined);
     assert.equal((await map.call<WorkspaceSnapshot>('read')).state.nodes.length, 603);

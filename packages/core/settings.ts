@@ -133,6 +133,8 @@ export const settingsSchema = z.object({
   /** Light or dark colours; System follows macOS and switches with it. */
   appearance: z.enum(APPEARANCES).default('system'),
   keepAwake: z.boolean().default(false),
+  /** Holds off idle system sleep while any board item is working. */
+  keepAwakeWhileWorking: z.boolean().default(false),
   warnBeforeClosing: z.boolean().default(false),
   diagnostics: logPolicySchema.default(() => ({ ...DEFAULT_LOG_POLICY })),
   neighborhoodPadding: z.number().finite().nonnegative().default(LARGE_ITEM_WIDTH),
