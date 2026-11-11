@@ -20,6 +20,8 @@ export interface MapSizePreset {
   presentationPips?: boolean;
   /** Dotted data path to `{ tone, count }` entries drawn as coloured numbers in the cue row when the person turns on open finding counts; an empty list draws a quiet check. */
   counts?: string;
+  /** Dotted data path to `{ name, color }` entries drawn as coloured chips on the card's lower edge: three, then +N for the rest. */
+  tags?: string;
   /** Height follows the wrapped text of `field` between `min` and `max` lines; a stored
    * height never overrides it. `footerField` reserves one more line while present. */
   growLines?: { field: string; min: number; max: number; footerField?: string };
@@ -203,6 +205,8 @@ export interface ResourceSnapshot {
   /** Backend-verified canonical payload and old payload identities for provider
    * renames. The host validates these with the same plugin/account before merging. */
   resolution?: { data: JsonObject; aliases: JsonObject[] };
+  /** Provider-owned fields saved into the matched items' data: each replaces, null removes, and their other fields (local settings) stay. */
+  dataPatch?: JsonObject;
   /** Authoritative provider title; never infer it from a URL slug or status label. */
   title?: string;
   activity: 'working' | 'idle' | 'complete' | 'unknown';

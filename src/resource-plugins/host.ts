@@ -1,6 +1,7 @@
 import { fieldsSchema, validateFields } from './define.ts';
 import * as z from 'zod/v4';
 import type { ResourcePluginRegistry } from './registry.ts';
+import { patchedData } from './views.ts';
 import type { JsonObject, ResourceAction, ResourcePluginConnector, ResourceRecord, ResourceSnapshot } from './types.ts';
 import type { ActionContribution, PresentationHooks } from '../../packages/plugin-sdk/host.ts';
 
@@ -85,6 +86,10 @@ export class ResourcePluginHost {
 
   load(resource: ResourceRecord, signal: AbortSignal, options?: { background?: boolean }) {
     return abortable(this.connector(resource, signal).load(resource, signal, options), signal).then(snapshot => {
+    if (snapshot.dataPatch) {
+      const patched = { ...resource, data: patchedData(resource.data, z.record(z.string(), z.json()).parse(snapshot.dataPatch)) };
+      if (this.registry.identity(patched) !== this.registry.identity(resource)) throw new Error('Provider data patch cannot change the item identity');
+    }
     if (snapshot.resolution) {
       const resolution = z.object({ data: z.record(z.string(), z.json()), aliases: z.array(z.record(z.string(), z.json())).max(64) }).parse(snapshot.resolution);
       if (snapshot.connection !== 'connected' || !resource.connectionId || !this.registry.get(resource.pluginId)?.connectionProvider) throw new Error('Provider resolution requires a connected account');
@@ -113,7 +118,7 @@ export class ResourcePluginHost {
     const resource = { ...this.registry.createRecord(pluginId, id, { title, data }), ...(connectionId ? { connectionId } : {}) };
     const snapshot = await this.load(resource, signal); signal.throwIfAborted();
     if (snapshot.connection !== 'connected' || !snapshot.title?.trim()) throw new Error('The provider could not resolve this item title');
-    return { resource: { ...resource, title: snapshot.title.trim(), data: snapshot.resolution?.data ?? resource.data }, snapshot };
+    return { resource: { ...resource, title: snapshot.title.trim(), data: patchedData(snapshot.resolution?.data ?? resource.data, snapshot.dataPatch ?? {}) }, snapshot };
   }
 
   /** URL-only attachment; return a persistable record only after the provider supplies its title. */
@@ -125,7 +130,7 @@ export class ResourcePluginHost {
     const snapshot = await this.load(resource, signal);
     signal.throwIfAborted();
     if (snapshot.connection !== 'connected' || !snapshot.title?.trim()) throw new Error('The provider could not resolve this item title');
-    return { resource: { ...resource, title: snapshot.title.trim(), data: snapshot.resolution?.data ?? resource.data }, snapshot };
+    return { resource: { ...resource, title: snapshot.title.trim(), data: patchedData(snapshot.resolution?.data ?? resource.data, snapshot.dataPatch ?? {}) }, snapshot };
   }
 
   actions(resource: ResourceRecord, signal: AbortSignal) {

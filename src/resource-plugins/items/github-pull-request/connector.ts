@@ -1,4 +1,5 @@
 import { pullDiscussion } from './discussion.ts';
+import { labelPatch } from './header.ts';
 import { attachmentId } from '../../../../packages/provider-runtime/github-media.ts';
 import { mergeOptimism, showShipOptimism, stateOptimism } from './optimistic.ts';
 import { showShipChoices, taggedTitle, titleProblem, titleTag } from './show-ship.ts';
@@ -67,7 +68,7 @@ export function githubPullRequestConnector(clientFor: (resource: ResourceRecord)
       const runs = [...found.values()];
       const discovered = runs.map(run => ({ key: rolloutDiscoveryKey(run.id), pluginId: 'github.rollout', title: run.name ?? 'Rollout', data: { url: `https://github.com/${key.owner}/${key.repo}/actions/runs/${run.id}` } }));
       // Deploys chained after a merge start later; keep looking for them promptly, then less often.
-      return { ...(discovered.length ? { discovered } : {}), ...(recentlyMerged ? { pollWithinMs: now - mergedAt < 3_600_000 ? 60_000 : 300_000 } : {}), title: pull.title, activity: pull.state === 'closed' ? 'complete' : 'idle', attention: 'none', connection: 'connected',
+      return { ...(discovered.length ? { discovered } : {}), ...(recentlyMerged ? { pollWithinMs: now - mergedAt < 3_600_000 ? 60_000 : 300_000 } : {}), title: pull.title, dataPatch: labelPatch(pull), activity: pull.state === 'closed' ? 'complete' : 'idle', attention: 'none', connection: 'connected',
         label: status.label, indicators: status.indicators, attentionReason: status.attention, ...(status.attentionNote ? { attentionNote: status.attentionNote } : {}), ...(status.attentionEventId ? { attentionEventId: status.attentionEventId } : {}),
         observedAt: new Date().toISOString(), detail: { pull, status: status.state, ...(queue?.queued ? { queuePosition: queue.position } : {}),
           ...(queue?.mergeWhenReady ? { mergeWhenReady: { ...queue.mergeWhenReady, statusWithout: status.statusWithoutMergeWhenReady ?? status.state } } : {}), ...(status.failingChecks ? { failingChecks: status.failingChecks.slice(0, 20) } : {}), comments: status.comments, ...discussion, ...(login ? { viewer: login } : {}) } };

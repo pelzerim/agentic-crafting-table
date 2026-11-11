@@ -15,7 +15,7 @@ their pull request and author.
 - **Clear all**: one button in the Needs me header marks every row it shows as seen, the same as pressing Seen on each.
 
 ### Pull requests
-- **Keep status chips after close**: turn on Settings → Items → GitHub pull request → **Keep status chips** and a merged or closed pull request's card keeps the review or checks chip it last showed while open, next to Merged or Closed. Off by default.
+- **Labels on pull requests**: a pull request's GitHub labels show in their own colours, up to three on its map card then +N, and all of them in the open view. They stay after merge or close.
 
 ### Notifications
 - **Quiet startup resumes**: turn off Settings → Notifications → **Notify for sessions resumed at startup** and agents ACT resumes after a restart raise no macOS banner until you next prompt them. Their Needs me rows still appear. On by default.

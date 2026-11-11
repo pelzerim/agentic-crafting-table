@@ -3,7 +3,7 @@ import { resourceMapIndicators, resourceMapPips, hasResourceMapPresentation, pre
 import { isArchived, isOffMap } from '../../src/graph/archive.ts';
 import { isMuted, mutedProjectIds } from '../../src/graph/mute.ts';
 import { blockedBy, blockerList, blockerName } from '../../src/graph/blocking.ts';
-import { resourceReference } from '../../src/resource-plugins/views.ts';
+import { patchedData, resourceReference } from '../../src/resource-plugins/views.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { canonical, CommandIdConflict, MAXIMUM_COMMANDS_PER_ENVELOPE } from '../core/control.ts';
 import { attentionNote } from '../../src/graph/attention.ts';
@@ -207,7 +207,8 @@ export class ResourceCoordinator {
       const node = nodesOfResource(state.nodes, candidate.id)[0];
       if (!node) continue;
       if (!candidate.connectionId && connectionId) commands.push({ type: 'item.bind', id: node.id, connectionId });
-      if (snapshot.resolution && canonical(candidate.data) !== canonical(snapshot.resolution.data)) commands.push({ type: 'item.resolve', id: node.id, data: snapshot.resolution.data });
+      const data = snapshot.dataPatch ? patchedData(snapshot.resolution?.data ?? candidate.data, snapshot.dataPatch) : snapshot.resolution?.data;
+      if (data && canonical(candidate.data) !== canonical(data)) commands.push({ type: 'item.resolve', id: node.id, data });
     }
     return { matches, commands };
   }
@@ -429,7 +430,7 @@ export class ResourceCoordinator {
       const current = await this.record(nodeId, false); if (fingerprint(current) !== key) throw new Error('The item changed while loading. Open it again.');
       const state = await this.control.read();
       if (caller && isArchived(findById(state.nodes, nodeId)!, state.nodes)) return snapshot;
-      const { matches, commands } = snapshot.resolution ? this.resolution(state, { ...resource, data: snapshot.resolution.data }, snapshot) : { matches: [resource], commands: [] as WorkspaceCommand[] };
+      const { matches, commands } = snapshot.resolution || snapshot.dataPatch ? this.resolution(state, { ...resource, data: snapshot.resolution?.data ?? resource.data }, snapshot) : { matches: [resource], commands: [] as WorkspaceCommand[] };
       for (const node of state.nodes.filter(node => matches.some(record => record.id === node.resourceId))) {
         const shown = matches.find(record => record.id === node.resourceId)!, indicators = resourceMapIndicators(this.host, shown, snapshot, this.store), pips = resourceMapPips(this.host, shown, snapshot, this.store);
         const title = node.generatedTitle === undefined ? snapshot.title : undefined, pipsChanged = pips !== undefined && canonical(node.pips ?? null) !== canonical(pips);

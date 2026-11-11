@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { autoValidates, pullHeader, pullViewIdentity } from './header.ts';
+import { autoValidates, labelPatch, pullHeader, pullViewIdentity } from './header.ts';
+import { patchedData } from '../../views.ts';
 
 const now = new Date(2026, 8, 30, 14, 0).getTime();
 const pull = (extra: Record<string, unknown> = {}) => ({ number: 42, state: 'open', merged: false, draft: false, changed_files: 1, additions: 24, deletions: 6, updated_at: new Date(now - 2 * 60_000).toISOString(), ...extra });
@@ -37,4 +38,14 @@ test('Auto validate is on unless the pull request stores autoValidate: false, an
   assert.equal(pullViewIdentity(record({ autoValidate: false })), pullViewIdentity(record()));
   assert.notEqual(pullViewIdentity(record({ number: 43 })), pullViewIdentity(record()));
   assert.notEqual(pullViewIdentity({ ...record(), connectionId: 'other' }), pullViewIdentity(record()));
+});
+
+test('GitHub labels land in the item data as name and colour, and a pull without labels keeps none', () => {
+  const data = { owner: 'acme', repo: 'billing', number: 7 };
+  const api = [{ id: 1, name: 'backend', color: 'D73A4A', description: null, default: false }, { id: 2, name: 'db-migration', color: '0e8a16' }, { name: 'broken', color: 'red' }];
+  const labelled = patchedData(data, labelPatch({ labels: api }));
+  assert.deepEqual(labelled, { ...data, labels: [{ name: 'backend', color: 'd73a4a' }, { name: 'db-migration', color: '0e8a16' }] });
+  assert.deepEqual(patchedData(labelled, labelPatch({})), data, 'a saved pull read without labels clears them');
+  assert.deepEqual(patchedData(data, labelPatch({ labels: [] })), data);
+  assert.equal(pullViewIdentity({ connectionId: 'c', data: labelled }), pullViewIdentity({ connectionId: 'c', data }), 'a label change never remounts the open view');
 });

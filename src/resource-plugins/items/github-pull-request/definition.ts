@@ -24,9 +24,9 @@ export const githubPullRequest = defineResourcePlugin({
     { id: 'state', label: 'Change state', children: [], choices: { load: 'pr.state.options', apply: 'pr.state', loadingLabel: 'Checking the pull request…' } },
     { id: 'showShip', label: 'Show/Ship', children: [], choices: { load: 'pr.showShip.options', apply: 'pr.showShip', loadingLabel: 'Checking the title…' }, when: { plugin: 'github.pull-request', setting: 'showShip' } }],
   mapSizes: { defaultSize: 'medium', sizes: {
-    small: { width: 200, height: 48, summaryLines: 0, description: "Title and attention indicators." },
-    medium: { width: 200, height: 84, summaryLines: 1, description: "Title and current PR status." },
-    large: { width: 280, height: 132, summaryLines: 2, fields: ['repo'], fieldLines: 1, description: "Longer status and repository." },
+    small: { width: 200, height: 48, summaryLines: 0, tags: 'labels', description: "Title and attention indicators." },
+    medium: { width: 200, height: 84, summaryLines: 1, tags: 'labels', description: "Title and current PR status." },
+    large: { width: 280, height: 132, summaryLines: 2, fields: ['repo'], fieldLines: 1, tags: 'labels', description: "Longer status and repository." },
   } },
   appearance: { tone: 'violet', shape: 'branch', size: 'medium' },
   overview: { pipeline: { singular: 'PR', plural: 'PRs' } },

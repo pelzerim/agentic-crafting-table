@@ -264,7 +264,7 @@ test('a locked plot keeps exactly its members: no near or linked item joins it, 
   assert.deepEqual(plotOf(detectPlots([...sample(), card('far', 0, 5000)], [], fresh, [link('far', 'a1')], locked), 'kept')?.memberIds, members, 'a linked item stays out');
   const start = detectPlots(sample(), [], fresh, [], locked), other = start.find(plot => plot.memberIds.includes('b1'))!;
   const close = [...sample().filter(box => !box.id.startsWith('b')), card('b1', 500, 0), card('b2', 760, 0), card('b3', 500, 100)];
-  assert.deepEqual(plotOf(detectPlots(close, start, fresh, [], pinned), 'kept')?.memberIds, ['a1', 'a2', 'a3', 'b1', 'b2', 'b3'], 'pinned only, the plot is absorbed');
+  assert.deepEqual(plotOf(detectPlots(close, start, fresh, [], pinned), 'kept')?.memberIds, members, 'pinned only, the plot stays apart too');
   const after = detectPlots(close, start, fresh, [], locked);
   assert.deepEqual([plotOf(after, 'kept')?.memberIds, plotOf(after, other.id)?.memberIds], [members, ['b1', 'b2', 'b3']]);
 });

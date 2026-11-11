@@ -479,6 +479,24 @@
   font-size: var(--act-fs-meta);
 }
 
+.pr-desk .pr-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--act-sp-2);
+  margin: 0 0 var(--act-sp-4);
+  padding: 0;
+  list-style: none;
+}
+
+.pr-desk .pr-labels[hidden] {
+  display: none;
+}
+
+.pr-desk .pr-labels li {
+  font: var(--act-fw-strong) var(--act-fs-meta)/1 var(--act-font-mono);
+  padding: 4px 8px;
+}
+
 .pr-desk .pr-tools {
   display: flex;
   flex-wrap: wrap;

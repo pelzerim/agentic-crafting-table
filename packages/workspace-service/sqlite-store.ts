@@ -108,6 +108,9 @@ export const migrations = [
   `SELECT 1; -- service_owner.started`,
   // Locked plots (MAP-24): added once as the `locked` column (`PLOT_LOCK_VERSION`); old rows read as unlocked.
   `SELECT 1; -- plots.locked`,
+  // Pins a lock added (MAP-24): JSON array added once as the `lock_pinned_ids` column (`PLOT_LOCK_PINS_VERSION`), so unlock
+  // removes only those; NULL (old rows) means the lock added none.
+  `SELECT 1; -- plots.lock_pinned_ids`,
 ] as const;
 const CONFLICTS_KEPT = 1000, CONFLICT_LANDED_SHOWN = 20;
 export interface RevisionConflictRecord { at: string; actor: string; commands: CommandSubject[]; expected: number; current: number; landed: { revision: number; actor: string; commands: CommandSubject[] }[] }
@@ -121,6 +124,7 @@ const TODO_HORIZONS_VERSION = 25, VALIDATION_LINKS_VERSION = 26, PLOT_COLORS_VER
 const PLOT_PINS_VERSION = migrations.findIndex(migration => migration.includes('plots.pinned_member_ids')) + 1;
 const SERVICE_OWNER_START_VERSION = migrations.findIndex(migration => migration.includes('service_owner.started')) + 1;
 const PLOT_LOCK_VERSION = migrations.findIndex(migration => migration.includes('plots.locked')) + 1;
+const PLOT_LOCK_PINS_VERSION = migrations.findIndex(migration => migration.includes('plots.lock_pinned_ids')) + 1;
 /** Per-package storage quota and largest single record, in bytes of stored JSON. */
 export const PLUGIN_STORAGE_BYTES = 16 * 1024 * 1024, PLUGIN_RECORD_BYTES = 1024 * 1024;
 /** Conditional-request cache bounds per provider account (least recently used first out). */
@@ -148,7 +152,7 @@ export interface ProjectSummaryRecord { projectId: string; fingerprint: string; 
 /** A plot's identity, name and color. `generated` is false for a user's name; no name means the local fallback.
  * `color` is assigned once, `chosenColor` is a person's override. `pinnedMemberIds` are the items a person pinned in it;
  * a `locked` plot takes no other items. */
-export interface PlotRecord { id: string; projectId: string; memberIds: string[]; active: boolean; name?: string; generated: boolean; hidden: boolean; changedAt: number; fingerprint?: string; attemptedAt?: number; color?: string; chosenColor?: string; pinnedMemberIds: string[]; locked: boolean }
+export interface PlotRecord { id: string; projectId: string; memberIds: string[]; active: boolean; name?: string; generated: boolean; hidden: boolean; changedAt: number; fingerprint?: string; attemptedAt?: number; color?: string; chosenColor?: string; pinnedMemberIds: string[]; locked: boolean; lockPinnedIds: string[] }
 /** The latest hook a Claude process sent, and when its hook process saw it. */
 export interface AgentObservation { event: string; observedAt: number }
 export type RolloutValidationPatch = Partial<Pick<Validation, 'state' | 'verdict' | 'sequence' | 'reports' | 'report' | 'scope' | 'startedAt' | 'finishedAt'>> & { idleSince?: number | null };
@@ -227,6 +231,10 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
         if (current < PLOT_LOCK_VERSION) {
           const columns = new Set(this.db.prepare('PRAGMA table_info(plots)').all().map(row => String(row.name)));
           if (!columns.has('locked')) this.db.exec('ALTER TABLE plots ADD COLUMN locked INTEGER NOT NULL DEFAULT 0');
+        }
+        if (current < PLOT_LOCK_PINS_VERSION) {
+          const columns = new Set(this.db.prepare('PRAGMA table_info(plots)').all().map(row => String(row.name)));
+          if (!columns.has('lock_pinned_ids')) this.db.exec('ALTER TABLE plots ADD COLUMN lock_pinned_ids TEXT');
         }
       });
       this.db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;');
@@ -580,7 +588,8 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       active: Boolean(row.active), ...(row.name === null ? {} : { name: String(row.name) }), generated: Boolean(row.generated), hidden: Boolean(row.hidden), changedAt: Number(row.changed_at),
       ...(row.fingerprint === null ? {} : { fingerprint: String(row.fingerprint) }), ...(row.attempted_at === null ? {} : { attemptedAt: Number(row.attempted_at) }),
       ...(row.color === null ? {} : { color: String(row.color) }), ...(row.chosen_color === null ? {} : { chosenColor: String(row.chosen_color) }),
-      pinnedMemberIds: row.pinned_member_ids === null ? [] : decode<string[]>(row.pinned_member_ids), locked: Boolean(row.locked) }));
+      pinnedMemberIds: row.pinned_member_ids === null ? [] : decode<string[]>(row.pinned_member_ids), locked: Boolean(row.locked),
+      lockPinnedIds: row.lock_pinned_ids == null ? [] : decode<string[]>(row.lock_pinned_ids) }));
   }
   /** Records the current plots; any other plot becomes dormant, kept only for identity. */
   savePlots(plots: readonly { id: string; projectId: string; memberIds: readonly string[] }[], now: number) {
@@ -599,17 +608,26 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
   }
   /** An item is pinned in one plot at most: these members leave every plot's pins. A plot left with none is unlocked. */
   private unpinEverywhere(memberIds: readonly string[]) {
-    const leaving = new Set(memberIds), update = this.db.prepare('UPDATE plots SET pinned_member_ids = ?, locked = locked AND ? WHERE id = ?');
+    const leaving = new Set(memberIds), update = this.db.prepare('UPDATE plots SET pinned_member_ids = ?, locked = locked AND ?, lock_pinned_ids = ? WHERE id = ?');
     for (const record of this.plotRecords()) {
-      const kept = record.pinnedMemberIds.filter(id => !leaving.has(id));
-      if (kept.length !== record.pinnedMemberIds.length) update.run(kept.length ? JSON.stringify(kept) : null, Number(kept.length > 0), record.id);
+      const kept = record.pinnedMemberIds.filter(id => !leaving.has(id)), lockKept = record.lockPinnedIds.filter(id => !leaving.has(id));
+      if (kept.length !== record.pinnedMemberIds.length) update.run(kept.length ? JSON.stringify(kept) : null, Number(kept.length > 0), kept.length && lockKept.length ? JSON.stringify(lockKept) : null, record.id);
     }
   }
-  /** Locking pins `memberIds` in the plot; unlocking hands all its members back to detection. */
+  /** Locking pins `memberIds` in the plot and remembers which pins it added; unlocking removes only those. */
   lockPlot(id: string, locked: boolean, memberIds: readonly string[]) {
     this.transaction(() => {
-      if (locked) { if (this.pinInPlot(id, memberIds)) this.db.prepare('UPDATE plots SET locked = 1 WHERE id = ?').run(id); }
-      else { const record = this.plotRecords().find(record => record.id === id); if (record) this.unpinEverywhere(record.pinnedMemberIds); this.db.prepare('UPDATE plots SET locked = 0 WHERE id = ?').run(id); }
+      const before = this.plotRecords().find(record => record.id === id);
+      if (!before) return;
+      if (locked) {
+        const added = memberIds.filter(member => !before.pinnedMemberIds.includes(member));
+        this.pinInPlot(id, memberIds);
+        const lockPinned = [...new Set([...this.plotRecords().find(record => record.id === id)!.lockPinnedIds, ...added])].sort();
+        this.db.prepare('UPDATE plots SET locked = 1, lock_pinned_ids = ? WHERE id = ?').run(lockPinned.length ? JSON.stringify(lockPinned) : null, id);
+      } else {
+        const kept = before.pinnedMemberIds.filter(member => !before.lockPinnedIds.includes(member));
+        this.db.prepare('UPDATE plots SET pinned_member_ids = ?, locked = 0, lock_pinned_ids = NULL WHERE id = ?').run(kept.length ? JSON.stringify(kept) : null, id);
+      }
     });
   }
   /** Gives plots to another project; detection there finds their members again. */
@@ -627,7 +645,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     if (!record) return false;
     this.unpinEverywhere(memberIds);
     const pinned = [...new Set([...record.pinnedMemberIds, ...memberIds])].sort();
-    this.db.prepare('UPDATE plots SET pinned_member_ids = ?, locked = ? WHERE id = ?').run(JSON.stringify(pinned), Number(record.locked), id);
+    this.db.prepare('UPDATE plots SET pinned_member_ids = ?, locked = ?, lock_pinned_ids = ? WHERE id = ?').run(JSON.stringify(pinned), Number(record.locked), record.lockPinnedIds.length ? JSON.stringify(record.lockPinnedIds) : null, id);
     return true;
   }
   /** A new plot of the members, all pinned in it and taken out of any other. */

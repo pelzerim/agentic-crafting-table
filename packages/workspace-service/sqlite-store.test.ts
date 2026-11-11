@@ -948,7 +948,7 @@ test('pinning an item in one plot unpins it from any other; a pinned plot is nev
     assert.equal(store.pinPlotMembers('missing', ['a']), false);
     assert.deepEqual(pins(), [['p1', ['a']], ['p2', ['b', 'd']]], 'nothing changes for a plot that is gone');
     store.createPinnedPlot('p3', 'x', ['d', 'g'], 2000);
-    assert.deepEqual(store.plotRecords().find(record => record.id === 'p3'), { id: 'p3', projectId: 'x', memberIds: ['d', 'g'], active: true, generated: false, hidden: false, changedAt: 2000, pinnedMemberIds: ['d', 'g'], locked: false });
+    assert.deepEqual(store.plotRecords().find(record => record.id === 'p3'), { id: 'p3', projectId: 'x', memberIds: ['d', 'g'], active: true, generated: false, hidden: false, changedAt: 2000, pinnedMemberIds: ['d', 'g'], locked: false, lockPinnedIds: [] });
     assert.deepEqual(pins(), [['p1', ['a']], ['p2', ['b']], ['p3', ['d', 'g']]]);
     store.unpinPlotMembers(['a', 'g']);
     assert.deepEqual(pins(), [['p1', []], ['p2', ['b']], ['p3', ['d']]]);

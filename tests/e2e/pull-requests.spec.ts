@@ -156,8 +156,13 @@ test('background PR updates paint map indicators and approval enters Needs me un
     await list().getByRole('button', { name: `Dismiss ${providers.pull.title} from Needs me`, exact: true }).click();
     await expect(list()).toContainText('Nothing needs me.');
     await tick(); await expect(list()).toContainText('Nothing needs me.');
+    const names = ['backend', 'db-migration', 'webapp', 'webapp-test'], tags = page.locator('.card-tags');
+    providers.pull = { ...providers.pull, labels: names.map((name, index) => ({ name, color: ['d73a4a', 'fbca04', '0e8a16', '1d76db'][index] })) as never[] }; await tick();
+    await expect(tags.locator('.card-tag')).toHaveText(names.slice(0, 3)); await expect(tags.locator('.card-tag-more')).toHaveText('+1');
     providers.pull = { ...providers.pull, merged: true, state: 'closed' }; await tick();
     await expect(card().locator('[data-indicator="review-state"]')).toHaveAttribute('aria-label', 'Merged');
+    await expect(tags.locator('.card-tag')).toHaveText(names.slice(0, 3));
+    await card().click(); await expect(page.locator('.pr-labels li')).toHaveText(names);
   } finally { await app.close(); await service.close(); await rm(directory, { recursive: true, force: true }); }
 });
 

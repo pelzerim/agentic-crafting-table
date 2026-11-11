@@ -86,8 +86,9 @@ function projectGroups(members: readonly PlotBox[], links: readonly PlotLink[], 
   const pinned = [...pinnedUnits.keys()].sort(), held = pinned.map(plot => pinnedUnits.get(plot)!), rest: PlotBox[][] = [];
   for (const unit of free) {
     let nearest: { index: number; gap: number } | undefined;
+    // A unit already in another plot never joins a pinned one by nearness.
     held.forEach((core, index) => {
-      if (locked.has(pinned[index])) return;
+      if (locked.has(pinned[index]) || unit.some(box => together.has(box.id) && together.get(box.id) !== pinned[index])) return;
       let gap = Infinity;
       for (const one of unit) for (const other of core) { const between = plotGap(one, other); if (between <= reach(one, other)) gap = Math.min(gap, between); }
       if (gap < (nearest?.gap ?? Infinity)) nearest = { index, gap };
@@ -99,10 +100,11 @@ function projectGroups(members: readonly PlotBox[], links: readonly PlotLink[], 
   units.forEach((unit, i) => { for (const box of unit) unitOf.set(box.id, i); });
   // Plots that now share a proximity cluster are one territory. With no plots yet, clusters of PLOT_MIN_ITEMS or more are.
   // A pinned plot is a territory of its own that never merges with another pinned one; the plot its
-  // members were in is part of it.
+  // members were in is part of it, unless some of that plot's members stay behind.
   const merged = new Map<string, string>(), same = (key: string): string => merged.has(key) ? same(merged.get(key)!) : key;
   const pinnedLabels = pinned.map(plot => `pinned ${plot}`), isPinned = new Set(pinnedLabels), heldBy = new Map<string, string>();
-  held.forEach((unit, i) => { for (const box of unit) { const key = together.get(box.id); if (key !== undefined && !heldBy.has(key)) heldBy.set(key, pinnedLabels[i]); } });
+  const whole = (key: string, plot: string) => key === plot || members.every(box => together.get(box.id) !== key || pinnedIn.get(box.id) === plot);
+  held.forEach((unit, i) => { for (const box of unit) { const key = together.get(box.id); if (key !== undefined && !heldBy.has(key) && whole(key, pinned[i])) heldBy.set(key, pinnedLabels[i]); } });
   const first = !rest.some(unit => unit.some(box => together.has(box.id)));
   const label = units.map((unit, i) => {
     if (i < pinned.length) return pinnedLabels[i];
@@ -197,7 +199,7 @@ export function detectPlots(boxes: readonly PlotBox[], previous: readonly Plot[]
     const key = (list: readonly PlotGroup[]) => list.map(group => group.ids.join(',')).join(';');
     let settled = projectGroups(members, between, new Map(earlier.flatMap(plot => plot.memberIds.map(id => [id, plot.id]))), pinnedIn, locked);
     for (let pass = 0; pass < PLOT_SETTLE_PASSES; pass++) {
-      const next = projectGroups(members, between, new Map(settled.flatMap((group, i) => group.ids.map(id => [id, String(i)]))), pinnedIn, locked);
+      const next = projectGroups(members, between, new Map(settled.flatMap((group, i) => group.ids.map(id => [id, group.pinned ?? String(i)]))), pinnedIn, locked);
       const done = key(next) === key(settled);
       settled = next;
       if (done) break;
