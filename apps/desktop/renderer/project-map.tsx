@@ -210,7 +210,7 @@ export interface ProjectMapProps {
   /** Projects a plot's members can move to; without it the sign's menu offers no move. */
   plotTargets?(ids: string[]): { id: string; title: string; current: boolean }[];
   /** Moves items as one block to a project, or out of their project with null. */
-  onMoveItems?(ids: string[], projectId: string | null): void;
+  onMoveItems?(ids: string[], projectId: string | null): void | Promise<boolean>;
   /** Sends items to Undermap together. */
   onSendBelow?(ids: string[]): void;
   /** Settings → Map → Hide implied connections (LINK-06); absent hides them. */
@@ -1253,6 +1253,11 @@ function MapCanvas(props: ProjectMapProps) {
     cancel: () => setRenamingPlot(undefined),
     menu: (id: string, client: { x: number; y: number }) => { const rect = container.current!.getBoundingClientRect(); setHoveredPlot(undefined); setPlotMenu({ id, screen: { x: client.x - rect.left, y: client.y - rect.top } }); },
   });
+  /** The sign's lock state and the project's other plots, in map order, to merge into. */
+  const plotMenuPlot = (plot: PlotView) => {
+    const own = (props.plots ?? []).filter(other => other.projectId === plot.projectId && other.id !== plot.id);
+    return { locked: Boolean(plot.locked), others: plotMapOrder(own, props.nodes).flatMap(id => own.find(other => other.id === id) ?? []) };
+  };
   const plotMenuAct = (action: MenuAction) => {
     const plot = plotMenu && plotOf(plotMenu.id); setPlotMenu(undefined);
     if (!plot) return;
@@ -1262,8 +1267,14 @@ function MapCanvas(props: ProjectMapProps) {
     else if (action.id === 'plot-auto') void props.onPlot?.(plot.projectId, { operation: 'auto', plotId: plot.id });
     else if (action.id === 'plot-color' && action.value) void props.onPlot?.(plot.projectId, { operation: 'color', plotId: plot.id, color: action.value });
     else if (action.id === 'plot-color-auto') void props.onPlot?.(plot.projectId, { operation: 'color', plotId: plot.id, color: null });
+    else if (action.id === 'plot-lock') void props.onPlot?.(plot.projectId, { operation: 'lock', plotId: plot.id, locked: !plot.locked });
+    else if (action.id.startsWith('plot-merge:')) void props.onPlot?.(plot.projectId, { operation: 'merge', plotId: plot.id, into: action.id.slice('plot-merge:'.length) });
     else if (action.id === 'plot-leave') props.onMoveItems?.(plot.memberIds, null);
-    else if (action.id.startsWith('send:') && action.id.length > 'send:'.length) props.onMoveItems?.(plot.memberIds, action.id.slice('send:'.length));
+    else if (action.id.startsWith('send:') && action.id.length > 'send:'.length) {
+      // The plot record follows its members, so it keeps its name, color, pins and lock there.
+      const projectId = action.id.slice('send:'.length);
+      void Promise.resolve(props.onMoveItems?.(plot.memberIds, projectId)).then(moved => { if (moved) void props.onPlot?.(plot.projectId, { operation: 'move', plotId: plot.id, projectId }); });
+    }
     else if (action.id === 'plot-below') props.onSendBelow?.(plot.memberIds);
   };
   // Plots are named lazily: the service hears which ones were on screen once the camera settles.
@@ -1609,7 +1620,7 @@ function MapCanvas(props: ProjectMapProps) {
     {focus && <nav className="map-trail" aria-label="Map location"><span>{place?.project?.title ?? 'Floating item'}</span>{place?.plot && <><span>/</span><span>{place.plot.name}</span></>}<span>/</span><span>{props.nodes.find(node => node.id === focus)?.title}</span>
       {connected.length > 0 && <div className="connected-items" role="group" aria-label="Connected items">{connected.map(box => <button key={box.item.id} aria-label={`Open connected item: ${box.item.title}`} title={box.item.title} onClick={() => open(box.item.id)}><ItemIcon icon={box.icon} brand={box.brand} tint={box.tint} /></button>)}</div>}
     </nav>}
-    {plotMenu && <CanvasMenu screen={plotMenu.screen} actions={plotMenuActions(props.plotNaming ?? true, plotOf(plotMenu.id), plotNeighborhoods.get(plotOf(plotMenu.id)?.projectId ?? ''), props.plotTargets && props.onMoveItems && plotOf(plotMenu.id) ? props.plotTargets(plotOf(plotMenu.id)!.memberIds) : undefined)} act={plotMenuAct} close={() => setPlotMenu(undefined)} />}
+    {plotMenu && <CanvasMenu screen={plotMenu.screen} actions={plotMenuActions(props.plotNaming ?? true, plotOf(plotMenu.id), plotNeighborhoods.get(plotOf(plotMenu.id)?.projectId ?? ''), props.plotTargets && props.onMoveItems && plotOf(plotMenu.id) ? props.plotTargets(plotOf(plotMenu.id)!.memberIds) : undefined, plotOf(plotMenu.id) && plotMenuPlot(plotOf(plotMenu.id)!))} act={plotMenuAct} close={() => setPlotMenu(undefined)} />}
     <ZoomBar zoom={viewport.zoom} dashboards={dashboardSetting} zoomTo={zoom => void zoomTo(zoom)} />
     {!focus && props.offscreenAttention && <OffscreenAttention boxes={waiting} camera={viewport} screen={size} go={box => { clearInspection(); void setCenter(box.x, box.y, { zoom: viewport.zoom, duration: duration() }); }} />}
   </div></WorkingAnimalContext.Provider></DetailContext.Provider>;

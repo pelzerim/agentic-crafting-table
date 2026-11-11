@@ -5,6 +5,7 @@ import { emptyState, stateSchema } from '../../packages/core/control.ts';
 import { settingsSchema } from '../../packages/core/settings.ts';
 
 const snapshot = (nodes: unknown[], cursor = 1) => ({ state: stateSchema.parse({ ...emptyState(), nodes }), cursor });
+const STOPPED = '2026-11-11T08:00:00.000Z';
 const node = (version = 1, extra = {}) => ({ id: 'agent', resourceId: 'session', title: 'Agent', position: { x: 0, y: 0 }, attention: 'input', attentionVersion: version, ...extra });
 function fixture() {
   const shown: DesktopAnnouncement[] = [], closed: string[] = []; let focused = false;
@@ -14,7 +15,7 @@ function fixture() {
 }
 
 test('old settings default to background notifications; invalid modes are rejected', () => {
-  assert.deepEqual(settingsSchema.parse({}).notifications, { mode: 'background', needsMe: true, announcements: true, sound: true, dockBadge: true, countFinished: false, seenOnOpen: [], reminders: 'sound' });
+  assert.deepEqual(settingsSchema.parse({}).notifications, { mode: 'background', needsMe: true, announcements: true, sound: true, dockBadge: true, countFinished: false, seenOnOpen: [], reminders: 'sound', startupResumes: true });
   assert.equal(settingsSchema.parse({ notifications: { mode: 'off' } }).notifications.reminders, 'sound', 'older settings read sound');
   assert.equal(settingsSchema.safeParse({ notifications: { reminders: 'loud' } }).success, false);
   assert.equal(settingsSchema.safeParse({ notifications: { mode: 'sometimes' } }).success, false);
@@ -32,6 +33,47 @@ test('baseline, alias duplication, reconnect and out-of-order snapshots do not r
   f.subject.snapshot(snapshot([node(3, { attentionNote: 'Agent needs permission' })], 4)); assert.equal(f.shown.length, 2);
   assert.equal(f.shown[1].body, 'Agent needs permission', 'the trigger reason replaces the category label');
   assert.deepEqual(f.closed, ['attention:session:2']);
+});
+
+test('a session startup resumed stays quiet through its recovery turn and the wait after it, until a new turn starts', () => {
+  const entry = { sessionId: 's', nodeId: 'agent', title: 'Agent', kind: 'agent', continueWork: true, requestId: 'r', state: 'pending' } as const;
+  const run = (startupResumes: boolean) => {
+    const f = fixture(); f.subject.preferences!.startupResumes = startupResumes;
+    const at = (cursor: number, version: number, activity: string, extra = {}) => f.subject.snapshot(snapshot([node(version, { activity, ...extra }), node(cursor, { id: 'other', resourceId: 'other', title: 'Other' })], cursor));
+    at(1, 1, 'unknown', { attention: 'none' }); f.subject.resumedAtStartup({ entries: [entry] });
+    at(2, 1, 'working', { attention: 'none' });
+    at(3, 2, 'idle', { attentionNote: 'Agent needs permission' });
+    at(4, 3, 'idle', { attentionNote: 'Agent waiting', turnEndedAt: STOPPED });
+    at(5, 3, 'working', { attention: 'none', turnEndedAt: STOPPED });
+    at(6, 4, 'idle', { attentionNote: 'Agent waiting', turnEndedAt: STOPPED });
+    return f.shown.map(notice => notice.key);
+  };
+  assert.deepEqual(run(false), ['attention:other:2', 'attention:other:3', 'attention:other:4', 'attention:other:5', 'attention:session:4', 'attention:other:6']);
+  assert.deepEqual(run(true).filter(key => key.startsWith('attention:session')), ['attention:session:2', 'attention:session:3', 'attention:session:4']);
+});
+
+test('approving a permission during the recovery turn is not a new turn: the next permission request stays quiet', () => {
+  const f = fixture(); f.subject.preferences!.startupResumes = false;
+  const entry = { sessionId: 's', nodeId: 'agent', title: 'Agent', kind: 'agent', continueWork: true, requestId: 'r', state: 'pending' } as const;
+  const at = (cursor: number, version: number, activity: string, extra = {}) => f.subject.snapshot(snapshot([node(version, { activity, ...extra })], cursor));
+  at(1, 1, 'unknown', { attention: 'none', turnEndedAt: '2026-11-10T09:00:00.000Z' }); f.subject.resumedAtStartup({ entries: [entry] });
+  at(2, 1, 'working', { attention: 'none', turnEndedAt: '2026-11-10T09:00:00.000Z' });
+  at(3, 2, 'idle', { attentionNote: 'Agent needs permission', turnEndedAt: '2026-11-10T09:00:00.000Z' });
+  at(4, 2, 'working', { attention: 'none', turnEndedAt: '2026-11-10T09:00:00.000Z' });
+  at(5, 3, 'idle', { attentionNote: 'Agent needs permission', turnEndedAt: '2026-11-10T09:00:00.000Z' });
+  assert.deepEqual(f.shown, []);
+});
+
+test('a resumed Codex session, which never writes turnEndedAt, banners again once its recovery turn finished and a new turn starts', () => {
+  const f = fixture(); f.subject.preferences!.startupResumes = false;
+  const entry = { sessionId: 's', nodeId: 'agent', title: 'Agent', kind: 'agent', continueWork: true, requestId: 'r', state: 'pending' } as const;
+  const at = (cursor: number, version: number, activity: string, extra = {}) => f.subject.snapshot(snapshot([node(version, { activity, ...extra })], cursor));
+  at(1, 1, 'unknown', { attention: 'none' }); f.subject.resumedAtStartup({ entries: [entry] });
+  at(2, 1, 'working', { attention: 'none' });
+  at(3, 2, 'idle', { attention: 'none', attentionEvents: { completion: 'codex:s:1' } });
+  at(4, 2, 'working', { attention: 'none', attentionEvents: { completion: 'codex:s:1' } });
+  at(5, 3, 'idle', { attentionNote: 'Agent needs permission', attentionEvents: { completion: 'codex:s:1' } });
+  assert.deepEqual(f.shown.map(notice => notice.key), ['attention:session:3']);
 });
 
 test('read and archive remove native notices, OS dismissal alone changes no domain state', () => {
@@ -88,6 +130,8 @@ test('announcements deduplicate, respect settings, allow explicit test and dispo
   assert.equal(f.subject.announcement(notice), true); assert.equal(f.subject.announcement(notice), false);
   f.focus(true); assert.equal(f.subject.announcement({ ...notice, key: 'foreground' }), false);
   f.focus(false); assert.equal(f.subject.announcement({ ...notice, key: 'foreground' }), false);
+  f.subject.preferences!.startupResumes = false; assert.equal(f.subject.announcement({ ...notice, key: 'startup', startup: true }), false);
+  assert.equal(f.subject.announcement({ ...notice, key: 'failure' }), true);
   f.subject.preferences!.mode = 'off'; assert.equal(f.subject.announcement({ ...notice, key: 'test' }, true), true);
   f.subject.preferences!.mode = 'always'; f.subject.snapshot(snapshot([])); f.subject.snapshot(snapshot([node()], 2));
   f.subject.dispose(); assert.deepEqual(f.closed, ['attention:session:1']);

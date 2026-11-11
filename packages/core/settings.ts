@@ -57,7 +57,9 @@ export const notificationSettingsSchema = z.object({
   seenOnOpen: z.array(z.string().min(1).max(200)).max(500).default([]),
   /** Reminders notify regardless of `mode`; `app` shows only the in-app notice. */
   reminders: z.enum(['sound', 'silent', 'app']).default('sound'),
-}).default({ mode: 'background', needsMe: true, announcements: true, sound: true, dockBadge: true, countFinished: false, seenOnOpen: [], reminders: 'sound' });
+  /** Off: a session startup recovery resumed raises no banner until it next starts a turn; Needs me still lists it. */
+  startupResumes: z.boolean().default(true),
+}).default({ mode: 'background', needsMe: true, announcements: true, sound: true, dockBadge: true, countFinished: false, seenOnOpen: [], reminders: 'sound', startupResumes: true });
 /** How an item came to be opened: by a person's gesture, or by the app on its own. */
 export interface OpenContext { origin: 'user' | 'program'; windowFocused: boolean; documentVisible: boolean }
 /** Whether opening an item of this type marks its Needs me entry seen. */
@@ -161,6 +163,8 @@ export const settingsSchema = z.object({
   mapCollisions: z.enum(MAP_COLLISIONS).default('shove'),
   /** Item menus end in Delete…, which removes the item for good after a confirmation. */
   itemDelete: z.boolean().default(false),
+  /** A merged or closed pull request's card keeps the review or checks chip it last showed while open. */
+  keepPullChipsAfterClose: z.boolean().default(false),
   /** Pull requests that land on the map while this is on get one direct review from each chosen agent. */
   autoReview: z.object({
     enabled: z.boolean().default(false),

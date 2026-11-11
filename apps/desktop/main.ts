@@ -2,6 +2,7 @@ import * as z from 'zod/v4';
 import { DesktopNotifications, announcementSchema } from './notifications.ts';
 import type { DesktopAnnouncement, NotificationTarget } from './notifications.ts';
 import type { WorkspaceSnapshot } from '../../packages/workspace-service/protocol.ts';
+import type { RecoveryState } from '../../packages/workspace-service/lifecycle.ts';
 import { isOffMap } from '../../src/graph/archive.ts';
 import { browserUrl, clipboardUrls } from './browser-url.ts';
 import { EMBEDDED_SITES, GUEST_PREFERENCES, attachEmbeddedPage, browserUserAgent, embeddedDownload, embeddedNavigation, embeddedPermissionAllowed } from './embedded-sites.ts';
@@ -348,7 +349,7 @@ async function main() {
   });
   ipcMain.handle('app:connection-events', event => { assertCaller(event); return workspace.connectionEvents(); });
   workspace.on('status', value => broadcast('workspace:status', value));
-  workspace.on('status', value => { if (value === 'connected' && !spike) void workspace.call('lifecycle.recover', { startupId }).catch(error => broadcast('workspace:status', error.message)); });
+  workspace.on('status', value => { if (value === 'connected' && !spike) void workspace.call<RecoveryState>('lifecycle.recover', { startupId }).then(recovery => notifications.resumedAtStartup(recovery)).catch(error => broadcast('workspace:status', error.message)); });
   app.on('will-quit', () => workspace.close());
   ipcMain.handle('workspace:request', async (event, request) => {
     assertCaller(event);

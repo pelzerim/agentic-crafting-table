@@ -10,7 +10,7 @@ import type { Point } from './menu-aim.ts';
 const ICONS: Partial<Record<MenuActionId, string>> = {
   open: 'open', connect: 'link', 'open-web': 'external', 'copy-url': 'copy', edit: 'settings', settings: 'settings', 'add-todo': 'square-check', 'remove-todo': 'square', 'auto-title': 'sparkles',
   complete: 'seen', reopen: 'refresh', below: 'undermap', surface: 'open', archive: 'archive', 'archive-browser': 'archive', 'new-item': 'plus', 'new-project': 'project',
-  'remove-link': 'unlink', 'plot-auto': 'sparkles', 'make-blocking': 'link', 'make-normal': 'link', 'reverse-link': 'link', 'send-project': 'project', 'move-plot': 'sprout', 'plot-unpin': 'minus',
+  'remove-link': 'unlink', 'plot-auto': 'sparkles', 'make-blocking': 'link', 'make-normal': 'link', 'reverse-link': 'link', 'send-project': 'project', 'project-into': 'project', 'move-plot': 'sprout', 'plot-unpin': 'minus',
   'context-show': 'message-square', 'context-hide': 'message-square', 'context-add': 'message-square', 'standup-report': 'file-text',
 };
 /** Top-level rows lead with a 16px glyph; provider actions pick theirs from the action. */
@@ -162,7 +162,7 @@ export function CanvasMenu({ screen, avoid, actions, act, close, loadChoices, on
         else if (action.children) open(action, button, false);
       }}
       onPointerLeave={() => onHighlight?.(undefined)} onFocus={() => onHighlight?.(action.highlight)} onBlur={() => onHighlight?.(undefined)}
-      onClick={event => action.children ? open(action, event.currentTarget, true) : action.disabled ? undefined : action.id === 'plugin:cancel' ? close() : nested && (asks || action.confirm) && action.mutation ? setConfirming(action.id) : act(action)}>
+      onClick={event => action.children ? open(action, event.currentTarget, true) : action.disabled ? undefined : action.id === 'plugin:cancel' ? close() : nested && (action.confirm || asks && action.mutation) ? setConfirming(action.id) : act(action)}>
       {!nested && <span className="canvas-menu-icon">{icon(action) && <ItemIcon icon={icon(action)} />}</span>}
       <span className="canvas-menu-label">{action.label}</span>{action.remote && <span className="canvas-menu-remote" title="Writes to the provider"><ItemIcon icon="remote" size={8} /></span>}{action.children && <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path fill="currentColor" d="M3 1h2v2h2v2h2v2H7v2H5v2H3V9h2V7h2V5H5V3H3Z" /></svg>}
     </button>}

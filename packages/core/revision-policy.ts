@@ -63,6 +63,7 @@ export const COMMAND_REVISION_RULES: { readonly [T in WorkspaceCommand['type']]:
   'nodes.action': { free: false, why: 'changes every item of a selection made from an earlier read' },
   'node.complete': { free: false, why: 'sets the done state, which the user may have just changed, and unblocks what it blocks' },
   'node.reopen': { free: false, why: 'clears the done state, which the user may have just changed, and places the item again' },
+  'project.merge': { free: false, why: 'moves every item of a project into another and archives it; agents may not apply it at all' },
   'project.mute': { free: false, why: 'is the user\'s display choice; agents may not apply it at all' },
   'link.remove': { free: false, why: 'removes a link' },
   'todos.reorder': { free: false, why: 'orders the list as it was when you read it' },

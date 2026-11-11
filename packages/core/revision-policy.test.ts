@@ -31,7 +31,7 @@ test('the classification is the reviewed one', () => {
   assert.deepEqual(grouped.free, ['attention.acknowledge', 'attention.restore', 'item.add', 'item.create', 'node.rework', 'node.title.generated', 'node.todo.label', 'project.create', 'todo.context']);
   assert.deepEqual(grouped.conditional, ['attention.set', 'link.save', 'node.attach', 'node.todo', 'node.update', 'todo.save']);
   assert.deepEqual(grouped.required, ['item.bind', 'item.convert', 'item.resolve', 'item.update', 'layout.repair', 'link.remove', 'node.archive', 'node.below', 'node.complete', 'node.delete', 'node.hide',
-    'node.move', 'node.reopen', 'node.resize', 'node.restore', 'node.show', 'node.surface', 'nodes.action', 'nodes.move', 'nodes.send', 'project.mute', 'todo.archive', 'todo.dismiss', 'todo.move', 'todo.place', 'todo.remove', 'todo.restore',
+    'node.move', 'node.reopen', 'node.resize', 'node.restore', 'node.show', 'node.surface', 'nodes.action', 'nodes.move', 'nodes.send', 'project.merge', 'project.mute', 'todo.archive', 'todo.dismiss', 'todo.move', 'todo.place', 'todo.remove', 'todo.restore',
     'todo.send', 'todos.reorder', 'view.set']);
 });
 

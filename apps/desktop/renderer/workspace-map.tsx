@@ -47,7 +47,7 @@ import { useUrlCandidates } from './use-url-candidates.ts';
 import { mountNativeTerminal } from './native-terminal.tsx';
 import { RecoveryStatus } from './recovery-status.tsx';
 import { CanvasMenu } from './canvas-menu.tsx';
-import { contextMenuActions, convertLinkActions, deleteItemAction, enabledMenuGroups, fieldMenuActions, itemEditLabel, itemMenuCustom, itemPlotActions, linkMenuActions, muteProjectAction, moveToProjectAction, sharedContextMenuActions } from '../../../packages/core/context-menu.ts';
+import { contextMenuActions, convertLinkActions, deleteItemAction, enabledMenuGroups, fieldMenuActions, itemEditLabel, itemMenuCustom, itemPlotActions, linkMenuActions, muteProjectAction, moveToProjectAction, projectIntoAction, sharedContextMenuActions } from '../../../packages/core/context-menu.ts';
 import { mapBadges } from '../../../src/graph/badges.ts';
 import { moveTargets } from '../../../packages/core/todos.ts';
 import type { MenuAction, MenuActionId } from '../../../packages/core/context-menu.ts';
@@ -641,6 +641,10 @@ export function WorkspaceMap() {
   const moveIds = editor?.mode !== 'menu' || layer !== 'map' ? undefined : selectedItems.length > 1 ? selectedItems.every(node => node.resourceId) ? [editor.nodeId!, ...selectedItems.map(node => node.id).filter(id => id !== editor.nodeId)] : undefined
     : selected?.resourceId ? [selected.id] : undefined;
   const move = moveIds && snapshot ? moveToProjectAction(moveTargets(snapshot.state, moveIds)) : undefined;
+  // A project on the map can move everything it holds into another project, which archives it.
+  const projectInto = editor?.mode === 'menu' && layer === 'map' && scope === 'project' && selected && !selected.resourceId && snapshot ? projectIntoAction(selected.title,
+    snapshot.state.nodes.filter(node => node.projectId === selected.id && node.resourceId && !isArchived(node, snapshot.state.nodes)).length,
+    moveTargets(snapshot.state, []).map(target => ({ ...target, current: target.id === selected.id }))) : undefined;
   // Move to plot and Remove from plot (MAP-24) while plots are on; hidden plots are listed too.
   const plotEntries = moveIds && snapshot && settings?.value.mapPlots !== false ? itemPlotActions(snapshot.state.nodes, snapshot.plots?.list ?? [], moveIds) : [];
   // The project a Mute or Unmute entry acts on: the project itself, or the neighbourhood that was right-clicked.
@@ -651,7 +655,7 @@ export function WorkspaceMap() {
   const sizeDefault = editor?.mode === 'menu' && layer === 'map' && selected && snapshot && settings ? sizeAsDefault(selected, snapshot.state.nodes, snapshot.state.resources, registry, settings.value.itemMapSizes) : undefined;
   const singleActions = selectedLink ? linkMenuActions(selectedLink.kind, linkEnds?.[0]?.title ?? 'Unavailable item', linkEnds?.[1]?.title ?? 'Unavailable item') : contextMenuActions(scope, Boolean(selected?.completedAt), itemEditLabel(selectedPlugin), enabledMenuGroups(selectedPlugin?.contextMenu, pluginSettings), selectedPlugin?.todoSupport ? { enabled: Boolean(selected?.inTodoList) } : undefined, belowMenu(selected), web, Boolean(selectedPlugin?.activityTitle && settings?.value.summaries.agentTitles),
     scope === 'project' && selected && layer === 'map' && settings?.value.mapPlots ? { shown: !snapshot?.plots?.hiddenProjects.includes(selected.id), hidden: snapshot?.plots?.list.filter(plot => plot.projectId === selected.id && plot.hidden).length ?? 0 } : undefined,
-    move,
+    move ?? projectInto,
     muteTarget && snapshot ? muteProjectAction(Boolean(muteTarget.mutedAt), attentionCounts(attentionItems(snapshot.state.nodes, muteTarget.id), counting).needsMe) : undefined,
     convertLinkActions(conversions.candidates.flatMap(candidate => { const type = plugins?.find(plugin => plugin.id === candidate.pluginId); return type && !type.creation?.urlFallback && type.id !== selectedResource?.pluginId ? [{ pluginId: type.id, name: type.name }] : []; })),
     selectedResource ? itemMenuCustom(settings?.value.menus, selectedResource.pluginId) : undefined, sizeDefault, visibility,
@@ -664,7 +668,7 @@ export function WorkspaceMap() {
   /** One command moves the block; then the map flies to the lead as Show on map does, keeping the moved items selected and closed. */
   const moveToProject = (ids: string[], projectId: string | null) => {
     setEditor(undefined);
-    void apply([{ type: 'nodes.send', ids, projectId }]).then(() => setReveal({ nodeId: ids[0], nonce: Date.now(), mode: 'map', select: ids })).catch(error => setError(error.message));
+    return apply([{ type: 'nodes.send', ids, projectId }]).then(() => { setReveal({ nodeId: ids[0], nonce: Date.now(), mode: 'map', select: ids }); return true; }, error => { setError(error.message); return false; });
   };
   /** Pins the items in a plot of their project, in a new plot, or unpins them. */
   const plotItems = (ids: string[], id: MenuActionId) => {
@@ -707,6 +711,14 @@ export function WorkspaceMap() {
   const menuAction = (id: MenuActionId) => {
     if (!editor) return;
     if (id.startsWith('send:')) { if (moveIds && id.length > 'send:'.length) moveToProject(moveIds, id.slice('send:'.length)); return; }
+    if (id.startsWith('project-into:')) {
+      if (!projectInto || !selected || id.length === 'project-into:'.length) return;
+      // The merge moves the plot records with the items, so plots keep their names, colors, pins and locks there.
+      const source = selected.id, into = id.slice('project-into:'.length); setEditor(undefined);
+      void apply([{ type: 'project.merge', id: source, into }])
+        .then(() => setReveal({ nodeId: into, nonce: Date.now(), mode: 'map' })).catch(error => setError(error.message));
+      return;
+    }
     if (id === 'plot-new' || id === 'plot-unpin' || id.startsWith('plot-pin:')) { if (moveIds && id !== 'plot-pin:') plotItems(moveIds, id); return; }
     if (selectedItems.length > 1) {
       if (id.startsWith('plugin:')) {

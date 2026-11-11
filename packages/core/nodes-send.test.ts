@@ -157,3 +157,29 @@ test('move targets list the map\'s projects in to-do order with the shared proje
   state = await apply([{ type: 'todos.reorder', scope: 'projects', ids: ['docs', 'billing'] }]);
   assert.deepEqual(targets(['pr']), [['Docs', false], ['Billing', true], ['Empty', false]]);
 });
+
+test('merging a project leaves an item of another project that a moved to-do links to where it is', async () => {
+  const { apply } = await fixture();
+  const before = await apply([todo('task', { x: 0, y: 400 }, 'billing'), note('far', { x: 0, y: 3000 }, 'empty'), link('l2', 'task', 'far')]);
+  const state = await apply([{ type: 'project.merge', id: 'billing', into: 'docs' }]);
+  assert.equal(at(state, 'task').projectId, 'docs');
+  assert.deepEqual([at(state, 'far').projectId, at(state, 'far').position], ['empty', at(before, 'far').position]);
+});
+
+test('merging a project moves all its items, archived and in Undermap too, as one block and archives the emptied project', async () => {
+  const { control, apply } = await fixture();
+  const before = await apply([note('old', { x: 0, y: 400 }, 'billing'), note('deep', { x: 400, y: 400 }, 'billing'), { type: 'node.archive', id: 'old' }, { type: 'node.below', id: 'deep' },
+    { type: 'todo.save', todo: { id: 'plan', title: 'Plan', completed: false, nodeIds: ['billing'] } }]);
+  const state = await apply([{ type: 'project.merge', id: 'billing', into: 'docs' }]);
+  assert.deepEqual(state.todos.find(todo => todo.id === 'plan')?.nodeIds, ['docs'], 'a to-do on the project follows it');
+  assert.deepEqual(['pr', 'spec', 'old', 'deep', 'guide'].map(id => at(state, id).projectId), ['docs', 'docs', 'docs', 'docs', 'docs']);
+  assert.ok(at(state, 'billing').archivedAt, 'the source is archived');
+  assert.ok(state.nodes.some(node => node.id === 'billing'), 'never deleted');
+  assert.deepEqual(offset(state, 'pr', 'spec'), offset(before, 'pr', 'spec'), 'the block keeps its layout');
+  assert.ok(clear(state, control));
+  assert.deepEqual(state.links, before.links);
+  await assert.rejects(apply([{ type: 'project.merge', id: 'docs', into: 'docs' }]), /another project/);
+  await assert.rejects(apply([{ type: 'project.merge', id: 'docs', into: 'billing' }]), /archive/);
+  const agent = await fixture('agent');
+  await assert.rejects(agent.apply([{ type: 'project.merge', id: 'billing', into: 'docs' }]));
+});

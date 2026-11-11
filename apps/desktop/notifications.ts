@@ -3,8 +3,11 @@ import { splitAttention } from '../../src/graph/mute.ts';
 import { attentionTierInfo, countsAsNeedsMe } from '../../src/graph/attention.ts';
 import type { WorkspaceSnapshot } from '../../packages/workspace-service/protocol.ts';
 import type { AppSettings } from '../../packages/core/settings.ts';
+import type { RecoveryState } from '../../packages/workspace-service/lifecycle.ts';
 
-export const announcementSchema = z.object({ key: z.string().min(1).max(500), title: z.string().min(1).max(250), body: z.string().max(1000).default(''), nodeId: z.string().max(200).optional() }).strict();
+export const announcementSchema = z.object({ key: z.string().min(1).max(500), title: z.string().min(1).max(250), body: z.string().max(1000).default(''), nodeId: z.string().max(200).optional(), startup: z.boolean().optional() }).strict();
+/** Moves when any provider ends a turn: Claude's Stop writes `turnEndedAt`, every agent's finish raises a new completion event. */
+const turnEnd = (node: { turnEndedAt?: string; attentionEvents?: Record<string, string> } | undefined) => `${node?.turnEndedAt ?? ''}|${node?.attentionEvents?.completion ?? ''}`;
 export type DesktopAnnouncement = z.infer<typeof announcementSchema>;
 export type NotificationPreferences = AppSettings['notifications'];
 export interface NotificationTarget { nodeId?: string }
@@ -16,6 +19,8 @@ export class DesktopNotifications {
   private previous?: WorkspaceSnapshot;
   private delivered = new Set<string>();
   private active = new Map<string, string>();
+  /** Nodes startup recovery resumes, by node id: `ended` once their recovery turn's end mark moved; gone when a new turn starts. */
+  private resumed = new Map<string, { ended: boolean; working: boolean; turnEnd: string }>();
   preferences?: NotificationPreferences;
   private delivery: NotificationDelivery;
   private focused: () => boolean;
@@ -25,6 +30,8 @@ export class DesktopNotifications {
     if (!test && this.delivered.has(notice.key)) return false;
     this.remember(notice.key);
     if (!test && (!this.allowed() || !this.preferences?.announcements)) return false;
+    // Startup recovery progress follows the startup-resume switch; failures never carry `startup`.
+    if (!test && notice.startup && this.preferences?.startupResumes === false) return false;
     this.delivery.show(notice); return true;
   }
   /** A due reminder (MAP-REMINDERS). Its own preference applies instead of the Needs me mode;
@@ -33,6 +40,23 @@ export class DesktopNotifications {
     const delivery = this.preferences?.reminders ?? 'sound';
     if (delivery === 'app') return false;
     this.delivery.close(notice.key); this.delivery.show(notice, delivery === 'silent'); return true;
+  }
+  /** The recovery the app started with: the sessions it is about to resume stay quiet when `startupResumes` is off. */
+  resumedAtStartup(recovery: Pick<RecoveryState, 'entries'>) {
+    for (const entry of recovery.entries) if (entry.state === 'pending' && (entry.kind === 'agent' || entry.kind === 'analysis')) {
+      const node = this.previous?.state.nodes.find(node => node.id === entry.nodeId);
+      this.resumed.set(entry.nodeId, { ended: !entry.continueWork, working: node?.activity === 'working', turnEnd: turnEnd(node) });
+    }
+  }
+  private quiet(item: { aliases: readonly { id: string }[] }) { return this.preferences?.startupResumes === false && item.aliases.some(alias => this.resumed.has(alias.id)); }
+  private settleResumed(next: WorkspaceSnapshot) {
+    for (const [id, entry] of this.resumed) {
+      const node = next.state.nodes.find(node => node.id === id), working = node?.activity === 'working';
+      if (!node || (entry.ended && working && !entry.working)) { this.resumed.delete(id); continue; }
+      // Only a turn end moves the mark: a permission pause flips activity too.
+      if (turnEnd(node) !== entry.turnEnd) entry.ended = true;
+      entry.working = working;
+    }
   }
   private remember(key: string) {
     this.delivered.add(key);
@@ -60,12 +84,13 @@ export class DesktopNotifications {
       this.remember(key);
       // Finished work raises no banner unless it is counted (Settings → Notifications); the in-app notice still shows.
       const wanted = countsAsNeedsMe(item.tier, this.preferences) && (item.tier === 'finished' ? this.preferences?.needsMe || this.preferences?.announcements : this.preferences?.needsMe);
-      if (!this.allowed() || !wanted) continue;
+      if (!this.allowed() || !wanted || this.quiet(item)) continue;
       const old = this.active.get(item.identity); if (old) this.delivery.close(old);
       this.active.set(item.identity, key);
       // An agent's banner quotes the line it ended its turn on, as its Needs me row does.
       this.delivery.show({ key, title: `${attentionTierInfo[item.tier].name} · ${item.node.title}`.slice(0, 250), body: item.aliases.map(alias => saidLast.get(alias.id)).find(Boolean) ?? item.details.join(' · '), nodeId: item.node.id });
     }
+    this.settleResumed(next);
   }
   dispose() { for (const key of this.active.values()) this.delivery.close(key); this.active.clear(); }
 }

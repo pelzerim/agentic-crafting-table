@@ -17,7 +17,8 @@ import type { PlotBox, PlotSnapshot } from '../../src/graph/plots.ts';
 
 const plotId = z.string().min(1).max(200), memberIds = z.array(z.string().min(1).max(200)).min(1).max(500);
 /** A person's plot changes from the map; agents are refused before reaching them. `pin` pins items into a plot of the
- * project, `create` makes a new plot of them, `unpin` hands them back to detection. */
+ * project, `create` makes a new plot of them, `unpin` hands them back to detection. `lock` keeps a plot to its members,
+ * `merge` hands a plot's members to another plot of the project, `move` gives a plot (or all of them) to another project. */
 export const plotRequestSchema = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('pin'), plotId, memberIds }),
   z.object({ operation: z.literal('create'), memberIds }),
@@ -28,6 +29,9 @@ export const plotRequestSchema = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('auto'), plotId }),
   z.object({ operation: z.literal('color'), plotId, color: z.enum(PLOT_COLORS).or(z.string().regex(HEX_COLOR_PATTERN).transform(color => color.toLowerCase())).nullable() }),
   z.object({ operation: z.literal('seen'), plotIds: z.array(plotId).max(60) }),
+  z.object({ operation: z.literal('lock'), plotId, locked: z.boolean() }),
+  z.object({ operation: z.literal('merge'), plotId, into: plotId }),
+  z.object({ operation: z.literal('move'), plotId: plotId.optional(), projectId: plotId }),
 ]);
 /** A plot is named once its membership has settled, and at most this often. */
 export const PLOT_NAME_DEBOUNCE_MS = 30_000, PLOT_NAME_INTERVAL_MS = 10 * 60_000;
@@ -83,7 +87,13 @@ export class Plots {
       const nodes = new Map((await this.control.read()).nodes.map(node => [node.id, node]));
       if (!request.memberIds.every(id => nodes.get(id)?.resourceId && nodes.get(id)!.projectId === projectId)) throw new Error('Some of these items are not in this project.');
     }
-    if (request.operation === 'project') this.store.setPlotsShown(projectId, request.shown);
+    if (request.operation === 'move') {
+      const target = (await this.control.read()).nodes.find(node => node.id === request.projectId);
+      if (!target || target.resourceId || target.projectId || target.archivedAt) throw new Error('Project not found');
+      const ids = this.store.plotRecords().filter(record => request.plotId === undefined ? record.projectId === projectId : record.id === request.plotId && [projectId, target.id].includes(record.projectId)).map(record => record.id);
+      if (request.plotId !== undefined && !ids.length) throw new Error('This plot is not in this project any more.');
+      this.store.movePlots(ids, target.id);
+    } else if (request.operation === 'project') this.store.setPlotsShown(projectId, request.shown);
     else if (request.operation === 'seen') { for (const id of request.plotIds) this.seen.set(id, this.clock()); return { ok: true }; }
     else if (request.operation === 'create') {
       const id = randomUUID();
@@ -93,8 +103,16 @@ export class Plots {
     else {
       const record = this.store.plotRecords().find(record => record.id === request.plotId);
       if (!record || record.projectId !== projectId) throw new Error('This plot is not in this project any more.');
-      // A detected plot pinned into for the first time keeps the members it shows, so it stays the plot the person picked.
-      if (request.operation === 'pin') this.store.pinPlotMembers(record.id, [...record.active && !record.pinnedMemberIds.length ? record.memberIds : [], ...request.memberIds]);
+      // A detected plot pinned into for the first time keeps the members it shows; `current` is everyone it shows.
+      const shown = (plot: typeof record) => [...plot.active && !plot.pinnedMemberIds.length ? plot.memberIds : [], ...plot.pinnedMemberIds];
+      const current = (plot: typeof record) => [...plot.active ? plot.memberIds : [], ...plot.pinnedMemberIds];
+      if (request.operation === 'pin') this.store.pinPlotMembers(record.id, [...shown(record), ...request.memberIds]);
+      else if (request.operation === 'lock') this.store.lockPlot(record.id, request.locked, current(record));
+      else if (request.operation === 'merge') {
+        const into = this.store.plotRecords().find(other => other.id === request.into && other.id !== record.id);
+        if (!into || into.projectId !== projectId) throw new Error('This plot is not in this project any more.');
+        this.store.mergePlot(record.id, into.id, [...shown(into), ...current(record)]);
+      }
       else if (request.operation === 'rename') this.store.renamePlot(record.id, request.name || undefined, false);
       else if (request.operation === 'hide') this.store.hidePlot(record.id, request.hidden);
       else if (request.operation === 'color') this.store.choosePlotColor(record.id, request.color ?? undefined);
@@ -157,7 +175,7 @@ export class Plots {
     }
     const records = this.store.plotRecords(), pinned = records.filter(record => record.pinnedMemberIds.length);
     const detected = detectPlots(boxes, records.filter(record => record.active), () => randomUUID(), state.links,
-      pinned.map(record => ({ plotId: record.id, projectId: record.projectId, memberIds: record.pinnedMemberIds })));
+      pinned.map(record => ({ plotId: record.id, projectId: record.projectId, memberIds: record.pinnedMemberIds, locked: record.locked })));
     const known = new Set(records.map(record => record.id)), reclaimed = new Set<string>(), claimed = new Set(detected.map(plot => plot.id));
     // A plot whose items moved to another project as a group is the same plot there. A pinned plot keeps its project
     // and identity for its pinned members' return, so detection never reclaims it.
@@ -185,7 +203,7 @@ export class Plots {
     const value: PlotSnapshot = { list: plots.map(plot => {
       const record = saved.get(plot.id)!, titles = plot.memberIds.map(id => byId.get(id)?.title ?? ''), { color, chosenColor } = colorOf(plot.id);
       return { id: plot.id, projectId: plot.projectId, memberIds: plot.memberIds, name: record.name ?? plotFallbackName(titles), source: record.name === undefined ? 'local' : record.generated ? 'generated' : 'user', hidden: record.hidden,
-        color: assigned.get(plot.id) ?? color!, ...(chosenColor ? { chosenColor } : {}), pinnedMemberIds: record.pinnedMemberIds.filter(id => plot.memberIds.includes(id)) };
+        color: assigned.get(plot.id) ?? color!, ...(chosenColor ? { chosenColor } : {}), pinnedMemberIds: record.pinnedMemberIds.filter(id => plot.memberIds.includes(id)), ...(record.locked ? { locked: true as const } : {}) };
     }), hiddenProjects: this.store.hiddenPlotProjects(), revision: this.version };
     this.last = { key, value };
     return value;

@@ -9,6 +9,8 @@ import { notionPagePresentation } from './items/notion-page/presentation.ts';
 import { SqliteStore } from '../../packages/workspace-service/sqlite-store.ts';
 import { dashboardPreview, projectDashboard } from '../graph/project-dashboard.ts';
 import type { ResourceSnapshot } from './types.ts';
+import { PULL_CUES } from '../../packages/provider-runtime/github-status.ts';
+import type { PullStatus } from '../../packages/provider-runtime/github-status.ts';
 
 test('the comment cue is one shape: message glyph, blue, count first', () => {
   assert.deepEqual(unreadCommentsIndicator(1, 'unread'), { id: 'comments', label: '1 unread comment', icon: 'message-square', tone: 'blue' });
@@ -34,6 +36,22 @@ test('pull requests and Notion pages raise the same comment cue for comments wai
 
     const { label: _pullLabel, ...pullShape } = pullCue!, { label: _pageLabel, showLabel: _shown, ...pageShape } = pageCue!;
     assert.deepEqual(pageShape, pullShape, 'same id, glyph and tone on both types');
+  } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('a merged pull request keeps the review chip it last showed while open, only with the setting on', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'craft-pull-kept-')), store = new SqliteStore(join(directory, 'workspace.sqlite'));
+  try {
+    const pull = { id: 'pr-r', pluginId: 'github.pull-request', schemaVersion: 1, title: 'PR', connectionId: 'github-1', data: { owner: 'acme', repo: 'billing', number: 7 } };
+    const read = (status: string) => ({ activity: 'idle', attention: 'none', connection: 'connected', label: '', title: 'PR', observedAt: '2026-09-26T12:00:00.000Z',
+      indicators: [{ id: 'review-state', ...PULL_CUES[status as PullStatus] }], detail: { status } }) as unknown as ResourceSnapshot;
+    const ids = (status: string) => pullRequestPresentation.indicators!(pull, read(status), store)!.map(cue => cue.label);
+    assert.deepEqual(ids('approved'), ['Approved']);
+    assert.deepEqual(ids('merged'), ['Merged'], 'off by default');
+    const settings = store.readSettings(); store.writeSettings({ expectedRevision: settings.revision, value: { ...settings.value, keepPullChipsAfterClose: true } });
+    assert.deepEqual(ids('merged'), ['Merged', 'Approved']);
+    assert.equal(pullRequestPresentation.indicators!(pull, read('merged'), store)![1].stage, undefined, 'kept as information, never as ready work');
+    ids('open'); assert.deepEqual(ids('closed'), ['Closed'], 'a later open read without a review outcome forgets it');
   } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 

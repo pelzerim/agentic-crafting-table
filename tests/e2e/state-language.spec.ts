@@ -161,8 +161,12 @@ test('Finished is listed and marked but not counted on the rail, the Dock or the
     await expect(page.locator('[data-project-label="project"] .project-counts')).toHaveText('3 asking · 3 my turn · 3 finished · 3 working');
     await rail.click();
     const sheet = page.locator('.attention-list');
-    // One list, three groups in order, the longest wait first inside each.
+    // One list, three groups in order, the newest first inside each; the header flips to the longest wait first.
     await expect(sheet.locator('.attention-tier h3')).toHaveText(['Asking me · 4', 'My turn · 4', 'Finished · 3not counted']);
+    const asking = sheet.getByRole('group', { name: 'Asking me' }).locator('.attention-entry strong'), order = page.locator('.needs-me-order');
+    await expect(order).toHaveText('Newest first');
+    await expect(asking).toHaveText(['Ordering fixes', 'Rollout preview', 'Invoice agent', 'Cache metrics agent']);
+    await order.click(); await expect(order).toHaveText('Oldest first');
     await expect(sheet.getByRole('group', { name: 'Asking me' }).locator('.attention-entry strong')).toHaveText(['Cache metrics agent', 'Invoice agent', 'Rollout preview', 'Ordering fixes']);
     await expect(sheet.getByRole('group', { name: 'My turn' }).locator('.attention-entry strong')).toHaveText(['Album table migration', 'Upload ordering', 'Invoice rounding', 'Thumbnail refresh loop']);
     await expect(sheet.getByRole('group', { name: 'Finished' }).locator('.attention-entry strong')).toHaveText(['Cache metrics', 'Resizer cleanup', 'Upload fix']);
@@ -178,7 +182,10 @@ test('Finished is listed and marked but not counted on the rail, the Dock or the
     await sheet.getByRole('button', { name: 'Dismiss Rollout preview from Needs me' }).click();
     await expect(rail).toHaveAccessibleName('Needs me: 7'); await expect.poll(badge).toBe(7);
     // With only Finished left the slot stops being amber-filled and shows the dim dot, without a number.
-    for (const title of ['Cache metrics agent', 'Invoice agent', 'Ordering fixes', 'Album table migration', 'Upload ordering', 'Invoice rounding', 'Thumbnail refresh loop']) await sheet.getByRole('button', { name: `Dismiss ${title} from Needs me` }).click();
+    // Clear all marks every shown row seen; a folded group is left as it is.
+    await sheet.locator('.attention-tier[data-tier="finished"] .attention-fold').click();
+    await page.locator('.needs-me-clear').click();
+    await expect(sheet.locator('.attention-tier h3')).toHaveText(['Finished · 2not counted']);
     await expect(rail).toHaveAccessibleName('Needs me'); await expect(rail).toHaveClass(/needs-me-quiet/); await expect(rail).toHaveClass(/needs-me-tier-finished/);
     await expect(rail.locator('.needs-me-count')).toHaveCount(0); await expect(rail.locator('.tier-mark')).toHaveAttribute('data-tier', 'finished');
     await expect.poll(badge).toBe(0);

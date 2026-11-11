@@ -89,7 +89,7 @@ export function useAttention(snapshot: WorkspaceSnapshot | undefined,
     if (receipt && await post('attention.acknowledge', receipt) && remember) setKept(receipt);
   }, [post]);
   sendRef.current = send;
-  const acknowledge = useCallback((id: string) => send(id), [send]);
+  const acknowledge = useCallback((id: string, presented?: Receipt) => send(id, presented), [send]);
   const restore = useCallback(async (id: string) => {
     const receipt = kept;
     if (!receipt || receipt.id !== id) return;

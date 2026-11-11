@@ -14,7 +14,9 @@ export function RecoveryStatus() {
     return () => { cancelled = true; clearInterval(timer); };
   }, []);
   const { failed, identity, title } = recoveryNotice(state, error);
-  useNativeAnnouncement(identity, { title, body: failed.length ? 'Open ACT to review recovery details.' : '' }, true);
+  // Progress banners once per phase, not once per restored session.
+  const problem = Boolean(error || state?.error || failed.length);
+  useNativeAnnouncement(identity && (problem ? identity : `progress:${state?.phase}`), { title, body: failed.length ? 'Open ACT to review recovery details.' : '', ...(problem ? {} : { startup: true }) }, true);
   const notice = useNotice(identity, !error && !state?.error && !failed.length && state?.phase === 'open');
   if (!notice.visible) return null;
   return <aside className="recovery-status" aria-label="Workspace recovery" role="status">

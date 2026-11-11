@@ -106,6 +106,8 @@ export const migrations = [
   // Service owner start (`SERVICE_OWNER_START_VERSION`): when the owning process started, so a reused process ID is not taken
   // for the owner. Added once as the `started` column.
   `SELECT 1; -- service_owner.started`,
+  // Locked plots (MAP-24): added once as the `locked` column (`PLOT_LOCK_VERSION`); old rows read as unlocked.
+  `SELECT 1; -- plots.locked`,
 ] as const;
 const CONFLICTS_KEPT = 1000, CONFLICT_LANDED_SHOWN = 20;
 export interface RevisionConflictRecord { at: string; actor: string; commands: CommandSubject[]; expected: number; current: number; landed: { revision: number; actor: string; commands: CommandSubject[] }[] }
@@ -118,6 +120,7 @@ function commandSubject(command: WorkspaceCommand): CommandSubject {
 const TODO_HORIZONS_VERSION = 25, VALIDATION_LINKS_VERSION = 26, PLOT_COLORS_VERSION = 28;
 const PLOT_PINS_VERSION = migrations.findIndex(migration => migration.includes('plots.pinned_member_ids')) + 1;
 const SERVICE_OWNER_START_VERSION = migrations.findIndex(migration => migration.includes('service_owner.started')) + 1;
+const PLOT_LOCK_VERSION = migrations.findIndex(migration => migration.includes('plots.locked')) + 1;
 /** Per-package storage quota and largest single record, in bytes of stored JSON. */
 export const PLUGIN_STORAGE_BYTES = 16 * 1024 * 1024, PLUGIN_RECORD_BYTES = 1024 * 1024;
 /** Conditional-request cache bounds per provider account (least recently used first out). */
@@ -143,8 +146,9 @@ function attentionCycles(state: WorkspaceState): Map<string, AttentionCycle> {
 export const DORMANT_PLOTS_PER_PROJECT = 20;
 export interface ProjectSummaryRecord { projectId: string; fingerprint: string; attemptedAt: number; text?: string; model?: string }
 /** A plot's identity, name and color. `generated` is false for a user's name; no name means the local fallback.
- * `color` is assigned once, `chosenColor` is a person's override. `pinnedMemberIds` are the items a person pinned in it. */
-export interface PlotRecord { id: string; projectId: string; memberIds: string[]; active: boolean; name?: string; generated: boolean; hidden: boolean; changedAt: number; fingerprint?: string; attemptedAt?: number; color?: string; chosenColor?: string; pinnedMemberIds: string[] }
+ * `color` is assigned once, `chosenColor` is a person's override. `pinnedMemberIds` are the items a person pinned in it;
+ * a `locked` plot takes no other items. */
+export interface PlotRecord { id: string; projectId: string; memberIds: string[]; active: boolean; name?: string; generated: boolean; hidden: boolean; changedAt: number; fingerprint?: string; attemptedAt?: number; color?: string; chosenColor?: string; pinnedMemberIds: string[]; locked: boolean }
 /** The latest hook a Claude process sent, and when its hook process saw it. */
 export interface AgentObservation { event: string; observedAt: number }
 export type RolloutValidationPatch = Partial<Pick<Validation, 'state' | 'verdict' | 'sequence' | 'reports' | 'report' | 'scope' | 'startedAt' | 'finishedAt'>> & { idleSince?: number | null };
@@ -219,6 +223,10 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
         if (current < SERVICE_OWNER_START_VERSION) {
           const columns = new Set(this.db.prepare('PRAGMA table_info(service_owner)').all().map(row => String(row.name)));
           if (!columns.has('started')) this.db.exec('ALTER TABLE service_owner ADD COLUMN started TEXT');
+        }
+        if (current < PLOT_LOCK_VERSION) {
+          const columns = new Set(this.db.prepare('PRAGMA table_info(plots)').all().map(row => String(row.name)));
+          if (!columns.has('locked')) this.db.exec('ALTER TABLE plots ADD COLUMN locked INTEGER NOT NULL DEFAULT 0');
         }
       });
       this.db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;');
@@ -572,7 +580,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       active: Boolean(row.active), ...(row.name === null ? {} : { name: String(row.name) }), generated: Boolean(row.generated), hidden: Boolean(row.hidden), changedAt: Number(row.changed_at),
       ...(row.fingerprint === null ? {} : { fingerprint: String(row.fingerprint) }), ...(row.attempted_at === null ? {} : { attemptedAt: Number(row.attempted_at) }),
       ...(row.color === null ? {} : { color: String(row.color) }), ...(row.chosen_color === null ? {} : { chosenColor: String(row.chosen_color) }),
-      pinnedMemberIds: row.pinned_member_ids === null ? [] : decode<string[]>(row.pinned_member_ids) }));
+      pinnedMemberIds: row.pinned_member_ids === null ? [] : decode<string[]>(row.pinned_member_ids), locked: Boolean(row.locked) }));
   }
   /** Records the current plots; any other plot becomes dormant, kept only for identity. */
   savePlots(plots: readonly { id: string; projectId: string; memberIds: readonly string[] }[], now: number) {
@@ -589,24 +597,38 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       this.db.prepare(`DELETE FROM plots WHERE active = 0 AND pinned_member_ids IS NULL AND rowid NOT IN (SELECT rowid FROM (SELECT rowid, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY changed_at DESC, id) AS rank FROM plots WHERE active = 0 AND pinned_member_ids IS NULL) WHERE rank <= ?)`).run(DORMANT_PLOTS_PER_PROJECT);
     });
   }
-  /** An item is pinned in one plot at most: these members leave every plot's pins. */
+  /** An item is pinned in one plot at most: these members leave every plot's pins. A plot left with none is unlocked. */
   private unpinEverywhere(memberIds: readonly string[]) {
-    const leaving = new Set(memberIds), update = this.db.prepare('UPDATE plots SET pinned_member_ids = ? WHERE id = ?');
+    const leaving = new Set(memberIds), update = this.db.prepare('UPDATE plots SET pinned_member_ids = ?, locked = locked AND ? WHERE id = ?');
     for (const record of this.plotRecords()) {
       const kept = record.pinnedMemberIds.filter(id => !leaving.has(id));
-      if (kept.length !== record.pinnedMemberIds.length) update.run(kept.length ? JSON.stringify(kept) : null, record.id);
+      if (kept.length !== record.pinnedMemberIds.length) update.run(kept.length ? JSON.stringify(kept) : null, Number(kept.length > 0), record.id);
     }
   }
-  /** Pins the members in the plot, taking them out of any other; false when the plot is gone. */
-  pinPlotMembers(id: string, memberIds: readonly string[]) {
-    return this.transaction(() => {
-      const record = this.plotRecords().find(record => record.id === id);
-      if (!record) return false;
-      this.unpinEverywhere(memberIds);
-      const pinned = [...new Set([...record.pinnedMemberIds, ...memberIds])].sort();
-      this.db.prepare('UPDATE plots SET pinned_member_ids = ? WHERE id = ?').run(JSON.stringify(pinned), id);
-      return true;
+  /** Locking pins `memberIds` in the plot; unlocking hands all its members back to detection. */
+  lockPlot(id: string, locked: boolean, memberIds: readonly string[]) {
+    this.transaction(() => {
+      if (locked) { if (this.pinInPlot(id, memberIds)) this.db.prepare('UPDATE plots SET locked = 1 WHERE id = ?').run(id); }
+      else { const record = this.plotRecords().find(record => record.id === id); if (record) this.unpinEverywhere(record.pinnedMemberIds); this.db.prepare('UPDATE plots SET locked = 0 WHERE id = ?').run(id); }
     });
+  }
+  /** Gives plots to another project; detection there finds their members again. */
+  movePlots(ids: readonly string[], projectId: string) {
+    this.db.prepare('UPDATE plots SET project_id = ? WHERE id IN (SELECT value FROM json_each(?))').run(projectId, JSON.stringify(ids));
+  }
+  /** Pins the source plot's members in the target plot and forgets the source. */
+  mergePlot(id: string, into: string, memberIds: readonly string[]) {
+    this.transaction(() => { if (this.pinInPlot(into, memberIds)) this.db.prepare('DELETE FROM plots WHERE id = ?').run(id); });
+  }
+  /** Pins the members in the plot, taking them out of any other; false when the plot is gone. */
+  pinPlotMembers(id: string, memberIds: readonly string[]) { return this.transaction(() => this.pinInPlot(id, memberIds)); }
+  private pinInPlot(id: string, memberIds: readonly string[]) {
+    const record = this.plotRecords().find(record => record.id === id);
+    if (!record) return false;
+    this.unpinEverywhere(memberIds);
+    const pinned = [...new Set([...record.pinnedMemberIds, ...memberIds])].sort();
+    this.db.prepare('UPDATE plots SET pinned_member_ids = ?, locked = ? WHERE id = ?').run(JSON.stringify(pinned), Number(record.locked), id);
+    return true;
   }
   /** A new plot of the members, all pinned in it and taken out of any other. */
   createPinnedPlot(id: string, projectId: string, memberIds: readonly string[], now: number) {
@@ -1075,7 +1097,11 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
         return { state: receipt.result === '' ? this.readState() : stateSchema.parse(decode(receipt.result)), replayed: true };
       }
       const before = this.draftState(), active = attentionCycles(before);
+      const archived = new Set(before.nodes.filter(node => node.archivedAt).map(node => node.id));
       const next = this.writeState(change(before));
+      // A merged project's current plots move with its items, before detection could prune them; its dormant ones stay behind.
+      for (const command of envelope.commands) if (command.type === 'project.merge' && !archived.has(command.id) && next.nodes.some(node => node.id === command.id && node.archivedAt))
+        this.movePlots(this.plotRecords().filter(record => record.projectId === command.id && (record.active || record.pinnedMemberIds.length)).map(record => record.id), command.into);
       this.recordAttention(active, next);
       this.db.prepare(`INSERT INTO receipts(command_id, input, result) VALUES (?, ?, '')`).run(envelope.commandId, input);
       this.appendEvent('workspace.changed', next.revision, envelope.commandId);

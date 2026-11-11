@@ -142,7 +142,7 @@ export function memberAttentionCounts(nodes: readonly AttentionNode[], counting:
 
 /** One resource, one entry; done is independent from new attention. Prefer the
  * actionable alias as the navigation target, never one hidden by its project.
- * Sorted by tier, then the longest wait first, then reason and title. */
+ * Sorted by tier, then the newest first, then reason and title. */
 export function attentionItems(nodes: readonly AttentionNode[], projectId?: string): AttentionItem[] {
   const groups = new Map<string, AttentionItem>();
   const order = Object.keys(attentionReasons) as AttentionReason[];
@@ -159,8 +159,13 @@ export function attentionItems(nodes: readonly AttentionNode[], projectId?: stri
       || (reason === currentReason && node.id.localeCompare(group.node.id) < 0)) group.node = node;
     group.reasons.sort((a, b) => order.indexOf(a) - order.indexOf(b)); Object.assign(group, attentionDetails(group.aliases)); group.tier = attentionTier(group.reasons)!; groups.set(identity, group);
   }
-  const rank = (item: AttentionItem) => attentionTiers.indexOf(item.tier);
-  // Undated cycles (saved before ages were recorded) follow the dated ones.
-  const waited = (a: AttentionItem, b: AttentionItem) => a.since === b.since ? 0 : !a.since ? 1 : !b.since ? -1 : a.since < b.since ? -1 : 1;
-  return [...groups.values()].sort((a, b) => rank(a) - rank(b) || waited(a, b) || order.indexOf(a.reasons[0]) - order.indexOf(b.reasons[0]) || a.node.title.localeCompare(b.node.title) || a.identity.localeCompare(b.identity));
+  return orderAttention([...groups.values()]);
+}
+
+export type AttentionOrder = 'newest' | 'oldest';
+/** Tiers first, then time within a tier (Needs me's toggle flips only that); undated cycles stay last either way. */
+export function orderAttention(items: readonly AttentionItem[], time: AttentionOrder = 'newest'): AttentionItem[] {
+  const order = Object.keys(attentionReasons) as AttentionReason[], rank = (item: AttentionItem) => attentionTiers.indexOf(item.tier), flip = time === 'newest' ? -1 : 1;
+  const waited = (a: AttentionItem, b: AttentionItem) => a.since === b.since ? 0 : !a.since ? 1 : !b.since ? -1 : (a.since < b.since ? -1 : 1) * flip;
+  return [...items].sort((a, b) => rank(a) - rank(b) || waited(a, b) || order.indexOf(a.reasons[0]) - order.indexOf(b.reasons[0]) || a.node.title.localeCompare(b.node.title) || a.identity.localeCompare(b.identity));
 }

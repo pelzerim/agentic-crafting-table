@@ -5,8 +5,24 @@ their pull request and author.
 
 ## Unreleased
 
+### Map
+- **Lock plot**: a locked plot keeps its members; nearby items and plots no longer join it.
+- **Move plot to**: merge a plot into another plot, or move it with its items to another project.
+- **Move project into**: move all of a project's items, plots and to-dos into another project.
+
+### Needs me
+- **Newest first**: Needs me now lists the newest first within each group. A toggle in its header switches to oldest first, and this Mac remembers the choice.
+- **Clear all**: one button in the Needs me header marks every row it shows as seen, the same as pressing Seen on each.
+
+### Pull requests
+- **Keep status chips after close**: turn on Settings → Items → GitHub pull request → **Keep status chips** and a merged or closed pull request's card keeps the review or checks chip it last showed while open, next to Merged or Closed. Off by default.
+
+### Notifications
+- **Quiet startup resumes**: turn off Settings → Notifications → **Notify for sessions resumed at startup** and agents ACT resumes after a restart raise no macOS banner until you next prompt them. Their Needs me rows still appear. On by default.
+
 ### Settings
 - **Keep the Mac awake while work is running**: a new switch in Settings → General stops idle sleep while any item on the board is working, and lets the Mac sleep once everything is idle.
+- **Settings remembers its page**: closing and reopening Settings returns to the page it last showed, until the app restarts.
 
 ## 0.19.0 — 2026-11-10
 
