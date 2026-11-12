@@ -5,7 +5,7 @@ their pull request and author.
 
 ## Unreleased
 
-- **A guided first session**: choose a project folder, save a local task and link it to a Claude or Codex session. The guide opens automatically on a new workspace, checks installed CLIs and keeps progress when you return. Hiding or finishing it keeps it closed; reopen it from the empty workspace or Settings → General → Get started. GitHub and Linear are optional. (PR and author pending)
+- **A guided first session**: choose a project folder, save a local task and link it to a Claude or Codex session. The guide opens automatically on a new workspace, checks installed CLIs and keeps progress when you return. Hiding or finishing it keeps it closed; reopen it from the empty workspace or Settings → General → Get started. GitHub and Linear are optional. (#28, @ferrandiaz)
 
 ### Map
 - **Cracks on quiet sessions**: an optional switch in Settings → Map → Agent sessions, off by default. An agent session card that has done nothing for a week gets a small crack in from its edge, more at two weeks and again at four, so you can see how old it is. The tooltip says how long the session has been quiet. The cracks go when the session works again, and nothing cracks in the Undermap, where everything is old anyway. (#27, @timohuovinen)
