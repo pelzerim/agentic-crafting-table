@@ -6,7 +6,7 @@ their pull request and author.
 ## Unreleased
 
 ### Desktop
-- **Microphone for sessions**: on macOS the app and the Claude sessions in it can now use the microphone, for example for voice input. macOS asks once; before, it refused without asking. (#?, @hwartig)
+- **Microphone for sessions**: on macOS the app and the Claude sessions in it can now use the microphone, for example for voice input. macOS asks once; before, it refused without asking. (#26, @hwartig)
 
 ## 0.20.0 — 2026-11-12
 
