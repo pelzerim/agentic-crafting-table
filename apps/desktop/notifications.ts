@@ -45,7 +45,8 @@ export class DesktopNotifications {
   resumedAtStartup(recovery: Pick<RecoveryState, 'entries'>) {
     for (const entry of recovery.entries) if (entry.state === 'pending' && (entry.kind === 'agent' || entry.kind === 'analysis')) {
       const node = this.previous?.state.nodes.find(node => node.id === entry.nodeId);
-      this.resumed.set(entry.nodeId, { ended: !entry.continueWork, working: node?.activity === 'working', turnEnd: turnEnd(node) });
+      // Recovery restarts every analysis, so its run counts as the recovery turn; `continueWork` covers agents only.
+      this.resumed.set(entry.nodeId, { ended: entry.kind === 'agent' && !entry.continueWork, working: node?.activity === 'working', turnEnd: turnEnd(node) });
     }
   }
   private quiet(item: { aliases: readonly { id: string }[] }) { return this.preferences?.startupResumes === false && item.aliases.some(alias => this.resumed.has(alias.id)); }
@@ -53,8 +54,8 @@ export class DesktopNotifications {
     for (const [id, entry] of this.resumed) {
       const node = next.state.nodes.find(node => node.id === id), working = node?.activity === 'working';
       if (!node || (entry.ended && working && !entry.working)) { this.resumed.delete(id); continue; }
-      // Only a turn end moves the mark: a permission pause flips activity too.
-      if (turnEnd(node) !== entry.turnEnd) entry.ended = true;
+      // Only a turn end moves the mark (a permission pause flips activity too); a failed turn leaves it and stops on an error.
+      if (turnEnd(node) !== entry.turnEnd || (entry.working && !working && node.attention === 'error')) entry.ended = true;
       entry.working = working;
     }
   }

@@ -76,6 +76,28 @@ test('a resumed Codex session, which never writes turnEndedAt, banners again onc
   assert.deepEqual(f.shown.map(notice => notice.key), ['attention:session:3']);
 });
 
+test('a review restarted at startup stays quiet through its whole recovery run', () => {
+  const f = fixture(); f.subject.preferences!.startupResumes = false;
+  const entry = { sessionId: 's', nodeId: 'agent', title: 'Review', kind: 'analysis', continueWork: false, requestId: 'r', state: 'pending' } as const;
+  const at = (cursor: number, version: number, activity: string, extra = {}) => f.subject.snapshot(snapshot([node(version, { activity, ...extra })], cursor));
+  at(1, 1, 'idle', { attention: 'none' }); f.subject.resumedAtStartup({ entries: [entry] });
+  at(2, 1, 'working', { attention: 'none' });
+  at(3, 2, 'idle', { attentionNote: 'Agent needs permission' });
+  assert.deepEqual(f.shown, []);
+});
+
+test('a recovery turn that fails ends it: the next prompt asking for permission banners again', () => {
+  const f = fixture(); f.subject.preferences!.startupResumes = false;
+  const entry = { sessionId: 's', nodeId: 'agent', title: 'Agent', kind: 'agent', continueWork: true, requestId: 'r', state: 'pending' } as const;
+  const at = (cursor: number, version: number, activity: string, extra = {}) => f.subject.snapshot(snapshot([node(version, { activity, ...extra })], cursor));
+  at(1, 1, 'unknown', { attention: 'none' }); f.subject.resumedAtStartup({ entries: [entry] });
+  at(2, 1, 'working', { attention: 'none' });
+  at(3, 2, 'idle', { attention: 'error', attentionNote: 'Agent hit an error' });
+  at(4, 2, 'working', { attention: 'none' });
+  at(5, 3, 'idle', { attentionNote: 'Agent needs permission' });
+  assert.deepEqual(f.shown.map(notice => notice.key), ['attention:session:3']);
+});
+
 test('read and archive remove native notices, OS dismissal alone changes no domain state', () => {
   const f = fixture(); f.subject.snapshot(snapshot([]));
   const unread = snapshot([node()], 2); f.subject.snapshot(unread);
