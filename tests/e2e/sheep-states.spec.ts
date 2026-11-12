@@ -26,20 +26,28 @@ test.beforeEach(async ({ visual: { page } }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
 });
 
-test('working marks step on one clock, not every frame, and the stylesheet still pauses them', async ({ visual: { page } }) => {
-  await page.getByRole('slider', { name: 'Map zoom' }).fill('1');
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-  const walk = () => mark(page).locator('> i').first().evaluate(item => { const [animation] = item.getAnimations(); return { rate: animation.playbackRate, time: Number(animation.currentTime) }; });
+test('working marks move on one clock and not every frame, each at its own pace, and the stylesheet still pauses them', async ({ visual: { page } }) => {
+  const paddock = mark(page).locator('> i').first();
+  const walk = () => paddock.evaluate(item => { const [animation] = item.getAnimations(); return { rate: animation.playbackRate, time: Number(animation.currentTime) }; });
   await expect.poll(async () => (await walk()).rate).toBe(0);
   const first = await walk();
   await expect.poll(async () => (await walk()).time).toBeGreaterThan(first.time);
   const cdp = await page.context().newCDPSession(page); await cdp.send('Performance.enable');
   const recalculations = async () => (await cdp.send('Performance.getMetrics')).metrics.find(metric => metric.name === 'RecalcStyleCount')!.value;
   const before = await recalculations(); await page.waitForTimeout(2000);
-  expect(await recalculations() - before, 'about 8 a second at most, never one per frame').toBeLessThan(40);
+  expect(await recalculations() - before, 'at most one for each of the 24 looks a second, never one per frame').toBeLessThan(70);
+  // The legs change every 166.5 ms, which a clock that moves every mark at one fixed step would show as 125 and 250 ms.
+  const legs = await paddock.evaluate(item => new Promise<number[]>(resolve => {
+    const style = getComputedStyle(item), holds: number[] = [], start = performance.now(); let leg = style.getPropertyValue('--graze-leg'), since = NaN;
+    const frame = () => { const now = performance.now(), value = style.getPropertyValue('--graze-leg'); if (value !== leg) { if (!Number.isNaN(since)) holds.push(now - since); leg = value; since = now; } if (now - start < 3000) requestAnimationFrame(frame); else resolve(holds.sort((a, b) => a - b)); };
+    requestAnimationFrame(frame);
+  }));
+  expect(legs.length).toBeGreaterThan(12);
+  expect(legs[Math.floor(legs.length / 2)], 'the usual time one leg picture stays').toBeGreaterThan(145);
+  expect(legs[Math.floor(legs.length / 2)]).toBeLessThan(190);
   await card(page).dblclick();
   await expect(page.locator('.map-area')).not.toHaveAttribute('data-focus', '');
-  await expect.poll(() => mark(page).locator('> i').first().evaluate(item => getComputedStyle(item).animationPlayState.split(', ')[0])).toBe('paused');
+  await expect.poll(() => paddock.evaluate(item => getComputedStyle(item).animationPlayState.split(', ')[0])).toBe('paused');
   const held = await walk(); await page.waitForTimeout(400);
   expect((await walk()).time).toBe(held.time);
 });

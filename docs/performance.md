@@ -71,13 +71,23 @@ is why CI uses explicit budgets rather than exact baseline equality.
 
 - Working marks do not run every frame. A running `steps()` animation makes the browser
   recalculate style on each frame even when the picture does not change. `mark-clock.ts`
-  sets looping marks to rate 0 and moves them from one 8 Hz timer. `pause()` is not used:
+  sets looping marks to rate 0, looks 24 times a second, and moves a mark only on the look
+  nearest to its next picture, which it reads from the keyframes. `pause()` is not used:
   it would take the play state from the stylesheet, which pauses marks behind an open
   item and in a muted project. On the 200-item dense map with 102 mark animations at
-  60 Hz (Linux x64, three interleaved runs, medians): renderer 17.2% → 6.8% of a core,
-  style recalculations 60 → 8 a second, style time 84 → 15 ms a second. Reading
-  `playState` flushes style, so the clock reads every mark before it moves any; reading
-  and moving in one loop gave one recalculation per mark.
+  60 Hz (Linux x64, three interleaved runs, medians): renderer 17.5% → 9.8% of a core,
+  style recalculations 60 → 9 a second, style time 87 → 19 ms a second.
+  - Each mark keeps its own pace. One fixed 125 ms step for all marks used less CPU (7.1%
+    of a core), but a leg picture, which stays 166.5 ms, then stayed 117, 133 and 250 ms
+    in turn. With the clock a leg picture stays 167 ms (median; 149 to 200), as it does
+    without it. The frames the map paints are the same as without the clock, so the GPU
+    process does the same work.
+  - Reading `playState` flushes style, so the clock reads every mark before it moves any;
+    reading and moving in one loop gave one recalculation per mark.
+  - Reading keyframes costs about 27 µs a mark and setting the rate costs as much as a
+    move. The clock keeps the jumps of a mark until its duration changes, and sets the
+    rate only when it takes or releases a mark.
+  - A `graze-` animation with an easing other than `steps(n)` stays with the browser.
 - `PostToolUse` is an asynchronous hook, so a tool call waits for one hook process, not
   two. See [Native Claude](native-claude.md) for why `PreToolUse` stays blocking.
 - Visible terminals use the official WebGL renderer when available; hidden views
