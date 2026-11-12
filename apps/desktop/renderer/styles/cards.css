@@ -2172,3 +2172,20 @@
 
 .badge-chip[data-paper-tone=dark] { color: var(--act-paper-slate-ink); }
 
+
+/* MAP-33: a quiet agent session cracks in from its edges with age. Under the card's text and its edge line, so a crack
+   starts where the edge is. */
+.card-cracks {
+  position: absolute;
+  inset: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  z-index: -1;
+  pointer-events: none;
+  fill: none;
+  stroke: color-mix(in srgb,var(--act-ink-faint) 80%,transparent);
+  stroke-width: 1px;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  filter: drop-shadow(1px 1px 0 var(--act-shade-strong));
+}
