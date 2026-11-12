@@ -8,6 +8,9 @@ their pull request and author.
 ### Map
 - **Cracks on quiet sessions**: an optional switch in Settings → Map → Agent sessions, off by default. An agent session card that has done nothing for a week gets a small crack in from its edge, more at two weeks and again at four, so you can see how old it is. The tooltip says how long the session has been quiet. The cracks go when the session works again, and nothing cracks in the Undermap, where everything is old anyway. (#27, @timohuovinen)
 
+### Agents
+- **Map writes on a large workspace**: once the map is large, `workspace_apply` answers with a short receipt in place of the whole map. Before, every status update cost an agent the full map again, and on a large workspace Claude Code refused the result and showed the saved write as an error. (#30, @timohuovinen)
+
 ## 0.20.1 — 2026-11-12
 
 ### Desktop
