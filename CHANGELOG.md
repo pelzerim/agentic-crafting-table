@@ -19,7 +19,7 @@ their pull request and author.
 - **Labels on pull requests**: a pull request's GitHub labels show in their own colours, up to three on its map card then +N, and all of them in the open view. They stay after merge or close.
 
 ### Notifications
-- **Quiet startup resumes**: turn off Settings → Notifications → **Notify for sessions resumed at startup** and agents ACT resumes after a restart raise no macOS banner until you next prompt them. Their Needs me rows still appear. On by default.
+- **Quiet startup resumes**: turn off Settings → Notifications → **Notify for sessions resumed at startup** and agents ACT resumes after a restart raise no macOS banner until you next prompt them. Permission requests, questions and errors still notify, and Needs me rows still appear. On by default.
 
 ### Settings
 - **Keep the Mac awake while work is running**: a new switch in Settings → General stops idle sleep while any item on the board is working, and lets the Mac sleep once everything is idle.

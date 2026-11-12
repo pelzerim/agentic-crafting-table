@@ -23,6 +23,7 @@ export const githubPullRequest = defineResourcePlugin({
     { id: 'autoDeploy', label: 'Auto deploy', children: [], choices: { load: 'options', apply: 'set', runtime: AUTO_DEPLOY_OPERATION, loadingLabel: 'Checking auto deploy…' } },
     { id: 'state', label: 'Change state', children: [], choices: { load: 'pr.state.options', apply: 'pr.state', loadingLabel: 'Checking the pull request…' } },
     { id: 'showShip', label: 'Show/Ship', children: [], choices: { load: 'pr.showShip.options', apply: 'pr.showShip', loadingLabel: 'Checking the title…' }, when: { plugin: 'github.pull-request', setting: 'showShip' } }],
+  providerData: ['labels'],
   mapSizes: { defaultSize: 'medium', sizes: {
     small: { width: 200, height: 48, summaryLines: 0, tags: 'labels', description: "Title and attention indicators." },
     medium: { width: 200, height: 84, summaryLines: 1, tags: 'labels', description: "Title and current PR status." },

@@ -31,7 +31,7 @@ export const plotRequestSchema = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('seen'), plotIds: z.array(plotId).max(60) }),
   z.object({ operation: z.literal('lock'), plotId, locked: z.boolean() }),
   z.object({ operation: z.literal('merge'), plotId, into: plotId }),
-  z.object({ operation: z.literal('move'), plotId: plotId.optional(), projectId: plotId }),
+  z.object({ operation: z.literal('move'), plotId, projectId: plotId }),
 ]);
 /** A plot is named once its membership has settled, and at most this often. */
 export const PLOT_NAME_DEBOUNCE_MS = 30_000, PLOT_NAME_INTERVAL_MS = 10 * 60_000;
@@ -90,8 +90,8 @@ export class Plots {
     if (request.operation === 'move') {
       const target = (await this.control.read()).nodes.find(node => node.id === request.projectId);
       if (!target || target.resourceId || target.projectId || target.archivedAt) throw new Error('Project not found');
-      const ids = this.store.plotRecords().filter(record => request.plotId === undefined ? record.projectId === projectId : record.id === request.plotId && [projectId, target.id].includes(record.projectId)).map(record => record.id);
-      if (request.plotId !== undefined && !ids.length) throw new Error('This plot is not in this project any more.');
+      const ids = this.store.plotRecords().filter(record => record.id === request.plotId && [projectId, target.id].includes(record.projectId)).map(record => record.id);
+      if (!ids.length) throw new Error('This plot is not in this project any more.');
       this.store.movePlots(ids, target.id);
     } else if (request.operation === 'project') this.store.setPlotsShown(projectId, request.shown);
     else if (request.operation === 'seen') { for (const id of request.plotIds) this.seen.set(id, this.clock()); return { ok: true }; }

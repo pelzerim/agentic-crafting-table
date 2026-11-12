@@ -1,6 +1,7 @@
 import * as z from 'zod/v4';
 import { splitAttention } from '../../src/graph/mute.ts';
 import { attentionTierInfo, countsAsNeedsMe } from '../../src/graph/attention.ts';
+import type { AttentionTier } from '../../src/graph/attention.ts';
 import type { WorkspaceSnapshot } from '../../packages/workspace-service/protocol.ts';
 import type { AppSettings } from '../../packages/core/settings.ts';
 import type { RecoveryState } from '../../packages/workspace-service/lifecycle.ts';
@@ -49,7 +50,11 @@ export class DesktopNotifications {
       this.resumed.set(entry.nodeId, { ended: entry.kind === 'agent' && !entry.continueWork, working: node?.activity === 'working', turnEnd: turnEnd(node) });
     }
   }
-  private quiet(item: { aliases: readonly { id: string }[] }) { return this.preferences?.startupResumes === false && item.aliases.some(alias => this.resumed.has(alias.id)); }
+  /** Resume noise only: a prompt or error that stops the agent still banners; an idle "Agent waiting" does not. */
+  private quiet(item: { tier: AttentionTier; aliases: readonly { id: string; attentionNote?: string }[] }) {
+    if (this.preferences?.startupResumes !== false || !item.aliases.some(alias => this.resumed.has(alias.id))) return false;
+    return item.tier !== 'asking' || item.aliases.every(alias => !alias.attentionNote || alias.attentionNote === 'Agent waiting');
+  }
   private settleResumed(next: WorkspaceSnapshot) {
     for (const [id, entry] of this.resumed) {
       const node = next.state.nodes.find(node => node.id === id), working = node?.activity === 'working';

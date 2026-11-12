@@ -35,7 +35,7 @@ test('baseline, alias duplication, reconnect and out-of-order snapshots do not r
   assert.deepEqual(f.closed, ['attention:session:2']);
 });
 
-test('a session startup resumed stays quiet through its recovery turn and the wait after it, until a new turn starts', () => {
+test('a session startup resumed stays quiet through its recovery turn and the wait after it, until a new turn starts; a permission prompt still banners', () => {
   const entry = { sessionId: 's', nodeId: 'agent', title: 'Agent', kind: 'agent', continueWork: true, requestId: 'r', state: 'pending' } as const;
   const run = (startupResumes: boolean) => {
     const f = fixture(); f.subject.preferences!.startupResumes = startupResumes;
@@ -48,11 +48,11 @@ test('a session startup resumed stays quiet through its recovery turn and the wa
     at(6, 4, 'idle', { attentionNote: 'Agent waiting', turnEndedAt: STOPPED });
     return f.shown.map(notice => notice.key);
   };
-  assert.deepEqual(run(false), ['attention:other:2', 'attention:other:3', 'attention:other:4', 'attention:other:5', 'attention:session:4', 'attention:other:6']);
+  assert.deepEqual(run(false), ['attention:other:2', 'attention:session:2', 'attention:other:3', 'attention:other:4', 'attention:other:5', 'attention:session:4', 'attention:other:6']);
   assert.deepEqual(run(true).filter(key => key.startsWith('attention:session')), ['attention:session:2', 'attention:session:3', 'attention:session:4']);
 });
 
-test('approving a permission during the recovery turn is not a new turn: the next permission request stays quiet', () => {
+test('approving a permission during the recovery turn is not a new turn: the wait after the turn stays quiet', () => {
   const f = fixture(); f.subject.preferences!.startupResumes = false;
   const entry = { sessionId: 's', nodeId: 'agent', title: 'Agent', kind: 'agent', continueWork: true, requestId: 'r', state: 'pending' } as const;
   const at = (cursor: number, version: number, activity: string, extra = {}) => f.subject.snapshot(snapshot([node(version, { activity, ...extra })], cursor));
@@ -60,8 +60,8 @@ test('approving a permission during the recovery turn is not a new turn: the nex
   at(2, 1, 'working', { attention: 'none', turnEndedAt: '2026-11-10T09:00:00.000Z' });
   at(3, 2, 'idle', { attentionNote: 'Agent needs permission', turnEndedAt: '2026-11-10T09:00:00.000Z' });
   at(4, 2, 'working', { attention: 'none', turnEndedAt: '2026-11-10T09:00:00.000Z' });
-  at(5, 3, 'idle', { attentionNote: 'Agent needs permission', turnEndedAt: '2026-11-10T09:00:00.000Z' });
-  assert.deepEqual(f.shown, []);
+  at(5, 3, 'idle', { attentionNote: 'Agent waiting', turnEndedAt: STOPPED });
+  assert.deepEqual(f.shown.map(notice => notice.key), ['attention:session:2'], 'the permission prompt still banners');
 });
 
 test('a resumed Codex session, which never writes turnEndedAt, banners again once its recovery turn finished and a new turn starts', () => {
@@ -82,11 +82,11 @@ test('a review restarted at startup stays quiet through its whole recovery run',
   const at = (cursor: number, version: number, activity: string, extra = {}) => f.subject.snapshot(snapshot([node(version, { activity, ...extra })], cursor));
   at(1, 1, 'idle', { attention: 'none' }); f.subject.resumedAtStartup({ entries: [entry] });
   at(2, 1, 'working', { attention: 'none' });
-  at(3, 2, 'idle', { attentionNote: 'Agent needs permission' });
+  at(3, 2, 'idle', { attention: 'review' });
   assert.deepEqual(f.shown, []);
 });
 
-test('a recovery turn that fails ends it: the next prompt asking for permission banners again', () => {
+test('a recovery turn that fails banners its error and ends the quiet period', () => {
   const f = fixture(); f.subject.preferences!.startupResumes = false;
   const entry = { sessionId: 's', nodeId: 'agent', title: 'Agent', kind: 'agent', continueWork: true, requestId: 'r', state: 'pending' } as const;
   const at = (cursor: number, version: number, activity: string, extra = {}) => f.subject.snapshot(snapshot([node(version, { activity, ...extra })], cursor));
@@ -94,8 +94,8 @@ test('a recovery turn that fails ends it: the next prompt asking for permission 
   at(2, 1, 'working', { attention: 'none' });
   at(3, 2, 'idle', { attention: 'error', attentionNote: 'Agent hit an error' });
   at(4, 2, 'working', { attention: 'none' });
-  at(5, 3, 'idle', { attentionNote: 'Agent needs permission' });
-  assert.deepEqual(f.shown.map(notice => notice.key), ['attention:session:3']);
+  at(5, 3, 'idle', { attentionNote: 'Agent waiting' });
+  assert.deepEqual(f.shown.map(notice => notice.key), ['attention:session:2', 'attention:session:3']);
 });
 
 test('read and archive remove native notices, OS dismissal alone changes no domain state', () => {

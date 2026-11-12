@@ -34,7 +34,7 @@ export const CADENCE = { open: [1, 1, 2, 5, 10], complete: [1, 1, 2, 5, 10, 30] 
 const observation = (snapshot: ResourceSnapshot) => createHash('sha256').update(canonical({ ...snapshot, observedAt: undefined, stale: undefined, error: undefined })).digest('hex');
 /** A deadline abort carries a numeric DOM code and a provider error its own; the caller gets one stable code either way. */
 const unconfirmed = (error: unknown) => Object.assign(new Error((error as Error).message, { cause: error }), { code: OUTCOME_UNKNOWN, outcomeUnknown: true });
-const fingerprint = (resource: ResourceRecord) => createHash('sha256').update(canonical({ plugin: resource.pluginId, schema: resource.schemaVersion, connection: resource.connectionId, data: resource.data })).digest('hex');
+const fingerprint = (resource: ResourceRecord, providerData: readonly string[] = []) => createHash('sha256').update(canonical({ plugin: resource.pluginId, schema: resource.schemaVersion, connection: resource.connectionId, data: Object.fromEntries(Object.entries(resource.data).filter(([key]) => !providerData.includes(key))) })).digest('hex');
 /** How long an unconfirmed change keeps showing its expected result before it is taken back. */
 export const PENDING_WRITE_MS = 30 * 60_000;
 /** How long an item's reads carry the reason its last change was taken back. */
@@ -112,7 +112,7 @@ export class ResourceCoordinator {
       // Reconstruct account-wide provider backoff from durable resource caches.
       for (const resource of state.resources) {
         if (!resource.connectionId) continue;
-        const retry = this.store.resourceCache(resource.id, 'snapshot', fingerprint(resource))?.retryAt ?? 0;
+        const retry = this.store.resourceCache(resource.id, 'snapshot', this.fingerprint(resource))?.retryAt ?? 0;
         this.accountBackoff.set(resource.connectionId, Math.max(this.accountBackoff.get(resource.connectionId) ?? 0, retry));
       }
       const quiet = mutedProjectIds(state.nodes), wasMuted = this.mutedResources;
@@ -131,7 +131,7 @@ export class ResourceCoordinator {
         // An unconfirmed change asks for a fresh read on every tick until one settles it.
         const unsettled = this.writes.get(resource.id);
         if (unsettled?.writing || !interval && !unsettled || (this.accountBackoff.get(resource.connectionId ?? '') ?? 0) > this.now()) continue;
-        const cache = this.store.resourceCache(resource.id, 'snapshot', fingerprint(resource));
+        const cache = this.store.resourceCache(resource.id, 'snapshot', this.fingerprint(resource));
         if (!unsettled && !unmuted && cache && this.now() - cache.checkedAt < interval!) continue;
         try { await inBackground(() => this.read(node.id, Boolean(unsettled), signal, true)); } catch { /* Keep prior content; other accounts still refresh. */ }
       }
@@ -259,7 +259,7 @@ export class ResourceCoordinator {
         try {
           const result = await this.control.dispatch(prepared.envelope), node = findById(result.state.nodes, prepared.nodeId)!;
           const resource = findById(result.state.resources, node.resourceId)!;
-          this.store.cacheResource(resource.id, 'snapshot', fingerprint(resource), resolved.snapshot, this.now());
+          this.store.cacheResource(resource.id, 'snapshot', this.fingerprint(resource), resolved.snapshot, this.now());
           if (prepared.created) this.queueAttachTitle(resource, node.title, resolved.snapshot);
           const value = { nodeId: node.id, resourceId: resource.id };
           this.store.transitionJob(job.id, 'running', 'succeeded', { result: value }); await this.changed(); return value;
@@ -297,7 +297,7 @@ export class ResourceCoordinator {
     for (let attempt = 0; ; attempt++) {
       signal.throwIfAborted();
       const current = await this.control.read(), saved = findById(current.resources, resource.id), target = findById(current.nodes, nodeId);
-      if (!saved || !target || fingerprint(saved) !== fingerprint(resource)) throw new Error('The item changed while converting. Try again.');
+      if (!saved || !target || this.fingerprint(saved) !== this.fingerprint(resource)) throw new Error('The item changed while converting. Try again.');
       const keepTitle = this.namedByPerson(target.title, saved, [definition.name, candidate.title, definition.creation?.shortLabel]);
       try {
         await this.control.dispatch({ commandId: randomUUID(), expectedRevision: current.revision, actor, commands: [{ type: 'item.convert', id: nodeId, pluginId: candidate.pluginId, ...(connectionId ? { connectionId } : {}), ...(keepTitle ? { keepTitle } : {}) }] });
@@ -312,7 +312,7 @@ export class ResourceCoordinator {
   /** Whether the person named this link themselves. Only a saved page title that differs from the
    * item's title shows that; the names a link gets on its own (its page title, host or type) never do. */
   private namedByPerson(title: string, link: ResourceRecord, generic: readonly (string | undefined)[]) {
-    const saved = (this.store.resourceCache(link.id, 'snapshot', fingerprint(link))?.value as ResourceSnapshot | undefined)?.title;
+    const saved = (this.store.resourceCache(link.id, 'snapshot', this.fingerprint(link))?.value as ResourceSnapshot | undefined)?.title;
     if (!saved?.trim()) return false;
     let host = ''; try { host = new URL(this.control.registry.linkUrl(link) ?? '').hostname; } catch { /* Not a URL: no host name to compare. */ }
     const names = [saved, host, host.replace(/^www\./, ''), this.control.registry.get(link.pluginId)?.name, ...generic].flatMap(name => name?.trim() ? [name.trim().toLowerCase()] : []);
@@ -360,7 +360,7 @@ export class ResourceCoordinator {
     const state = await this.control.read(), node = findById(state.nodes, nodeId);
     const resource = findById(state.resources, node?.resourceId);
     if (!node || isArchived(node, state.nodes) || !resource) return null;
-    const cache = this.store.resourceCache(resource.id, 'snapshot', fingerprint(resource));
+    const cache = this.store.resourceCache(resource.id, 'snapshot', this.fingerprint(resource));
     if (!cache?.value) return null;
     const { attentionReceipt: _receipt, ...snapshot } = cache.value as ResourceSnapshot;
     this.restore(state);
@@ -375,7 +375,7 @@ export class ResourceCoordinator {
     const writing = this.writes.get(resource.id);
     if (writing?.writing) return this.presented(resource.id, writing.base);
     await this.pending.get(`write:${resource.id}`)?.promise.catch(() => {});
-    return this.presented(resource.id, await this.once(`read:${resource.id}`, fingerprint(resource), () => this.readOnce(nodeId, refresh, signal, background)));
+    return this.presented(resource.id, await this.once(`read:${resource.id}`, this.fingerprint(resource), () => this.readOnce(nodeId, refresh, signal, background)));
   }
   private observeAttention(commands: WorkspaceCommand[], state: WorkspaceState, nodeId: string, resource: ResourceRecord, snapshot: ResourceSnapshot) {
     if (snapshot.attentionReason === undefined) return;
@@ -393,12 +393,12 @@ export class ResourceCoordinator {
     return this.once(`context:${randomUUID()}`, null, async () => {
       const resource = await this.record(nodeId), combined = AbortSignal.any([signal, this.closing.signal]);
       const context = await this.host.getContext(resource, combined); combined.throwIfAborted();
-      if (fingerprint(await this.record(nodeId, false)) !== fingerprint(resource)) throw new Error('The item changed during context lookup');
+      if (this.fingerprint(await this.record(nodeId, false)) !== this.fingerprint(resource)) throw new Error('The item changed during context lookup');
       return context;
     });
   }
   private async readOnce(nodeId: string, refresh: boolean, caller?: AbortSignal, background = false): Promise<ResourceSnapshot> {
-    const resource = await this.record(nodeId), key = fingerprint(resource), cached = this.store.resourceCache(resource.id, 'snapshot', key), now = this.now();
+    const resource = await this.record(nodeId), key = this.fingerprint(resource), cached = this.store.resourceCache(resource.id, 'snapshot', key), now = this.now();
     const readSignal = this.readAbort.signal;
     const signal = AbortSignal.any([this.signal(), readSignal, ...(caller ? [caller] : [])]);
     const old = cached?.value as ResourceSnapshot | undefined;
@@ -414,7 +414,7 @@ export class ResourceCoordinator {
       return snapshot;
     } catch (error) {
       this.closing.signal.throwIfAborted(); caller?.throwIfAborted(); readSignal.throwIfAborted();
-      const current = await this.record(nodeId, false); if (fingerprint(current) !== key) throw new Error('The item changed while loading. Open it again.');
+      const current = await this.record(nodeId, false); if (this.fingerprint(current) !== key) throw new Error('The item changed while loading. Open it again.');
       const failure = error as Error & { retryAt?: number };
       this.store.cacheResource(resource.id, 'snapshot', key, old, now, failure.message, failure.retryAt ?? now + 15_000);
       if (resource.connectionId && failure.retryAt) this.accountBackoff.set(resource.connectionId, failure.retryAt);
@@ -424,10 +424,10 @@ export class ResourceCoordinator {
     }
   }
   private async acceptSnapshot(nodeId: string, resource: ResourceRecord, snapshot: ResourceSnapshot, signal: AbortSignal, caller?: AbortSignal) {
-    const key = fingerprint(resource), now = this.now();
+    const key = this.fingerprint(resource), now = this.now();
     for (let attempt = 0; ; attempt++) {
       signal.throwIfAborted();
-      const current = await this.record(nodeId, false); if (fingerprint(current) !== key) throw new Error('The item changed while loading. Open it again.');
+      const current = await this.record(nodeId, false); if (this.fingerprint(current) !== key) throw new Error('The item changed while loading. Open it again.');
       const state = await this.control.read();
       if (caller && isArchived(findById(state.nodes, nodeId)!, state.nodes)) return snapshot;
       const { matches, commands } = snapshot.resolution || snapshot.dataPatch ? this.resolution(state, { ...resource, data: snapshot.resolution?.data ?? resource.data }, snapshot) : { matches: [resource], commands: [] as WorkspaceCommand[] };
@@ -451,7 +451,7 @@ export class ResourceCoordinator {
         let saved = state;
         if (commands.length) saved = (await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'system', id: 'providers' }, commands })).state;
         const savedResource = saved.resources.find(record => record.id === findById(saved.nodes, nodeId)?.resourceId)!;
-        this.store.cacheResource(savedResource.id, 'snapshot', fingerprint(savedResource), snapshot, now);
+        this.store.cacheResource(savedResource.id, 'snapshot', this.fingerprint(savedResource), snapshot, now);
         if (commands.length) await this.changed();
         break;
       } catch (error) { if ((error as { code?: string }).code !== 'REVISION_CONFLICT' || attempt >= 4) throw error; }
@@ -481,7 +481,7 @@ export class ResourceCoordinator {
     if (!node || !resource) throw new Error('Resource item not found');
     const hook = this.host.presentation(resource.pluginId)?.opened;
     if (!hook) return { recorded: false };
-    hook(resource, this.store.resourceCache(resource.id, 'snapshot', fingerprint(resource))?.value as ResourceSnapshot | undefined, this.store, this.now());
+    hook(resource, this.store.resourceCache(resource.id, 'snapshot', this.fingerprint(resource))?.value as ResourceSnapshot | undefined, this.store, this.now());
     await this.refreshPresentation(nodeId);
     return { recorded: true };
   }
@@ -491,7 +491,7 @@ export class ResourceCoordinator {
       const state = await this.control.read(), resourceId = findById(state.nodes, nodeId)?.resourceId;
       const commands: WorkspaceCommand[] = [];
       for (const resource of state.resources.filter(resource => hasResourceMapPresentation(this.host, resource) && (!nodeId || resource.id === resourceId))) {
-        const cache = this.store.resourceCache(resource.id, 'snapshot', fingerprint(resource));
+        const cache = this.store.resourceCache(resource.id, 'snapshot', this.fingerprint(resource));
         if (!cache?.value) continue;
         this.observePresentationAttention(commands, state, resource, cache.value as ResourceSnapshot);
         const indicators = resourceMapIndicators(this.host, resource, cache.value as ResourceSnapshot, this.store), pips = resourceMapPips(this.host, resource, cache.value as ResourceSnapshot, this.store);
@@ -540,14 +540,14 @@ export class ResourceCoordinator {
    * state or title) and the blockers are the item's own, so another pull request in the same repository
    * could not reuse them. `cached` answers from the saved copy when there is one; `refresh` always reads. */
   private async choices(nodeId: string, resource: ResourceRecord, actionId: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue> {
-    const { cached, refresh, ...rest } = input, slot = `${CHOICES_SLOT}${actionId}`, key = fingerprint(resource);
+    const { cached, refresh, ...rest } = input, slot = `${CHOICES_SLOT}${actionId}`, key = this.fingerprint(resource);
     if (cached === true && refresh !== true) {
       const saved = this.store.resourceCache(resource.id, slot, key);
       if (saved?.value !== undefined) return { ...(saved.value as JsonObject), cachedAt: saved.checkedAt };
     }
     const writes = this.choiceWrites.get(resource.id) ?? 0, now = this.now();
     const result = await this.host.execute(resource, actionId, rest, signal);
-    if ((this.choiceWrites.get(resource.id) ?? 0) === writes && fingerprint(await this.record(nodeId, false)) === key) this.store.cacheResource(resource.id, slot, key, result, now);
+    if ((this.choiceWrites.get(resource.id) ?? 0) === writes && this.fingerprint(await this.record(nodeId, false)) === key) this.store.cacheResource(resource.id, slot, key, result, now);
     return result;
   }
   private forgetChoices(resourceId: string) {
@@ -558,7 +558,7 @@ export class ResourceCoordinator {
    * off mid-request and leave its outcome unknown. An action that declares its expected result shows it at
    * once through `show`, so closing the view or menu that asked for it never matters; its outcome reconciles the overlay. */
   private async write(nodeId: string, resource: ResourceRecord, actionId: string, input: JsonObject, requestId: string, show: (result: JsonValue) => void) {
-    let job = this.store.enqueueJob(requestId, { action: 'resource.action', nodeId, arguments: { actionId, input, fingerprint: fingerprint(resource) } });
+    let job = this.store.enqueueJob(requestId, { action: 'resource.action', nodeId, arguments: { actionId, input, fingerprint: this.fingerprint(resource) } });
     if (job.state === 'succeeded') return job.result;
     if (job.state !== 'queued') throw job.state === 'failed' ? new Error(job.error) : unconfirmed(new Error('The previous update could not be confirmed. Refresh the item before choosing a status again.'));
     job = this.store.transitionJob(job.id, 'queued', 'running');
@@ -569,8 +569,8 @@ export class ResourceCoordinator {
       await this.pending.get(`read:${resource.id}`)?.promise.catch(() => {});
       const state = await this.control.read(), node = findById(state.nodes, nodeId);
       if (!node || isArchived(node, state.nodes)) throw new Error('Restore this item before changing its provider state.');
-      if (fingerprint(await this.record(nodeId, false)) !== fingerprint(resource)) throw new Error('The item changed. Reopen its menu.');
-      const base = this.store.resourceCache(resource.id, 'snapshot', fingerprint(resource))?.value as ResourceSnapshot | undefined;
+      if (this.fingerprint(await this.record(nodeId, false)) !== this.fingerprint(resource)) throw new Error('The item changed. Reopen its menu.');
+      const base = this.store.resourceCache(resource.id, 'snapshot', this.fingerprint(resource))?.value as ResourceSnapshot | undefined;
       const optimism = base ? this.host.optimistic(resource, actionId, base, input) : undefined;
       if (optimism) {
         pending = { requestId, actionId, nodeId, input, base: base!, since: this.now(), writing: true, optimism };
@@ -723,7 +723,7 @@ export class ResourceCoordinator {
     for (let attempt = 0; attempt < 5; attempt++) {
       const state = await this.control.read();
       const saved = findById(state.resources, resource.id);
-      if (!saved || fingerprint(saved) !== fingerprint(resource)) return;
+      if (!saved || this.fingerprint(saved) !== this.fingerprint(resource)) return;
       const commands: WorkspaceCommand[] = state.nodes.filter(node => node.resourceId === resource.id && node.indicators && !node.indicators.some(cue => cue.id === 'connection'))
         .map(node => ({ type: 'node.update', id: node.id, indicators: [...node.indicators!.slice(0, 3), { id: 'connection', label: 'Updates paused', icon: 'clock', tone: 'amber' }] }));
       if (!commands.length) return;
@@ -737,7 +737,7 @@ export class ResourceCoordinator {
       const action = this.host.actions(resource, signal).find(action => action.id === actionId);
       if (!action?.readOnly) throw new Error('Only read-only provider content can be cached');
       if (action.uncached) return { content: await this.host.execute(resource, actionId, input, signal), observedAt: this.now(), stale: false };
-      const key = createHash('sha256').update(fingerprint(resource) + canonical(input)).digest('hex'), slot = `action:${actionId}`, now = this.now();
+      const key = createHash('sha256').update(this.fingerprint(resource) + canonical(input)).digest('hex'), slot = `action:${actionId}`, now = this.now();
       const cached = this.store.resourceCache(resource.id, slot, key);
       if (cached && ((!refresh && now - cached.checkedAt < 60_000) || (cached.retryAt ?? 0) > now)) {
         if (cached.value !== undefined) return { content: cached.value, observedAt: cached.checkedAt, stale: Boolean(cached.error), error: cached.error };
@@ -745,12 +745,12 @@ export class ResourceCoordinator {
       }
       try {
         const content = await this.host.execute(resource, actionId, input, signal);
-        if (fingerprint(await this.record(nodeId, false)) !== fingerprint(resource)) throw new Error('The item changed while loading. Open it again.');
+        if (this.fingerprint(await this.record(nodeId, false)) !== this.fingerprint(resource)) throw new Error('The item changed while loading. Open it again.');
         this.store.cacheResource(resource.id, slot, key, content, now);
         return { content, observedAt: now, stale: false };
       } catch (error) {
         this.closing.signal.throwIfAborted();
-        if (fingerprint(await this.record(nodeId, false)) !== fingerprint(resource)) throw new Error('The item changed while loading. Open it again.');
+        if (this.fingerprint(await this.record(nodeId, false)) !== this.fingerprint(resource)) throw new Error('The item changed while loading. Open it again.');
         const failure = error as Error & { retryAt?: number };
         this.store.cacheResource(resource.id, slot, key, cached?.value, now, failure.message, failure.retryAt ?? now + 15_000);
         if (cached?.value === undefined) throw error;
@@ -758,6 +758,7 @@ export class ResourceCoordinator {
       }
     });
   }
+  private fingerprint(resource: ResourceRecord) { return fingerprint(resource, this.control.registry.get(resource.pluginId)?.providerData); }
 }
 
 /** Choices stay available, each read “… anyway” after the warning; the acknowledged

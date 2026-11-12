@@ -13,11 +13,12 @@ export function createKeepAwake(blocker: Blocker, type: Parameters<Blocker['star
   };
 }
 
-type BoardNode = { id: string; projectId?: string; activity?: string; archivedAt?: string };
-/** Archiving a project archives its items without marking them, so they are skipped through the project. */
+type BoardNode = { id: string; projectId?: string; activity?: string; archivedAt?: string; rework?: unknown };
+/** Archiving a project archives its items without marking them, so they are skipped through the project.
+ * A rework note only marks the item: the agent doing the rework holds on its own, and a note left uncleared never does. */
 export function boardWorking(nodes: readonly BoardNode[]) {
   const archived = new Set(nodes.filter(node => node.archivedAt).map(node => node.id));
-  return nodes.some(node => node.activity === 'working' && !node.archivedAt && !(node.projectId && archived.has(node.projectId)));
+  return nodes.some(node => node.activity === 'working' && !node.rework && !node.archivedAt && !(node.projectId && archived.has(node.projectId)));
 }
 
 /** Holds off idle system sleep while the setting is on and any board item is working; the display may still sleep. */

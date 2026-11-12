@@ -143,6 +143,8 @@ export interface ResourcePluginDefinition {
   appearance?: ResourceAppearance;
   /** Declarative map tiers, independent of expanded content dimensions. */
   mapSizes?: MapSizeProfile;
+  /** Data keys the provider rewrites on every load, such as labels: left out of the item's identity, so a read or action racing a refresh still matches. */
+  providerData?: readonly string[];
   /** The pipeline this type is counted in by project headers (e.g. PRs), or the
    * tally that far-zoom dashboards count by state (e.g. tickets). */
   overview?: { pipeline?: { singular: string; plural: string }; tally?: { singular: string; plural: string } };

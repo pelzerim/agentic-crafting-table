@@ -1024,8 +1024,8 @@ Not built: the optional “! N waiting Xh” safety valve on the plate, timed mu
 map projects. Choosing one opens a confirm step in the menu (“Move 12 items into “B””, the source
 is archived afterwards). The person-only command `project.merge { id, into }` moves every member,
 archived and Undermap ones too, the members on the map as one `nodes.send` block, re-points
-to-dos attached to the project, and archives the source (never deletes it); the plot records
-follow with the `plot` request `move` without a `plotId`.
+to-dos attached to the project, and archives the source (never deletes it); in the same store
+transaction its active and pinned plot records move to the target, while dormant ones stay behind.
 
 **MAP-26 — Move to project.** Right-clicking any item card on the map (agent,
 terminal, PR, rollout, ticket, Notion, Slack, note, bookmark, artifact, to-do…)
@@ -1768,7 +1768,8 @@ appears on its row. Completion notices use one native notification,
 even when both switches are enabled. Existing in-app notices stay unchanged.
 **Notify for sessions resumed at startup** (`notifications.startupResumes`, on by default):
 off, an agent that startup recovery (AGENT-06) resumes raises no banner or sound through its
-continuation turn and the wait after it, until it next starts a turn; its Needs me rows still
+continuation turn and the wait after it, until it next starts a turn. A permission request,
+question or error still banners (Asking me other than “Agent waiting”), and its Needs me rows still
 appear. The main process learns which items from the recovery it starts, kept in memory only.
 Do not replay saved unread events at startup or repeated provider polls. Attention
 that arrives for the open item while ACT is focused and visible is acknowledged at
@@ -2331,8 +2332,9 @@ bypassing managed security policy. Reflect the setting accurately on restart.
 **SETTINGS-01b — Keep the Mac awake while work is running.** A separate persistent
 toggle in Settings → General, default off. While on, the app holds a scoped
 "prevent app suspension" assertion whenever any unarchived item on the board, in any
-project, is working, and releases it once nothing is working, when turned off, or on
-quit. The display may still sleep and lock; closing the lid still sleeps.
+project, is working, and releases it once nothing is working, when turned off, when the
+connection to the workspace service drops, or on quit. An item working only because of a rework
+note does not hold: the agent doing the rework holds on its own. The display may still sleep and lock; closing the lid still sleeps.
 
 **SETTINGS-APPEARANCE — Light and dark colours.** Settings → General, section
 **Appearance**, has **Colours**: **System** (default) / Light / Dark (additive

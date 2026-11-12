@@ -86,3 +86,14 @@ test('only actions that declare cacheChoices are answered from the cache', async
     assert.equal(again.cachedAt, undefined);
   } finally { await close(); }
 });
+
+test('a label change on GitHub is not an item change: the menu it opened still answers from its saved copy', async () => {
+  const { providers, service, choices, close } = await start('craft-choices-labels-');
+  try {
+    await choices('pr.merge.options', { cached: true });
+    providers.pull = { ...providers.pull, labels: [{ name: 'backend', color: 'D73A4A' }] as never[] };
+    await service.resources.read('pr', true);
+    assert.deepEqual((await service.control.read()).resources[0].data.labels, [{ name: 'backend', color: 'd73a4a' }]);
+    assert.equal(typeof (await choices('pr.merge.options', { cached: true })).cachedAt, 'number');
+  } finally { await close(); }
+});

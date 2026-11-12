@@ -13,6 +13,7 @@ test('the work hold is held only while the setting is on and a live board item i
   awake.nodes(working); assert.equal(next, 1, 'starts once while still needed');
   awake.nodes(archived); assert.equal(held.size, 0, 'an archived working item does not hold');
   awake.nodes(archivedProject); assert.equal(held.size, 0, 'a working item in an archived project does not hold');
+  awake.nodes([{ id: 'e', activity: 'working', rework: { note: 'Fix F1', since: AT } }]); assert.equal(held.size, 0, 'a rework note left on an item does not hold');
   awake.nodes(working); assert.equal(held.size, 1);
   awake.nodes([{ id: 'a', activity: 'idle' }, { id: 'b', activity: 'complete' }]); assert.equal(held.size, 0, 'an idle board does not hold');
   awake.nodes([{ id: 'a', activity: 'idle' }], 1); assert.equal(held.size, 1, 'a working item below the map holds');
