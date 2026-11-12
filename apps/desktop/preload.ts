@@ -18,6 +18,13 @@ async function sessionCall(method: string, args?: unknown) {
   if (response.error) throw response.error;
   return response.result;
 }
+let agreeToQuit: (() => Promise<boolean>) | undefined;
+// Answered in every window, so the quit never waits for one that has nothing to ask.
+ipcRenderer.on('app:before-quit', (_event, question: { id: number }) => {
+  ipcRenderer.send('app:before-quit-answer', { id: question.id, answer: 'asking' });
+  void Promise.resolve().then(() => agreeToQuit?.() ?? true).catch(() => true)
+    .then(agreed => ipcRenderer.send('app:before-quit-answer', { id: question.id, answer: agreed !== false }));
+});
 const bridge: DesktopBridge = {
   windowFocused: () => ipcRenderer.invoke('app:focused'),
   onWindowFocus: listener => listen('app:focus', listener),
@@ -32,6 +39,7 @@ const bridge: DesktopBridge = {
   onNotificationOpen: listener => listen('app:notification-open', listener),
   takeInstallLink: () => ipcRenderer.invoke('app:install-link'),
   onInstallLink: listener => listen('app:install-link-open', listener),
+  onBeforeQuit: agree => { agreeToQuit = agree; return () => { if (agreeToQuit === agree) agreeToQuit = undefined; }; },
   onSettings: listener => listen('workspace:settings', listener),
   settingsRead: () => invoke('settings.read'),
   diagnosticsReport: () => invoke('diagnostics.report'),
@@ -48,8 +56,10 @@ const bridge: DesktopBridge = {
   setBadgeCount: count => ipcRenderer.invoke('app:badge', count),
   copyUrl: url => ipcRenderer.invoke('app:copy-url', url),
   savePastedImage: bytes => ipcRenderer.invoke('app:save-pasted-image', bytes),
-  droppedFilePath: file => webUtils.getPathForFile(file),
   chooseDirectory: () => ipcRenderer.invoke('app:choose-directory'),
+  chooseFile: () => ipcRenderer.invoke('app:choose-file'),
+  pathForFile: file => webUtils.getPathForFile(file),
+  revealFile: path => ipcRenderer.invoke('app:reveal-file', path),
   recentDirectories: () => invoke('directories.recent'),
   workspaceCapabilities: () => invoke('capabilities'),
   providerAccounts: providerId => invoke('connections.accounts', { providerId }),
@@ -94,6 +104,7 @@ const bridge: DesktopBridge = {
   workspaceSubscribe: input => invoke('subscribe', input),
   workspaceApply: envelope => invoke('apply', envelope),
   resourceMatchUrl: async input => (await invoke('plugins.discover', { input })).urlCandidates,
+  resourceMatchFile: async input => (await invoke('plugins.discover', { input })).fileCandidates,
   workspacePlugins: () => invoke('plugins'),
   viewRead: () => invoke('view.read'),
   viewWrite: view => invoke('view.write', view),

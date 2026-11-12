@@ -86,6 +86,10 @@ export class ResourceViewRegistry {
     return {
       update(snapshot: ResourceSnapshot) { if (!disposed) mounted.update(snapshot); },
       setActive(active: boolean) { if (!disposed) mounted.setActive?.(active); },
+      confirmClose() {
+        if (disposed || !mounted.confirmClose) return true;
+        try { const answer = mounted.confirmClose(); return typeof answer === 'boolean' ? answer : answer.catch(() => true); } catch { return true; }
+      },
       dispose() { if (!disposed) { disposed = true; mounted.dispose(); } },
     };
   }

@@ -427,7 +427,8 @@
   color: var(--act-ink-soft);
 }
 
-.live-workspace .act-combobox .act-combobox-field input[role=combobox] {
+.live-workspace .act-combobox .act-combobox-field input[role=combobox],
+.live-workspace .act-file-field .act-combobox-field input {
   flex: 1;
   min-width: 0;
   height: 100%;
@@ -543,7 +544,8 @@
   min-width: 0;
 }
 
-.act-directory-row .act-combobox-field > .act-glyph[data-glyph=folder] {
+.act-directory-row .act-combobox-field > .act-glyph[data-glyph=folder],
+.act-directory-row .act-combobox-field > .act-glyph[data-glyph=file] {
   width: 12px;
   height: 12px;
   flex: none;

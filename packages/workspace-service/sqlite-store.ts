@@ -258,6 +258,11 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     const row = this.db.prepare('SELECT * FROM resource_cache WHERE resource_id = ? AND cache_key = ? AND fingerprint = ?').get(resourceId, key, fingerprint);
     return row ? { value: row.body === null ? undefined : decode(row.body), error: row.error === null ? undefined : String(row.error), retryAt: row.retry_at === null ? undefined : Number(row.retry_at), checkedAt: Number(row.checked_at) } : undefined;
   }
+  /** When the cached read under this key was stored, whatever its fingerprint; the body is not decoded. */
+  resourceCacheCheckedAt(resourceId: string, key: string): number | undefined {
+    const row = this.db.prepare('SELECT checked_at FROM resource_cache WHERE resource_id = ? AND cache_key = ?').get(resourceId, key);
+    return row ? Number(row.checked_at) : undefined;
+  }
   cacheResource(resourceId: string, key: string, fingerprint: string, value: unknown, checkedAt: number, error?: string, retryAt?: number) {
     const body = value === undefined ? null : JSON.stringify(value);
     if (body && Buffer.byteLength(body) > 4 * 1024 * 1024) throw new Error('Provider content exceeds the saved-content limit.');

@@ -98,6 +98,7 @@ import { UNDERMAP_LOOSE } from '../../../src/graph/undermap.ts';
 import type { MirrorArea } from '../../../src/graph/undermap.ts';
 import { UndermapMonths, UndermapPlates } from './undermap-months.tsx';
 import { useColorScheme } from './color-scheme.ts';
+import { ViewCloseGate } from './view-close-gate.ts';
 
 const registry = createResourcePluginRegistry();
 type MapItem = GraphNode & { activity?: string; attention?: string; summary?: string; lastLine?: string; recap?: { text: string; at: string } };
@@ -174,9 +175,15 @@ export interface ProjectMapProps {
   /** Plugin hover facts from saved local data. */
   onPreviewDetail?(id: string, signal: AbortSignal): Promise<ResourcePreview | undefined>;
   onUrlDrop?(target: { url: string; screen: { x: number; y: number }; position: { x: number; y: number }; projectId?: string }): void;
+  /** A file dragged from another program onto the map. */
+  onFileDrop?(target: { file: File; screen: { x: number; y: number }; position: { x: number; y: number }; projectId?: string }): void;
   /** ⌘V of plain text over the map, at the pointer. A pasted URL goes to `onUrlDrop`. */
-  onPasteText?(target: { text: string; position: { x: number; y: number }; projectId?: string }): void;
+  onPasteText?(target: { text: string; screen: { x: number; y: number }; position: { x: number; y: number }; projectId?: string }): void;
   renderDetail?(node: MapItem, active: boolean): ReactNode;
+  /** Asks the open item's view before the person leaves it; false, now or later, keeps it open. */
+  confirmClose?(id: string): boolean | Promise<boolean>;
+  /** The type's map view of an item, for the map sizes whose preset sets `nodeView`. */
+  renderNode?(node: MapItem): ReactNode;
   /** Which layer this map shows; the host filters nodes. Only the theme differs. */
   layer?: 'map' | 'below';
   /** Derives each neighborhood's color from its project's color, e.g. darker in Undermap. */
@@ -277,7 +284,7 @@ function useStableHandlers<T extends Record<string, (...args: any[]) => any>>(ha
 }
 /** The fixed chrome an item view can reach: the rail column and the trail row, in workspace pixels. */
 const CHROME = { rail: { x: RAIL.left, y: RAIL.top, width: 52, height: RAIL_HEIGHT }, trail: { x: 22, y: 24, width: 420, height: 24 } };
-const DetailContext = createContext<Pick<ProjectMapProps, 'renderDetail' | 'onRename'> & { sendBelow?(ids: string[]): void; paperOpenUrl(url: string): void; paperWrite(id: string, patch: Record<string, string>, base?: string): Promise<void>; paperDiscard(id: string): void; select(id: string): void; toggleDone(id: string, done: boolean): void; open(id: string): void; back(): void; markSeen?(id: string): void; keep?(id: string): void; middleClick(id: string): void; settled(id: string): void; menu(event: React.MouseEvent, id: string): void; startLink(event: React.PointerEvent, id: string): void; connect(event: React.MouseEvent, id: string): void; resize(event: React.PointerEvent, id: string): void; resizeKey(event: React.KeyboardEvent, id: string): void; reveal(id: string): void; unmute(id: string): void; badgeNote(event: React.MouseEvent, noteId: string, menu: boolean): void; fitProject(id: string): void; fitPlot(id: string): void }>({ badgeNote() {}, fitProject() {}, fitPlot() {}, paperOpenUrl() {}, paperWrite: async () => {}, paperDiscard() {}, select() {}, toggleDone() {}, open() {}, back() {}, middleClick() {}, settled() {}, menu() {}, startLink() {}, connect() {}, resize() {}, resizeKey() {}, reveal() {}, unmute() {} });
+const DetailContext = createContext<Pick<ProjectMapProps, 'renderDetail' | 'renderNode' | 'onRename'> & { sendBelow?(ids: string[]): void; paperOpenUrl(url: string): void; paperWrite(id: string, patch: Record<string, string>, base?: string): Promise<void>; paperDiscard(id: string): void; select(id: string): void; toggleDone(id: string, done: boolean): void; open(id: string): void; back(): void; markSeen?(id: string): void; keep?(id: string): void; middleClick(id: string): void; settled(id: string): void; menu(event: React.MouseEvent, id: string): void; startLink(event: React.PointerEvent, id: string): void; connect(event: React.MouseEvent, id: string): void; resize(event: React.PointerEvent, id: string): void; resizeKey(event: React.KeyboardEvent, id: string): void; reveal(id: string): void; unmute(id: string): void; badgeNote(event: React.MouseEvent, noteId: string, menu: boolean): void; fitProject(id: string): void; fitPlot(id: string): void }>({ badgeNote() {}, fitProject() {}, fitPlot() {}, paperOpenUrl() {}, paperWrite: async () => {}, paperDiscard() {}, select() {}, toggleDone() {}, open() {}, back() {}, middleClick() {}, settled() {}, menu() {}, startLink() {}, connect() {}, resize() {}, resizeKey() {}, reveal() {}, unmute() {} });
 
 /** An open item's project and plot; either one closes the item and flies there. */
 function ItemLocation({ place }: { place: ItemPlace }) {
@@ -296,7 +303,7 @@ const Card = memo(function Card({ data }: { data: CardData }) {
 }, (previous, next) => previous.data === next.data);
 function CardFace({ data }: { data: CardData }) {
   performanceMetrics.record('map.card-render', 1);
-  const { renderDetail, onRename, markSeen, keep, sendBelow, middleClick, open, back, settled, menu, startLink, connect, resize, resizeKey, reveal, paperWrite, paperDiscard, select, paperOpenUrl, toggleDone, unmute, badgeNote } = useContext(DetailContext);
+  const { renderDetail, renderNode, onRename, markSeen, keep, sendBelow, middleClick, open, back, settled, menu, startLink, connect, resize, resizeKey, reveal, paperWrite, paperDiscard, select, paperOpenUrl, toggleDone, unmute, badgeNote } = useContext(DetailContext);
   const { item, expanded, compact } = data;
   // A done card drops the grass and the sheep but its summary still says Working.
   const done = Boolean(item.completedAt) && !expanded, running = item.activity === 'working' && !expanded, working = running && !done;
@@ -389,6 +396,7 @@ function CardFace({ data }: { data: CardData }) {
     {!compact && !expanded && data.pips && data.mapSize && data.mapSize.summaryLines > 0 && <div className="card-pips" aria-hidden={data.pipsLabel ? undefined : true} aria-label={data.pipsLabel} role={data.pipsLabel ? "img" : undefined}>{data.pips.map((pip, index) => <i key={index} data-tone={pip.tone} data-style={pip.style} />)}{data.pipsLabel && <span className="card-pips-count">{data.pipsLabel}</span>}</div>}
     {!compact && !expanded && !item.indicators?.length && (!data.mapSize || data.mapSize.summaryLines > 0) && (running || line || reason) && <p className={`card-summary${data.pips ? ' pip-summary' : ''}`} data-said={!data.status && said ? true : undefined} style={data.mapSize ? { WebkitLineClamp: data.mapSize.summaryLines } : undefined}>{reason}{reason && line && <span className="card-reason-gap"> · </span>}{!reason && running && <span className="working-label">Working{line && ' · '}</span>}{line}</p>}
     {!compact && !expanded && data.mapSize?.fieldLines && data.mapFields ? <p className="map-size-fields" style={{ WebkitLineClamp: data.mapSize.fieldLines }}>{data.mapFields}</p> : null}
+    {!compact && !expanded && data.mapSize?.nodeView && renderNode ? <div className="card-node-view">{renderNode(item)}</div> : null}
     {data.visited && <div className="card-detail nodrag nopan nowheel" hidden={!expanded}>{renderDetail?.(item, expanded) ?? <p>{item.summary || 'Project context and connected work.'}</p>}</div>}</>}
     {!expanded && !data.viewSurface && <><button className="connect-handle nodrag nopan" aria-label={`Connect ${item.title}`} title="Drag to connect or create; press Enter to choose an item" onPointerDown={event => startLink(event, item.id)} onClick={event => { event.stopPropagation(); if (event.detail === 0) connect(event, item.id); }}>+</button><Handle type="target" position={Position.Left} /><Handle type="source" position={Position.Right} /></>}
     {data.resizable && <button className="item-resize-handle nodrag nopan" aria-label={`Resize ${item.title}`} title="Drag to resize; arrow keys adjust size" onPointerDown={event => resize(event, item.id)} onKeyDown={event => resizeKey(event, item.id)} onClick={event => { event.preventDefault(); event.stopPropagation(); }}>
@@ -594,7 +602,7 @@ function MapCanvas(props: ProjectMapProps) {
     } });
   const toggleMute = useRef<(id: string, muted: boolean) => void>(() => {});
   const duration = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 250;
-  const back = () => {
+  const closeView = () => {
     if (focus) {
       cancelViewGesture();
       captureBubble(focus, true);
@@ -605,7 +613,15 @@ function MapCanvas(props: ProjectMapProps) {
       void setCenter((size.width / 2 - viewport.x) / viewport.zoom, (size.height / 2 - viewport.y) / viewport.zoom, { zoom: .5, duration: duration() });
     }
   };
-  useEffect(() => { if (focus && !props.nodes.some(node => node.id === focus && !isArchived(node, props.nodes))) back(); }, [focus, props.nodes]);
+  // What leaving the open view runs, as the latest render defined it: a view that is asked first may answer later.
+  const leaving = useRef<{ closeView(): void; show(id: string): void; locateOnMap(id: string): void }>({ closeView() {}, show() {}, locateOnMap() {} });
+  leaving.current.closeView = closeView;
+  const focusNow = useRef(focus); focusNow.current = focus;
+  const closeGate = useRef(new ViewCloseGate()).current;
+  const whenViewAgrees = (leave: (now: typeof leaving.current) => void) => closeGate.request(focusNow.current, props.confirmClose, id => focusNow.current === id, () => leave(leaving.current));
+  const back = () => whenViewAgrees(now => now.closeView());
+  // An item that is gone cannot be kept open, so its view is not asked.
+  useEffect(() => { if (focus && !props.nodes.some(node => node.id === focus && !isArchived(node, props.nodes))) closeView(); }, [focus, props.nodes]);
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => setSize({ width: entry.contentRect.width, height: entry.contentRect.height }));
     observer.observe(container.current!);
@@ -1006,7 +1022,7 @@ function MapCanvas(props: ProjectMapProps) {
       if (target && props.nodes.some(node => node.id === target && !isArchived(node, props.nodes))) dashboardActions.fly(target); else props.onTodoShow?.(todo.id);
     },
   });
-  const locate = (id: string) => {
+  const locateOnMap = (id: string) => {
     const item = props.nodes.find(node => node.id === id && !isArchived(node, props.nodes));
     if (!item) return;
     setFocus(undefined); setClosing(undefined); setMorph(undefined); setHovered(undefined); setHoveredEdge(undefined); setKeyboardFocused(undefined); setFocusedEdge(undefined);
@@ -1015,6 +1031,8 @@ function MapCanvas(props: ProjectMapProps) {
     // Show on map looks under a muted project's cover for a moment; it never unmutes.
     if (item.resourceId && item.projectId && mutedProjects.has(item.projectId)) mute.locate(item.projectId);
   };
+  leaving.current.locateOnMap = locateOnMap;
+  const locate = (id: string) => whenViewAgrees(now => now.locateOnMap(id));
   // The column lists Map projects only; below, Needs me and Working pause, so the corner stays empty.
   const columnShown = cornerShown && props.mapCorner !== 'atlas';
   const now = useNow(columnShown);
@@ -1041,12 +1059,22 @@ function MapCanvas(props: ProjectMapProps) {
     fitPlot: (id: string) => { if (focus) back(); dashboardActions.plot(id); }, openItem: (id: string) => { if (focus) open(id); else dashboardActions.go(id); }, showNeed: (id: string) => { if (focus) open(id); else locate(id); }, markSeen: (id: string) => props.onMarkSeen?.(id), showTodo: (id: string) => props.onTodoShow?.(id),
     pan: (next: Viewport) => void setViewport(next), travel: (to: 'map' | 'below') => props.onTravel?.(to),
   });
+  const editedInPlace = (box: (typeof boxes)[number] | undefined) => box?.view?.mode === 'inline' || Boolean(box?.editableTitle) || box?.paper !== undefined;
   const open = (id: string, origin: 'user' | 'program' = 'user') => {
     const item = props.nodes.find(node => node.id === id)!;
-    if (item.resourceId) props.onOpened?.(id, origin);
-    if (item.id === focus) return;
+    const recordOpened = () => { if (item.resourceId) props.onOpened?.(id, origin); };
+    if (item.id === focus) { recordOpened(); return; }
     const box = boxes.find(box => box.item.id === id);
-    if (box?.view?.mode === 'inline' || box?.editableTitle || box?.paper !== undefined) {
+    if (!editedInPlace(box) && props.onActivate?.(item)) { recordOpened(); return; }
+    // An item the open view keeps from taking its place was not opened.
+    whenViewAgrees(now => { recordOpened(); now.show(id); });
+  };
+  /** Puts the item in place of the open view: edits it in place, centres its project, or opens its view. */
+  const show = (id: string) => {
+    const item = props.nodes.find(node => node.id === id);
+    if (!item) return;
+    const box = boxes.find(box => box.item.id === id);
+    if (editedInPlace(box)) {
       // Another expanded item may have obscured this inline item. Never mount its detail.
       setFocus(undefined); setClosing(undefined); setMorph(undefined); clearInspection();
       const edit = (tries = 5) => {
@@ -1056,7 +1084,6 @@ function MapCanvas(props: ProjectMapProps) {
       if (detail < .35) void setCenter(item.position.x, item.position.y, { zoom: 1, duration: duration() }).then(() => edit()); else edit();
       return;
     }
-    if (props.onActivate?.(item)) return;
     if (!item.resourceId) {
       const project = projects.find(project => project.id === id)!;
       setFocus(undefined); setClosing(undefined); setMorph(undefined);
@@ -1068,6 +1095,7 @@ function MapCanvas(props: ProjectMapProps) {
     setVisited(old => new Set([...old, id]));
     setFocus(id);
   };
+  leaving.current.show = show;
   const context = (event: Pick<MouseEvent, 'clientX' | 'clientY' | 'preventDefault'>, nodeId?: string) => {
     event.preventDefault();
     if (focus) { back(); return; }
@@ -1362,7 +1390,7 @@ function MapCanvas(props: ProjectMapProps) {
       const rect = container.current!.getBoundingClientRect();
       props.onBadge?.(noteId, { screen: { x: event.clientX - rect.left, y: event.clientY - rect.top }, position: screenToFlowPosition({ x: event.clientX, y: event.clientY }) }, menu);
     } });
-  const detailContext = useMemo(() => ({ ...actions, renderDetail: props.renderDetail, markSeen: props.onMarkSeen, keep: props.onKeep, sendBelow: props.onSendBelow }), [actions, props.renderDetail, props.onMarkSeen, props.onKeep, props.onSendBelow]);
+  const detailContext = useMemo(() => ({ ...actions, renderDetail: props.renderDetail, renderNode: props.renderNode, markSeen: props.onMarkSeen, keep: props.onKeep, sendBelow: props.onSendBelow }), [actions, props.renderDetail, props.renderNode, props.onMarkSeen, props.onKeep, props.onSendBelow]);
   const coverHandlers = useStableHandlers({
     enter: (id: string, event: React.PointerEvent) => { if (!focus && !drag && !linkDrag && !marqueeRef.current) mute.enter(id, event.buttons); },
     leave: (id: string) => mute.leave(id),
@@ -1435,8 +1463,9 @@ function MapCanvas(props: ProjectMapProps) {
       const screen = inside ? pointer : { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, position = screenToFlowPosition(screen), projectId = containingProject(position, projects);
       const url = /^https?:\/\/\S+$/.test(text.trim()) ? text.trim() : undefined;
       event.preventDefault();
-      if (url) props.onUrlDrop?.({ url, screen: { x: screen.x - rect.left, y: screen.y - rect.top }, position, projectId });
-      else props.onPasteText?.({ text, position, projectId });
+      const anchor = { screen: { x: screen.x - rect.left, y: screen.y - rect.top }, position, projectId };
+      if (url) props.onUrlDrop?.({ url, ...anchor });
+      else props.onPasteText?.({ text, ...anchor });
     };
     window.addEventListener('paste', paste);
     return () => window.removeEventListener('paste', paste);
@@ -1450,7 +1479,7 @@ function MapCanvas(props: ProjectMapProps) {
       const todo = !focus && props.onTodoDrop && event.dataTransfer.types.includes('application/x-crafting-todo-map');
       if (!todo && nativeDropTarget(event.target)) return;
       event.preventDefault();
-      event.dataTransfer.dropEffect = todo ? 'move' : !focus && props.onUrlDrop && mayContainUrl(event.dataTransfer) ? 'copy' : 'none';
+      event.dataTransfer.dropEffect = todo ? 'move' : !focus && (props.onUrlDrop && mayContainUrl(event.dataTransfer) || props.onFileDrop && event.dataTransfer.types.includes('Files')) ? 'copy' : 'none';
       if (!todo || !props.todoDrag || dropping) return;
       const point = screenToFlowPosition({ x: event.clientX, y: event.clientY }), moved = (at?: { x: number; y: number }) => !at || Math.abs(at.x - point.x) + Math.abs(at.y - point.y) >= 1;
       const item = props.todoDrag.nodeId ? props.nodes.find(node => node.id === props.todoDrag!.nodeId && !isArchived(node, props.nodes)) : undefined;
@@ -1474,11 +1503,12 @@ function MapCanvas(props: ProjectMapProps) {
         void Promise.resolve(props.onTodoDrop({ id: todoId, position, ...(projectId ? { projectId } : {}) })).finally(() => { setDropping(false); endTodoPreview(); });
         return;
       }
-      if (!props.onUrlDrop) return;
-      const url = droppedUrl(event.dataTransfer); if (!url) return;
+      const file = props.onFileDrop ? event.dataTransfer.files[0] : undefined, url = props.onUrlDrop ? droppedUrl(event.dataTransfer) : undefined;
+      if (!file && !url) return;
       clearInspection();
       const rect = container.current!.getBoundingClientRect(), position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      props.onUrlDrop({ url, screen: { x: event.clientX - rect.left, y: event.clientY - rect.top }, position, projectId: containingProject(position, projects) });
+      const anchor = { screen: { x: event.clientX - rect.left, y: event.clientY - rect.top }, position, projectId: containingProject(position, projects) };
+      if (file) props.onFileDrop!({ file, ...anchor }); else props.onUrlDrop!({ url: url!, ...anchor });
     }} onDoubleClick={event => {
     const press = titlePress.current; titlePress.current = undefined;
     if (focus && press?.id === focus && event.timeStamp - press.at < 500) { event.preventDefault(); event.stopPropagation(); toggleFilled(focus); return; }

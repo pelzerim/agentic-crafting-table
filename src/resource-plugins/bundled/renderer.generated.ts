@@ -12,6 +12,7 @@ import notionPage from '../items/notion-page/renderer.ts';
 import slackMessage from '../items/slack-message/renderer.ts';
 import bookmark from '../items/bookmark/renderer.ts';
 import webLink from '../items/web-link/renderer.ts';
+import textFile from '../items/text-file/renderer.ts';
 import githubIssue from '../items/github-issue/renderer.ts';
 
 export const bundledRendererModules: Readonly<Record<string, RendererModule>> = {
@@ -27,5 +28,6 @@ export const bundledRendererModules: Readonly<Record<string, RendererModule>> = 
   'slack.message': slackMessage,
   'web.bookmark': bookmark,
   'web.link': webLink,
+  'workspace.text': textFile,
   'github.issue': githubIssue,
 };

@@ -103,7 +103,7 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
       event.preventDefault(); event.stopPropagation();
       if (terminal.options.disableStdin) return;
       const saveImage = (file: File) => file.arrayBuffer().then(bytes => window.craftingTable.savePastedImage(new Uint8Array(bytes)));
-      void droppedPaths([...event.dataTransfer.files], window.craftingTable.droppedFilePath, saveImage).then(paths => { if (paths) { terminal.paste(paths); terminal.focus(); } },
+      void droppedPaths([...event.dataTransfer.files], window.craftingTable.pathForFile, saveImage).then(paths => { if (paths) { terminal.paste(paths); terminal.focus(); } },
         error => window.craftingTable.reportError({ kind: 'recoverable', message: `File drop failed: ${(error as Error).message}` }));
     };
     element.addEventListener('dragover', dragFiles);

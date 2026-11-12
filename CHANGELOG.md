@@ -3,6 +3,23 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## 0.20.0 — 2026-11-12
+
+### Text files
+- **Text files as items**: **Add text file** keeps a file from your computer on the map and edits it in place. Code is highlighted, a Markdown file opens as a preview, and **Edit** switches to the editor. Edits save by themselves a moment after you stop typing, on ⌘S, when you close the item and when you quit. The workspace keeps only the path, so other programs and agents see every save in the file.
+- **Click the preview to edit**: clicking the text of a Markdown preview opens the editor with the cursor where you clicked. Links still open, and dragging still selects text to copy.
+- **Paste a path or drop a file**: pasting the path of a file on the map, or dropping a file from Finder, opens the form with the file filled in.
+- **Changes from outside**: when another program changes the file, the open item shows the new text. If you have unsaved edits it asks first: **Reload** or **Keep mine**. With **Save automatically** on, closing the item before answering saves your edits over the change.
+- **Save automatically**: Settings → Items → Text file → Saving has **Save automatically**, on by default. Turn it off and only ⌘S saves; the header reads “Unsaved”, and closing the item, travelling to the Undermap or quitting with unsaved edits asks “Unsaved, really close?” with **Cancel**, **Close without saving** and **Save and close**. The same question, with the reason, appears when a save on closing fails or has not finished after five seconds, so a disk that does not answer cannot keep the item or the app from closing.
+- **The start of the file on the map**: set a text file's map size to Large and its card shows the first lines, rendered or highlighted. Small shows the name, Medium the name and the path.
+- **Reveal in Finder**: the open item's header shows the file in Finder.
+
+### Pull requests
+- **Reviews the workflow posts on its own**: when your review workflow reviews a pull request without a `/review` from here, for example on every push, its review now appears as a Workflow review item next to the pull request and raises “Workflow review ready” when the report is written. A newer review replaces the older one in the same item. Reviews posted before this version first runs are not shown. On by default; turn it off under Settings → Items → Workflow review → /review workflow → Show reviews the workflow posts on its own.
+
+### Fixes
+- **Drop images and files on a session**: dragging a screenshot or any file from Finder onto an agent's terminal types its path, which Claude and Codex attach, as in a terminal app; an image dragged from a web page is saved first. Before, the drop did nothing. (#25, @MegaMaddin)
+
 ## 0.19.0 — 2026-11-10
 
 ### Map
@@ -27,7 +44,6 @@ their pull request and author.
 - **The page opens inside the item**: an open Claude artifact shows its claude.ai page in the item view. Sign in to claude.ai inside the item once; the sign-in is kept apart from the app and survives restarts. Google sign-in opens in a small window inside the app; other links that open a new window go to your browser, and **Open in browser** is still in the header. (#19, @shiini2)
 
 ### Fixes
-- **Drop images and files on a session**: dragging a screenshot or any file from Finder onto an agent's terminal types its path, which Claude and Codex attach, as in a terminal app; an image dragged from a web page is saved first. Before, the drop did nothing. (#25, @MegaMaddin)
 - **Starts after a crash or restart**: the workspace service and session supervisor no longer refuse to start with “Workspace service did not start” when, after a crash or a restart of the computer, another process or a Linux thread got the process ID that the earlier service recorded. The service now records when its process started and compares that too. (#22, @timohuovinen)
 - **Quit anyway**: when the app could not finish closing, for example because the workspace service crashed and cannot start again, the error now offers **Quit anyway** next to **Keep open**; before, the app could not be closed. Quit anyway leaves running sessions to be picked up at the next start. (#22, @timohuovinen)
 

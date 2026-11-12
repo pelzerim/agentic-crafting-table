@@ -8,10 +8,17 @@ export function localItemTitle(plugin: Pick<ResourcePluginDefinition, 'generated
   return line ? Array.from(line).slice(0, 47).join('') + (Array.from(line).length > 47 ? '…' : '') : undefined;
 }
 
-/** The name a new session gets when its name is left empty: an agent after its provider, any other session after its folder. */
-export function defaultItemTitle(plugin: { name: string; acceptsContext?: boolean; creation?: { requires?: string } } | undefined, data: JsonObject): string | undefined {
+/** The last part of a path: the name of the file or folder it leads to. */
+export function lastPathPart(path: unknown): string | undefined {
+  return typeof path === 'string' ? path.split(/[\\/]/).filter(Boolean).at(-1) : undefined;
+}
+
+/** The name a new item gets when its name is left empty: an item of a file after that file, an agent after its provider,
+ * any other session after its folder. */
+export function defaultItemTitle(plugin: { name: string; acceptsContext?: boolean; creation?: { requires?: string; titleFromPath?: string } } | undefined, data: JsonObject): string | undefined {
+  if (plugin?.creation?.titleFromPath) return lastPathPart(data[plugin.creation.titleFromPath]);
   if (plugin?.creation?.requires !== 'runtime') return undefined;
   if (plugin.acceptsContext) return `${String(data.provider ?? 'Claude').replace(/^./, char => char.toUpperCase())} session`;
-  const folder = typeof data.cwd === 'string' ? data.cwd.split(/[\\/]/).filter(Boolean).at(-1) : undefined;
+  const folder = lastPathPart(data.cwd);
   return folder ? `${plugin.name} · ${folder}` : plugin.name;
 }

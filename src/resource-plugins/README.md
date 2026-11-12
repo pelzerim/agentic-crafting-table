@@ -70,6 +70,11 @@ fetch content; the connector resolves the authoritative title on attachment.
 Legacy field-based types can set `creation.group: 'url'` to fold their old shortcuts
 into this entry while retaining existing data/edit/MCP contracts, as Bookmark does.
 
+A type whose `matchInput` fills a field of kind `file` is a file type. `plugins.discover`
+lists those matches as `fileCandidates`, only while the path is a regular file on this
+computer. The map opens the type's form for a pasted path or a dropped file from that
+list; the type needs nothing beyond its `file` field and `matchInput`.
+
 A new URL type also takes over existing Web links it matches (spec RES-10).
 `registry.conversions(resource)` lists the specific types for a saved
 `urlFallback` item; `item.convert { id, pluginId, connectionId?, keepTitle? }`
@@ -178,7 +183,9 @@ connector ignores its signal. A read-only action that returns menu choices may s
 with input `{ cached: true }` from it at once (marked `cachedAt`) and `{ refresh: true }`
 from the provider, and forgets it before any write on that item. `loadResourceChoices`
 uses this to show the saved menu first and replace it when the live read differs;
-`heedsBlockers` still applies to a saved answer. Late observations/results are discarded; cancellation
+`heedsBlockers` still applies to a saved answer. A read-only action whose result must not be copied into the
+workspace database, such as the text of a file, sets `uncached: true`: the coordinator runs it on every ask
+and saves nothing. Late observations/results are discarded; cancellation
 does not promise to undo an external write. Durable writes need a coordinator. `getContext` lets any new
 item become a context source for an agent. `acceptsContext` is a separate definition
 capability for receiving context, typically an agent session.

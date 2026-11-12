@@ -883,7 +883,18 @@ notification click and Window-menu item reveal that same BrowserWindow, so the
 renderer keeps its document and production `backgroundThrottling` pauses its
 rendering while hidden. The main process reads the persisted `warnBeforeClosing` preference on every quit;
 missing settings or failed reads retain the warning. Disabling it skips only the
-confirmation dialog, never checkpointing, process draining or close errors. The
+confirmation dialog, never checkpointing, process draining or close errors. After
+the warning and before anything stops, the main process asks every window whether
+the app may quit (`quit-question.ts`): it sends `app:before-quit`, the preload
+acknowledges at once and answers when the renderer's mounted item views have each
+answered `confirmClose` (a view may save first and may ask the person). False from
+any view ends the quit with nothing stopped. A window that does not acknowledge
+within two seconds, or whose page goes away, agrees; a window still answering after
+400 ms is shown, because a view in it is asking the person or is still saving. The
+final answer has no time limit in the main process, so a view must answer in bounded
+time itself: the text file view waits five seconds for its save, then asks when it
+is shown and agrees when it is not. A quit forced with Quit anyway after a failed
+close does not ask. The
 workspace service first drains accepted launches, then commits a SQLite recovery
 checkpoint with stable session/node/native identities and fresh idempotent resume
 request IDs. It blocks new launches, stops managed PTYs and their descendant tools,
@@ -1406,9 +1417,16 @@ The renderer accepts URI-list, Firefox URL/title and plain URL text payloads,
 preferring the URL identity over its display title. Drag-over inspects only MIME
 types because browser drag payloads are protected until drop. On drop, validate
 HTTP(S) with the shared URL policy, convert client coordinates through React Flow
-and resolve the containing neighborhood. Files, unsupported data, open drafts and
+and resolve the containing neighborhood. Unsupported data, open drafts and
 expanded content cannot start creation; native text-input drops retain their own
 behavior. No provider-specific parsing or network access is added to the renderer.
+
+A dropped file and a pasted path feed the form of a file type the same way. The
+preload script gives the path of a dropped file, and `plugins.discover` answers
+`fileCandidates`: the types whose `matchInput` fills a field of kind `file`, kept
+only while a regular file is at the path. One candidate opens that type's form with
+the path filled in; none, or several, leaves the paste a note and the drop without
+effect. The renderer reads no file and names no item type.
 
 ### Provider content and URL attachment
 

@@ -4,6 +4,7 @@ import { GitHubClient } from '../provider-runtime/github.ts';
 import { githubTransport } from '../provider-runtime/github-transport.ts';
 import { useValidatorStore, withBudgetLines } from '../provider-runtime/request-budget.ts';
 import { pluginDiscoverySchema } from '../../src/resource-plugins/url-input.ts';
+import { existingFileCandidates } from './file-candidates.ts';
 import { migratePluginResources } from './plugin-migrations.ts';
 import { savedSessionsSchema, creationOptionsSchema } from '../session-runtime/saved-sessions.ts';
 import { createServer } from 'node:net';
@@ -73,11 +74,12 @@ import { AssignmentCoordinator } from './assignments.ts';
 import type { AssignmentAdapter } from './assignments.ts';
 import { WorkflowReviewCoordinator } from './workflow-reviews.ts';
 import { nativeWorkflowSources } from '../provider-runtime/workflow-sources.ts';
-import { workflowReviewContract } from '../../src/pull-requests/workflow-contract.ts';
+import { adoptsWorkflowReports, workflowReviewContract } from '../../src/pull-requests/workflow-contract.ts';
 import type { WorkflowSource } from '../provider-runtime/workflow-sources.ts';
 import { ReviewCoordinator } from './reviews.ts';
 import { ReviewFindingsCoordinator } from './review-findings.ts';
 import { AutoReviews } from './auto-review.ts';
+import { WorkflowReportAdoption } from './workflow-report-adoption.ts';
 import { ReviewLoops } from './review-loop.ts';
 import type { ReviewRuntime } from './reviews.ts';
 import { nativeReviewSources } from '../provider-runtime/review-sources.ts';
@@ -237,6 +239,10 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   const autoReviews = new AutoReviews({ storage: store.pluginStorage('code.review'), store, control, resources, changed: broadcast, allowed: () => !closing && lifecycle.allowsBackgroundWork,
     ...(reviews ? { reviews: { start: (prNodeId, provider, input) => reviews.start(prNodeId, provider, input, work => lifecycle.execute(work)) } } : {}) });
   const workflows = new WorkflowReviewCoordinator(store, control, providers ? providers.workflows ?? {} : nativeWorkflowSources(connections, repository => workflowReviewContract(control.registry.pluginSettings(store.readSettings().value.plugins)['github.review-run'], repository)), broadcast, () => !closing && lifecycle.allowsBackgroundWork);
+  const reportAdoption = new WorkflowReportAdoption({ storage: store.pluginStorage('github.review-run'), control, changed: broadcast, allowed: () => !closing && lifecycle.allowsBackgroundWork,
+    enabled: () => adoptsWorkflowReports(control.registry.pluginSettings(store.readSettings().value.plugins)['github.review-run']),
+    resources: { cached: nodeId => resources.cached(nodeId), checkedAt: resourceId => store.resourceCacheCheckedAt(resourceId, 'snapshot') },
+    reviews: { reports: (nodeId, comments) => workflows.reports(nodeId, comments), adopt: (nodeId, report, signal) => lifecycle.execute(() => workflows.adopt(nodeId, report, signal)) } });
   const lifecycle = new WorkspaceLifecycle(store, control, {
     list: () => terminals ? terminals.runtime.call<SessionRecord[]>('sessions.list') : Promise.resolve([]),
     stop: sessionId => terminals!.runtime.call('sessions.stop', { sessionId, preservePids: [process.pid] }),
@@ -335,7 +341,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   if (agentTitles) { const titler = agentTitles; operation('agent.title', ({ nodeId }) => titler.request(nodeId)); }
   const pollers: [object, string, string][] = [[resources, 'poll', 'resources.poll'], [assignments, 'tick', 'assignments.tick'], [triage, 'tick', 'triage.tick'], [todoSweeper, 'sweep', 'todos.sweep'],
     [workflows, 'tick', 'workflows.tick'], [checkouts, 'tick', 'checkouts.tick'], [inbox, 'refresh', 'inbox.refresh'], [loops, 'reconcileOnce', 'review-loops.reconcile'],
-    [autoReviews, 'reconcileOnce', 'auto-reviews.reconcile'], [recaps, 'tick', 'recaps.tick'], ...(summaries ? [[summaries, 'tick', 'summaries.tick'] as [object, string, string]] : [])];
+    [autoReviews, 'reconcileOnce', 'auto-reviews.reconcile'], [reportAdoption, 'reconcileOnce', 'workflow-reports.reconcile'], [recaps, 'tick', 'recaps.tick'], ...(summaries ? [[summaries, 'tick', 'summaries.tick'] as [object, string, string]] : [])];
   for (const [target, method, name] of pollers) health.timed(target, method, name);
   const creators: Record<string, (request: ResourceCreate) => Promise<unknown>> = { 'resource.attach': request => resources.attach(request), ...(terminals ? {
     'terminal.create': request => terminals.create({ ...request, sessionId: request.requestId, cwd: request.data.cwd }),
@@ -449,12 +455,12 @@ export async function startWorkspaceService(directory: string, registry?: Resour
           case 'attention.history': { const input = z.object({ offset: z.number().int().min(0).max(99).default(0), limit: z.number().int().min(1).max(100).default(10) }).strict().parse(args ?? {}); result = store.attentionHistory(input.offset, input.limit); break; }
           case 'lifecycle.active': result = await lifecycle.active(); break;
           case 'lifecycle.preview': result = { sessions: await lifecycle.active(), pending: lifecycle.pendingCount }; break;
-          case 'lifecycle.close': inbox.stop(); await agents?.pause(); await workflows.pause(); await servicePlugins.pause(); await findings?.close(); await loops.close(); await autoReviews.close(); await reviews?.close(); await architecture.close(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await recaps.pause(); await checkouts.pause(); await resources.pause(); await summaries?.pause(); await titles?.pause(); await agentTitles?.pause(); await attachTitles?.pause(); await standup.pause(); await updates.pause(); await plots.pause(); await projectSummaries.pause(); await reminders.pause(); result = await lifecycle.close(); break;
-          case 'lifecycle.recover': { const input = z.object({ retry: z.boolean().default(false), startupId: z.string().uuid().optional() }).parse(args); result = lifecycle.recover(input.retry, input.startupId); summaries?.start(); titles?.start(); agentTitles?.start(); attachTitles?.start(); standup.start(); updates.start(); plots.start(); projectSummaries.start(); reminders.start(); assignments.start(); triage.start(); todoSweeper.start(); recaps.start(); checkouts.start(); resources.start(); workflows.resume(); findings?.start(); loops.start(); autoReviews.start(); servicePlugins.start(); agents?.start(); break; }
+          case 'lifecycle.close': inbox.stop(); await agents?.pause(); await reportAdoption.close(); await workflows.pause(); await servicePlugins.pause(); await findings?.close(); await loops.close(); await autoReviews.close(); await reviews?.close(); await architecture.close(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await recaps.pause(); await checkouts.pause(); await resources.pause(); await summaries?.pause(); await titles?.pause(); await agentTitles?.pause(); await attachTitles?.pause(); await standup.pause(); await updates.pause(); await plots.pause(); await projectSummaries.pause(); await reminders.pause(); result = await lifecycle.close(); break;
+          case 'lifecycle.recover': { const input = z.object({ retry: z.boolean().default(false), startupId: z.string().uuid().optional() }).parse(args); result = lifecycle.recover(input.retry, input.startupId); summaries?.start(); titles?.start(); agentTitles?.start(); attachTitles?.start(); standup.start(); updates.start(); plots.start(); projectSummaries.start(); reminders.start(); assignments.start(); triage.start(); todoSweeper.start(); recaps.start(); checkouts.start(); resources.start(); workflows.resume(); findings?.start(); loops.start(); autoReviews.start(); reportAdoption.start(); servicePlugins.start(); agents?.start(); break; }
           case 'agent.hook': if (!agents) throw new Error('Native agents are not configured'); result = await agents.hook(args); break;
           case 'plugins.discover': {
             const input = pluginDiscoverySchema.parse(args);
-            result = { plugins: control.registry.describe().map(plugin => ({ ...plugin, capabilities: plugins.capabilities(plugin.id) })), packages: pluginState().installed.map(({ id, name, version, commit, dev, enabled, removed, running: active }) => ({ id, name, version, commit, dev, enabled, removed, running: Boolean(active) })), candidates: input.input ? control.registry.matchInput(input.input) : [], urlCandidates: input.input ? control.registry.matchUrl(input.input) : [] }; break;
+            result = { plugins: control.registry.describe().map(plugin => ({ ...plugin, capabilities: plugins.capabilities(plugin.id) })), packages: pluginState().installed.map(({ id, name, version, commit, dev, enabled, removed, running: active }) => ({ id, name, version, commit, dev, enabled, removed, running: Boolean(active) })), candidates: input.input ? control.registry.matchInput(input.input) : [], urlCandidates: input.input ? control.registry.matchUrl(input.input) : [], fileCandidates: input.input ? await existingFileCandidates(control.registry, input.input) : [] }; break;
           }
           case 'runtime.run': {
             const request = runtimeTransportSchema.parse(args), state = await control.read(), handled = servicePlugins.operation(request.action);
@@ -532,6 +538,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
     closing = true;
     shutdown = (async () => {
       health.stop();
+      await reportAdoption.close();
       await workflows.pause();
       await inbox.close(); await agents?.pause(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await recaps.pause(); await checkouts.pause(); await resources.pause();
       await summaries?.close();
@@ -561,6 +568,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
       await Promise.allSettled([startup, startupReviews, startupArchitecture]);
       // An in-flight workflow recovery can resume its timer after the first pause.
       await workflows.pause();
+      await reportAdoption.close();
       for (const socket of sockets) socket.destroy();
       await new Promise<void>(resolve => server.close(() => resolve()));
       // Remove our socket while still holding ownership: a successor must not have
@@ -601,7 +609,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
     plots.start();
     projectSummaries.start();
     reminders.start();
-    assignments.start(); triage.start(); todoSweeper.start(); recaps.start(); checkouts.start(); resources.start(); inbox.start(); loops.start(); servicePlugins.start(); agents?.start();
+    assignments.start(); triage.start(); todoSweeper.start(); recaps.start(); checkouts.start(); resources.start(); inbox.start(); loops.start(); reportAdoption.start(); servicePlugins.start(); agents?.start();
   })();
   try { await startup; } catch (error) { await close(); throw error; }
   return { close, store, control, resources, paths, instanceId };

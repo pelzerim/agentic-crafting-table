@@ -20,6 +20,8 @@ export interface MapSizePreset {
   presentationPips?: boolean;
   /** Dotted data path to `{ tone, count }` entries drawn as coloured numbers in the cue row when the person turns on open finding counts; an empty list draws a quiet check. */
   counts?: string;
+  /** Draws the type's map view (`ResourcePluginViews.mountNode`) under the title, in the height the card leaves it. */
+  nodeView?: boolean;
   /** Height follows the wrapped text of `field` between `min` and `max` lines; a stored
    * height never overrides it. `footerField` reserves one more line while present. */
   growLines?: { field: string; min: number; max: number; footerField?: string };
@@ -84,8 +86,9 @@ export interface ResourceField {
   label: string;
   /** A select of known providers is a row of square logo buttons; keys are `options`, values brand names. */
   optionBrands?: Readonly<Record<string, string>>;
-  /** `multiselect` (any of `options`, stored as a list) is for settings sections only. */
-  kind: 'text' | 'url' | 'number' | 'boolean' | 'select' | 'multiselect' | 'directory';
+  /** `multiselect` (any of `options`, stored as a list) is for settings sections only. `directory` and `file` hold a path
+   * on this computer and add the native picker to an item form. */
+  kind: 'text' | 'url' | 'number' | 'boolean' | 'select' | 'multiselect' | 'directory' | 'file';
   required?: boolean;
   description?: string;
   multiline?: boolean;
@@ -181,7 +184,8 @@ export interface ResourcePluginDefinition {
   attachTitle?: { evidence: (snapshot: ResourceSnapshot) => { kind: string; text: string } | undefined };
   /** Omit for provider-created outputs that should not appear in Add item. */
   /** `hotkey` picks the type with one letter while the creation ring is open. */
-  creation?: { label: string; shortLabel?: string; hotkey?: string; labelByField?: { field: string; labels: Readonly<Record<string, string>> }; titleLabel?: string; mode?: 'fields' | 'url'; urlFallback?: boolean; group?: 'url'; urlPlaceholder?: string; requires?: 'runtime'; action?: string; fields?: ResourceFields; resume?: boolean };
+  /** `titleFromPath` names a data field holding a path: a new item whose name is left empty is called after that path's last part. */
+  creation?: { label: string; shortLabel?: string; hotkey?: string; labelByField?: { field: string; labels: Readonly<Record<string, string>> }; titleLabel?: string; mode?: 'fields' | 'url'; urlFallback?: boolean; group?: 'url'; urlPlaceholder?: string; requires?: 'runtime'; action?: string; fields?: ResourceFields; resume?: boolean; titleFromPath?: string };
   matchInput?: (input: string) => ResourceDraft | undefined;
   /** Stable provider identity within one connection. Runs only in the trusted
    * backend registry; omitted from the serialized renderer/MCP description. */
@@ -269,6 +273,9 @@ export interface ResourceAction {
    * returns it at once to an ask with input `cached: true` (marked `cachedAt`), while the caller asks
    * again with `refresh: true`. Any write on the item forgets it. */
   cacheChoices?: boolean;
+  /** For a read-only action: the host runs it on every ask and never saves what it returns. For results
+   * that must not be copied into the workspace database, such as the text of a file. */
+  uncached?: boolean;
   /** Invoked by the host when a person marks the item done or reopens it (input `done`
    * "true"/"false" and `restore`, the state it returns `restore` for); never directly. */
   completion?: boolean;
@@ -306,6 +313,10 @@ export interface ResourcePluginConnector {
 export interface MountedResourceView {
   update(snapshot: ResourceSnapshot): void;
   setActive?(active: boolean): void;
+  /** Asked before the person closes the view, opens another item in its place, leaves its layer or quits.
+   * The view may finish a save first and may ask the person; false keeps it open. It is not asked when its
+   * item is removed or its view is replaced, so it must not rely on being asked. */
+  confirmClose?(): boolean | Promise<boolean>;
   dispose(): void;
 }
 
@@ -337,6 +348,8 @@ export interface RelatedResourceItem {
 export interface ResourceViewServices {
   observePreferences?(listener: (preferences: JsonObject) => void): () => void;
   copyUrl?(url: string): Promise<unknown>;
+  /** Shows a local file in the system file manager, selected. The path is absolute or starts with `~/`. */
+  revealFile?(path: string): Promise<unknown>;
   /** Current direct links across aliases, excluding archived items. No provider fetch. */
   observeRelated?(listener: (items: RelatedResourceItem[]) => void): () => void;
   openResource(resourceId: string): void;
@@ -384,6 +397,8 @@ export interface ResourcePluginViews {
     resource: ResourceRecord,
     services: ResourceViewServices,
   ): MountedResourceView;
+  /** The item's face on the map, drawn at the map sizes whose preset sets `nodeView`. It is not interactive: a
+   * click on it opens the item like a click anywhere on the card. */
   mountNode?(
     container: HTMLElement,
     resource: ResourceRecord,

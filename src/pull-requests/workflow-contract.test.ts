@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_WORKFLOW_REVIEW_CONTRACT, parseRepositoryOverrides, workflowFileName, workflowReviewContract, workflowReviewSettingsFields } from './workflow-contract.ts';
+import { DEFAULT_WORKFLOW_REVIEW_CONTRACT, adoptsWorkflowReports, parseRepositoryOverrides, workflowFileName, workflowReviewContract, workflowReviewSettingsFields } from './workflow-contract.ts';
 import { fieldDefaults, validateFields } from '../resource-plugins/define.ts';
 import reviewRunPlugin from '../resource-plugins/items/github-review-run/plugin.ts';
 
 test('the /review contract defaults are neutral and every part is a setting', () => {
   assert.deepEqual(DEFAULT_WORKFLOW_REVIEW_CONTRACT, { workflowPath: '.github/workflows/review.yml', jobName: 'review', failureText: '', reportMarker: String.raw`^(?:#{1,6} +\S|\*\*[^*\n]+:\*\*)` });
-  assert.deepEqual(fieldDefaults(workflowReviewSettingsFields), { ...DEFAULT_WORKFLOW_REVIEW_CONTRACT, repositories: '' });
+  assert.deepEqual(fieldDefaults(workflowReviewSettingsFields), { ...DEFAULT_WORKFLOW_REVIEW_CONTRACT, repositories: '', adoptReports: true });
   assert.deepEqual(workflowReviewContract(undefined, 'acme/app'), DEFAULT_WORKFLOW_REVIEW_CONTRACT);
   const custom = { workflowPath: '.github/workflows/agent.yml', jobName: 'agent-review', failureText: 'agent review did not complete', reportMarker: '^Result:' };
   assert.deepEqual(workflowReviewContract({ ...custom }, 'acme/app'), custom);
@@ -40,4 +40,13 @@ test('a report marker that is not a regular expression is refused when saved', (
   const validate = reviewRunPlugin.settings!.validate!;
   assert.doesNotThrow(() => validate({ ...fieldDefaults(workflowReviewSettingsFields), reportMarker: '^Result:' }));
   assert.throws(() => validate({ ...fieldDefaults(workflowReviewSettingsFields), reportMarker: '(' }), /Report marker/);
+});
+
+test('reviews the workflow posts on its own are shown unless the setting is turned off', () => {
+  assert.equal(workflowReviewSettingsFields.adoptReports.kind, 'boolean');
+  assert.equal(adoptsWorkflowReports(undefined), true);
+  assert.equal(adoptsWorkflowReports(fieldDefaults(workflowReviewSettingsFields)), true);
+  assert.equal(adoptsWorkflowReports({ adoptReports: false }), false);
+  assert.equal(adoptsWorkflowReports({ adoptReports: true }), true);
+  assert.deepEqual(workflowReviewContract({ adoptReports: false }, 'acme/app'), DEFAULT_WORKFLOW_REVIEW_CONTRACT, 'the setting is no part of the contract a request keeps');
 });

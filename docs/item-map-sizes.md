@@ -23,6 +23,7 @@ Expanded view sizing is independent. Dimensions below are defaults in world pixe
 | Workflow review | 150×48: title, progress/attention | 240×112: saved workflow state plus repository | —; logs/results belong in the review | Small |
 | Claude artifact | 150×48: title, progress/attention | 240×96: saved generation status/summary | —; diagram belongs in the artifact | Small |
 | Web link | 200×48: title and site icon | 240×96: adds URL | —; open the browser for content | Small |
+| Text file | 180×48: file name | 260×96: adds the path | 320×240: the start of the file, Markdown rendered or code highlighted, read from disk | Small |
 | Bookmark (legacy/plugin type) | 150×48: title | 240×112: URL and saved bookmark notes | — | Small |
 | To-do | 220×48: checkbox and editable text; done keeps its text | — | — | Small only |
 | Project | Neighborhood title and status counts | No item Size menu | No item Size menu | Existing representation |

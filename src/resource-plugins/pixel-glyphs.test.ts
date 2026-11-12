@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PIXEL_GLYPHS } from './pixel-glyphs.ts';
+import { glyphPath, PIXEL_GLYPHS, pixelGlyphMask } from './pixel-glyphs.ts';
 
 const glyphs: Record<string, readonly string[]> = PIXEL_GLYPHS[8];
 const rotate = (rows: readonly string[]) => rows.map((_, y) => rows.map((_, x) => rows[rows.length - 1 - x][y]).join(''));
@@ -70,4 +70,16 @@ test('the GitHub issue is a 12×12 glyph of its own: a ring around a dot, symmet
   assert.deepEqual([...issue].reverse(), [...issue]);
   assert.equal(issue[0], '............'); assert.equal(issue[11], '............');
   for (const [name, rows] of Object.entries(PIXEL_GLYPHS[12])) if (name !== 'circle-dot') assert.notDeepEqual(rows, issue, `circle-dot differs from ${name}`);
+});
+
+test('a glyph as a CSS mask is an SVG data URI of its lit pixels, with no colour of its own', () => {
+  const mask = pixelGlyphMask('close');
+  const [, encoded] = /^url\("data:image\/svg\+xml,([^"]+)"\)$/.exec(mask) ?? [];
+  assert.ok(encoded, mask);
+  const svg = decodeURIComponent(encoded);
+  assert.match(svg, /viewBox="0 0 8 8"/);
+  assert.match(svg, /shape-rendering="crispEdges"/);
+  assert.ok(svg.includes(`d="${glyphPath(PIXEL_GLYPHS[8].close)}"`));
+  assert.doesNotMatch(svg, /fill|stroke|#[0-9a-f]{3}/i);
+  assert.notEqual(pixelGlyphMask('chevron'), pixelGlyphMask('chevron-right'));
 });

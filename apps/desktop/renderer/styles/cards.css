@@ -1716,6 +1716,19 @@
   display: none;
 }
 
+/* A type's map view takes the height its card has left under the title. A click on it reaches the card. */
+.card-node-view {
+  flex: 1;
+  min-height: 0;
+  margin-top: 6px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.card-node-view .resource-node-view {
+  height: 100%;
+}
+
 /* A 12px corner tab with a three-step stair inside a 24px pointer target, shown on hover, focus and selection. */
 .map-card .item-resize-handle,
 .map-card .item-resize-handle:hover {

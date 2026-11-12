@@ -213,3 +213,121 @@ test('exact workflow tracking still requires the run-name contract', async () =>
     assert.equal((await reviews.status('pr', requestId))[0].state, 'waiting', 'an unnamed run is not adopted in exact mode');
   } finally { await reviews.pause(); f.close(); }
 });
+
+const reviewItems = async (f: Awaited<ReturnType<typeof fixture>>) => { const state = await f.control.read(); return state.nodes.filter(node => state.resources.find(resource => resource.id === node.resourceId)?.pluginId === 'github.review-run'); };
+
+test('a review the workflow posted on its own becomes one linked item, is never posted for, and raises its report', async () => {
+  const f = await fixture(), reviews = f.coordinator();
+  try {
+    const report = f.provider.reported();
+    const undecided = f.provider.reported(490); f.provider.jobs.pop();
+    assert.equal(await reviews.adopt('pr', undecided), 'pending');
+    Object.assign(f.provider.runs[1], { status: 'completed', conclusion: 'success' });
+    assert.equal(await reviews.adopt('pr', undecided), 'unrelated'); assert.equal(await reviews.adopt('pr', { runId: 480, commentId: 680 }), 'unrelated');
+    assert.equal(f.store.listJobs().length, 0);
+    assert.equal(await reviews.adopt('pr', report), 'adopted'); await reviews.tick();
+    const state = await f.control.read(), [item] = await reviewItems(f);
+    assert.equal((await reviewItems(f)).length, 1); assert.equal(item.projectId, 'project'); assert.equal(item.activity, 'working'); assert.equal(item.summary, 'Watching review');
+    assert.deepEqual(state.links.map(link => [link.sourceId, link.targetId, link.label]), [['pr', item.id, 'Workflow review']]);
+    const watching = (await reviews.status(item.id))[0];
+    assert.equal(watching.adopted, true); assert.equal(watching.status, 'running'); assert.equal(watching.triggerId, undefined); assert.equal(watching.runUrl, 'https://github.com/fixture/billing/actions/runs/500');
+    assert.equal(await reviews.adopt('pr', report), 'tracked'); assert.equal(await reviews.adopt('pr', { ...report, commentId: 999 }), 'tracked');
+    f.provider.report(); f.advance(); await reviews.tick();
+    const result = (await reviews.status(item.id))[0];
+    assert.equal(result.state, 'succeeded', JSON.stringify(result)); assert.match(result.report!, /Fixture findings/); assert.match(result.resultUrl!, /issuecomment-700$/);
+    const finished = await f.control.read();
+    assert.deepEqual(attentionItems(finished.nodes).find(entry => entry.node.id === item.id)?.notes, ['Workflow review ready']);
+    assert.equal(f.provider.posts, 0); assert.equal((await reviewItems(f)).length, 1);
+    assert.equal((await reviews.status('pr')).length, 1);
+    await assert.rejects(reviews.adopt('missing', report), /pull request/); await assert.rejects(reviews.adopt('pr', { runId: 0, commentId: 1 }));
+  } finally { await reviews.pause(); f.close(); }
+});
+
+test('an adopted review survives a crash mid-read without asking for a trigger, and fails at its deadline while disconnected', async () => {
+  const f = await fixture(); let reviews = f.coordinator();
+  try {
+    await reviews.adopt('pr', f.provider.reported()); await reviews.tick();
+    const [item] = await reviewItems(f), job = f.store.listJobs()[0];
+    await reviews.pause(); f.store.transitionJob(job.id, 'waiting', 'running', {}); f.store.recoverInterruptedJobs();
+    assert.equal(f.store.getJob(job.id)!.state, 'outcome-unknown');
+    reviews = new WorkflowReviewCoordinator(f.store, f.control, f.sources, async () => {}, () => true, () => Date.parse('2026-09-25T12:00:00Z')); await reviews.recover();
+    const recovered = (await f.control.read()).nodes.find(node => node.id === item.id)!;
+    assert.equal(recovered.summary, 'Watching review'); assert.equal(recovered.attentionSources?.workflow, undefined);
+    assert.equal((await reviews.status(item.id))[0].status, 'running');
+    await assert.rejects(reviews.reconcile(item.id, { requestId: String(job.input.arguments.requestId), triggerId: null }), /not awaiting/);
+    await reviews.pause(); reviews = f.coordinator(); f.disconnect(); f.advance(); await reviews.tick();
+    const waiting = (await reviews.status(item.id))[0]; assert.equal(waiting.state, 'waiting'); assert.match(waiting.error!, /Disconnected/);
+    f.advance(3_600_000); await reviews.tick();
+    assert.equal((await reviews.status(item.id))[0].state, 'failed'); assert.equal(f.provider.posts, 0);
+  } finally { await reviews.pause(); f.close(); }
+});
+
+test('a newer report replaces the older one in the same item, stops the older watch and raises attention again', async () => {
+  const f = await fixture(), reviews = f.coordinator();
+  try {
+    await reviews.adopt('pr', f.provider.reported(500)); await reviews.tick();
+    const [item] = await reviewItems(f);
+    assert.equal(await reviews.adopt('pr', f.provider.reported(510)), 'adopted'); await reviews.tick();
+    assert.deepEqual(f.store.listJobs().map(job => job.state), ['cancelled', 'waiting']);
+    assert.deepEqual((await reviewItems(f)).map(node => node.id), [item.id]);
+    assert.deepEqual((await reviews.status(item.id)).map(result => result.runId), [510]);
+    assert.deepEqual((await reviews.status('pr')).map(result => result.runId), [510]);
+    f.provider.report(500); f.provider.report(510, 'Second findings'); f.advance(); await reviews.tick();
+    const first = await f.control.read();
+    assert.match((await reviews.status(item.id))[0].report!, /Second findings/); assert.equal(first.nodes.find(node => node.id === item.id)!.activity, 'complete');
+    await f.control.apply({ type: 'attention.acknowledge', ...attentionReceipt(first.nodes, item.id) }, first.revision);
+    assert.equal(await reviews.adopt('pr', f.provider.reported(520)), 'adopted'); await reviews.tick();
+    assert.equal((await f.control.read()).nodes.find(node => node.id === item.id)!.activity, 'working');
+    f.provider.report(520, 'Third findings'); f.advance(); await reviews.tick();
+    const second = await f.control.read();
+    assert.deepEqual(attentionItems(second.nodes).find(entry => entry.node.id === item.id)?.notes, ['Workflow review ready']);
+    assert.match((await reviews.status(item.id))[0].report!, /Third findings/);
+    await reviews.stop(item.id, { requestId: (await reviews.status(item.id))[0].requestId });
+    assert.equal((await reviews.status(item.id))[0].state, 'succeeded');
+    assert.equal(await reviews.adopt('pr', f.provider.reported(525)), 'adopted'); await reviews.tick();
+    const third = await f.control.read(), [newest] = await reviews.status(item.id);
+    assert.equal(attentionItems(third.nodes).find(entry => entry.node.id === item.id), undefined, 'the unread older report no longer asks for attention');
+    assert.equal(newest.report, undefined); assert.equal(newest.status, 'running');
+    await f.control.apply({ type: 'node.archive', id: item.id }, third.revision);
+    assert.equal(await reviews.adopt('pr', f.provider.reported(530)), 'adopted'); await reviews.tick();
+    const items = await reviewItems(f);
+    assert.equal(items.length, 2); assert.equal(items.find(node => node.id === item.id)!.summary, 'Stopped watching'); assert.equal(f.provider.posts, 0);
+  } finally { await reviews.pause(); f.close(); }
+});
+
+test('a report is not adopted while a /review request looks for its run, nor after that request tracks the run', async () => {
+  const f = await fixture(), reviews = f.coordinator();
+  try {
+    const requestId = randomUUID(); await reviews.start('pr', { requestId }); await reviews.tick();
+    const report = f.provider.reported(500, 'issue_comment');
+    assert.equal(await reviews.adopt('pr', report), 'deferred');
+    f.provider.runs[0].display_title = 'ACT review comment 101'; f.advance(); await reviews.tick();
+    assert.equal((await reviews.status('pr', requestId))[0].runId, 500);
+    assert.equal(await reviews.adopt('pr', report), 'tracked');
+    assert.equal(await reviews.adopt('pr', f.provider.reported(510)), 'adopted'); await reviews.tick();
+    assert.equal((await reviewItems(f)).length, 2); assert.equal(f.provider.posts, 1);
+  } finally { await reviews.pause(); f.close(); }
+});
+
+test('a /review request beside an adopted review posts its own comment and gets its own item', async () => {
+  const f = await fixture(), reviews = f.coordinator();
+  try {
+    await reviews.adopt('pr', f.provider.reported()); await reviews.tick();
+    const requestId = randomUUID(); await reviews.start('pr', { requestId }); await reviews.tick();
+    assert.equal(f.provider.posts, 1); assert.equal((await reviewItems(f)).length, 2);
+    const [requested] = await reviews.status('pr', requestId); assert.equal(requested.adopted, false); assert.equal(requested.triggerId, 101);
+    await reviews.pause(); assert.equal(await reviews.adopt('pr', f.provider.reported(510)), 'deferred');
+  } finally { await reviews.pause(); f.close(); }
+});
+
+test('a caller that stops waiting ends the read of a reported run, and nothing is adopted', async () => {
+  const f = await fixture(), reviews = f.coordinator();
+  try {
+    const stopped = new AbortController(), get = f.provider.get;
+    f.provider.get = (path, signal) => { stopped.abort(new Error('Stopped waiting')); return get(path, signal); };
+    await assert.rejects(reviews.adopt('pr', f.provider.reported(), stopped.signal), /Stopped waiting/); f.provider.get = get;
+    await assert.rejects(reviews.adopt('pr', f.provider.reported(505), stopped.signal), /Stopped waiting/);
+    assert.deepEqual(await reviews.status('pr'), []); assert.deepEqual(await reviewItems(f), []);
+    assert.equal(await reviews.adopt('pr', f.provider.reported(510), new AbortController().signal), 'adopted');
+  } finally { await reviews.pause(); f.close(); }
+});

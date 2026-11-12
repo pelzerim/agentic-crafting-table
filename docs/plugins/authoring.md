@@ -546,6 +546,12 @@ View services you may use: `runAction` (runtime operations and `resource.read` w
 - Load when `setActive(true)` arrives, not in `mountDetail`; stop when it turns false.
 - `dispose` removes every listener, timer and element you added. Disposing a view never stops
   work in the service.
+- A view with work the person could lose may return `confirmClose()`. The host asks it before the
+  person closes the view, opens another item in its place, leaves the map layer or quits. Finish
+  a save there, or ask in your own frame and resolve `false` to stay open. It is not asked when
+  the item is removed or the view is replaced, so `dispose` must still leave nothing half done.
+  Quit waits for this answer without a limit: put your own limit on any save or read you wait
+  for, and when a view the person cannot see reaches it, resolve `true`.
 - Text goes in with `textContent`. For Markdown use `renderMarkdown` from the SDK views.
 - Do not draw your own title row, close button or freshness text; the frame owns them.
 

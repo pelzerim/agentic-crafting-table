@@ -1,0 +1,92 @@
+/* Text file view: a file on disk in CodeMirror, or its Markdown rendered. */
+.text-file-view{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--act-surface);color:var(--act-ink);font-size:var(--act-fs-body)}
+.text-file-view [hidden]{display:none}
+:is(.text-file-changed,.text-file-close-prompt){display:flex;align-items:center;gap:var(--act-sp-2);margin:0 0 var(--act-sp-3);padding:var(--act-sp-1_5) var(--act-sp-3);font-size:var(--act-fs-ui);color:var(--act-ink-soft);background:var(--act-control);border-left:3px solid var(--act-line-strong)}
+:is(.text-file-changed,.text-file-close-prompt) span{flex:1 1 auto}
+:is(.text-file-changed,.text-file-close-prompt) button{border:1px solid var(--act-line);background:var(--act-raised);color:var(--act-ink);padding:2px var(--act-sp-2);cursor:pointer;font:inherit}
+:is(.text-file-changed,.text-file-close-prompt) button:hover{background:var(--act-hover)}
+:is(.text-file-changed,.text-file-close-prompt) button:focus-visible{outline:2px solid var(--act-focus);outline-offset:1px}
+:is(.text-file-changed,.text-file-close-prompt) button:disabled{color:var(--act-ink-faint);cursor:default}
+.text-file-close-prompt{border-left-color:var(--act-accent)}
+.text-file-body{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
+.text-file-blank{display:grid;justify-items:center;align-content:start;gap:var(--act-sp-2)}
+.text-file-blank .view-empty{margin-bottom:0}
+.text-file-preview{flex:1 1 auto;min-height:0;overflow:auto;padding:0 var(--act-sp-1) var(--act-sp-6)}
+.text-file-editor{flex:1 1 auto;min-height:0;border:1px solid var(--act-line);background:var(--act-sunken)}
+
+/* CodeMirror's own theme is injected at runtime, so every rule here outranks it by one class. */
+.text-file-view .cm-editor{height:100%;background:transparent;color:var(--act-ink)}
+.text-file-view .cm-editor.cm-focused{outline:none;box-shadow:inset 0 0 0 1px var(--act-focus)}
+.text-file-view .cm-editor .cm-scroller{font-family:var(--act-font-mono);font-size:var(--act-fs-ui);line-height:1.55}
+.text-file-view .cm-editor .cm-content{caret-color:var(--act-ink);padding:var(--act-sp-2) 0}
+.text-file-view .cm-editor .cm-cursor{border-left-color:var(--act-ink)}
+.text-file-view .cm-editor .cm-gutters{background:transparent;color:var(--act-ink-faint);border-right:1px solid var(--act-line)}
+.text-file-view .cm-editor .cm-activeLine{background:color-mix(in srgb, var(--act-hover) 45%, transparent)}
+.text-file-view .cm-editor .cm-activeLineGutter{background:transparent;color:var(--act-ink-soft)}
+.text-file-view[data-mode="preview"] .cm-editor .cm-activeLine{background:transparent}
+.text-file-view[data-mode="preview"] .cm-editor .cm-activeLineGutter{color:inherit}
+.text-file-view[data-mode="preview"] .cm-editor .cm-cursorLayer{display:none}
+.text-file-view .cm-editor > .cm-scroller > .cm-selectionLayer .cm-selectionBackground{background:var(--act-control)}
+.text-file-view .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground{background:var(--act-selected)}
+.text-file-view .cm-editor .cm-selectionMatch{background:var(--act-accent-bg)}
+.text-file-view .cm-editor .cm-searchMatch{background:var(--act-accent-bg);outline:1px solid var(--act-line-strong)}
+.text-file-view .cm-editor .cm-searchMatch.cm-searchMatch-selected{background:var(--act-selected);outline-color:var(--act-accent)}
+.text-file-view .cm-editor.cm-focused .cm-matchingBracket{background:var(--act-accent-bg);outline:1px solid var(--act-line-strong)}
+.text-file-view .cm-editor.cm-focused .cm-nonmatchingBracket{background:transparent;outline:1px solid var(--act-line-strong)}
+.text-file-view .cm-editor .cm-foldPlaceholder{background:var(--act-control);border-color:var(--act-line);color:var(--act-ink-dim)}
+.text-file-view .cm-editor .cm-panels{background:var(--act-raised);color:var(--act-ink);border-color:var(--act-line);font-size:var(--act-fs-ui)}
+.text-file-view .cm-editor .cm-panels.cm-panels-top{border-bottom:1px solid var(--act-line)}
+.text-file-view .cm-editor .cm-panels.cm-panels-bottom{border-top:1px solid var(--act-line)}
+.text-file-view .cm-editor .cm-panel.cm-search label{font-size:var(--act-fs-meta);color:var(--act-ink-dim)}
+.text-file-view .cm-editor .cm-panel .cm-textfield{background:var(--act-sunken);color:var(--act-ink);border:1px solid var(--act-line);font-size:var(--act-fs-ui)}
+.text-file-view .cm-editor .cm-panel .cm-textfield:focus-visible{outline:2px solid var(--act-focus);outline-offset:-1px}
+.text-file-view .cm-editor .cm-panel .cm-button{background:var(--act-control);background-image:none;color:var(--act-ink);border:1px solid var(--act-line);border-radius:0;font-size:var(--act-fs-ui)}
+.text-file-view .cm-editor .cm-panel .cm-button:hover{background:var(--act-hover)}
+.text-file-view .cm-editor .cm-panel .cm-button:active{background:var(--act-selected);background-image:none}
+.text-file-view .cm-editor .cm-panel button[name="close"]{display:grid;place-items:center;top:var(--act-sp-0_5);right:var(--act-sp-1);width:20px;height:20px;color:var(--act-ink-dim);cursor:pointer}
+.text-file-view .cm-editor .cm-panel button[name="close"]:hover{color:var(--act-ink)}
+.text-file-view .cm-editor .cm-panel button[name="close"]:focus-visible{outline:2px solid var(--act-focus);outline-offset:-2px}
+.text-file-view .cm-editor .cm-tooltip{background:var(--act-raised);color:var(--act-ink);border:1px solid var(--act-line-strong);box-shadow:var(--act-shadow-popover)}
+.text-file-view .cm-editor .cm-tooltip.cm-tooltip-autocomplete > ul{font-family:var(--act-font-mono);font-size:var(--act-fs-ui)}
+.text-file-view .cm-editor .cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]{background:var(--act-selected);color:var(--act-ink)}
+.text-file-view .cm-editor .cm-tooltip .cm-completionDetail{color:var(--act-ink-dim)}
+.text-file-view .cm-editor .cm-tooltip .cm-completionIcon{color:var(--act-ink-faint)}
+
+/* CodeMirror draws its fold marks, its folded-code mark and the search panel's close button as characters.
+   Each character is hidden and a pixel glyph drawn in its place, from the masks the editor sets on itself. */
+.text-file-view .cm-editor :is(.cm-foldGutter span[title],.cm-foldPlaceholder,.cm-panel button[name="close"]){font-size:0}
+.text-file-view .cm-editor :is(.cm-foldGutter span[title],.cm-foldPlaceholder,.cm-panel button[name="close"])::before{content:'';display:inline-block;width:8px;height:8px;vertical-align:middle;background:currentColor;mask-position:center;mask-size:contain;mask-repeat:no-repeat}
+.text-file-view .cm-editor .cm-foldGutter span[title="Fold line"]::before{mask-image:var(--text-file-mark-fold)}
+.text-file-view .cm-editor .cm-foldGutter span[title="Unfold line"]::before{mask-image:var(--text-file-mark-unfold)}
+.text-file-view .cm-editor .cm-foldPlaceholder::before{mask-image:var(--text-file-mark-folded)}
+.text-file-view .cm-editor .cm-panel button[name="close"]::before{mask-image:var(--text-file-mark-close)}
+.text-file-view .cm-editor .cm-foldGutter span[title]{display:inline-block;padding:0 var(--act-sp-1)}
+.text-file-view .cm-editor .cm-foldGutter span[title]:hover{color:var(--act-ink)}
+.text-file-view .cm-editor .cm-foldPlaceholder{padding:0 var(--act-sp-1);cursor:pointer}
+
+/* Highlighted code: in the editor, in the code blocks of the Markdown preview and on the map card. */
+:is(.text-file-view,.text-file-card) .tok-keyword{color:var(--act-code-keyword)}
+:is(.text-file-view,.text-file-card) :is(.tok-string,.tok-string2){color:var(--act-code-string)}
+:is(.text-file-view,.text-file-card) :is(.tok-number,.tok-bool,.tok-atom,.tok-literal){color:var(--act-code-number)}
+:is(.text-file-view,.text-file-card) :is(.tok-typeName,.tok-className,.tok-namespace,.tok-macroName){color:var(--act-code-type)}
+:is(.text-file-view,.text-file-card) :is(.tok-comment,.tok-meta){color:var(--act-code-comment)}
+:is(.text-file-view,.text-file-card) .tok-heading{color:var(--act-code-heading);font-weight:var(--act-fw-strong)}
+:is(.text-file-view,.text-file-card) .tok-heading.tok-meta{color:var(--act-code-comment)}
+:is(.text-file-view,.text-file-card) .tok-strong{font-weight:var(--act-fw-strong)}
+:is(.text-file-view,.text-file-card) .tok-emphasis{font-style:italic}
+:is(.text-file-view,.text-file-card) .tok-strikethrough{text-decoration:line-through}
+:is(.text-file-view,.text-file-card) :is(.tok-link,.tok-url){color:var(--act-link-text)}
+:is(.text-file-view,.text-file-card) .tok-invalid{color:var(--act-error)}
+
+/* Map card: the start of the file under the card's title, faded out where the card ends. */
+.text-file-card{height:100%;overflow:hidden;font-size:var(--act-fs-meta);line-height:1.5;color:var(--act-ink-faint)}
+.text-file-card[data-state="present"]{color:var(--act-ink-soft);mask-image:linear-gradient(to bottom, var(--act-deep) calc(100% - 28px), transparent)}
+.text-file-card > pre{margin:0;font-family:var(--act-font-mono);white-space:pre;tab-size:2}
+.text-file-card > pre code{font:inherit}
+.text-file-card .markdown-content{font-size:var(--act-fs-ui);line-height:1.5;color:inherit}
+.text-file-card .markdown-content :is(h1,h2,h3,h4,h5,h6){margin:var(--act-sp-2) 0 var(--act-sp-1);font-size:var(--act-fs-body)}
+.text-file-card .markdown-content :is(p,ul,ol,blockquote,pre,table){margin:var(--act-sp-1) 0 var(--act-sp-2)}
+.text-file-card .markdown-content :is(ul,ol){padding-left:20px}
+.text-file-card .markdown-content li{margin:0}
+.text-file-card .markdown-content pre{padding:var(--act-sp-1_5) var(--act-sp-2);overflow:hidden}
+.text-file-card .markdown-content code{font-size:var(--act-fs-meta)}

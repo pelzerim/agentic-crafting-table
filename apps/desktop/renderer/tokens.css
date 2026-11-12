@@ -285,6 +285,14 @@
   --act-link-text-hover: #e1f0e4;
   --act-quote-ink: #aabfb1;
 
+  /* Highlighted code: one colour per kind of token; comments and headings follow the ink ramp */
+  --act-code-keyword: #c9aef0;
+  --act-code-string: #9fd0c8;
+  --act-code-number: #e2aa8c;
+  --act-code-type: #a4bce8;
+  --act-code-comment: var(--act-ink-faint);
+  --act-code-heading: var(--act-ink-bright);
+
   /* Pull request desk */
   --act-pr-ink: #cfddd1;
   --act-pr-link: #9ebba5;
@@ -648,6 +656,11 @@
   --act-link-text: #2a6a40;
   --act-link-text-hover: #14432a;
   --act-quote-ink: #4a5d50;
+  /* Highlighted code */
+  --act-code-keyword: #6b44a8;
+  --act-code-string: #1f6f66;
+  --act-code-number: #984e24;
+  --act-code-type: #345a9e;
   /* Pull request desk */
   --act-pr-ink: #223026;
   --act-pr-link: #3a6b4a;

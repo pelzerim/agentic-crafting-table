@@ -29,9 +29,10 @@ import { useRecentColors } from './recent-colors.ts';
 import { PixelGlyph } from './ui/pixel-glyph.tsx';
 import { DirectoryField, useDirectoryChoices } from './ui/directory-field.tsx';
 import type { DirectoryChoices } from './ui/directory-field.tsx';
+import { FileField } from './ui/file-field.tsx';
 import { defaultDirectory } from '../../../packages/core/working-directories.ts';
 
-type Editor = { mode: 'menu' | 'create' | 'edit'; initialType?: string; initialUrl?: string; connectedFromId?: string; nodeId?: string; projectId?: string; position: { x: number; y: number }; screen: { x: number; y: number } };
+type Editor = { mode: 'menu' | 'create' | 'edit'; initialType?: string; initialUrl?: string; initialData?: JsonObject; connectedFromId?: string; nodeId?: string; projectId?: string; position: { x: number; y: number }; screen: { x: number; y: number } };
 export function SelectField({ pluginId, name, field, values, change, searchable }: { pluginId?: string; name: string; field: ResourceField; values: JsonObject; change(key: string, value: string): void; searchable?: boolean }) {
   const [options, setOptions] = useState(field.options ?? []), [labels, setLabels] = useState<Record<string, string>>({}), [error, setError] = useState(''), [loading, setLoading] = useState(false);
   const latest = useRef({ values, change }); latest.current = { values, change };
@@ -68,10 +69,11 @@ function Fields({ fields, values, change, pluginId, focusField, directories, pro
     : field.optionBrands ? <div key={key} className="field-color"><span aria-hidden="true">{field.label}</span><BrandField name={key} field={field} value={String(values[key] ?? '')} change={value => change(key, value)} /></div>
     : <label key={key}>{field.label}
     {field.kind === 'directory' ? <DirectoryField label={field.label} required={field.required} value={String(values[key] ?? '')} change={value => change(key, value)} choices={directories} project={field.fromProject ? projectDirectory : undefined} error={error} />
+      : field.kind === 'file' ? <FileField label={field.label} required={field.required} pattern={field.pattern} placeholder={field.placeholder} value={String(values[key] ?? '')} change={value => change(key, value)} error={error} />
       : field.kind === 'select' ? <SelectField pluginId={pluginId} name={key} field={field} values={values} change={change} />
       : field.multiline ? <textarea autoFocus={focusField === key} aria-label={field.label} required={field.required} value={String(values[key] ?? '')} onChange={event => change(key, event.target.value)} rows={Math.max(2, Math.min(16, field.rows ?? 3))} />
       : <input aria-label={field.label} type={field.kind === 'boolean' ? 'checkbox' : field.kind === 'number' ? 'number' : field.kind === 'url' ? 'url' : 'text'} required={field.required}
-        min={field.min} max={field.max} step={field.integer ? 1 : 'any'} pattern={field.pattern} checked={field.kind === 'boolean' ? Boolean(values[key]) : undefined}
+        min={field.min} max={field.max} step={field.integer ? 1 : 'any'} pattern={field.pattern} placeholder={field.placeholder} checked={field.kind === 'boolean' ? Boolean(values[key]) : undefined}
         value={field.kind === 'boolean' ? undefined : String(values[key] ?? '')} onChange={event => change(key, field.kind === 'boolean' ? event.target.checked : field.kind === 'number' ? Number(event.target.value) : event.target.value)} />}
     {field.description && <small>{field.description}</small>}
   </label>);
@@ -100,7 +102,7 @@ export function InlineEditor({ editor, state, plugins, quickIds, capabilities, s
     const plugin = plugins.find(plugin => plugin.id === id);
     return fieldDefaults(plugin?.creation?.fields ?? plugin?.fields, { workingDirectory: startDirectory });
   };
-  const [data, setData] = useState<JsonObject>(() => editor.mode === 'edit' ? resource?.data ?? {} : editor.initialType === FROM_URL && editor.initialUrl ? { url: editor.initialUrl } : defaultsFor(editor.initialType));
+  const [data, setData] = useState<JsonObject>(() => editor.mode === 'edit' ? resource?.data ?? {} : editor.initialType === FROM_URL && editor.initialUrl ? { url: editor.initialUrl } : { ...defaultsFor(editor.initialType), ...editor.initialData });
   useEffect(() => {
     if (!directories.loaded || editor.mode === 'edit') return;
     setData(old => ({ ...defaultsFor(type), ...old }));

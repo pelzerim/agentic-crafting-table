@@ -203,3 +203,52 @@ test('native workflow reader allows the pinned workflow and attempt endpoints wi
   assert.equal((await client.observe(identity, 101, at, signal(), undefined, false, timed.workflowId, timed.tracking)).status, 'complete');
   assert.ok(methods.every(method => method === 'GET'));
 });
+
+test('a reported run is a review once the review job of the configured workflow has started for this pull request', async () => {
+  const f = workflowFixture(); f.reported();
+  assert.equal(await f.client.inspectReportedRun(identity, 500, signal()), 'review');
+  f.jobs[0].status = 'queued'; assert.equal(await f.client.inspectReportedRun(identity, 500, signal()), 'pending');
+  f.jobs[0] = { ...f.jobs[0], status: 'completed', conclusion: 'skipped' }; assert.equal(await f.client.inspectReportedRun(identity, 500, signal()), 'unrelated');
+  f.jobs[0].conclusion = 'failure'; assert.equal(await f.client.inspectReportedRun(identity, 500, signal()), 'review');
+  f.jobs[0].name = 'score'; assert.equal(await f.client.inspectReportedRun(identity, 500, signal()), 'pending');
+  f.runs[0].status = 'completed'; assert.equal(await f.client.inspectReportedRun(identity, 500, signal()), 'unrelated');
+  f.jobs[0] = { ...f.jobs[0], name: 'review', status: 'in_progress', conclusion: null };
+  for (const other of [{ path: '.github/workflows/deploy.yml' }, { event: 'push' }, { pull_requests: [{ number: 43 }] }, { repository: { full_name: 'another/app' } }]) {
+    const run = f.runs[0]; f.runs[0] = { ...run, ...other };
+    assert.equal(await f.client.inspectReportedRun(identity, 500, signal()), 'unrelated', JSON.stringify(other)); f.runs[0] = run;
+  }
+  for (const same of [{ pull_requests: [] }, { pull_requests: [{ number: 41 }, { number: 42 }] }, { event: 'issue_comment' }, { event: 'pull_request_target' }, { path: '.github/workflows/review.yml@refs/pull/42/merge' }, { repository: { full_name: 'Fixture/Billing' } }]) {
+    const run = f.runs[0]; f.runs[0] = { ...run, ...same };
+    assert.equal(await f.client.inspectReportedRun(identity, 500, signal()), 'review', JSON.stringify(same)); f.runs[0] = run;
+  }
+  assert.equal(await f.client.inspectReportedRun(identity, 501, signal()), 'unrelated');
+  f.status = 403; await assert.rejects(f.client.inspectReportedRun(identity, 500, signal()), { code: 'GITHUB_FORBIDDEN' });
+  assert.equal(f.posts, 0);
+});
+
+test('a reported run is watched through its own comment until the review job has written the report', async () => {
+  const f = workflowFixture(), report = f.reported();
+  const running = await f.client.observeReported(identity, report, signal());
+  assert.equal(running.status, 'running'); assert.equal(running.runId, 500); assert.equal(running.jobId, 600); assert.equal(running.resultCommentId, 700); assert.equal(running.report, undefined);
+  Object.assign(f.jobs[0], { status: 'completed', conclusion: 'success' });
+  assert.equal((await f.client.observeReported(identity, report, signal())).status, 'awaiting-result');
+  assert.equal((await f.client.observeReported(identity, report, signal(), true)).status, 'timed-out');
+  f.report();
+  const complete = await f.client.observeReported(identity, report, signal());
+  assert.equal(complete.status, 'complete'); assert.match(complete.report!, /Fixture findings/);
+  assert.equal(complete.resultUrl, 'https://github.com/fixture/billing/pull/42#issuecomment-700'); assert.equal(complete.runUrl, 'https://github.com/fixture/billing/actions/runs/500');
+  const otherCase = await f.client.observeReported({ ...identity, owner: 'Fixture', repo: 'Billing' }, report, signal());
+  assert.equal(otherCase.status, 'complete', 'a repository name is the same in any letter case'); assert.match(otherCase.report!, /Fixture findings/);
+  f.comments.push({ ...f.comments[0], id: 701, body: 'Score 3 of 5. [View run](https://github.com/fixture/billing/actions/runs/500)' });
+  assert.equal((await f.client.observeReported(identity, report, signal())).status, 'complete');
+  f.runs[0].run_attempt = 2; f.jobs[0].id = 601;
+  assert.equal((await f.client.observeReported(identity, report, signal())).jobId, 601);
+  f.jobs[0].conclusion = 'failure'; assert.equal((await f.client.observeReported(identity, report, signal())).status, 'failed');
+  f.jobs[0].conclusion = 'cancelled'; assert.equal((await f.client.observeReported(identity, report, signal())).status, 'cancelled');
+  f.jobs[0].conclusion = 'success'; f.comments.shift();
+  assert.equal((await f.client.observeReported(identity, report, signal())).status, 'awaiting-result');
+  f.runs[0].path = '.github/workflows/deploy.yml';
+  const replaced = await f.client.observeReported(identity, report, signal());
+  assert.equal(replaced.status, 'ambiguous'); assert.match(replaced.reason!, /no longer/);
+  assert.equal(f.posts, 0); assert.ok(f.paths.every(path => !path.includes('/attempts/')));
+});

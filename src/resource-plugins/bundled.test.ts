@@ -18,7 +18,7 @@ test('bundled packages keep every persisted item type id and its registration or
   const packages = createPluginPackageRegistry();
   assert.deepEqual(createResourcePluginRegistry().list().map(type => type.id), [
     'agent.session', 'terminal.session', 'github.pull-request', 'github.rollout', 'claude.artifact', 'code.review', 'github.review-run',
-    'linear.ticket', 'notion.page', 'slack.message', 'web.bookmark', 'web.link', 'workspace.todo', 'workspace.note', 'github.issue',
+    'linear.ticket', 'notion.page', 'slack.message', 'web.bookmark', 'web.link', 'workspace.todo', 'workspace.note', 'workspace.text', 'github.issue',
   ]);
   for (const type of packages.types.list()) assert.ok(packages.ownerOf(type.id), `${type.id} has an owning package`);
   for (const { manifest } of packages.list()) {

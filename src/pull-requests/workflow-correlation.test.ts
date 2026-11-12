@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { TIMED_SKEW_MS, TIMED_WINDOW_MS, correlateWorkflowRun, correlateWorkflowRunByTime, reconcileUncertainWorkflowTrigger, workflowReviewRunName } from './workflow-correlation.ts';
+import { REPORTED_RUN_EVENTS, TIMED_SKEW_MS, TIMED_WINDOW_MS, correlateWorkflowRun, correlateWorkflowRunByTime, reconcileUncertainWorkflowTrigger, reportedWorkflowRuns, workflowReviewRunName } from './workflow-correlation.ts';
+import { reportMarker } from './workflow-contract.ts';
 
 test('workflow correlation separates simultaneous comments and rejects title, repository and event lookalikes', () => {
   const run = { id: 10, repository: 'example/app', path: '.github/workflows/review.yml', event: 'issue_comment', displayTitle: workflowReviewRunName(123) };
@@ -60,4 +61,31 @@ test('timed correlation waits for undecided runs and never guesses between candi
   }
   const unrelated = [{ id: 126, body: '/review', createdAt: '2026-09-25T11:50:00Z' }, { id: 127, body: '/review', createdAt: '2026-09-25T12:03:01Z' }, { id: 128, body: 'Looks good, /review later', createdAt: '2026-09-25T12:00:30Z' }];
   assert.deepEqual(correlateWorkflowRunByTime('example/app', trigger, [trigger, ...unrelated], [run]), { status: 'matched', run });
+});
+
+test('a bot comment that links exactly one workflow run of the repository names a reported run', () => {
+  const marker = reportMarker({}), link = (id: number, repository = 'fixture/billing') => `[View run](https://github.com/${repository}/actions/runs/${id})`;
+  const started = { id: 1, author: 'github-actions[bot]', body: `Review started. ${link(10)}`, createdAt: '2026-09-25T12:00:00Z' };
+  assert.deepEqual(reportedWorkflowRuns('fixture/billing', [started, started], marker), [{ runId: 10, commentId: 1, createdAt: started.createdAt }]);
+  assert.deepEqual(reportedWorkflowRuns('Fixture/Billing', [started], marker).map(run => run.runId), [10], 'a repository name is the same in any letter case');
+  const ignored = [
+    { ...started, id: 2, author: 'fixture-developer' }, { ...started, id: 3, body: `Review started. ${link(11, 'another/app')}` },
+    { ...started, id: 4, body: `${link(12)} and ${link(13)}` }, { ...started, id: 5, body: 'Review started.' },
+    { ...started, id: 6, body: 'https://github.com/fixture/billing/actions/runs/14' }, { ...started, id: 7, body: '[job](https://github.com/fixture/billing/actions/runs/15/job/3)' },
+    { ...started, id: 8, body: link(16, 'fixture/billing-tools') }, { ...started, id: 9, body: link(0) },
+  ];
+  assert.deepEqual(reportedWorkflowRuns('fixture/billing', ignored, marker), []);
+  assert.deepEqual(reportedWorkflowRuns('fixture/billing', [{ ...started, body: `${link(10)} ${link(10)}` }], marker).map(run => run.runId), [10]);
+  assert.deepEqual(REPORTED_RUN_EVENTS, ['issue_comment', 'pull_request', 'pull_request_target']);
+});
+
+test('several bot comments on one run yield the single one the report marker matches; reported runs come oldest first', () => {
+  const marker = reportMarker({}), link = (id: number) => `[View run](https://github.com/fixture/billing/actions/runs/${id})`;
+  const note = { id: 1, author: 'github-actions[bot]', body: `Score 3 of 5. ${link(10)}`, createdAt: '2026-09-25T12:00:00Z' };
+  const report = { id: 2, author: 'github-actions[bot]', body: `## Summary\nOne finding\n${link(10)}`, createdAt: '2026-09-25T12:05:00Z' };
+  assert.deepEqual(reportedWorkflowRuns('fixture/billing', [note, report], marker), [{ runId: 10, commentId: 2, createdAt: report.createdAt }]);
+  assert.deepEqual(reportedWorkflowRuns('fixture/billing', [note, { ...note, id: 3 }], marker), []);
+  assert.deepEqual(reportedWorkflowRuns('fixture/billing', [report, { ...report, id: 3 }], marker), []);
+  const earlier = { ...report, id: 4, body: report.body.replaceAll('/runs/10', '/runs/9'), createdAt: '2026-09-25T11:00:00Z' };
+  assert.deepEqual(reportedWorkflowRuns('fixture/billing', [report, earlier], marker).map(run => run.runId), [9, 10]);
 });

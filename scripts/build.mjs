@@ -14,7 +14,7 @@ await Promise.all([
   build({ entryPoints: ['packages/session-runtime/entry.ts'], outfile: 'dist/session-supervisor.cjs', bundle: true, platform: 'node', format: 'cjs', external: ['node-pty'], sourcemap: true }),
   build({ entryPoints: ['packages/mcp/entry.ts'], outfile: 'dist/mcp-bridge.cjs', bundle: true, platform: 'node', format: 'cjs', sourcemap: true }),
   build({ entryPoints: ['packages/session-runtime/agent-hook.ts'], outfile: 'dist/agent-hook.cjs', bundle: true, platform: 'node', format: 'cjs', sourcemap: true }),
-  build({ entryPoints: ['apps/desktop/renderer/app.tsx'], outfile: 'dist/renderer/app.js', plugins: [hiddenXtermGuard], bundle: true, platform: 'browser', format: 'esm', jsx: 'automatic', sourcemap: true, define: { 'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production') } }),
+  build({ entryPoints: [{ in: 'apps/desktop/renderer/app.tsx', out: 'app' }], outdir: 'dist/renderer', splitting: true, chunkNames: 'chunks/[name]-[hash]', plugins: [hiddenXtermGuard], bundle: true, platform: 'browser', format: 'esm', jsx: 'automatic', sourcemap: true, define: { 'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production') } }),
   copyFile('apps/desktop/renderer/index.html', 'dist/renderer/index.html'),
   copyFile('apps/desktop/assets/app-icon.png', 'dist/app-icon.png'),
 ]);
