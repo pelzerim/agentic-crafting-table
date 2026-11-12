@@ -11,6 +11,7 @@ import { photoLibraryProject } from '../fixtures/photo-library-project.ts';
 import { connectWorkspace } from '../../packages/workspace-service/client.ts';
 import { exitWithoutShutdown } from './exit-without-shutdown.ts';
 import { resize, scrollbarArgs } from './visual-fixture.ts';
+import { travel } from './undermap-fixture.ts';
 
 type Launch = { state?: () => unknown; view?: { x: number; y: number; zoom: number }; settings?: (value: AppSettings) => AppSettings; reducedMotion?: 'reduce' | 'no-preference'; size?: { width: number; height: number } };
 const settle = (page: Page) => page.evaluate(() => new Promise<void>(resolve => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())), 250)));
@@ -299,5 +300,47 @@ test('MAP-01: links in a dense project rest at 35%; the hovered or selected item
   });
   await launch({ state: sparseProject, view: { x: 0, y: 100, zoom: 1 } }, async page => {
     for (const property of ['opacity', 'stroke-opacity']) expect(await computed(page, '.react-flow__edge[data-id="pr-note"] .react-flow__edge-path', property)).toBe('1');
+  });
+});
+
+test('MAP-33: with the setting on, quiet agent sessions crack in from the edges after one, two and four weeks; working ones and the Undermap never do', async () => {
+  const DAY = 86_400_000, ago = (days: number) => new Date(Date.now() - days * DAY).toISOString();
+  const sessions = [['fresh', 'Fresh session', 3], ['week', 'Week-old session', 9], ['fortnight', 'Fortnight-old session', 16], ['month', 'Month-old session', 40], ['busy', 'Busy old session', 40]] as const;
+  const state = () => {
+    const base = sparseProject();
+    return stateSchema.parse({ ...base,
+      nodes: [...base.nodes, ...sessions.map(([id, title, days], index) => ({ id, resourceId: `${id}-r`, projectId: 'project', title, position: { x: 260 + (index % 3) * 300, y: 460 + Math.floor(index / 3) * 120 },
+        activity: id === 'busy' ? 'working' : 'idle', summary: 'Waiting for the next prompt', activityAt: ago(days) }))],
+      resources: [...base.resources, ...sessions.map(([id, title]) => ({ id: `${id}-r`, pluginId: 'agent.session', schemaVersion: 1, title, data: { sessionId: `static-${id}`, provider: 'claude' } }))] });
+  };
+  await launch({ state, view: { x: 0, y: -100, zoom: 1 }, settings: value => ({ ...value, sessionCracks: true }) }, async page => {
+    const card = (id: string) => page.locator(`[data-item-id="${id}"]`);
+    await expect(card('week')).toHaveAttribute('data-cracks', '1');
+    await expect(card('fortnight')).toHaveAttribute('data-cracks', '2');
+    await expect(card('month')).toHaveAttribute('data-cracks', '3');
+    for (const id of ['fresh', 'busy', 'pr', 'note']) await expect(card(id)).not.toHaveAttribute('data-cracks');
+    await expect(card('month').locator('.card-cracks path')).toHaveCount(10);
+    await expect(card('week').locator('.card-cracks path')).toHaveCount(2);
+    await expect(card('fortnight')).toHaveAttribute('title', 'Quiet for 2 weeks');
+    await expect(page.getByRole('article', { name: 'Month-old session, quiet for 5 weeks', exact: true })).toBeVisible();
+    await settle(page);
+    const boxes = await Promise.all(sessions.map(([id]) => card(id).boundingBox())), left = Math.min(...boxes.map(box => box!.x)) - 24, top = Math.min(...boxes.map(box => box!.y)) - 24;
+    await page.screenshot({ path: 'test-results/pr/session-cracks.png', clip: { x: left, y: top, width: Math.max(...boxes.map(box => box!.x + box!.width)) + 24 - left, height: Math.max(...boxes.map(box => box!.y + box!.height)) + 24 - top } });
+
+    // Everything in the Undermap is old, so a session sent there loses its cracks.
+    await card('month').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Send to Undermap', exact: true }).click();
+    await expect(card('month')).toHaveCount(0);
+    await travel(page, 'below');
+    await expect(card('month')).toBeVisible();
+    await expect(card('month')).not.toHaveAttribute('data-cracks');
+    await expect(card('month').locator('.card-cracks')).toHaveCount(0);
+    await travel(page, 'map');
+
+    await page.evaluate(async () => {
+      const saved = await window.craftingTable.settingsRead();
+      await window.craftingTable.settingsWrite({ expectedRevision: saved.revision, value: { ...saved.value, sessionCracks: false } });
+    });
+    await expect(page.locator('.card-cracks')).toHaveCount(0);
   });
 });

@@ -134,6 +134,21 @@ of that circle at the current zoom; it does not open the item or mark it seen. I
 projects (MAP-25) raise none, Finished raises one only when counted, and none show while an item
 is open or below (MAP-18), where Needs me pauses.
 
+**MAP-33 — Cracks on quiet sessions.** An optional age cue, off by default; its settings switch
+is SETTINGS-SESSION-CRACKS. An agent session card shows small cracks in from its edges once the
+session has been quiet for a week, counted from the later of its last activity (`activityAt`)
+and its last turn end (`turnEndedAt`). One crack starts at the top edge at one week, two more
+at the left and bottom edges at two weeks, and three more at four weeks; each level keeps the
+cracks before it. Each crack is a short zigzag of fixed layout pixels that starts on the edge
+and reaches at most 16 px in, in faint ink under the card's text and edge line, so it never
+hides text and looks the same on small and large cards. The card's tooltip and accessible name
+say “Quiet for N weeks”, so the age never rests on the drawing alone. A working session, a
+session with no dated activity, an open item and a far-zoom icon show none, and other item
+types never crack. Nothing cracks in the Undermap (MAP-18): everything there is old, so a
+session sent below loses its cracks, and gets them back when it returns to the map. The cue is
+decoration only: it never raises attention, changes counts or moves the card. The cracks go
+when the session works again.
+
 **MAP-33 — Find an item.** ⌘F on the map (not in a focused terminal, which keeps its
 own find) opens a find bar at the bottom centre in the Undermap find field's shape,
 focused, in the map's colours for the current light or dark theme. Before anything is
@@ -2541,6 +2556,10 @@ Undermap, where nothing is created. Right click or Escape still dismisses the ri
 Map, section **Needs me**, has the switch **Circles for items outside the view** (off by
 default; additive boolean `offscreenAttention`, older settings read off). When off, no
 circle shows and the Needs me number and frames are unchanged.
+
+**SETTINGS-SESSION-CRACKS — Cracks on quiet sessions (MAP-33).** Settings → Map, section
+**Agent sessions**, has the switch **Cracks on quiet sessions** (off by default; additive boolean
+`sessionCracks`, older settings read off). When off, no card cracks.
 
 **SETTINGS-REVIEW-OPEN-COUNTS — Open findings on review cards.** Settings → Map, section
 **Code reviews**, has the switch **Open findings on review cards** (off by default; additive
