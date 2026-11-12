@@ -26,4 +26,7 @@ async function main() {
   } finally { client.close(); }
 }
 // Hooks never block native work if the local table is temporarily unavailable.
-main().catch(() => { process.stderr.write('Agentic Crafting Table could not synchronize this hook.\n'); });
+const unsynchronized = () => { process.stderr.write('Agentic Crafting Table could not synchronize this hook.\n'); };
+// Claude Code does not time out an asynchronous hook, so a stalled table must not leave this process behind.
+setTimeout(() => { unsynchronized(); process.exit(0); }, 5_000).unref();
+main().catch(unsynchronized);

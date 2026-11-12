@@ -180,6 +180,13 @@ Hooks stamp `observedAt` in the hook process and the supervisor stamps the key i
 its own process, both from the same machine clock. A key pressed in another
 terminal emulator attached to the same Claude process is not seen.
 
+`PostToolUse` is an asynchronous hook, so a tool call does not wait for its process.
+Nothing reads its answer and a model turn separates it from the next hook, and a late
+one is dropped by its older `observedAt`. `PreToolUse` stays blocking: `PermissionRequest`
+follows it within milliseconds, and a `PreToolUse` stamped after that would clear the
+prompt. Claude Code does not time out asynchronous hooks, so the hook process ends
+itself after five seconds.
+
 ## Saved conversations on this computer
 
 The new-agent form lists local Claude conversations across all project folders,

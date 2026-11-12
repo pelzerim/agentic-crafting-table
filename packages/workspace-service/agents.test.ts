@@ -93,6 +93,8 @@ test('native hooks ignore old processes and observations; attaching live Claude 
     await control.apply({ type: 'node.move', id: 'agent', position: { x: 20, y: 40 } }, revision);
     await coordinator.hook({ ...event, observedAt: 102, event: 'PermissionRequest' });
     assert.equal((await control.read()).nodes[0].attention, 'input');
+    assert.deepEqual(await coordinator.hook({ ...event, observedAt: 101, event: 'PostToolUse' }), { ignored: true }, 'an asynchronous PostToolUse that lands late cannot clear a newer prompt');
+    assert.equal((await control.read()).nodes[0].attention, 'input');
     await coordinator.hook({ ...event, observedAt: 103, event: 'PostToolUse' });
     assert.equal((await control.read()).nodes[0].attention, 'none');
     const attached = await coordinator.resume('agent', randomUUID());
