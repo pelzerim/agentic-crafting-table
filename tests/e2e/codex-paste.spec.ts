@@ -97,3 +97,24 @@ test('Ctrl+Shift+V pastes through the same path, and an empty clipboard sends no
     expect(input).not.toContain('\x16');
   });
 });
+
+test('dropping an image on the terminal types its path, as a terminal app does', async () => {
+  test.setTimeout(60_000);
+  await openCodex(async (_app, page, received) => {
+    // A browser image has no file on disk behind it, so it is saved like a pasted one.
+    const accepted = await page.locator('.terminal-host .xterm-screen').evaluate((target, png) => {
+      const data = new DataTransfer();
+      data.items.add(new File([Uint8Array.from(atob(png), c => c.charCodeAt(0))], 'shot.png', { type: 'image/png' }));
+      const over = new DragEvent('dragover', { dataTransfer: data, bubbles: true, cancelable: true });
+      target.dispatchEvent(over);
+      target.dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }));
+      return over.defaultPrevented;
+    }, PNG);
+    expect(accepted).toBe(true);
+    await expect.poll(async () => (await received()).includes(END), { timeout: 15_000 }).toBe(true);
+    const input = await received(), path = input.slice(input.indexOf(START) + START.length, input.indexOf(END));
+    expect(path).toMatch(/\.png$/);
+    expect((await readFile(path)).subarray(1, 4).toString()).toBe('PNG');
+    await expect(page.locator('.terminal-error')).toHaveCount(0);
+  });
+});
