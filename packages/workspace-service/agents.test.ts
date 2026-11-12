@@ -732,6 +732,22 @@ test('a shell command shows only after it has run a while, stays long enough to 
   } finally { await f.close(); }
 });
 
+test('a PostToolUse that lands after a newer hook still ends its shell command', async () => {
+  const f = await promptFixture('pose-late-command');
+  const settle = (at: number) => { f.session.sequence++; return f.coordinator.settleQuiet(() => at); };
+  try {
+    await f.hook('UserPromptSubmit', 1_000);
+    await f.hook('PreToolUse', 2_000, { toolName: 'Bash' });
+    await settle(4_000);
+    assert.equal(await pose(f), 'command');
+    // The command ended at 5,000, but its asynchronous hook lands after the next tool started.
+    await f.hook('PreToolUse', 5_600, { toolName: 'Read' });
+    await f.hook('PostToolUse', 5_000, { toolName: 'Bash' });
+    await settle(9_000);
+    assert.equal(await pose(f), undefined);
+  } finally { await f.close(); }
+});
+
 test('a helper that finishes leaves with a moment; shells and watchers stay beside an idle item; the end of the session shows and clears', async () => {
   const f = await promptFixture('pose-beside');
   const node = async () => (await f.control.read()).nodes[0];
