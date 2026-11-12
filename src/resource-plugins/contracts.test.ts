@@ -10,11 +10,19 @@ import { linearFixture } from '../../tests/fixtures/linear.ts';
 import { notionPage } from './items/notion-page/definition.ts';
 import { notionPageConnector } from './items/notion-page/connector.ts';
 import { notionFixture, notionPageId } from '../../tests/fixtures/notion.ts';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { itemDefinitions } from './catalog.ts';
 import { resourcePluginContract } from './testing.ts';
 import type { JsonObject } from './types.ts';
+import { textFile } from './items/text-file/definition.ts';
+import { textFileConnector } from './items/text-file/connector.ts';
+
+const textFileDirectory = mkdtempSync(join(tmpdir(), 'act-contract-text-file-'));
+after(() => rmSync(textFileDirectory, { recursive: true, force: true }));
 
 const data: Record<string, JsonObject> = {
   'agent.session': { sessionId: 'fixture-agent', provider: 'claude' },
@@ -29,6 +37,7 @@ const data: Record<string, JsonObject> = {
   'slack.message': slackInput,
   'web.bookmark': { url: 'https://example.com' },
   'web.link': { url: 'https://example.com' }, 'workspace.todo': { notes: 'Fixture notes' }, 'workspace.note': { text: 'First line\nSecond line' },
+  'workspace.text': { path: join(textFileDirectory, 'notes.md') },
 };
 test('every shipped item definition supplies an explicit shared-contract fixture', () => {
   assert.deepEqual(Object.keys(data).sort(), itemDefinitions.map(plugin => plugin.id).sort());
@@ -69,6 +78,7 @@ const connectors = [
   { plugin: notionPage, connector: () => notionPageConnector(async () => notionFixture().client), actions: {} },
   { plugin: bookmark, connector: () => bookmarkConnector, actions: { reference: {} } },
   { plugin: todoItem, connector: () => todoConnector, actions: {} },
+  { plugin: textFile, connector: () => textFileConnector, actions: { read: {}, excerpt: {}, stat: {}, write: { text: 'Fixture text', path: join(textFileDirectory, 'notes.md') } } },
   { plugin: webLink, connector: () => createWebLinkConnector(async () => 'Fixture page'), actions: { reference: {} } },
   { plugin: claudeArtifact, connector: () => claudeArtifactConnector, actions: { reference: {} } },
   { plugin: githubPullRequest, connector: () => githubPullRequestConnector(() => { const github = githubFixture(); github.pull = { ...github.pull, body: `${github.pull.body}\n\n![screen](https://github.com/user-attachments/assets/${CONTRACT_ASSET})` }; return github.client; }), actions: { image: { kind: 'description', src: `https://github.com/user-attachments/assets/${CONTRACT_ASSET}` }, files: { head: 'a'.repeat(40), base: 'b'.repeat(40) }, comments: {}, reviews: {}, reply: { kind: 'discussion', commentId: '5', body: 'Fixture reply', sourceResourceId: 'contract-resource', requestId: '00000000-0000-4000-8000-000000000001' },

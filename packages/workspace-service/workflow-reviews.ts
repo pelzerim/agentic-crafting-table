@@ -9,8 +9,13 @@ import type { WorkflowPreflight, WorkflowProgress, WorkflowCandidate } from '../
 import { isArchived } from '../../src/graph/archive.ts';
 import { inBackground } from '../provider-runtime/request-budget.ts';
 import { findById } from '../../src/graph/lookup.ts';
+import { reportedWorkflowRuns } from '../../src/pull-requests/workflow-correlation.ts';
+import type { WorkflowBotComment } from '../../src/pull-requests/workflow-correlation.ts';
+import { DEFAULT_WORKFLOW_REVIEW_CONTRACT, reportMarker } from '../../src/pull-requests/workflow-contract.ts';
 
 const request = z.object({ requestId: z.string().uuid(), sourceResourceId: z.string().min(1).optional() });
+const reportedRun = z.object({ runId: z.number().int().positive().safe(), commentId: z.number().int().positive().safe() });
+const repositoryOf = (binding: WorkflowBinding) => `${binding.identity.owner}/${binding.identity.repo}`.toLowerCase();
 const terminal = (job: JobRecord) => ['succeeded', 'failed', 'cancelled'].includes(job.state);
 /** A binding journaled before contracts were frozen with it matches on everything else. */
 const sameBinding = (a: WorkflowBinding, b: WorkflowBinding) => canonical({ ...a, contract: a.contract ?? b.contract }) === canonical({ ...b, contract: b.contract ?? a.contract });
@@ -21,6 +26,8 @@ interface Journal {
   create?: CommandEnvelope; itemCreated?: boolean; preflight?: WorkflowPreflight;
   attemptedAt?: string; triggerId?: number; deadline?: number; candidates?: number[]; candidateDetails?: WorkflowCandidate[];
   progress?: WorkflowProgress; nextAt?: number; failures?: number; aliasOf?: string;
+  /** Set on a review nobody requested here: the run and the comment the workflow reports it in. Such a job never posts. */
+  adoptedReport?: { runId: number; commentId: number };
 }
 export class WorkflowReviewCoordinator {
   private store: SqliteStore; private control: WorkspaceControl; private sources: Record<string, WorkflowSource>;
@@ -34,6 +41,12 @@ export class WorkflowReviewCoordinator {
   private journal(job: JobRecord) { return job.correlation as unknown as Journal; }
   private save(job: JobRecord, patch: Partial<Journal>, state = job.state, error?: string) {
     return this.store.transitionJob(job.id, job.state, state, { correlation: { ...job.correlation, ...patch }, ...(error !== undefined ? { error } : {}) });
+  }
+  /** Without the adopted reviews that a newer report replaced in the same item. */
+  private withoutReplaced(jobs: JobRecord[]) {
+    const newest = new Map<string, string>();
+    for (const job of jobs) if (this.journal(job).adoptedReport) newest.set(this.journal(job).nodeId, job.id);
+    return jobs.filter(job => !this.journal(job).adoptedReport || newest.get(this.journal(job).nodeId) === job.id);
   }
   private async source(nodeId: string) {
     const state = await this.control.read(), node = findById(state.nodes, nodeId), resource = findById(state.resources, node?.resourceId);
@@ -57,7 +70,7 @@ export class WorkflowReviewCoordinator {
       }
       const { node, resource, binding } = await this.source(nodeId);
       if (args.sourceResourceId && args.sourceResourceId !== resource.id) throw new Error('The source PR no longer matches this workflow request. Reopen the PR and start a new review.');
-      const active = this.store.listJobs().find(j => j.input.action === ACTION && !terminal(j) && !this.journal(j).aliasOf && sameBinding(this.journal(j).binding, binding));
+      const active = this.store.listJobs().find(j => j.input.action === ACTION && !terminal(j) && !this.journal(j).aliasOf && !this.journal(j).adoptedReport && sameBinding(this.journal(j).binding, binding));
       let job = this.store.enqueueJob(requestKey, jobInput);
       const journal: Journal = active ? { ...this.journal(active), aliasOf: active.id }
         : { pluginId: resource.pluginId, sourceResourceId: resource.id, binding, nodeId: randomUUID(), resourceId: randomUUID(), linkId: randomUUID(), projectId: node.projectId, position: { x: node.position.x + 280, y: node.position.y } };
@@ -68,13 +81,63 @@ export class WorkflowReviewCoordinator {
     const job = await reservation; this.schedule(0);
     return { requestId: args.requestId, nodeId: this.journal(job).itemCreated ? this.journal(job).nodeId : undefined };
   }
+  /** The runs that the workflow's own comments on this pull request report, oldest first. */
+  async reports(nodeId: string, comments: WorkflowBotComment[]) {
+    const { binding } = await this.source(nodeId);
+    return reportedWorkflowRuns(`${binding.identity.owner}/${binding.identity.repo}`, comments, reportMarker(binding.contract ?? DEFAULT_WORKFLOW_REVIEW_CONTRACT));
+  }
+  /** `tracked` when a job already follows the run, `deferred` while a request on the pull request has not found its own run yet. */
+  private knownReport(binding: WorkflowBinding, requestKey: string, runId: number) {
+    const jobs = this.store.listJobs().filter(job => job.input.action === ACTION && !this.journal(job).aliasOf);
+    const bound = jobs.filter(job => this.journal(job).binding && repositoryOf(this.journal(job).binding) === repositoryOf(binding));
+    if (jobs.some(job => job.requestKey === requestKey) || bound.some(job => this.journal(job).adoptedReport?.runId === runId || this.journal(job).progress?.runId === runId)) return 'tracked';
+    if (bound.some(job => !terminal(job) && !this.journal(job).adoptedReport && this.journal(job).binding.identity.number === binding.identity.number && !this.journal(job).progress?.runId)) return 'deferred';
+    return undefined;
+  }
+  /**
+   * Watches a review the workflow posted without a request from here, once its run is a review of this
+   * pull request. `tracked`: a job already follows that run. `unrelated`: the run is not such a review and
+   * never will be. `pending` and `deferred`: nothing was decided, ask again later. Aborting `signal` ends the read of the run.
+   */
+  async adopt(nodeId: string, input: unknown, signal?: AbortSignal): Promise<'adopted' | 'tracked' | 'unrelated' | 'pending' | 'deferred'> {
+    const report = reportedRun.parse(input); signal?.throwIfAborted();
+    if (this.paused || !this.enabled()) return 'deferred';
+    const asked = await this.source(nodeId), requestKey = `workflow-report:${repositoryOf(asked.binding)}:${report.runId}:${report.commentId}`;
+    const known = this.knownReport(asked.binding, requestKey, report.runId); if (known) return known;
+    const kind = await inBackground(() => this.sources[asked.resource.pluginId].client(asked.binding).inspectReportedRun(asked.binding.identity, report.runId, AbortSignal.any([AbortSignal.timeout(60_000), ...(signal ? [signal] : [])])));
+    if (kind !== 'review') return kind;
+    const reservation = this.reserving.then(async () => {
+      if (this.paused || !this.enabled()) return 'deferred';
+      const { state, node, resource, binding } = await this.source(nodeId);
+      if (resource.id !== asked.resource.id || !sameBinding(binding, asked.binding)) return 'deferred';
+      const decided = this.knownReport(binding, requestKey, report.runId); if (decided) return decided;
+      const earlier = this.store.listJobs().filter(job => job.input.action === ACTION && this.journal(job).adoptedReport && job.input.nodeId === nodeId && this.journal(job).sourceResourceId === resource.id);
+      const last = earlier.at(-1), shown = last && this.journal(last).itemCreated ? state.nodes.find(placed => placed.id === this.journal(last).nodeId && placed.resourceId === this.journal(last).resourceId) : undefined;
+      const item = last && shown && !isArchived(shown, state.nodes) ? this.journal(last) : undefined;
+      for (const replaced of earlier.filter(job => !terminal(job))) {
+        while (this.pending.has(replaced.id)) { this.pending.get(replaced.id)!.controller.abort(); await this.pending.get(replaced.id)!.promise; }
+        const current = this.store.getJob(replaced.id)!; if (terminal(current)) continue;
+        const stopped = this.save(current, {}, 'cancelled', 'A newer review of this pull request replaced this one.');
+        if (this.journal(stopped).nodeId !== item?.nodeId) await this.project(stopped);
+      }
+      const job = this.store.enqueueJob(requestKey, { action: ACTION, nodeId, arguments: { requestId: item ? String(last!.input.arguments.requestId) : randomUUID() } });
+      const journal: Journal = { pluginId: resource.pluginId, sourceResourceId: resource.id, binding, projectId: node.projectId, position: { x: node.position.x + 280, y: node.position.y },
+        ...(item ? { nodeId: item.nodeId, resourceId: item.resourceId, linkId: item.linkId, create: item.create, itemCreated: true } : { nodeId: randomUUID(), resourceId: randomUUID(), linkId: randomUUID() }),
+        adoptedReport: report, deadline: this.now() + 60 * 60_000, progress: { status: 'queued' } };
+      this.save(this.save(job, journal, 'running'), {}, 'waiting');
+      return 'adopted';
+    });
+    this.reserving = reservation.catch(() => {});
+    const outcome = await reservation; if (outcome === 'adopted') this.schedule(0);
+    return outcome;
+  }
   async status(nodeId: string, requestId?: string) {
     const state = await this.control.read(), resourceId = findById(state.nodes, nodeId)?.resourceId;
-    return this.store.listJobs().filter(job => job.input.action === ACTION && (this.journal(job).nodeId === nodeId ? !this.journal(job).aliasOf : job.input.nodeId === nodeId || (!!resourceId && this.journal(job).sourceResourceId === resourceId)) && (!requestId || job.input.arguments.requestId === requestId)).slice(-50).map(job => {
+    return this.withoutReplaced(this.store.listJobs()).filter(job => job.input.action === ACTION && (this.journal(job).nodeId === nodeId ? !this.journal(job).aliasOf : job.input.nodeId === nodeId || (!!resourceId && this.journal(job).sourceResourceId === resourceId)) && (!requestId || job.input.arguments.requestId === requestId)).slice(-50).map(job => {
       const alias = this.journal(job).aliasOf, resolved = alias ? this.store.getJob(alias) ?? job : job, journal = this.journal(resolved);
       return { requestId: job.input.arguments.requestId as string, jobId: resolved.id, nodeId: journal.itemCreated ? journal.nodeId : undefined,
         ...journal.progress, report: journal.nodeId === nodeId ? journal.progress?.report : undefined, state: resolved.state, status: resolved.state === 'outcome-unknown' ? 'needs-confirmation' : resolved.state === 'cancelled' ? 'cancelled' : resolved.state === 'failed' ? (['failed', 'timed-out', 'ambiguous'].includes(journal.progress?.status ?? '') ? journal.progress!.status : 'failed') : journal.progress?.status ?? 'preparing',
-        error: resolved.error, tracking: journal.preflight?.tracking, triggerId: journal.triggerId, candidates: journal.candidates ?? [], candidateDetails: journal.candidateDetails ?? [], nextAt: journal.nextAt,
+        error: resolved.error, tracking: journal.preflight?.tracking, triggerId: journal.triggerId, adopted: Boolean(journal.adoptedReport), candidates: journal.candidates ?? [], candidateDetails: journal.candidateDetails ?? [], nextAt: journal.nextAt,
         repository: journal.binding ? `${journal.binding.identity.owner}/${journal.binding.identity.repo}` : '', prNumber: journal.binding?.identity.number ?? 0 };
     });
   }
@@ -125,6 +188,11 @@ export class WorkflowReviewCoordinator {
     }
     throw new Error('The workspace is busy; retry workflow preparation.');
   }
+  private observed(job: JobRecord, progress: WorkflowProgress) {
+    const next = progress.status === 'complete' ? 'succeeded' : progress.status === 'cancelled' ? 'cancelled' : ['failed', 'timed-out', 'ambiguous'].includes(progress.status) ? 'failed' : 'waiting';
+    return this.save(job, { progress: { ...this.journal(job).progress, ...progress }, nextAt: this.now() + (progress.status === 'not-observed' ? 5000 : 15_000), failures: 0 }, next,
+      next === 'failed' ? progress.reason ?? (progress.status === 'timed-out' ? 'The review did not produce a report before its deadline.' : 'The workflow review failed.') : undefined);
+  }
   private async advance(id: string, signal: AbortSignal) {
     let job = this.store.getJob(id)!; let posting = false;
     if (terminal(job)) return;
@@ -137,10 +205,16 @@ export class WorkflowReviewCoordinator {
       let journal = this.journal(job);
       const source = this.sources[journal.pluginId]; if (!source) throw new Error('This workflow provider is unavailable.');
       const client = source.client(journal.binding);
-      if (job.state === 'outcome-unknown' && !journal.attemptedAt) job = this.store.transitionJob(id, job.state, 'queued', { correlation: { reconciledAbsent: true } });
+      if (job.state === 'outcome-unknown' && !journal.attemptedAt && !journal.adoptedReport) job = this.store.transitionJob(id, job.state, 'queued', { correlation: { reconciledAbsent: true } });
       if (job.state === 'queued') { job = this.save(job, {}, 'running'); job = this.save(job, {}, 'waiting'); }
-      if (journal.triggerId && job.state === 'outcome-unknown') job = this.save(job, {}, 'waiting');
-      if (journal.attemptedAt && !journal.triggerId) {
+      if ((journal.triggerId || journal.adoptedReport) && job.state === 'outcome-unknown') job = this.save(job, {}, 'waiting');
+      if (journal.adoptedReport) {
+        if (!journal.itemCreated) { await this.assertSource(job); job = await this.ensureItem(job); }
+        job = this.save(job, {}, 'running');
+        const progress = await client.observeReported(journal.binding.identity, journal.adoptedReport, signal, this.now() >= journal.deadline!);
+        signal.throwIfAborted();
+        job = this.observed(job, progress);
+      } else if (journal.attemptedAt && !journal.triggerId) {
         if (job.state !== 'outcome-unknown') job = this.save(job, {}, 'outcome-unknown');
         const candidateDetails = await client.candidateDetails(journal.binding.identity, journal.preflight!, journal.attemptedAt, signal);
         job = this.save(job, { candidateDetails, candidates: candidateDetails.map(candidate => candidate.id), nextAt: this.now() + 30_000 }, 'outcome-unknown', 'The comment may have been posted. Select its trigger explicitly, or confirm no trigger was posted.');
@@ -160,9 +234,7 @@ export class WorkflowReviewCoordinator {
         job = this.save(job, {}, 'running');
         const progress = await client.observe(journal.binding.identity, journal.triggerId, journal.attemptedAt!, signal, journal.progress, this.now() >= journal.deadline!, journal.preflight!.workflowId, journal.preflight!.tracking);
         signal.throwIfAborted();
-        const next = progress.status === 'complete' ? 'succeeded' : progress.status === 'cancelled' ? 'cancelled' : ['failed', 'timed-out', 'ambiguous'].includes(progress.status) ? 'failed' : 'waiting';
-        job = this.save(job, { progress: { ...journal.progress, ...progress }, nextAt: this.now() + (progress.status === 'not-observed' ? 5000 : 15_000), failures: 0 }, next,
-          next === 'failed' ? progress.reason ?? (progress.status === 'timed-out' ? 'The review did not produce a report before its deadline.' : 'The workflow review failed.') : undefined);
+        job = this.observed(job, progress);
       }
     } catch (failure) {
       job = this.store.getJob(id)!; if (terminal(job)) return;
@@ -170,7 +242,7 @@ export class WorkflowReviewCoordinator {
       if (journal.attemptedAt && !journal.triggerId) {
         const uncertain = !posting || error.code === 'GITHUB_POST_UNCERTAIN' || signal.aborted || !['GITHUB_AUTH', 'GITHUB_FORBIDDEN', 'GITHUB_NOT_FOUND', 'GITHUB_RATE_LIMIT'].includes(error.code ?? '');
         job = this.save(job, { nextAt: this.now() + 5000 }, uncertain ? 'outcome-unknown' : 'failed', uncertain ? 'The comment outcome is unknown. Reconcile it before requesting another review.' : error.message);
-      } else if (journal.triggerId) {
+      } else if (journal.triggerId || journal.adoptedReport) {
         const failures = (journal.failures ?? 0) + 1, deadline = this.now() >= journal.deadline!;
         job = this.save(job, { failures, nextAt: Math.max(this.now() + Math.min(120_000, 5000 * 2 ** Math.min(failures, 5)), error.retryAt ?? 0) }, deadline ? 'failed' : 'waiting', deadline ? 'The workflow watch deadline expired while its provider was unavailable.' : error.message);
       } else if (signal.aborted) {
@@ -186,18 +258,19 @@ export class WorkflowReviewCoordinator {
       const state = await this.control.read(), node = state.nodes.find(n => n.id === journal.nodeId && n.resourceId === journal.resourceId); if (!node) return;
       const attention = ['failed', 'outcome-unknown'].includes(job.state) ? 'error' : undefined;
       const activity = job.state === 'succeeded' ? 'complete' : terminal(job) || job.state === 'outcome-unknown' ? 'idle' : 'working';
-      const summary = job.state === 'outcome-unknown' ? 'Confirm the /review trigger' : job.state === 'failed' ? job.error ?? 'Workflow review failed' : job.state === 'cancelled' ? 'Stopped watching' : journal.progress?.status === 'complete' ? 'Review ready' : journal.triggerId ? 'Watching /review' : 'Preparing /review';
+      const summary = job.state === 'outcome-unknown' ? 'Confirm the /review trigger' : job.state === 'failed' ? job.error ?? 'Workflow review failed' : job.state === 'cancelled' ? 'Stopped watching' : journal.progress?.status === 'complete' ? 'Review ready' : journal.triggerId ? 'Watching /review' : journal.adoptedReport ? 'Watching review' : 'Preparing /review';
       const finished = job.state === 'succeeded' ? completionAttention(node, `workflow:${job.id}`, 'Workflow review ready') : [];
       const note = job.state === 'outcome-unknown' ? 'Confirm the /review trigger' : attention ? 'Workflow review failed' : undefined;
-      if (node.summary === summary && node.activity === activity && node.attentionSources?.workflow === attention && node.attentionNotes?.workflow === note && !finished.length) return;
+      const replacedReport: WorkspaceCommand[] = journal.adoptedReport && !terminal(job) && node.attentionSources?.completion ? [{ type: 'attention.set', id: node.id, source: 'completion', reason: null }] : [];
+      if (node.summary === summary && node.activity === activity && node.attentionSources?.workflow === attention && node.attentionNotes?.workflow === note && !finished.length && !replacedReport.length) return;
       try { await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'provider', id: 'workflow-review' }, commands: [
         { type: 'node.update', id: node.id, activity, summary: summary.slice(0, 4000) }, { type: 'attention.set', id: node.id, source: 'workflow', reason: attention ?? null, ...(note ? { note } : {}) },
-        ...finished,
+        ...finished, ...replacedReport,
       ] }); return; } catch (error) { if ((error as { code?: string }).code !== 'REVISION_CONFLICT') throw error; }
     }
   }
   private target(nodeId: string, requestId: string) {
-    const job = this.store.listJobs().find(job => job.input.action === ACTION && (job.input.nodeId === nodeId || this.journal(job).nodeId === nodeId) && job.input.arguments.requestId === requestId);
+    const job = this.store.listJobs().findLast(job => job.input.action === ACTION && (job.input.nodeId === nodeId || this.journal(job).nodeId === nodeId) && job.input.arguments.requestId === requestId);
     if (!job) throw new Error('Workflow request not found.'); return this.journal(job).aliasOf ? this.store.getJob(this.journal(job).aliasOf!)! : job;
   }
   async reconcile(nodeId: string, input: unknown) {
@@ -206,7 +279,7 @@ export class WorkflowReviewCoordinator {
     let job = this.target(nodeId, args.requestId);
     this.pending.get(job.id)?.controller.abort(); await this.pending.get(job.id)?.promise;
     job = this.store.getJob(job.id)!; const journal = this.journal(job);
-    if (job.state !== 'outcome-unknown' || journal.triggerId) throw new Error('This request is not awaiting trigger confirmation.');
+    if (job.state !== 'outcome-unknown' || journal.triggerId || journal.adoptedReport) throw new Error('This request is not awaiting trigger confirmation.');
     if (args.triggerId === null) job = this.save(job, {}, 'cancelled', 'User confirmed no trigger. A new request requires a deliberate new action.');
     else {
       const candidates = await this.sources[journal.pluginId].client(journal.binding).candidates(journal.binding.identity, journal.preflight!, journal.attemptedAt!, AbortSignal.timeout(90_000));
@@ -218,12 +291,13 @@ export class WorkflowReviewCoordinator {
   async stop(nodeId: string, input: unknown) {
     const args = request.parse(input); let job = this.target(nodeId, args.requestId);
     this.pending.get(job.id)?.controller.abort(); await this.pending.get(job.id)?.promise; job = this.store.getJob(job.id)!;
-    if (job.state === 'outcome-unknown') throw new Error('Confirm the unknown trigger before abandoning this request.');
+    if (job.state === 'outcome-unknown' && !this.journal(job).adoptedReport) throw new Error('Confirm the unknown trigger before abandoning this request.');
     if (!terminal(job)) { job = this.save(job, {}, 'cancelled', 'Stopped local watching. Any GitHub workflow may still be running.'); await this.project(job); await this.changed(); }
     return this.status(nodeId, args.requestId);
   }
   async recover() {
-    for (const job of this.store.listJobs().filter(j => j.input.action === ACTION && !this.journal(j).aliasOf)) await this.project(job);
+    for (const job of this.withoutReplaced(this.store.listJobs().filter(j => j.input.action === ACTION && !this.journal(j).aliasOf)))
+      await this.project(job.state === 'outcome-unknown' && this.journal(job).adoptedReport ? this.save(job, {}, 'waiting') : job);
     this.resume();
   }
 }

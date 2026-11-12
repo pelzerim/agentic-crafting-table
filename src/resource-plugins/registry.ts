@@ -37,7 +37,7 @@ export class ResourcePluginRegistry {
   registerSettings(owner: string, section: SettingsSection) {
     if (this.sections.has(owner)) throw new Error(`Settings already registered: ${owner}`);
     for (const field of Object.values(section.fields)) {
-      if (field.kind === 'directory' || field.optionsSource || field.fromProject) throw new Error('Plugin settings use plain text, url, number, boolean, select and multiselect fields');
+      if (field.kind === 'directory' || field.kind === 'file' || field.optionsSource || field.fromProject) throw new Error('Plugin settings use plain text, url, number, boolean, select and multiselect fields');
       if (field.kind === 'multiselect' && (!field.options?.length || !Array.isArray(field.default) || !validateFields({ value: field }, { value: [...field.default] }))) throw new Error('Multiselect settings need options and a default list chosen from them');
       if (field.kind !== 'multiselect' && typeof field.default === 'object') throw new Error('Only multiselect settings take a list as their default');
       if (field.enabledBy !== undefined && section.fields[field.enabledBy]?.kind !== 'boolean') throw new Error('enabledBy names a boolean field of the same settings section');
@@ -83,6 +83,7 @@ export class ResourcePluginRegistry {
           || typeof preset.description !== 'string' || !preset.description.trim()
           || (preset.fieldLines !== undefined && (!Number.isInteger(preset.fieldLines) || preset.fieldLines < 0 || preset.fieldLines > 6))
           || (preset.presentationPips !== undefined && typeof preset.presentationPips !== 'boolean')
+          || (preset.nodeView !== undefined && typeof preset.nodeView !== 'boolean')
           || (preset.counts !== undefined && typeof preset.counts !== 'string')
           || (preset.tags !== undefined && typeof preset.tags !== 'string')
           || preset.fields?.some(key => !plugin.fields?.[key])) throw new Error('Invalid map size preset');
@@ -167,6 +168,16 @@ export class ResourcePluginRegistry {
     const matches = this.matchInput(input).filter(candidate => this.get(candidate.pluginId)?.creation?.mode === 'url');
     const specific = matches.filter(candidate => !this.get(candidate.pluginId)?.creation?.urlFallback);
     return specific.length ? specific : matches;
+  }
+
+  /** The item types that take the input as the path of a file: their match fills a field of kind `file`.
+   * Syntax only; whether a file is there is for the caller to check. */
+  matchFile(input: string): { candidate: AttachmentCandidate; path: string }[] {
+    return this.matchInput(input).flatMap(candidate => {
+      const fields = this.plugins.get(candidate.pluginId)?.fields ?? {};
+      const path = Object.keys(fields).filter(name => fields[name].kind === 'file').map(name => candidate.data[name]).find(value => typeof value === 'string');
+      return typeof path === 'string' ? [{ candidate, path }] : [];
+    });
   }
 
   /** The saved URL of a generic link item (`creation.urlFallback`); undefined for every other type. */

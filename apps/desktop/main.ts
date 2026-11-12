@@ -5,6 +5,7 @@ import type { WorkspaceSnapshot } from '../../packages/workspace-service/protoco
 import type { RecoveryState } from '../../packages/workspace-service/lifecycle.ts';
 import { isOffMap } from '../../src/graph/archive.ts';
 import { browserUrl, clipboardUrls } from './browser-url.ts';
+import { filePathToReveal } from './reveal-file.ts';
 import { EMBEDDED_SITES, GUEST_PREFERENCES, attachEmbeddedPage, browserUserAgent, embeddedDownload, embeddedNavigation, embeddedPermissionAllowed } from './embedded-sites.ts';
 import { savePastedImage } from './pasted-images.ts';
 import { pluginDiscoverySchema } from '../../src/resource-plugins/url-input.ts';
@@ -42,6 +43,7 @@ import { SupervisorConnection } from '../../packages/session-runtime/client.ts';
 import { SessionWake } from './session-wake.ts';
 import { managedSessionsSchema, sessionPageSchema, manageSessionSchema, inputSchema, readSessionSchema, resizeSchema, sessionIdSchema } from '../../packages/session-runtime/protocol.ts';
 import { installLifecycle } from './lifecycle.ts';
+import { createQuitQuestion } from './quit-question.ts';
 import { clearUpdateFailure, readUpdateFailure, resolveLauncher, startUpdateRestart, updateCheckout } from './update-restart.ts';
 import type { UpdateStatus } from '../../packages/core/updates.ts';
 import { closeHidesWindow, createWindowPresence } from './window-presence.ts';
@@ -289,6 +291,18 @@ async function main() {
     const result = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender)!, { properties: ['openDirectory'] });
     return result.canceled ? undefined : result.filePaths[0];
   });
+  ipcMain.handle('app:choose-file', async event => {
+    assertCaller(event);
+    const result = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender)!, { properties: ['openFile', 'showHiddenFiles'] });
+    return result.canceled ? undefined : result.filePaths[0];
+  });
+  ipcMain.handle('app:reveal-file', (event, input: unknown) => {
+    assertCaller(event);
+    const path = filePathToReveal(input, app.getPath('home'));
+    // Hidden test windows never open Finder; a test reads what would have been shown.
+    if (testDirectory) { ((globalThis as { actRevealedFiles?: string[] }).actRevealedFiles ??= []).push(path); return; }
+    shell.showItemInFolder(path);
+  });
   const runtime = new SupervisorConnection({ directory: join(app.getPath('userData'), 'runtime'), executable: process.execPath, entrypoint: join(app.getAppPath(), 'dist', 'session-supervisor.cjs'), electronRuntime: true });
   app.on('will-quit', () => runtime.close());
   const wake = new SessionWake((method, input) => runtime.call(method, input), sessionIds => broadcast('session:activity', sessionIds));
@@ -301,7 +315,12 @@ async function main() {
     if (!counts) { counts = new Map(); watches.set(sender, counts); sender.once('destroyed', () => { for (const [sessionId, count] of counts!) for (let i = 0; i < count; i++) void wake.detach(sessionId).catch(() => {}); }); }
     return counts;
   };
-  const lifecycle = spike ? undefined : installLifecycle(workspace, runtime, closeHidesWindow(process.platform) ? window => presence.hide(window) : undefined, { app, dialog });
+  const quitQuestion = createQuitQuestion({ windows: () => BrowserWindow.getAllWindows().filter(window => window.webContents.getURL().startsWith(origin + '/')), show: window => presence.reveal(window) });
+  ipcMain.on('app:before-quit-answer', (event, answer: unknown) => {
+    if (event.senderFrame !== event.sender.mainFrame || !event.senderFrame?.url.startsWith(origin + '/')) return;
+    quitQuestion.answer(event.sender.id, answer);
+  });
+  const lifecycle = spike ? undefined : installLifecycle(workspace, runtime, closeHidesWindow(process.platform) ? window => presence.hide(window) : undefined, { app, dialog }, quitQuestion.ask);
   ipcMain.handle('session:request', async (event, request) => {
     assertCaller(event);
     try {

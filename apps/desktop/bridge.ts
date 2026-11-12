@@ -36,6 +36,9 @@ export interface DesktopBridge {
   recordingsList(before?: number): Promise<import('../../packages/session-runtime/protocol.ts').RecordingPage>;
   recordingDelete(sessionId: string, confirmation: 'delete-recording'): Promise<{ session: SessionRecord; cleanupPending: boolean }>;
   onRecordingDeleted(listener: (sessionId: string) => void): () => void;
+  /** `agree` is asked when the app is about to quit, while the services still run. False keeps the app open;
+   * a window that registers nothing agrees. Returns the function that takes `agree` back. */
+  onBeforeQuit(agree: () => Promise<boolean>): () => void;
   onSettings(listener: (snapshot: import('../../packages/core/settings.ts').SettingsSnapshot) => void): () => void;
   settingsRead(): Promise<import('../../packages/core/settings.ts').SettingsSnapshot>;
   settingsWrite(input: { expectedRevision: number; value: import('../../packages/core/settings.ts').AppSettings }): Promise<import('../../packages/core/settings.ts').SettingsSnapshot>;
@@ -46,6 +49,12 @@ export interface DesktopBridge {
   /** Saves an image pasted into an agent's terminal and returns its local path. */
   savePastedImage(bytes: Uint8Array): Promise<string>;
   chooseDirectory(): Promise<string | undefined>;
+  /** The native file picker; undefined when it is dismissed. */
+  chooseFile(): Promise<string | undefined>;
+  /** The path on this computer of a file dropped on the window; empty for a file that is not on disk. */
+  pathForFile(file: File): string;
+  /** Shows a file in the system file manager, selected. The path is absolute or starts with `~/`. */
+  revealFile(path: string): Promise<void>;
   /** Launch directories, most recent first; only paths that still exist. */
   recentDirectories(): Promise<string[]>;
   workspaceCapabilities(): Promise<{ creationActions: string[]; providers: import('../../packages/core/connections.ts').ProviderDescription[] }>;
@@ -99,6 +108,8 @@ export interface DesktopBridge {
   workspaceSubscribe(input: { layer: import('../../src/graph/layers.ts').MapLayer }): Promise<WorkspaceSnapshot | undefined>;
   workspaceApply(envelope: CommandEnvelope): Promise<CommandResult>;
   resourceMatchUrl(input: string): Promise<import('../../src/resource-plugins/registry.ts').AttachmentCandidate[]>;
+  /** The item types that take the input as their file, while it is the path of a file on this computer. */
+  resourceMatchFile(input: string): Promise<import('../../src/resource-plugins/registry.ts').AttachmentCandidate[]>;
   workspacePlugins(): Promise<ReturnType<WorkspaceControl['registry']['describe']>>;
   viewRead(): Promise<ViewState>;
   viewWrite(view: ViewState): Promise<ViewState>;

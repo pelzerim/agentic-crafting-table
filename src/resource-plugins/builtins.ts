@@ -19,6 +19,7 @@ export { bookmark } from './items/bookmark/definition.ts';
 export { webLink } from './items/web-link/definition.ts';
 export { todoItem } from './items/todo/definition.ts';
 export { noteItem } from './items/note/definition.ts';
+export { textFile } from './items/text-file/definition.ts';
 
 let installedPackages: readonly { manifest: unknown; module: PluginDefinitionsModule }[] = [];
 /** Packages this process loaded from the plugin store. The loader has already checked that they

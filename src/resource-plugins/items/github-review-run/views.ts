@@ -34,7 +34,7 @@ export const workflowReviewViews: ResourcePluginViews = {
         const result = results[0]; if (!result) { header.update({ status: { label: 'Unavailable', tone: 'red' } }); notice.textContent = 'This workflow record is unavailable.'; notice.hidden = false; stop.hidden = true; return; }
         const key = JSON.stringify(result); if (key === rendered) return; rendered = key;
         const pr = result.prNumber ? `PR #${result.prNumber}` : 'PR';
-        header.update({ status: workflowReviewChip(result.status), meta: [pr, result.repository, 'requested with /review', ...(result.tracking === 'timed' ? ['matched by time'] : [])], ...(result.repository && result.prNumber ? { link: { url: `https://github.com/${result.repository}/pull/${result.prNumber}`, provider: 'GitHub' } } : {}) });
+        header.update({ status: workflowReviewChip(result.status), meta: [pr, result.repository, result.adopted ? 'posted by the workflow' : 'requested with /review', ...(result.tracking === 'timed' ? ['matched by time'] : [])], ...(result.repository && result.prNumber ? { link: { url: `https://github.com/${result.repository}/pull/${result.prNumber}`, provider: 'GitHub' } } : {}) });
         source.textContent = `← Back to ${pr}`; source.setAttribute('aria-label', `Back to ${pr}`);
         notice.textContent = result.state === 'outcome-unknown' ? '' : result.error ?? ''; stop.hidden = ['succeeded', 'failed', 'cancelled', 'outcome-unknown'].includes(result.state); stop.disabled = false;
         links.replaceChildren();

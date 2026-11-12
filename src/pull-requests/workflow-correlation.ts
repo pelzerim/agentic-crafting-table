@@ -71,3 +71,26 @@ export function reconcileUncertainWorkflowTrigger(request: {
     && Number.isSafeInteger(comment.id) && comment.id > 0 && Date.parse(comment.createdAt) >= floor);
   return { status: 'needs-confirmation' as const, safeToRepost: false as const, commentIds: [...new Set(candidates.map(comment => comment.id))] };
 }
+
+/** The events a review workflow starts on when ACT did not ask: the pull request itself, or a comment typed on GitHub. */
+export const REPORTED_RUN_EVENTS: readonly string[] = ['issue_comment', 'pull_request', 'pull_request_target'];
+export interface WorkflowBotComment { id: number; author: string; body: string; createdAt: string }
+export interface ReportedWorkflowRun { runId: number; commentId: number; createdAt: string }
+
+/** A workflow's own comment names its run by linking it. A comment that links no run or two
+ * different runs names none. When several comments link one run, only the single one the
+ * report marker matches is the report. Oldest first. */
+export function reportedWorkflowRuns(repository: string, comments: WorkflowBotComment[], marker: RegExp): ReportedWorkflowRun[] {
+  const link = new RegExp(String.raw`\]\(https://github\.com/${repository.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/actions/runs/(\d{1,16})\)`, 'gi');
+  const linking = new Map<number, WorkflowBotComment[]>();
+  for (const comment of new Map(comments.map(comment => [comment.id, comment])).values()) {
+    if (comment.author !== 'github-actions[bot]') continue;
+    const runIds = [...new Set([...comment.body.matchAll(link)].map(match => Number(match[1])))];
+    if (runIds.length !== 1 || !Number.isSafeInteger(runIds[0]) || runIds[0] <= 0) continue;
+    linking.set(runIds[0], [...linking.get(runIds[0]) ?? [], comment]);
+  }
+  return [...linking].flatMap(([runId, all]) => {
+    const reports = all.length > 1 ? all.filter(comment => marker.test(comment.body)) : all;
+    return reports.length === 1 ? [{ runId, commentId: reports[0].id, createdAt: reports[0].createdAt }] : [];
+  }).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.commentId - b.commentId);
+}

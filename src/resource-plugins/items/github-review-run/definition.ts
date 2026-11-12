@@ -1,7 +1,7 @@
 import { defineResourcePlugin } from '../../define.ts';
 
 export const githubReviewRun = defineResourcePlugin({
-  settingsHelp: 'Track a repository review triggered by a /review comment. Start it from a PR and use this item to follow the workflow and open its result.',
+  settingsHelp: 'Track a review a repository workflow writes on a pull request. Start one from a PR with /review, or let a review the workflow posts on its own appear here; use this item to follow the workflow and open its result.',
   id: 'github.review-run', apiVersion: 1, schemaVersion: 1,
   name: 'Workflow review', icon: 'review', preferredView: 'focus',
   webLink: { label: 'Open pull request', from: 'sourcePrId' },

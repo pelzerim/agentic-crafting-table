@@ -8,8 +8,10 @@ import type { SessionRecord } from '../../packages/session-runtime/protocol.ts';
 export type LifecycleElectron = { app: Pick<App, 'on' | 'quit'>; dialog: Pick<Dialog, 'showMessageBox'> };
 
 /** One close path for Cmd+Q, the app menu Quit and application updates. On macOS the
- * window button and Cmd+W only hide the window (`hideWindow`); sessions keep running. */
-export function installLifecycle(workspace: WorkspaceConnection, runtime: SupervisorConnection, hideWindow: ((window: BrowserWindow) => void) | undefined, { app, dialog }: LifecycleElectron) {
+ * window button and Cmd+W only hide the window (`hideWindow`); sessions keep running.
+ * `openViewsAgreeToQuit` is asked once the person has confirmed the quit and before anything
+ * stops; false keeps the app open. A quit forced after a failed close does not ask. */
+export function installLifecycle(workspace: WorkspaceConnection, runtime: SupervisorConnection, hideWindow: ((window: BrowserWindow) => void) | undefined, { app, dialog }: LifecycleElectron, openViewsAgreeToQuit?: () => Promise<boolean>) {
   let allowed = false, pending: Promise<void> | undefined;
   const close = (after?: () => Promise<void> | void) => {
     if (pending || allowed) return;
@@ -24,6 +26,8 @@ export function installLifecycle(workspace: WorkspaceConnection, runtime: Superv
             buttons: ['Stop and close', 'Cancel'], defaultId: 1, cancelId: 1, noLink: true });
           if (result.response !== 0) return;
         }
+        // Open views save or ask about unsaved work while the services still run.
+        if (openViewsAgreeToQuit && !await openViewsAgreeToQuit().catch(() => true)) return;
         await workspace.call('lifecycle.close');
         // Drain services only after every managed PTY has stopped and the checkpoint is durable.
         const clients = [await workspace.connect(), await runtime.connect()];

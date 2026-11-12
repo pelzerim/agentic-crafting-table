@@ -2,7 +2,7 @@ import * as z from 'zod/v4';
 import { load, JSON_SCHEMA } from 'js-yaml';
 import { GitHubClient, GitHubError, checkedGitHubResponse, pullKey } from './github.ts';
 import type { GitHubTransport, GitHubResponse, PullIdentity } from './github.ts';
-import { correlateWorkflowRun, correlateWorkflowRunByTime, reconcileUncertainWorkflowTrigger, timedWindow } from '../../src/pull-requests/workflow-correlation.ts';
+import { REPORTED_RUN_EVENTS, correlateWorkflowRun, correlateWorkflowRunByTime, reconcileUncertainWorkflowTrigger, timedWindow } from '../../src/pull-requests/workflow-correlation.ts';
 import { observeWorkflowReview } from '../../src/pull-requests/reviews.ts';
 import { DEFAULT_WORKFLOW_REVIEW_CONTRACT, workflowFileName } from '../../src/pull-requests/workflow-contract.ts';
 import type { WorkflowReviewContract } from '../../src/pull-requests/workflow-contract.ts';
@@ -17,6 +17,13 @@ const comment = z.object({ id, body: z.string().max(200_000), user: z.object({ l
 const run = z.object({ id, workflow_id: id, path: short, event: short, display_title: short, created_at: short, run_attempt: id,
   status: short, conclusion: short.nullable(), repository: z.object({ full_name: short }) });
 const job = z.object({ id, run_id: id, name: short, status: z.enum(['queued', 'in_progress', 'completed', 'waiting', 'pending', 'requested']), conclusion: short.nullable() });
+const reportedRun = run.extend({ pull_requests: z.array(z.object({ number: id })).max(1000).nullish() });
+/** Whether the review job of a run has begun: `skipped` once the run can no longer run it, `pending` while that is undecided. */
+function reviewJobState(jobs: z.infer<typeof job>[], runStatus: string, jobName: string) {
+  const own = jobs.filter(j => j.name === jobName);
+  if (own.some(j => j.status === 'in_progress' || (j.status === 'completed' && j.conclusion !== 'skipped'))) return 'started' as const;
+  return (own.length ? own.every(j => j.status === 'completed') : runStatus === 'completed') ? 'skipped' as const : 'pending' as const;
+}
 /** `exact` correlates through the trigger-comment run-name; `timed` by the run start time around the trigger comment. */
 export type WorkflowTracking = 'exact' | 'timed';
 export type WorkflowContract = { tracking: WorkflowTracking; reason?: undefined } | { tracking?: undefined; reason: string };
@@ -156,11 +163,7 @@ export class GitHubWorkflowClient {
       && Date.parse(r.created_at) >= window.start && Date.parse(r.created_at) <= window.end).map(r => [r.id, r])).values()];
     if (nearby.length > 20) return { status: 'ambiguous', runsUrl, reason: 'Too many workflow runs started close to this request to attribute one safely. No result was adopted.' };
     const jobsByRun = new Map(await Promise.all(nearby.map(async r => [r.id, (await this.pages(`${path}/actions/runs/${r.id}/attempts/1/jobs`, 'jobs', job, signal)).filter(j => j.run_id === r.id)] as const)));
-    const review = (candidate: z.infer<typeof run>) => {
-      const own = jobsByRun.get(candidate.id)!.filter(j => j.name === this.contract.jobName);
-      if (own.some(j => j.status === 'in_progress' || (j.status === 'completed' && j.conclusion !== 'skipped'))) return 'started' as const;
-      return (own.length ? own.every(j => j.status === 'completed') : candidate.status === 'completed') ? 'skipped' as const : 'pending' as const;
-    };
+    const review = (candidate: z.infer<typeof run>) => reviewJobState(jobsByRun.get(candidate.id)!, candidate.status, this.contract.jobName);
     const match = correlateWorkflowRunByTime(repository.toLowerCase(), { id: trigger.id, body: trigger.body, createdAt: trigger.created_at },
       comments.map(c => ({ id: c.id, body: c.body, createdAt: c.created_at })),
       nearby.map(r => ({ id: r.id, repository: r.repository.full_name.toLowerCase(), path: r.path.split('@')[0], event: r.event, createdAt: r.created_at, review: review(r) })), this.contract.workflowPath);
@@ -172,21 +175,46 @@ export class GitHubWorkflowClient {
     const progress = await this.track(identity, current, jobsByRun.get(current.id)!, triggerId, signal, pinned, deadlineReached, comments.filter(c => Date.parse(c.created_at) >= after));
     return progress.status === 'complete' && this.now() < window.end ? { ...progress, status: 'awaiting-result', report: undefined } : progress;
   }
-  private async track(identity: PullIdentity, current: z.infer<typeof run>, jobs: z.infer<typeof job>[], triggerId: number, signal: AbortSignal, pinned: Pinned | undefined, deadlineReached: boolean, comments?: Awaited<ReturnType<GitHubWorkflowClient['comments']>>): Promise<WorkflowProgress> {
+  /** The run when it is a run of the review workflow for this pull request. */
+  private async reportedRun(identity: PullIdentity, runId: number, signal: AbortSignal) {
+    let current: z.infer<typeof reportedRun>;
+    try { current = (await this.get(`${this.path(identity)}/actions/runs/${runId}`, reportedRun, signal)).value; }
+    catch (error) { if (error instanceof GitHubError && error.code === 'GITHUB_NOT_FOUND') return undefined; throw error; }
+    const pulls = current.pull_requests ?? [];
+    return current.id === runId && current.repository.full_name.toLowerCase() === `${identity.owner}/${identity.repo}`.toLowerCase()
+      && current.path.split('@')[0] === this.contract.workflowPath && REPORTED_RUN_EVENTS.includes(current.event)
+      && (!pulls.length || pulls.some(pull => pull.number === identity.number)) ? current : undefined;
+  }
+  /** Whether a run that a comment on the pull request links is a review of it: `pending` until its review job has started or can no longer run. */
+  async inspectReportedRun(identity: PullIdentity, runId: number, signal: AbortSignal): Promise<'review' | 'pending' | 'unrelated'> {
+    const current = await this.reportedRun(identity, runId, signal);
+    if (!current) return 'unrelated';
+    const jobs = (await this.pages(`${this.path(identity)}/actions/runs/${runId}/jobs`, 'jobs', job, signal)).filter(j => j.run_id === runId);
+    const state = reviewJobState(jobs, current.status, this.contract.jobName);
+    return state === 'started' ? 'review' : state === 'skipped' ? 'unrelated' : 'pending';
+  }
+  /** Progress of a review nobody requested here: the run and its comment are given, the review job is the newest attempt's. */
+  async observeReported(identity: PullIdentity, report: { runId: number; commentId: number }, signal: AbortSignal, deadlineReached = false): Promise<WorkflowProgress> {
+    const current = await this.reportedRun(identity, report.runId, signal);
+    if (!current) return { status: 'ambiguous', runId: report.runId, reason: 'The reported workflow run is no longer a review run of this pull request.' };
+    const jobs = await this.pages(`${this.path(identity)}/actions/runs/${report.runId}/jobs`, 'jobs', job, signal);
+    return this.track(identity, current, jobs, undefined, signal, { runId: report.runId, resultCommentId: report.commentId }, deadlineReached, undefined, report.commentId);
+  }
+  private async track(identity: PullIdentity, current: z.infer<typeof run>, jobs: z.infer<typeof job>[], triggerId: number | undefined, signal: AbortSignal, pinned: Pinned | undefined, deadlineReached: boolean, comments?: Awaited<ReturnType<GitHubWorkflowClient['comments']>>, reportCommentId?: number): Promise<WorkflowProgress> {
     const repository = `${identity.owner}/${identity.repo}`, runUrl = `https://github.com/${repository}/actions/runs/${current.id}`;
     const matches = [...new Map(jobs.filter(j => j.run_id === current.id && j.name === this.contract.jobName).map(j => [j.id, j])).values()];
     if (matches.length > 1 || (matches[0] && pinned?.jobId && pinned.jobId !== matches[0].id)) return { status: 'ambiguous', runId: current.id, runUrl, reason: 'Multiple or changed review jobs were observed.' };
     const reviewJob = matches[0];
     if (!reviewJob) return { status: current.status === 'completed' ? current.conclusion === 'cancelled' ? 'cancelled' : 'failed' : deadlineReached ? 'timed-out' : 'queued', runId: current.id, runUrl, reason: current.status === 'completed' ? 'The workflow finished without a review job.' : undefined };
-    const reports = (comments ?? await this.comments(identity, signal)).filter(c => c.user?.login === 'github-actions[bot]' && c.body.includes(`](${runUrl})`));
+    const reports = (comments ?? await this.comments(identity, signal)).filter(c => c.user?.login === 'github-actions[bot]' && c.body.toLowerCase().includes(`](${runUrl})`.toLowerCase()) && (reportCommentId === undefined || c.id === reportCommentId));
     const unique = [...new Map(reports.map(c => [c.id, c])).values()];
     if (unique.length > 1 || (unique[0] && pinned?.resultCommentId && pinned.resultCommentId !== unique[0].id)) return { status: 'ambiguous', runId: current.id, jobId: reviewJob.id, runUrl, reason: 'Multiple or changed result comments were observed.' };
     const result = unique[0];
     const observed = observeWorkflowReview({ repository, prNumber: identity.number, triggerCommentId: triggerId, runId: current.id, resultCommentId: result?.id ?? pinned?.resultCommentId ?? 0 }, {
-      runId: current.id, repository, workflowPath: this.contract.workflowPath, event: 'issue_comment', jobName: this.contract.jobName,
+      runId: current.id, repository, workflowPath: this.contract.workflowPath, event: current.event, jobName: this.contract.jobName,
       jobStatus: reviewJob.status === 'completed' ? 'completed' : reviewJob.status === 'in_progress' ? 'in_progress' : 'queued', jobConclusion: reviewJob.conclusion,
       comment: result ? { id: result.id, prNumber: identity.number, author: result.user!.login, body: result.body } : undefined,
-    }, deadlineReached, this.contract);
+    }, deadlineReached, this.contract, reportCommentId === undefined ? ['issue_comment'] : REPORTED_RUN_EVENTS);
     return { ...observed, runId: current.id, jobId: reviewJob.id, resultCommentId: result?.id ?? pinned?.resultCommentId };
   }
 }

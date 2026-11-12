@@ -82,3 +82,12 @@ test('queued, running, cancelled and failed jobs retain their own states', () =>
   assert.equal(observeWorkflowReview(watch, { ...observation, jobConclusion: 'cancelled' }).status, 'cancelled');
   assert.equal(observeWorkflowReview(watch, { ...observation, jobConclusion: 'failure' }).status, 'failed');
 });
+
+test('a run started by a pull request event is observed only when that event is allowed', () => {
+  const posted = { ...observation, event: 'pull_request' }, reported = { repository: watch.repository, prNumber: watch.prNumber, runId: watch.runId, resultCommentId: watch.resultCommentId };
+  assert.throws(() => observeWorkflowReview(reported, posted), /does not belong/);
+  assert.throws(() => observeWorkflowReview(reported, { ...observation, event: 'push' }, false, undefined, ['issue_comment', 'pull_request']), /does not belong/);
+  const result = observeWorkflowReview(reported, posted, false, undefined, ['issue_comment', 'pull_request']);
+  assert.equal(result.status, 'complete'); assert.match(result.report ?? '', /One finding/);
+  assert.equal(observeWorkflowReview(reported, observation, false, undefined, ['issue_comment', 'pull_request']).status, 'complete');
+});

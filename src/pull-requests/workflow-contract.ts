@@ -34,7 +34,12 @@ export const workflowReviewSettingsFields: ResourceFields = {
     description: 'A regular expression, matched case-insensitively at the start of any line, that the result comment contains once the review is written. Leave empty for the default: a Markdown heading or a bold label such as **Verdict:**.' },
   repositories: { label: 'Repository overrides', kind: 'text', multiline: true, rows: 3, default: '', pattern: `^(?:(?:${line})?${blank}(?:\\n|$))*$`,
     description: 'One repository per line: owner/repo | workflow file | job | failure text. Empty or missing parts use the values above.' },
+  adoptReports: { label: 'Show reviews the workflow posts on its own', kind: 'boolean', default: true,
+    description: 'A review this workflow posts on a pull request on the map without a /review from here, such as one it runs for every pull request, becomes a Workflow review item. Reviews posted before this is turned on are not shown.' },
 };
+
+/** Whether a review the workflow posted on its own becomes a Workflow review item; on unless the setting is saved off. */
+export const adoptsWorkflowReports = (settings: JsonObject | undefined) => settings?.adoptReports !== false;
 
 /** Per-repository parts keyed by lower-case owner/repo. */
 export function parseRepositoryOverrides(text: string): Map<string, Partial<WorkflowReviewContract>> {

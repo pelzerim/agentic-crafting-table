@@ -9,6 +9,7 @@ their pull request and author.
 - **Lock plot**: a locked plot keeps its members; nearby items and plots no longer join it.
 - **Move plot to**: merge a plot into another plot, or move it with its items to another project.
 - **Move project into**: move all of a project's items, plots and to-dos into another project.
+- **Cracks on quiet sessions**: an optional switch in Settings → Map → Agent sessions, off by default. An agent session card that has done nothing for a week gets a small crack in from its edge, more at two weeks and again at four, so you can see how old it is. The tooltip says how long the session has been quiet. The cracks go when the session works again, and nothing cracks in the Undermap, where everything is old anyway. (#27, @timohuovinen)
 
 ### Needs me
 - **Newest first**: Needs me now lists the newest first within each group. A toggle in its header switches to oldest first, and this Mac remembers the choice.
@@ -23,6 +24,28 @@ their pull request and author.
 ### Settings
 - **Keep the Mac awake while work is running**: a new switch in Settings → General stops idle sleep while any item on the board is working, and lets the Mac sleep once everything is idle.
 - **Settings remembers its page**: closing and reopening Settings returns to the page it last showed, until the app restarts.
+
+## 0.20.1 — 2026-11-12
+
+### Desktop
+- **Microphone for sessions**: on macOS the app and the Claude sessions in it can now use the microphone, for example for voice input. macOS asks once; before, it refused without asking. (#26, @hwartig)
+
+## 0.20.0 — 2026-11-12
+
+### Text files
+- **Text files as items**: **Add text file** keeps a file from your computer on the map and edits it in place. Code is highlighted, a Markdown file opens as a preview, and **Edit** switches to the editor. Edits save by themselves a moment after you stop typing, on ⌘S, when you close the item and when you quit. The workspace keeps only the path, so other programs and agents see every save in the file.
+- **Click the preview to edit**: clicking the text of a Markdown preview opens the editor with the cursor where you clicked. Links still open, and dragging still selects text to copy.
+- **Paste a path or drop a file**: pasting the path of a file on the map, or dropping a file from Finder, opens the form with the file filled in.
+- **Changes from outside**: when another program changes the file, the open item shows the new text. If you have unsaved edits it asks first: **Reload** or **Keep mine**. With **Save automatically** on, closing the item before answering saves your edits over the change.
+- **Save automatically**: Settings → Items → Text file → Saving has **Save automatically**, on by default. Turn it off and only ⌘S saves; the header reads “Unsaved”, and closing the item, travelling to the Undermap or quitting with unsaved edits asks “Unsaved, really close?” with **Cancel**, **Close without saving** and **Save and close**. The same question, with the reason, appears when a save on closing fails or has not finished after five seconds, so a disk that does not answer cannot keep the item or the app from closing.
+- **The start of the file on the map**: set a text file's map size to Large and its card shows the first lines, rendered or highlighted. Small shows the name, Medium the name and the path.
+- **Reveal in Finder**: the open item's header shows the file in Finder.
+
+### Pull requests
+- **Reviews the workflow posts on its own**: when your review workflow reviews a pull request without a `/review` from here, for example on every push, its review now appears as a Workflow review item next to the pull request and raises “Workflow review ready” when the report is written. A newer review replaces the older one in the same item. Reviews posted before this version first runs are not shown. On by default; turn it off under Settings → Items → Workflow review → /review workflow → Show reviews the workflow posts on its own.
+
+### Fixes
+- **Drop images and files on a session**: dragging a screenshot or any file from Finder onto an agent's terminal types its path, which Claude and Codex attach, as in a terminal app; an image dragged from a web page is saved first. Before, the drop did nothing. (#25, @MegaMaddin)
 
 ## 0.19.0 — 2026-11-10
 

@@ -1043,3 +1043,16 @@ test('a service owner whose process ID now names another process is replaced, wh
     assert.doesNotThrow(() => store.claimService('after-restart'));
   } finally { store.close(); }
 }));
+
+test('the time a cached resource read was stored is answered without its fingerprint, and is missing for an unread resource', () => fixture(async directory => {
+  const store = new SqliteStore(join(directory, 'checked.sqlite')), control = new WorkspaceControl(store);
+  try {
+    await control.apply({ type: 'item.add', id: 'pull', resourceId: 'pull-r', pluginId: 'workspace.note', title: 'pull', data: { text: 'pull' }, position: { x: 100, y: 100 } }, (await control.read()).revision);
+    assert.equal(store.resourceCacheCheckedAt('pull-r', 'snapshot'), undefined);
+    store.cacheResource('pull-r', 'snapshot', 'first', { detail: {} }, 1000);
+    store.cacheResource('pull-r', 'other', 'first', {}, 5000);
+    assert.equal(store.resourceCacheCheckedAt('pull-r', 'snapshot'), 1000);
+    store.cacheResource('pull-r', 'snapshot', 'second', { detail: {} }, 2000);
+    assert.equal(store.resourceCacheCheckedAt('pull-r', 'snapshot'), 2000);
+  } finally { store.close(); }
+}));

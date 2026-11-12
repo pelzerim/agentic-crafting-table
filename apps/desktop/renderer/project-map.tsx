@@ -19,6 +19,7 @@ import { blockerList, blockerName, blockingState } from '../../../src/graph/bloc
 import './blocking.css';
 import { attentionAge, attentionCountText, attentionDetails, attentionLabel, attentionTierInfo, countsAsNeedsMe, memberAttentionCounts, nodeAttention, sessionLost } from '../../../src/graph/attention.ts';
 import { useNow } from './use-now.ts';
+import { crackLabel, crackLevel, crackPaths } from './session-cracks.ts';
 import { cardReference } from '../../../src/graph/reference.ts';
 import type { AttentionCounting, AttentionCounts, AttentionTier } from '../../../src/graph/attention.ts';
 import { TierCounts, TierMark } from './ui/tier-mark.tsx';
@@ -99,6 +100,7 @@ import { UNDERMAP_LOOSE } from '../../../src/graph/undermap.ts';
 import type { MirrorArea } from '../../../src/graph/undermap.ts';
 import { UndermapMonths, UndermapPlates } from './undermap-months.tsx';
 import { useColorScheme } from './color-scheme.ts';
+import { ViewCloseGate } from './view-close-gate.ts';
 
 const registry = createResourcePluginRegistry();
 type MapItem = GraphNode & { activity?: string; attention?: string; summary?: string; lastLine?: string; recap?: { text: string; at: string } };
@@ -175,9 +177,15 @@ export interface ProjectMapProps {
   /** Plugin hover facts from saved local data. */
   onPreviewDetail?(id: string, signal: AbortSignal): Promise<ResourcePreview | undefined>;
   onUrlDrop?(target: { url: string; screen: { x: number; y: number }; position: { x: number; y: number }; projectId?: string }): void;
+  /** A file dragged from another program onto the map. */
+  onFileDrop?(target: { file: File; screen: { x: number; y: number }; position: { x: number; y: number }; projectId?: string }): void;
   /** ⌘V of plain text over the map, at the pointer. A pasted URL goes to `onUrlDrop`. */
-  onPasteText?(target: { text: string; position: { x: number; y: number }; projectId?: string }): void;
+  onPasteText?(target: { text: string; screen: { x: number; y: number }; position: { x: number; y: number }; projectId?: string }): void;
   renderDetail?(node: MapItem, active: boolean): ReactNode;
+  /** Asks the open item's view before the person leaves it; false, now or later, keeps it open. */
+  confirmClose?(id: string): boolean | Promise<boolean>;
+  /** The type's map view of an item, for the map sizes whose preset sets `nodeView`. */
+  renderNode?(node: MapItem): ReactNode;
   /** Which layer this map shows; the host filters nodes. Only the theme differs. */
   layer?: 'map' | 'below';
   /** Derives each neighborhood's color from its project's color, e.g. darker in Undermap. */
@@ -226,6 +234,8 @@ export interface ProjectMapProps {
   offscreenAttention?: boolean;
   /** Draws the open counts a map size declares with `counts` (Settings → Map → Code reviews). */
   reviewOpenCounts?: boolean;
+  /** Cracks on agent session cards quiet for a week or more (MAP-33, Settings → Map → Agent sessions); never below, where everything is old. */
+  sessionCracks?: boolean;
   /** Mute or unmute a project (MAP-25). Without it no project is drawn covered. */
   onMute?(projectId: string, muted: boolean): void;
   /** The Undermap's mirror layout (MAP-18): areas, month lines and far plates come from these computed boxes, the
@@ -247,7 +257,7 @@ const dataAt = (path: string, data: Record<string, unknown>) => path.split('.').
 /** Paper tiles keep their size at mid zoom and become a paper square only when far. */
 const PAPER_FAR_ZOOM = .35;
 type HeaderData = { needsMe: number; working: number; muted?: true } & Pick<AttentionCounts, AttentionTier>;
-type CardData = { /** Where an open item lives, for its header breadcrumb. */ location?: ItemPlace; /** Badges from short notes connected to this item, and their font size in map pixels. */ badges?: readonly Badge[]; badgeSize?: number; far: boolean; /** The card stands at its full map size, so its title may take the lines the card leaves it. */ titleFill?: boolean; /** A far-zoom icon under 16px on screen: the tier shape replaces the icon and frames are dropped. */ takeover: boolean; needsMe?: boolean; /** Close and keep in Needs me is offered at this tier. */ keep?: AttentionTier; header?: HeaderData; projectColor?: string; pips?: MapPip[]; /** The count line after pips a type's presentation drew. */ pipsLabel?: string; /** Coloured numbers in the cue row; empty draws a quiet check. */ counts?: MapCount[]; /** Coloured chips the type's map size reads from its data, such as GitHub labels. */ tags?: CardTag[]; frameTitle?: string; /** The short reference the type declares, shown as the card's tag when the title has none. */ reference?: string; viewSurface?: boolean; viewOpen?: boolean; mapSize?: ReturnType<typeof resolveMapSize>; mapFields: string; tiny: boolean; iconOpens: boolean; completionToggle: boolean; undermapWhenComplete?: boolean; resizable: boolean; resizing: boolean; morph?: BubbleBounds; editableTitle: boolean; /** The open view's title is edited in place. */ editableViewTitle: boolean; showFullTitle: boolean; paper?: string; paperText?: string; paperMode?: PaperMode; paperWriter?: string; paperWrittenAt?: string; item: MapItem; icon: string; brand?: string; tint?: boolean; typeName: string; tone: string; width: number; height: number; compact: boolean; expanded: boolean; visited: boolean; scale: number; projectLabel: boolean; labelOverOutline: boolean; attentionSize: number; projectNeedsMe: number; status?: string; dragging: boolean; blocked?: Blocked; linkEnd?: boolean; selected?: boolean; /** Under a closed cover: drawn as an empty box of the card's size. */ covered?: boolean };
+type CardData = { /** Where an open item lives, for its header breadcrumb. */ location?: ItemPlace; /** Badges from short notes connected to this item, and their font size in map pixels. */ badges?: readonly Badge[]; badgeSize?: number; far: boolean; /** The card stands at its full map size, so its title may take the lines the card leaves it. */ titleFill?: boolean; /** A far-zoom icon under 16px on screen: the tier shape replaces the icon and frames are dropped. */ takeover: boolean; needsMe?: boolean; /** Close and keep in Needs me is offered at this tier. */ keep?: AttentionTier; header?: HeaderData; projectColor?: string; pips?: MapPip[]; /** The count line after pips a type's presentation drew. */ pipsLabel?: string; /** Coloured numbers in the cue row; empty draws a quiet check. */ counts?: MapCount[]; /** An agent session that cracks with age (MAP-33). */ cracks?: boolean; /** Coloured chips the type's map size reads from its data, such as GitHub labels. */ tags?: CardTag[]; frameTitle?: string; /** The short reference the type declares, shown as the card's tag when the title has none. */ reference?: string; viewSurface?: boolean; viewOpen?: boolean; mapSize?: ReturnType<typeof resolveMapSize>; mapFields: string; tiny: boolean; iconOpens: boolean; completionToggle: boolean; undermapWhenComplete?: boolean; resizable: boolean; resizing: boolean; morph?: BubbleBounds; editableTitle: boolean; /** The open view's title is edited in place. */ editableViewTitle: boolean; showFullTitle: boolean; paper?: string; paperText?: string; paperMode?: PaperMode; paperWriter?: string; paperWrittenAt?: string; item: MapItem; icon: string; brand?: string; tint?: boolean; typeName: string; tone: string; width: number; height: number; compact: boolean; expanded: boolean; visited: boolean; scale: number; projectLabel: boolean; labelOverOutline: boolean; attentionSize: number; projectNeedsMe: number; status?: string; dragging: boolean; blocked?: Blocked; linkEnd?: boolean; selected?: boolean; /** Under a closed cover: drawn as an empty box of the card's size. */ covered?: boolean };
 type Blocked = { text: string; blockers: { id: string; name: string }[] };
 type ItemPlace = { project?: { id: string; title: string; color: string }; plot?: { id: string; name: string } };
 type CardNode = Node<CardData, 'card'>;
@@ -278,7 +288,7 @@ function useStableHandlers<T extends Record<string, (...args: any[]) => any>>(ha
 }
 /** The fixed chrome an item view can reach: the rail column and the trail row, in workspace pixels. */
 const CHROME = { rail: { x: RAIL.left, y: RAIL.top, width: 52, height: RAIL_HEIGHT }, trail: { x: 22, y: 24, width: 420, height: 24 } };
-const DetailContext = createContext<Pick<ProjectMapProps, 'renderDetail' | 'onRename'> & { sendBelow?(ids: string[]): void; paperOpenUrl(url: string): void; paperWrite(id: string, patch: Record<string, string>, base?: string): Promise<void>; paperDiscard(id: string): void; select(id: string): void; toggleDone(id: string, done: boolean): void; open(id: string): void; back(): void; markSeen?(id: string): void; keep?(id: string): void; middleClick(id: string): void; settled(id: string): void; menu(event: React.MouseEvent, id: string): void; startLink(event: React.PointerEvent, id: string): void; connect(event: React.MouseEvent, id: string): void; resize(event: React.PointerEvent, id: string): void; resizeKey(event: React.KeyboardEvent, id: string): void; reveal(id: string): void; unmute(id: string): void; badgeNote(event: React.MouseEvent, noteId: string, menu: boolean): void; fitProject(id: string): void; fitPlot(id: string): void }>({ badgeNote() {}, fitProject() {}, fitPlot() {}, paperOpenUrl() {}, paperWrite: async () => {}, paperDiscard() {}, select() {}, toggleDone() {}, open() {}, back() {}, middleClick() {}, settled() {}, menu() {}, startLink() {}, connect() {}, resize() {}, resizeKey() {}, reveal() {}, unmute() {} });
+const DetailContext = createContext<Pick<ProjectMapProps, 'renderDetail' | 'renderNode' | 'onRename'> & { sendBelow?(ids: string[]): void; paperOpenUrl(url: string): void; paperWrite(id: string, patch: Record<string, string>, base?: string): Promise<void>; paperDiscard(id: string): void; select(id: string): void; toggleDone(id: string, done: boolean): void; open(id: string): void; back(): void; markSeen?(id: string): void; keep?(id: string): void; middleClick(id: string): void; settled(id: string): void; menu(event: React.MouseEvent, id: string): void; startLink(event: React.PointerEvent, id: string): void; connect(event: React.MouseEvent, id: string): void; resize(event: React.PointerEvent, id: string): void; resizeKey(event: React.KeyboardEvent, id: string): void; reveal(id: string): void; unmute(id: string): void; badgeNote(event: React.MouseEvent, noteId: string, menu: boolean): void; fitProject(id: string): void; fitPlot(id: string): void }>({ badgeNote() {}, fitProject() {}, fitPlot() {}, paperOpenUrl() {}, paperWrite: async () => {}, paperDiscard() {}, select() {}, toggleDone() {}, open() {}, back() {}, middleClick() {}, settled() {}, menu() {}, startLink() {}, connect() {}, resize() {}, resizeKey() {}, reveal() {}, unmute() {} });
 
 /** An open item's project and plot; either one closes the item and flies there. */
 function ItemLocation({ place }: { place: ItemPlace }) {
@@ -297,7 +307,7 @@ const Card = memo(function Card({ data }: { data: CardData }) {
 }, (previous, next) => previous.data === next.data);
 function CardFace({ data }: { data: CardData }) {
   performanceMetrics.record('map.card-render', 1);
-  const { renderDetail, onRename, markSeen, keep, sendBelow, middleClick, open, back, settled, menu, startLink, connect, resize, resizeKey, reveal, paperWrite, paperDiscard, select, paperOpenUrl, toggleDone, unmute, badgeNote } = useContext(DetailContext);
+  const { renderDetail, renderNode, onRename, markSeen, keep, sendBelow, middleClick, open, back, settled, menu, startLink, connect, resize, resizeKey, reveal, paperWrite, paperDiscard, select, paperOpenUrl, toggleDone, unmute, badgeNote } = useContext(DetailContext);
   const { item, expanded, compact } = data;
   // A done card drops the grass and the sheep but its summary still says Working.
   const done = Boolean(item.completedAt) && !expanded, running = item.activity === 'working' && !expanded, working = running && !done;
@@ -308,6 +318,9 @@ function CardFace({ data }: { data: CardData }) {
   useBubbleMotion(surface, data.morph, () => settled(item.id));
   const [paperOpen, setPaperOpen] = useState(false), [paperHeight, setPaperHeight] = useState<number>();
   const need = nodeAttention(item), attention = need?.detail ?? '', age = attentionAge(need?.since, useNow(Boolean(need?.since) && !expanded));
+  // A quiet session cracks with age; the shared clock ticks only while a card can show cracks.
+  const crackNow = useNow(Boolean(data.cracks) && !expanded && !compact), cracks = data.cracks && !expanded && !compact ? crackLevel(item, crackNow) : 0;
+  const quiet = cracks ? crackLabel(item, crackNow) : undefined;
   // A title that leads with a ticket reference shows its words alone; the reference moves to the status row as a quiet tag.
   // Wherever that row has no labels (icons, short cards, an editable title) the title stays whole, so the reference never disappears.
   // The reference an item's type declares ("#48") joins a status row the card has anyway; it never adds a row.
@@ -336,8 +349,8 @@ function CardFace({ data }: { data: CardData }) {
   </article>;
   const paper = data.paper !== undefined && !expanded, paperColor = paper ? paperPaint(data.paper) : undefined;
   return <><article ref={surface} className={`map-card tone-${data.tone} ${paper ? 'paper-card' : ''} ${working ? 'working-card' : ''} ${data.tiny && !expanded ? 'tiny-card' : ''} ${data.showFullTitle ? 'full-title-card' : ''} ${data.mapSize && data.mapSize.height > 48 ? 'map-profile-card' : ''} ${expanded ? 'expanded' : ''} ${item.completedAt && !expanded ? 'done-card' : ''} ${compact ? 'compact' : data.height < 65 ? 'small-card' : ''}`}
-    role={data.viewSurface ? "region" : undefined} aria-label={paper ? `${data.typeName}: ${item.title}` : data.badges?.length ? `${item.title}, badges ${data.badges.map(entry => entry.text).join(', ')}` : item.title} title={marked && markTitle !== 'Working' ? markTitle : undefined} data-paper={paper ? data.paper : undefined} data-paper-tone={paperColor?.dark ? 'dark' : undefined} data-writer={paper && data.paperWriter ? 'agent' : undefined} data-item-id={data.viewSurface ? undefined : item.id} data-expanded-item-id={data.viewSurface ? item.id : undefined} data-view-open={data.viewOpen || undefined} data-world-x={item.position.x} data-world-y={item.position.y}
-    data-tight-title={data.height < 60 || undefined} data-preview="false" data-resizing={data.resizing} data-dragging={data.dragging} data-completed={Boolean(item.completedAt)} data-map-size={data.mapSize?.size} data-blocked={data.blocked ? true : undefined} data-link-end={data.linkEnd || undefined} data-selected={data.selected || undefined} data-tier={need && !expanded ? need.tier : undefined} data-session-lost={sessionLost(item) || undefined} data-takeover={need && compact && !expanded && data.takeover || undefined}
+    role={data.viewSurface ? "region" : undefined} aria-label={paper ? `${data.typeName}: ${item.title}` : `${item.title}${quiet ? `, ${quiet.toLowerCase()}` : ''}${data.badges?.length ? `, badges ${data.badges.map(entry => entry.text).join(', ')}` : ''}`} title={marked && markTitle !== 'Working' ? markTitle : quiet} data-paper={paper ? data.paper : undefined} data-paper-tone={paperColor?.dark ? 'dark' : undefined} data-writer={paper && data.paperWriter ? 'agent' : undefined} data-item-id={data.viewSurface ? undefined : item.id} data-expanded-item-id={data.viewSurface ? item.id : undefined} data-view-open={data.viewOpen || undefined} data-world-x={item.position.x} data-world-y={item.position.y}
+    data-tight-title={data.height < 60 || undefined} data-preview="false" data-resizing={data.resizing} data-dragging={data.dragging} data-completed={Boolean(item.completedAt)} data-map-size={data.mapSize?.size} data-blocked={data.blocked ? true : undefined} data-link-end={data.linkEnd || undefined} data-selected={data.selected || undefined} data-tier={need && !expanded ? need.tier : undefined} data-session-lost={sessionLost(item) || undefined} data-cracks={cracks || undefined} data-takeover={need && compact && !expanded && data.takeover || undefined}
     data-dimmed={data.far && !expanded && !attention && (Boolean(item.completedAt) || cue?.stage === 'done') || undefined}
     onMouseDown={event => { if (event.button === 1 && (!data.viewSurface || data.needsMe)) event.preventDefault(); }}
     onAuxClick={event => {
@@ -346,6 +359,7 @@ function CardFace({ data }: { data: CardData }) {
       event.preventDefault(); event.stopPropagation(); middleClick(item.id);
     }}
     style={{ width: data.width, height: !paper || compact ? data.height : paperHeight ?? (paperOpen ? Math.max(data.height, expandedPaperHeight(data.paperText!, data.width)) : data.height), transform: `scale(${data.scale})`, transformOrigin: 'top left', ...paperColor ? { '--paper': paperColor.color } : {} }}>
+    {cracks > 0 && <CardCracks level={cracks} width={data.width} height={data.height} />}
     {marked && !compact && !data.viewSurface && <WorkingMark width={data.width} height={data.height} tiny={data.tiny} state={markState} moment={item.moment} />}
     {data.blocked && !expanded && <span className="blocked-badge" role="img" aria-label={data.blocked.text} title={data.blocked.text} style={{ fontSize: data.attentionSize * .75 }}><i aria-hidden="true" /></span>}
     {mark}
@@ -390,6 +404,7 @@ function CardFace({ data }: { data: CardData }) {
     {!compact && !expanded && data.pips && data.mapSize && data.mapSize.summaryLines > 0 && <div className="card-pips" aria-hidden={data.pipsLabel ? undefined : true} aria-label={data.pipsLabel} role={data.pipsLabel ? "img" : undefined}>{data.pips.map((pip, index) => <i key={index} data-tone={pip.tone} data-style={pip.style} />)}{data.pipsLabel && <span className="card-pips-count">{data.pipsLabel}</span>}</div>}
     {!compact && !expanded && !item.indicators?.length && (!data.mapSize || data.mapSize.summaryLines > 0) && (running || line || reason) && <p className={`card-summary${data.pips ? ' pip-summary' : ''}`} data-said={!data.status && said ? true : undefined} style={data.mapSize ? { WebkitLineClamp: data.mapSize.summaryLines } : undefined}>{reason}{reason && line && <span className="card-reason-gap"> · </span>}{!reason && running && <span className="working-label">Working{line && ' · '}</span>}{line}</p>}
     {!compact && !expanded && data.mapSize?.fieldLines && data.mapFields ? <p className="map-size-fields" style={{ WebkitLineClamp: data.mapSize.fieldLines }}>{data.mapFields}</p> : null}
+    {!compact && !expanded && data.mapSize?.nodeView && renderNode ? <div className="card-node-view">{renderNode(item)}</div> : null}
     {data.visited && <div className="card-detail nodrag nopan nowheel" hidden={!expanded}>{renderDetail?.(item, expanded) ?? <p>{item.summary || 'Project context and connected work.'}</p>}</div>}</>}
     {!expanded && !data.viewSurface && <><button className="connect-handle nodrag nopan" aria-label={`Connect ${item.title}`} title="Drag to connect or create; press Enter to choose an item" onPointerDown={event => startLink(event, item.id)} onClick={event => { event.stopPropagation(); if (event.detail === 0) connect(event, item.id); }}>+</button><Handle type="target" position={Position.Left} /><Handle type="source" position={Position.Right} /></>}
     {data.resizable && <button className="item-resize-handle nodrag nopan" aria-label={`Resize ${item.title}`} title="Drag to resize; arrow keys adjust size" onPointerDown={event => resize(event, item.id)} onKeyDown={event => resizeKey(event, item.id)} onClick={event => { event.preventDefault(); event.stopPropagation(); }}>
@@ -403,6 +418,11 @@ function CardFace({ data }: { data: CardData }) {
     {data.tags.slice(0, 3).map(tag => <span key={tag.name} role="listitem" className="card-tag" title={tag.name} style={{ background: `#${tag.color}`, color: tagInk(tag.color) }}>{tag.name}</span>)}
     {data.tags.length > 3 && <span role="listitem" className="card-tag-more" title={data.tags.slice(3).map(tag => tag.name).join(', ')}>+{data.tags.length - 3}</span>}
   </span> : null}{working && compact && !data.viewSurface && <WorkingMark width={data.width} height={data.height} icon solid={data.takeover} state={markState} />}</>;
+}
+/** Small cracks in from the card's edges, more of them the longer the session has been quiet. Decoration only: the card's title says how long. */
+function CardCracks({ level, width, height }: { level: number; width: number; height: number }) {
+  return <svg className="card-cracks" viewBox={`0 0 ${width} ${height}`} aria-hidden="true" shapeRendering="crispEdges">
+    {crackPaths(level, width, height).map(path => <path key={path} d={path} />)}</svg>;
 }
 /** The type icon as a checkbox. It never starts a drag, selection or opening: pointer and
  * click stop at the button, and Space toggles without the native key-up click. */
@@ -598,7 +618,7 @@ function MapCanvas(props: ProjectMapProps) {
     } });
   const toggleMute = useRef<(id: string, muted: boolean) => void>(() => {});
   const duration = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 250;
-  const back = () => {
+  const closeView = () => {
     if (focus) {
       cancelViewGesture();
       captureBubble(focus, true);
@@ -609,7 +629,15 @@ function MapCanvas(props: ProjectMapProps) {
       void setCenter((size.width / 2 - viewport.x) / viewport.zoom, (size.height / 2 - viewport.y) / viewport.zoom, { zoom: .5, duration: duration() });
     }
   };
-  useEffect(() => { if (focus && !props.nodes.some(node => node.id === focus && !isArchived(node, props.nodes))) back(); }, [focus, props.nodes]);
+  // What leaving the open view runs, as the latest render defined it: a view that is asked first may answer later.
+  const leaving = useRef<{ closeView(): void; show(id: string): void; locateOnMap(id: string): void }>({ closeView() {}, show() {}, locateOnMap() {} });
+  leaving.current.closeView = closeView;
+  const focusNow = useRef(focus); focusNow.current = focus;
+  const closeGate = useRef(new ViewCloseGate()).current;
+  const whenViewAgrees = (leave: (now: typeof leaving.current) => void) => closeGate.request(focusNow.current, props.confirmClose, id => focusNow.current === id, () => leave(leaving.current));
+  const back = () => whenViewAgrees(now => now.closeView());
+  // An item that is gone cannot be kept open, so its view is not asked.
+  useEffect(() => { if (focus && !props.nodes.some(node => node.id === focus && !isArchived(node, props.nodes))) closeView(); }, [focus, props.nodes]);
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => setSize({ width: entry.contentRect.width, height: entry.contentRect.height }));
     observer.observe(container.current!);
@@ -866,7 +894,7 @@ function MapCanvas(props: ProjectMapProps) {
       // A card never pans the map, even while it cannot be dragged (Undermap, a save, a resize).
       className: quiet ? peek?.id === box.item.projectId ? PEEKED : COVERED : projectLabel ? 'nopan project-title-node' : 'nopan',
       zIndex: quiet ? -2 : itemResize.preview?.id === box.item.id ? 5 : projectLabel ? 0 : 1,
-      data: { badges: projectLabel ? undefined : props.badges?.get(box.item.id), badgeSize: Math.min(20, Math.max(11, 11 / viewport.zoom)), far: !projectLabel && level === 'overview', titleFill: !projectLabel && (fullSize || detail >= 1), takeover: !projectLabel && !fullSize && attentionTakesOver(width, viewport.zoom), header: header?.header, projectColor: projectLabel ? (props.neighborhoodColor ?? (color => color))(projectColor(box.item)) : undefined, pips: box.pips, pipsLabel: box.pipsLabel, counts: props.reviewOpenCounts ? box.counts : undefined, tags: projectLabel ? undefined : box.tags, frameTitle: box.frameTitle, reference: box.reference, mapSize: box.mapSize, mapFields: box.mapFields, tiny: box.tiny, iconOpens: box.iconOpens, completionToggle: box.completionToggle && Boolean(props.onComplete), undermapWhenComplete: box.undermapWhenComplete, resizable: Boolean(props.onResize && !mirror && !focus && !projectLabel && !quiet && detail >= .35), resizing: itemResize.preview?.id === box.item.id, viewOpen: box.item.id === focus, showFullTitle: box.showFullTitle, editableTitle: box.editableTitle && Boolean(props.onRename), editableViewTitle: box.editableViewTitle && Boolean(props.onRename), paper: box.paper, paperText: box.paperText, paperMode, paperWriter: box.paperWriter, paperWrittenAt: box.paperWrittenAt, item: box.item, icon: box.icon, brand: box.brand, tint: box.tint, typeName: box.typeName, tone: box.tone, width, height, compact: box.mapSize?.iconOnly || !project && (paperMode ? paperMode === 'far' : detail < .35), expanded: false, visited: false, scale, projectLabel, labelOverOutline: projectLabel, projectNeedsMe: rollups.get(box.item.id)?.needsMe ?? 0, attentionSize: projectLabel ? 14 : Math.max(14, 8 / viewport.zoom), dragging: drag?.id === box.item.id, blocked: projectLabel ? undefined : blocking.blocked.get(box.item.id), linkEnd: inspectedBlock && (inspectedBlock.sourceId === box.item.id || inspectedBlock.targetId === box.item.id), selected: !projectLabel && selection.has(box.item.id), covered } });
+      data: { badges: projectLabel ? undefined : props.badges?.get(box.item.id), badgeSize: Math.min(20, Math.max(11, 11 / viewport.zoom)), far: !projectLabel && level === 'overview', titleFill: !projectLabel && (fullSize || detail >= 1), takeover: !projectLabel && !fullSize && attentionTakesOver(width, viewport.zoom), header: header?.header, projectColor: projectLabel ? (props.neighborhoodColor ?? (color => color))(projectColor(box.item)) : undefined, pips: box.pips, pipsLabel: box.pipsLabel, counts: props.reviewOpenCounts ? box.counts : undefined, cracks: props.sessionCracks && props.layer !== 'below' && box.record?.pluginId === 'agent.session' || undefined, tags: projectLabel ? undefined : box.tags, frameTitle: box.frameTitle, reference: box.reference, mapSize: box.mapSize, mapFields: box.mapFields, tiny: box.tiny, iconOpens: box.iconOpens, completionToggle: box.completionToggle && Boolean(props.onComplete), undermapWhenComplete: box.undermapWhenComplete, resizable: Boolean(props.onResize && !mirror && !focus && !projectLabel && !quiet && detail >= .35), resizing: itemResize.preview?.id === box.item.id, viewOpen: box.item.id === focus, showFullTitle: box.showFullTitle, editableTitle: box.editableTitle && Boolean(props.onRename), editableViewTitle: box.editableViewTitle && Boolean(props.onRename), paper: box.paper, paperText: box.paperText, paperMode, paperWriter: box.paperWriter, paperWrittenAt: box.paperWrittenAt, item: box.item, icon: box.icon, brand: box.brand, tint: box.tint, typeName: box.typeName, tone: box.tone, width, height, compact: box.mapSize?.iconOnly || !project && (paperMode ? paperMode === 'far' : detail < .35), expanded: false, visited: false, scale, projectLabel, labelOverOutline: projectLabel, projectNeedsMe: rollups.get(box.item.id)?.needsMe ?? 0, attentionSize: projectLabel ? 14 : Math.max(14, 8 / viewport.zoom), dragging: drag?.id === box.item.id, blocked: projectLabel ? undefined : blocking.blocked.get(box.item.id), linkEnd: inspectedBlock && (inspectedBlock.sourceId === box.item.id || inspectedBlock.targetId === box.item.id), selected: !projectLabel && selection.has(box.item.id), covered } });
   });
   const nodes = projected.length === previousNodes.current.length && projected.every((node, index) => node === previousNodes.current[index]) ? previousNodes.current : projected;
   // Detail surfaces are screen-space siblings, never graph nodes or edge endpoints.
@@ -1011,7 +1039,7 @@ function MapCanvas(props: ProjectMapProps) {
       if (target && props.nodes.some(node => node.id === target && !isArchived(node, props.nodes))) dashboardActions.fly(target); else props.onTodoShow?.(todo.id);
     },
   });
-  const locate = (id: string) => {
+  const locateOnMap = (id: string) => {
     const item = props.nodes.find(node => node.id === id && !isArchived(node, props.nodes));
     if (!item) return;
     setFocus(undefined); setClosing(undefined); setMorph(undefined); setHovered(undefined); setHoveredEdge(undefined); setKeyboardFocused(undefined); setFocusedEdge(undefined);
@@ -1020,6 +1048,8 @@ function MapCanvas(props: ProjectMapProps) {
     // Show on map looks under a muted project's cover for a moment; it never unmutes.
     if (item.resourceId && item.projectId && mutedProjects.has(item.projectId)) mute.locate(item.projectId);
   };
+  leaving.current.locateOnMap = locateOnMap;
+  const locate = (id: string) => whenViewAgrees(now => now.locateOnMap(id));
   // The column lists Map projects only; below, Needs me and Working pause, so the corner stays empty.
   const columnShown = cornerShown && props.mapCorner !== 'atlas';
   const now = useNow(columnShown);
@@ -1046,12 +1076,22 @@ function MapCanvas(props: ProjectMapProps) {
     fitPlot: (id: string) => { if (focus) back(); dashboardActions.plot(id); }, openItem: (id: string) => { if (focus) open(id); else dashboardActions.go(id); }, showNeed: (id: string) => { if (focus) open(id); else locate(id); }, markSeen: (id: string) => props.onMarkSeen?.(id), showTodo: (id: string) => props.onTodoShow?.(id),
     pan: (next: Viewport) => void setViewport(next), travel: (to: 'map' | 'below') => props.onTravel?.(to),
   });
+  const editedInPlace = (box: (typeof boxes)[number] | undefined) => box?.view?.mode === 'inline' || Boolean(box?.editableTitle) || box?.paper !== undefined;
   const open = (id: string, origin: 'user' | 'program' = 'user') => {
     const item = props.nodes.find(node => node.id === id)!;
-    if (item.resourceId) props.onOpened?.(id, origin);
-    if (item.id === focus) return;
+    const recordOpened = () => { if (item.resourceId) props.onOpened?.(id, origin); };
+    if (item.id === focus) { recordOpened(); return; }
     const box = boxes.find(box => box.item.id === id);
-    if (box?.view?.mode === 'inline' || box?.editableTitle || box?.paper !== undefined) {
+    if (!editedInPlace(box) && props.onActivate?.(item)) { recordOpened(); return; }
+    // An item the open view keeps from taking its place was not opened.
+    whenViewAgrees(now => { recordOpened(); now.show(id); });
+  };
+  /** Puts the item in place of the open view: edits it in place, centres its project, or opens its view. */
+  const show = (id: string) => {
+    const item = props.nodes.find(node => node.id === id);
+    if (!item) return;
+    const box = boxes.find(box => box.item.id === id);
+    if (editedInPlace(box)) {
       // Another expanded item may have obscured this inline item. Never mount its detail.
       setFocus(undefined); setClosing(undefined); setMorph(undefined); clearInspection();
       const edit = (tries = 5) => {
@@ -1061,7 +1101,6 @@ function MapCanvas(props: ProjectMapProps) {
       if (detail < .35) void setCenter(item.position.x, item.position.y, { zoom: 1, duration: duration() }).then(() => edit()); else edit();
       return;
     }
-    if (props.onActivate?.(item)) return;
     if (!item.resourceId) {
       const project = projects.find(project => project.id === id)!;
       setFocus(undefined); setClosing(undefined); setMorph(undefined);
@@ -1073,6 +1112,7 @@ function MapCanvas(props: ProjectMapProps) {
     setVisited(old => new Set([...old, id]));
     setFocus(id);
   };
+  leaving.current.show = show;
   const context = (event: Pick<MouseEvent, 'clientX' | 'clientY' | 'preventDefault'>, nodeId?: string) => {
     event.preventDefault();
     if (focus) { back(); return; }
@@ -1378,7 +1418,7 @@ function MapCanvas(props: ProjectMapProps) {
       const rect = container.current!.getBoundingClientRect();
       props.onBadge?.(noteId, { screen: { x: event.clientX - rect.left, y: event.clientY - rect.top }, position: screenToFlowPosition({ x: event.clientX, y: event.clientY }) }, menu);
     } });
-  const detailContext = useMemo(() => ({ ...actions, renderDetail: props.renderDetail, markSeen: props.onMarkSeen, keep: props.onKeep, sendBelow: props.onSendBelow }), [actions, props.renderDetail, props.onMarkSeen, props.onKeep, props.onSendBelow]);
+  const detailContext = useMemo(() => ({ ...actions, renderDetail: props.renderDetail, renderNode: props.renderNode, markSeen: props.onMarkSeen, keep: props.onKeep, sendBelow: props.onSendBelow }), [actions, props.renderDetail, props.renderNode, props.onMarkSeen, props.onKeep, props.onSendBelow]);
   const coverHandlers = useStableHandlers({
     enter: (id: string, event: React.PointerEvent) => { if (!focus && !drag && !linkDrag && !marqueeRef.current) mute.enter(id, event.buttons); },
     leave: (id: string) => mute.leave(id),
@@ -1451,8 +1491,9 @@ function MapCanvas(props: ProjectMapProps) {
       const screen = inside ? pointer : { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, position = screenToFlowPosition(screen), projectId = containingProject(position, projects);
       const url = /^https?:\/\/\S+$/.test(text.trim()) ? text.trim() : undefined;
       event.preventDefault();
-      if (url) props.onUrlDrop?.({ url, screen: { x: screen.x - rect.left, y: screen.y - rect.top }, position, projectId });
-      else props.onPasteText?.({ text, position, projectId });
+      const anchor = { screen: { x: screen.x - rect.left, y: screen.y - rect.top }, position, projectId };
+      if (url) props.onUrlDrop?.({ url, ...anchor });
+      else props.onPasteText?.({ text, ...anchor });
     };
     window.addEventListener('paste', paste);
     return () => window.removeEventListener('paste', paste);
@@ -1466,7 +1507,7 @@ function MapCanvas(props: ProjectMapProps) {
       const todo = !focus && props.onTodoDrop && event.dataTransfer.types.includes('application/x-crafting-todo-map');
       if (!todo && nativeDropTarget(event.target)) return;
       event.preventDefault();
-      event.dataTransfer.dropEffect = todo ? 'move' : !focus && props.onUrlDrop && mayContainUrl(event.dataTransfer) ? 'copy' : 'none';
+      event.dataTransfer.dropEffect = todo ? 'move' : !focus && (props.onUrlDrop && mayContainUrl(event.dataTransfer) || props.onFileDrop && event.dataTransfer.types.includes('Files')) ? 'copy' : 'none';
       if (!todo || !props.todoDrag || dropping) return;
       const point = screenToFlowPosition({ x: event.clientX, y: event.clientY }), moved = (at?: { x: number; y: number }) => !at || Math.abs(at.x - point.x) + Math.abs(at.y - point.y) >= 1;
       const item = props.todoDrag.nodeId ? props.nodes.find(node => node.id === props.todoDrag!.nodeId && !isArchived(node, props.nodes)) : undefined;
@@ -1490,11 +1531,12 @@ function MapCanvas(props: ProjectMapProps) {
         void Promise.resolve(props.onTodoDrop({ id: todoId, position, ...(projectId ? { projectId } : {}) })).finally(() => { setDropping(false); endTodoPreview(); });
         return;
       }
-      if (!props.onUrlDrop) return;
-      const url = droppedUrl(event.dataTransfer); if (!url) return;
+      const file = props.onFileDrop ? event.dataTransfer.files[0] : undefined, url = props.onUrlDrop ? droppedUrl(event.dataTransfer) : undefined;
+      if (!file && !url) return;
       clearInspection();
       const rect = container.current!.getBoundingClientRect(), position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      props.onUrlDrop({ url, screen: { x: event.clientX - rect.left, y: event.clientY - rect.top }, position, projectId: containingProject(position, projects) });
+      const anchor = { screen: { x: event.clientX - rect.left, y: event.clientY - rect.top }, position, projectId: containingProject(position, projects) };
+      if (file) props.onFileDrop!({ file, ...anchor }); else props.onUrlDrop!({ url: url!, ...anchor });
     }} onDoubleClick={event => {
     const press = titlePress.current; titlePress.current = undefined;
     if (focus && press?.id === focus && event.timeStamp - press.at < 500) { event.preventDefault(); event.stopPropagation(); toggleFilled(focus); return; }

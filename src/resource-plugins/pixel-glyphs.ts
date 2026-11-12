@@ -123,6 +123,10 @@ export type GlyphName<Size extends GlyphSize = 8> = keyof typeof PIXEL_GLYPHS[Si
 /** One `M x y h1v1h-1z` square per lit pixel; draw with `shape-rendering: crispEdges`. */
 export const glyphPath = (rows: readonly string[]) => rows.flatMap((row, y) => [...row].flatMap((cell, x) => cell === 'X' ? [`M${x} ${y}h1v1h-1z`] : [])).join('');
 
+/** An 8×8 glyph as an SVG data URI for a CSS mask: the colour comes from the masked element. */
+export const pixelGlyphMask = (name: GlyphName) =>
+  `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" shape-rendering="crispEdges"><path d="${glyphPath(PIXEL_GLYPHS[8][name])}"/></svg>`)}")`;
+
 /** The DOM form of the renderer's `PixelGlyph` for plugin views: an 8×8 glyph in `currentColor`, decorative. */
 export function pixelGlyphElement(document: Document, name: GlyphName, className = 'act-glyph') {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'), path = document.createElementNS('http://www.w3.org/2000/svg', 'path');

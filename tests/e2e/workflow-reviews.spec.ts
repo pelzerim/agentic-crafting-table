@@ -140,3 +140,48 @@ test('unknown comment outcome presents explicit reconciliation and never silentl
     await expect(page.locator('[data-expanded-item-id]:visible .view-chip')).toHaveText('Complete', { timeout: 10_000 }); expect(f.workflow.posts).toBe(1);
   } finally { await exitWithoutShutdown(app); await f.service.close(); await rm(f.directory, { recursive: true, force: true }); }
 });
+
+test('a review the workflow posts on its own becomes a linked item that reads as posted by the workflow, and nothing is posted for it', async () => {
+  test.setTimeout(90_000);
+  const f = await fixture(), app = await electron.launch({ args: ['.'], env: { ...process.env, ACT_TEST_DATA_DIR: f.directory } });
+  try {
+    const page = await app.firstWindow();
+    await expect(page.getByRole('article', { name: f.github.pull.title, exact: true })).toBeVisible();
+    await expect.poll(() => (f.service.store.pluginStorage('github.review-run').get('report-adoption', 'state')?.value as { on?: boolean } | undefined)?.on, { timeout: 30_000 }).toBe(true);
+    const report = f.workflow.reported(500);
+    f.github.comments = [...f.github.comments, structuredClone(f.workflow.comments.find(comment => comment.id === report.commentId)!)];
+    await f.service.resources.read('pr', true);
+    const item = page.getByRole('article', { name: 'Workflow review · #42', exact: true });
+    await expect(item).toBeVisible({ timeout: 30_000 });
+    const state = await f.service.control.read(), node = state.nodes.find(n => state.resources.some(r => r.id === n.resourceId && r.pluginId === 'github.review-run'))!;
+    expect(node.projectId).toBe('project'); expect(state.links.some(link => link.sourceId === 'pr' && link.targetId === node.id)).toBe(true);
+    await item.click();
+    const meta = page.locator('[data-expanded-item-id]:visible .view-meta');
+    await expect(meta).toHaveText('PR #42 · fixture/billing · posted by the workflow');
+    await expect(page.getByRole('link', { name: 'Workflow run', exact: true })).toHaveAttribute('href', 'https://github.com/fixture/billing/actions/runs/500');
+    await expect(page.getByRole('link', { name: 'Review request', exact: true })).toHaveCount(0);
+    f.workflow.report(500);
+    await expect(page.locator('[data-expanded-item-id]:visible .view-chip')).toHaveText('Complete', { timeout: 30_000 });
+    await expect(page.getByRole('link', { name: 'Review result', exact: true })).toHaveAttribute('href', `https://github.com/fixture/billing/pull/42#issuecomment-${report.commentId}`);
+    await expect(page.locator('.workflow-report')).toContainText('Fixture findings'); await expect(meta).toHaveText('PR #42 · fixture/billing · posted by the workflow');
+    expect(f.workflow.posts).toBe(0);
+  } finally { await exitWithoutShutdown(app); await f.service.close(); await rm(f.directory, { recursive: true, force: true }); }
+});
+
+test('with the setting off, a review the workflow posts on its own creates no item', async () => {
+  test.setTimeout(60_000);
+  const f = await fixture(), settings = f.service.store.readSettings();
+  f.service.store.writeSettings({ expectedRevision: settings.revision, value: { ...settings.value, plugins: { ...settings.value.plugins, 'github.review-run': { ...f.service.control.registry.pluginSettings(settings.value.plugins)['github.review-run'], adoptReports: false } } } });
+  const app = await electron.launch({ args: ['.'], env: { ...process.env, ACT_TEST_DATA_DIR: f.directory } });
+  try {
+    const page = await app.firstWindow();
+    await expect(page.getByRole('article', { name: f.github.pull.title, exact: true })).toBeVisible();
+    const report = f.workflow.reported(500);
+    f.github.comments = [...f.github.comments, structuredClone(f.workflow.comments.find(comment => comment.id === report.commentId)!)];
+    await f.service.resources.read('pr', true);
+    await page.waitForTimeout(20_000);
+    await expect(page.getByRole('article', { name: 'Workflow review · #42', exact: true })).toHaveCount(0);
+    expect(f.service.store.listJobs()).toHaveLength(0);
+    expect(f.workflow.paths.some(path => path.includes('/actions/runs/500'))).toBe(false);
+  } finally { await exitWithoutShutdown(app); await f.service.close(); await rm(f.directory, { recursive: true, force: true }); }
+});

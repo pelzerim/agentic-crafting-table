@@ -64,6 +64,8 @@ export const test = base.extend<{ visual: { app: ElectronApplication; page: Page
     // A process-local Cocoa preference keeps automatic mouse/trackpad changes on
     // the host from switching scrollbar layout mid-run. Never write user defaults.
     const app = await electron.launch({ args: ['.', '--force-device-scale-factor=1', '--disable-lcd-text', '--force-color-profile=srgb', ...scrollbarArgs], env: { ...process.env, ...titleEnv, ACT_TEST_DATA_DIR: directory, SHELL: '/bin/sh', TZ: 'UTC', LANG: 'en_US.UTF-8', ...launchEnv } });
+    // A test may quit the app itself.
+    let quit = false; app.once('close', () => { quit = true; });
     try {
       const page = await app.firstWindow();
       if (process.platform === 'darwin') expect(await app.evaluate(({ systemPreferences }) => systemPreferences.getUserDefault('AppleShowScrollBars', 'string'))).toBe('WhenScrolling');
@@ -78,7 +80,7 @@ export const test = base.extend<{ visual: { app: ElectronApplication; page: Page
       await testInfo.attach('render-environment', { body: JSON.stringify(await app.evaluate(({ app, BrowserWindow }) => ({ electron: process.versions.electron, chrome: process.versions.chrome, platform: process.platform, arch: process.arch, version: app.getVersion(), windowVisible: BrowserWindow.getAllWindows()[0].isVisible(), backgroundThrottling: BrowserWindow.getAllWindows()[0].webContents.getBackgroundThrottling() })), null, 2), contentType: 'application/json' });
       await use({ app, page });
     } finally {
-      await exitWithoutShutdown(app);
+      if (!quit) await exitWithoutShutdown(app);
       for (const connect of [() => connectWorkspace(directory), () => connectSupervisor(join(directory, 'runtime'))]) {
         const client = await connect().catch(() => undefined);
         if (client) {

@@ -33,7 +33,7 @@ import { viewSchema } from '../../../packages/core/control.ts';
 import type { WorkspaceSnapshot } from '../../../packages/workspace-service/protocol.ts';
 import { pluginSettingsValues, registryFromDescriptions } from '../../../src/resource-plugins/describe.client.ts';
 import type { PluginDescription } from '../../../src/resource-plugins/describe.client.ts';
-import type { ResourceChoices, ResourceRecord, MountedResourceView } from '../../../src/resource-plugins/types.ts';
+import type { JsonObject, ResourceChoices, ResourceRecord, MountedResourceView } from '../../../src/resource-plugins/types.ts';
 import { installedRenderersReady } from './installed-plugins.ts';
 import { createResourceViews } from '../../../src/resource-plugins/catalog.client.ts';
 import { patchedData, savedSnapshot } from '../../../src/resource-plugins/views.ts';
@@ -89,7 +89,7 @@ import type { UndermapSearchHandle } from './undermap-search.tsx';
 import { MapWheelGestures } from './map-wheel.ts';
 
 type Anchor = Parameters<NonNullable<ProjectMapProps['onContext']>>[0];
-type Editor = Anchor & { connectedFromId?: string; initialType?: string; initialUrl?: string; mode: 'menu' | 'create' | 'edit'; /** A ring opened by right-clicking the ground, offering that ground's menu entries (MAP-31). */ ground?: true };
+type Editor = Anchor & { connectedFromId?: string; initialType?: string; initialUrl?: string; initialData?: JsonObject; mode: 'menu' | 'create' | 'edit'; /** A ring opened by right-clicking the ground, offering that ground's menu entries (MAP-31). */ ground?: true };
 /** A new paper tile shown on the map before its first words; it is saved only once it has text. */
 type PaperDraft = { nodeId: string; resourceId: string; linkId: string; pluginId: string; position: { x: number; y: number }; projectId?: string; connectedFromId?: string; data: Record<string, string>;
   /** A size given before the first words; the first save applies it. */
@@ -100,7 +100,7 @@ const recordOpened = (nodeId: string) => { void window.craftingTable.runtimeRun(
 
 type ItemViewStore = { read(nodeId: string): Readonly<Record<string, ItemViewValue>>; save(nodeId: string, patch: Record<string, ItemViewValue | null>): void };
 
-function PluginDetail({ resource, registry, active, nodeId, onOpen, onShow, onEdit, viewStore }: { resource: ResourceRecord; registry: ResourcePluginRegistry; active: boolean; nodeId: string; onOpen(id: string): void; onShow(id: string): void; onEdit(): void; viewStore: ItemViewStore }) {
+function PluginDetail({ resource, registry, active, nodeId, onOpen, onShow, onEdit, viewStore, mountedViews }: { resource: ResourceRecord; registry: ResourcePluginRegistry; active: boolean; nodeId: string; onOpen(id: string): void; onShow(id: string): void; onEdit(): void; viewStore: ItemViewStore; mountedViews: Map<string, MountedResourceView> }) {
   const container = useRef<HTMLDivElement>(null);
   const mounted = useRef<MountedResourceView>(undefined);
   const openRef = useRef(onOpen); openRef.current = onOpen;
@@ -119,6 +119,7 @@ function PluginDetail({ resource, registry, active, nodeId, onOpen, onShow, onEd
       viewState: () => viewStore.read(nodeId),
       saveViewState: patch => viewStore.save(nodeId, patch),
       copyUrl: url => window.craftingTable.copyUrl(url),
+      revealFile: path => window.craftingTable.revealFile(path),
       observePreferences: listener => {
         let disposed = false, revision = -1;
         const receive = (snapshot: SettingsSnapshot) => { if (disposed || snapshot.revision < revision) return; revision = snapshot.revision; listener(JSON.parse(JSON.stringify(snapshot.value))); };
@@ -164,8 +165,8 @@ function PluginDetail({ resource, registry, active, nodeId, onOpen, onShow, onEd
       element.append(content);
       return { update() {}, dispose() { content.remove(); } };
     });
-    mounted.current = view; view.setActive?.(active);
-    return () => { view.dispose(); mounted.current = undefined; };
+    mounted.current = view; mountedViews.set(nodeId, view); view.setActive?.(active);
+    return () => { view.dispose(); mounted.current = undefined; if (mountedViews.get(nodeId) === view) mountedViews.delete(nodeId); };
   }, [identity, registry, nodeId]);
   useEffect(() => { mounted.current?.setActive?.(active); }, [active]);
   // Each workspace change the service sends reaches the open view as an update; the view re-reads what it shows.
@@ -182,6 +183,27 @@ function PluginDetail({ resource, registry, active, nodeId, onOpen, onShow, onEd
     const link = (event.target as HTMLElement).closest('a');
     if (link) { event.preventDefault(); void window.craftingTable.openUrl(link.href); }
   }} />;
+}
+
+/** A type's map view inside its card. It gets no host controls: the card around it opens, moves and selects the item. */
+function PluginNode({ resource, registry, node, onOpen }: { resource: ResourceRecord; registry: ResourcePluginRegistry; node: WorkspaceSnapshot['state']['nodes'][number]; onOpen(id: string): void }) {
+  const container = useRef<HTMLDivElement>(null);
+  const mounted = useRef<MountedResourceView>(undefined);
+  const openRef = useRef(onOpen); openRef.current = onOpen;
+  const views = useMemo(() => createResourceViews(registry), [registry]);
+  const identity = views.identity(resource), nodeId = node.id;
+  useEffect(() => {
+    const view = views.mount('node', container.current!, resource, {
+      openResource: id => openRef.current(id),
+      runAction: async (action, input) => window.craftingTable.runtimeRun({ action: action as 'agent.resume', nodeId, arguments: input ?? {} }) as Promise<any>,
+      attachTerminal: mountNativeTerminal,
+    }, () => ({ update() {}, dispose() {} }));
+    mounted.current = view;
+    return () => { view.dispose(); mounted.current = undefined; };
+  }, [identity, registry, nodeId]);
+  const saved = JSON.stringify([node.activity, node.attention, node.summary, node.indicators]);
+  useEffect(() => { mounted.current?.update(savedSnapshot(node)); }, [saved]);
+  return <div className="resource-node-view" ref={container} />;
 }
 
 /** A `<webview>` in the site's own session; the main process checks the site and URL before it attaches. */
@@ -307,9 +329,24 @@ export function WorkspaceMap() {
   }, []);
   const revealRef = useRef((nodeId: string, mode?: 'map' | 'centred') => setReveal({ nodeId, nonce: Date.now(), ...(mode ? { mode } : {}) }));
   const motion = activeMotion(settings?.value.belowAnimation);
-  /** Travel between the map and the layer below with one shared camera. */
+  /** The mounted detail views by map item, and the one that is open, so a view can be asked before it closes. */
+  const detailViews = useRef(new Map<string, MountedResourceView>()).current, viewedItem = useRef<string>(undefined);
+  const confirmViewClose = useCallback((nodeId: string) => detailViews.get(nodeId)?.confirmClose?.() ?? true, []);
+  // A quit waits for every mounted view: each saves, or asks the person when it is the one shown.
+  useEffect(() => window.craftingTable.onBeforeQuit(async () => (await Promise.all([...detailViews.values()].map(async view => view.confirmClose?.() ?? true))).every(Boolean)), []);
+  const travelWaitsForView = useRef(false);
+  /** Travel between the map and the layer below with one shared camera. True when `to` is the layer shown
+   * afterwards; false when the open view kept the person on this one, or the request was dropped. */
   const travel = useCallback(async (to: 'map' | 'below') => {
-    if (layerRef.current === to) return;
+    if (layerRef.current === to) return true;
+    // The other layer is another map: the open view goes with this one. While it is asked, a second request
+    // to travel is dropped, so one answer starts one travel.
+    if (viewedItem.current) {
+      if (travelWaitsForView.current) return false;
+      travelWaitsForView.current = true;
+      try { if (!await confirmViewClose(viewedItem.current)) return false; } finally { travelWaitsForView.current = false; }
+    }
+    if (layerRef.current === to) return true;
     const camera = viewRef.current?.camera;
     if (to === 'below') { entryZoom.current = camera?.zoom; zoomRef.current = camera?.zoom; }
     else if (camera && entryZoom.current && camera.zoom < entryZoom.current) {
@@ -322,12 +359,15 @@ export function WorkspaceMap() {
     // The Undermap's items arrive before it is drawn; going up, the map is drawn from what is held and then the rest is let go.
     if (to === 'below') await subscribeLayer('below');
     const duration = activeMotion(settings?.value.belowAnimation);
-    if (!duration || !workspace.current) setLayer(to);
+    // Whoever asks for a layer right after this one arrived reads the new layer, before it is drawn.
+    const showLayer = () => { layerRef.current = to; setLayer(to); };
+    if (!duration || !workspace.current) showLayer();
     else {
       setTravelling(true);
-      try { await portalWipe(workspace.current, to === 'below' ? 'down' : 'up', duration * 1.4, () => setLayer(to)); } finally { setTravelling(false); }
+      try { await portalWipe(workspace.current, to === 'below' ? 'down' : 'up', duration * 1.4, showLayer); } finally { setTravelling(false); }
     }
     if (to === 'map') await subscribeLayer('map');
+    return true;
   }, [settings?.value.belowAnimation]);
   const mirrorMode = settings ? settings.value.undermapLayout !== 'classic' : false;
   const itemMapSizes = settings?.value.itemMapSizes, neighborhoodPadding = settings?.value.neighborhoodPadding;
@@ -345,7 +385,7 @@ export function WorkspaceMap() {
     if (snapshotRef.current?.layer === 'map' && !snapshotRef.current.state.nodes.some(candidate => candidate.id === nodeId)) {
       void window.craftingTable.workspaceRead().then(whole => {
         const node = whole.state.nodes.find(candidate => candidate.id === nodeId);
-        if (node && isBelow(node, whole.state.nodes)) void travel('below').then(() => revealRef.current(nodeId, mode));
+        if (node && isBelow(node, whole.state.nodes)) void travel('below').then(arrived => { if (arrived) revealRef.current(nodeId, mode); });
         else setReveal({ nodeId, nonce: Date.now(), ...(mode ? { mode } : {}) });
       }).catch(error => setError(error.message));
       return;
@@ -439,9 +479,13 @@ export function WorkspaceMap() {
   // Reads the resources when called, so a changed record never changes this function and with it every card's context.
   const renderDetail = useCallback<NonNullable<ProjectMapProps['renderDetail']>>((node, active) => {
     const resource = snapshotRef.current?.state.resources.find(resource => resource.id === node.resourceId);
-    return resource ? <ErrorBoundary key={resource.id} fallback={(error, reset) => <PanelError error={error} retry={reset} />}><PluginDetail resource={resource} registry={registry} active={active} nodeId={node.id} onOpen={openResource} onShow={showOnMap} viewStore={itemViewStore}
+    return resource ? <ErrorBoundary key={resource.id} fallback={(error, reset) => <PanelError error={error} retry={reset} />}><PluginDetail resource={resource} registry={registry} active={active} nodeId={node.id} onOpen={openResource} onShow={showOnMap} viewStore={itemViewStore} mountedViews={detailViews}
       onEdit={() => setEditor({ mode: 'edit', nodeId: node.id, projectId: node.projectId, position: node.position, screen: { x: innerWidth / 2 - 150, y: 80 } })} /></ErrorBoundary> : <p>{node.summary}</p>;
   }, [registry, openResource, showOnMap]);
+  const renderNode = useCallback<NonNullable<ProjectMapProps['renderNode']>>(item => {
+    const state = snapshotRef.current?.state, node = state?.nodes.find(node => node.id === item.id), resource = state?.resources.find(resource => resource.id === item.resourceId);
+    return node && resource ? <ErrorBoundary key={resource.id} fallback={() => null}><PluginNode resource={resource} registry={registry} node={node} onOpen={openResource} /></ErrorBoundary> : null;
+  }, [registry, openResource]);
   const accept = (incoming: WorkspaceSnapshot) => {
     if (snapshotRef.current && incoming.cursor < snapshotRef.current.cursor) return;
     // A read returns the whole workspace; while the service sends layers, it is held as the layer on screen would receive it.
@@ -461,6 +505,7 @@ export function WorkspaceMap() {
     return seenOnOpen(type, settingsRef.current?.value.notifications ?? { seenOnOpen: [] }, context);
   }, []);
   const { acknowledge, notices, opened: attentionOpened, view: viewing, kept, restore } = useAttention(snapshot, accept, setError, seenOnOpenFor);
+  const viewed = useCallback((id: string | undefined) => { viewedItem.current = id; viewing(id); }, [viewing]);
   const opened = (id: string, origin: 'user' | 'program' = 'user') => {
     attentionOpened(id, origin);
     const recent = viewRef.current?.recentItems;
@@ -584,10 +629,19 @@ export function WorkspaceMap() {
     setPaperDraft({ nodeId, resourceId: crypto.randomUUID(), linkId: crypto.randomUUID(), pluginId, position: anchor.position, projectId: anchor.projectId, connectedFromId: anchor.connectedFromId, data: {} });
     setReveal({ nodeId, nonce: Date.now(), origin: 'program' });
   };
-  const pasteText = paperPlugin ? ({ text, position, projectId }: { text: string; position: { x: number; y: number }; projectId?: string }) => {
+  /** Opens the form of the one item type that takes the path as its file, while a file is there. */
+  const offerFileItem = async (path: string, anchor: Anchor) => {
+    const [candidate, ...others] = path && path.length <= 4096 && !/[\r\n]/.test(path) ? await window.craftingTable.resourceMatchFile(path) : [];
+    if (!candidate || others.length) return false;
+    setEditor({ ...anchor, mode: 'create', initialType: candidate.pluginId, initialData: candidate.data });
+    return true;
+  };
+  const dropFile = ({ file, ...anchor }: Anchor & { file: File }) => { void offerFileItem(window.craftingTable.pathForFile(file), anchor).catch(error => setError(error.message)); };
+  const pasteText = async ({ text, ...anchor }: Anchor & { text: string }) => {
+    if (await offerFileItem(text.trim(), anchor).catch(() => false) || !paperPlugin) return;
     const field = registry.get(paperPlugin)?.appearance?.paper?.textField ?? 'text';
-    void apply([{ type: 'item.add', id: crypto.randomUUID(), resourceId: crypto.randomUUID(), pluginId: paperPlugin, data: { [field]: text }, projectId, position }]).catch(error => setError(error.message));
-  } : undefined;
+    await apply([{ type: 'item.add', id: crypto.randomUUID(), resourceId: crypto.randomUUID(), pluginId: paperPlugin, data: { [field]: text }, projectId: anchor.projectId, position: anchor.position }]).catch(error => setError(error.message));
+  };
   const openConnections = () => { setSessionListView(undefined); setSettingsSection('Connections'); setSettingsOpen(true); };
   const createProject = () => {
     const camera = view?.camera ?? { x: 70, y: 80, zoom: .85 };
@@ -805,11 +859,11 @@ export function WorkspaceMap() {
   });
   return <RailContext.Provider value={rail}><section ref={workspace} className="live-workspace" aria-label={below ? 'Undermap' : 'Project map'} data-layer={layer} data-travelling={travelling || undefined} data-chrome-docked={chromeDocked || undefined}>
     {snapshot && plugins && view && settings && <ProjectMap key={layer} layer={layer} neighborhoodColor={below ? undermapColor : undefined} registry={registry} nodes={badged.nodes} resources={layerResources} links={badged.links} badges={badged.onItems} onBadge={(noteId, anchor, menu) => { setConnectionDraft(undefined); setEditor({ ...anchor, nodeId: noteId, mode: menu ? 'menu' : 'edit' }); }}
-      onMarkSeen={acknowledge} keep={keep} onKeep={restore} onChromeCover={setChromeDocked} onOpened={opened} onView={viewing} onMute={below ? undefined : setMuted}
+      onMarkSeen={acknowledge} keep={keep} onKeep={restore} onChromeCover={setChromeDocked} onOpened={opened} onView={viewed} onMute={below ? undefined : setMuted}
       mapCorner={settings.value.mapCorner} projectSummaries={projectSummaries} overview={overviewOpen} onOverview={open => { setOverviewOpen(open); if (open && atlasCorner) { rail.unpin('attention'); rail.close('attention'); } }}
       projectsPanel={view.projectsPanel} onProjectsPanel={patch => { const pruned = pruneOrder(patch), next = pruned && viewSchema.shape.projectsPanel.safeParse({ ...viewRef.current?.projectsPanel, ...pruned }); if (next?.success) saveView({ projectsPanel: next.data }); return Boolean(next?.success); }} undermapCount={layerGraph.belowCount} onTravel={to => { rail.clear(); void travel(to); }}
       highlightedNodes={menuHighlight?.nodes ?? (below && foundBelow ? foundNodes : highlightedNodes)} highlightedLinks={menuHighlight?.links} menuFor={editor?.mode === 'menu' ? menuTargets : undefined} undermap={below ? undermapView : undefined}
-      attentionCounting={counting} offscreenAttention={settings.value.offscreenAttention} reviewOpenCounts={settings.value.reviewOpenCounts} itemMapSizes={settings.value.itemMapSizes} itemViews={settings.value.itemViews} viewBounds={view.itemViewBounds} onViewBounds={saveViewBounds} neighborhoodPadding={settings.value.neighborhoodPadding} neighborhoodAppearance={neighborhoodAppearance} dashboards={settings.value.mapDashboards} workingMark={settings.value.workingMark} plots={plots} onPlot={(projectId, request) => window.craftingTable.runtimeRun({ action: 'plot', nodeId: projectId, arguments: request }).then(() => {}, error => { if (request.operation !== 'seen') setError(error.message); })} plotNaming={settings.value.summaries.plotNames} plotTargets={ids => snapshot ? moveTargets(snapshot.state, ids) : []} onMoveItems={moveToProject} onSendBelow={ids => moveLayer(ids, 'below')} hideImpliedLinks={settings.value.hideImpliedLinks} snap={settings.value.snapToGrid ? SNAP_PITCH : undefined} collisions={settings.value.mapCollisions} initialViewport={view.camera} onViewport={camera => { zoomRef.current = camera.zoom; saveView({ camera }); }} reveal={reveal} onRevealed={revealed => setReveal(current => current === revealed ? undefined : current)}
+      attentionCounting={counting} offscreenAttention={settings.value.offscreenAttention} reviewOpenCounts={settings.value.reviewOpenCounts} sessionCracks={settings.value.sessionCracks} itemMapSizes={settings.value.itemMapSizes} itemViews={settings.value.itemViews} viewBounds={view.itemViewBounds} onViewBounds={saveViewBounds} neighborhoodPadding={settings.value.neighborhoodPadding} neighborhoodAppearance={neighborhoodAppearance} dashboards={settings.value.mapDashboards} workingMark={settings.value.workingMark} plots={plots} onPlot={(projectId, request) => window.craftingTable.runtimeRun({ action: 'plot', nodeId: projectId, arguments: request }).then(() => {}, error => { if (request.operation !== 'seen') setError(error.message); })} plotNaming={settings.value.summaries.plotNames} plotTargets={ids => snapshot ? moveTargets(snapshot.state, ids) : []} onMoveItems={moveToProject} onSendBelow={ids => moveLayer(ids, 'below')} hideImpliedLinks={settings.value.hideImpliedLinks} snap={settings.value.snapToGrid ? SNAP_PITCH : undefined} collisions={settings.value.mapCollisions} initialViewport={view.camera} onViewport={camera => { zoomRef.current = camera.zoom; saveView({ camera }); }} reveal={reveal} onRevealed={revealed => setReveal(current => current === revealed ? undefined : current)}
       onItemDrag={below ? undefined : (id, point) => todoOverlay.current?.drag(id, point)} onItemDrop={below ? undefined : (id, point) => todoOverlay.current?.drop(id, point) ?? false}
       onLink={below ? undefined : anchor => {
         setEditor(undefined); setConnectionDraft(undefined);
@@ -836,6 +890,7 @@ export function WorkspaceMap() {
       onUrlDrop={!below && (!editor || editor.mode === 'menu') && !settingsOpen && !archiveOpen && !connectionDraft ? ({ url, ...anchor }) => {
         setEditor({ ...anchor, mode: 'create', initialType: FROM_URL, initialUrl: url });
       } : undefined}
+      onFileDrop={!below && (!editor || editor.mode === 'menu') && !settingsOpen && !archiveOpen && !connectionDraft ? dropFile : undefined}
       onMove={(id, position, projectId) => apply([...(projectId ? [{ type: 'node.attach' as const, id, projectId }] : []), { type: 'node.move', id, position }]).catch(error => setError(error.message))}
       onMoveMany={positions => apply([{ type: 'nodes.move', positions }]).catch(error => setError(error.message))}
       onResize={below && mirrorBelow ? undefined : resizeOnMap}
@@ -854,7 +909,7 @@ export function WorkspaceMap() {
         else void window.craftingTable.openUrl(url).catch(error => setError(error.message));
         return true;
       }}
-      renderDetail={renderDetail} />}
+      renderDetail={renderDetail} confirmClose={confirmViewClose} renderNode={renderNode} />}
     {!snapshot && (error ? <div className="error-screen-overlay"><ErrorScreen error={error} kind="load" retry={() => retryLoad.current()} /></div> : <div className="map-message"><p>Opening your table…</p></div>)}
     <ToolRail below={below} settings={settingsOpen} actions={actionsOpen || standupOpen} />
     {snapshot && view && <NeedsMeTool items={attention} muted={mutedAttention} counting={counting} state={withUndermap ?? snapshot.state} highlight={setAttentionHighlight} size={view.attentionPanel ?? {}} onSize={size => saveView({ attentionPanel: size })}

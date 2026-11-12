@@ -734,7 +734,9 @@ export class ResourceCoordinator {
   content(nodeId: string, actionId: string, input: JsonObject, refresh = false) {
     return this.once(`content:${nodeId}:${actionId}`, { input, refresh }, async () => {
       const resource = await this.record(nodeId), signal = this.signal();
-      if (!this.host.actions(resource, signal).find(action => action.id === actionId)?.readOnly) throw new Error('Only read-only provider content can be cached');
+      const action = this.host.actions(resource, signal).find(action => action.id === actionId);
+      if (!action?.readOnly) throw new Error('Only read-only provider content can be cached');
+      if (action.uncached) return { content: await this.host.execute(resource, actionId, input, signal), observedAt: this.now(), stale: false };
       const key = createHash('sha256').update(fingerprint(resource) + canonical(input)).digest('hex'), slot = `action:${actionId}`, now = this.now();
       const cached = this.store.resourceCache(resource.id, slot, key);
       if (cached && ((!refresh && now - cached.checkedAt < 60_000) || (cached.retryAt ?? 0) > now)) {

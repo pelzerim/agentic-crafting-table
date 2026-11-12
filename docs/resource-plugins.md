@@ -82,6 +82,13 @@ text through the shared `wrappedLines` estimate, and `creation.hotkey` for a
 one-letter pick while the creation ring is open. `authorship: { field }` asks the
 host to record the agent that last changed the text; plugins never write it.
 
+A type can draw its own face on the map: a map size preset with `nodeView: true` makes the
+card mount the type's `mountNode` view under the title, in the height the card has left.
+The view is drawn only at that size and only while the card shows detail (not as a far-zoom
+mark, not while the item is open). It is not interactive: a click on it opens the item like
+a click anywhere on the card. It gets `runAction` for the type's read-only actions, and
+`update` when the item's saved state changes.
+
 Agent and terminal bubbles show a short activity line under the session name.
 The provider/model (or terminal readiness) appears above it; status and attention
 badges stay independent. The three initial Billing summaries in this preview were
@@ -496,6 +503,19 @@ optionally, per repository (Settings → Items → Workflow review → /review w
 
 The contract is frozen with each request. The app ships only neutral defaults; a
 plugin pack can supply its own contract with a settings preset.
+
+The same workflow may also review without being asked, for example on every pull
+request event. With **Show reviews the workflow posts on its own** on (the default),
+`WorkflowReportAdoption` reads the cached discussion of each open, mapped pull
+request, takes the newest `github-actions[bot]` comment not yet settled that links
+one run of the repository, and hands it to `WorkflowReviewCoordinator.adopt`, which
+checks the run (configured workflow file, an accepted event, this pull request,
+review job started) before it creates the item. A run that is not such a review is
+settled and the next older comment is tried. Such a job never posts; from there it is
+watched like a requested one. The package's plugin storage (`report-adoption` /
+`state`) keeps, per pull request, the time up to which no report is shown
+(`settledUntil`: when the setting came on, then the time of the report on the map)
+and the runs nothing more is done for (`settled`). The rule is PR-03-ADOPT in the specification.
 
 The workflow chooses its own model; the local Claude model selector does not
 override it. Other jobs in the same workflow are unrelated to this action. Detect

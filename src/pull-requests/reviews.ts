@@ -58,7 +58,8 @@ export function buildWorkflowReviewRequest(repository: string, prNumber: number,
 export interface ReviewWatch {
   repository: string;
   prNumber: number;
-  triggerCommentId: number;
+  /** Absent for a review the workflow posted without a request from ACT. */
+  triggerCommentId?: number;
   /** Bind only after the adapter has established which run belongs to the trigger. */
   runId: number;
   resultCommentId: number;
@@ -75,16 +76,16 @@ export interface ReviewObservation {
 }
 
 /** Observe the specific review job and its edited comment, not the workflow's green check. */
-export function observeWorkflowReview(watch: ReviewWatch, observation: ReviewObservation, deadlineReached = false, contract: WorkflowReviewContract = DEFAULT_WORKFLOW_REVIEW_CONTRACT) {
+export function observeWorkflowReview(watch: ReviewWatch, observation: ReviewObservation, deadlineReached = false, contract: WorkflowReviewContract = DEFAULT_WORKFLOW_REVIEW_CONTRACT, events: readonly string[] = ['issue_comment']) {
   if (watch.runId !== observation.runId || watch.repository !== observation.repository
     || observation.workflowPath !== contract.workflowPath
-    || observation.event !== 'issue_comment' || observation.jobName !== contract.jobName) {
+    || !events.includes(observation.event) || observation.jobName !== contract.jobName) {
     throw new Error('Observation does not belong to the tracked review');
   }
   const runUrl = `https://github.com/${watch.repository}/actions/runs/${watch.runId}`;
   const candidate = observation.comment;
   const comment = candidate?.id === watch.resultCommentId && candidate.prNumber === watch.prNumber
-    && candidate.author === 'github-actions[bot]' && candidate.body.includes(`](${runUrl})`) ? candidate : undefined;
+    && candidate.author === 'github-actions[bot]' && candidate.body.toLowerCase().includes(`](${runUrl})`.toLowerCase()) ? candidate : undefined;
   const resultUrl = comment ? `https://github.com/${watch.repository}/pull/${watch.prNumber}#issuecomment-${comment.id}` : undefined;
   const failure = Boolean(contract.failureText) && comment?.body.includes(contract.failureText);
   const report = !failure && comment && reportMarker(contract).test(comment.body);
