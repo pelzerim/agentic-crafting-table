@@ -99,6 +99,8 @@
       "category": "public.app-category.developer-tools",
       "identity": "-",
       "icon": "apps/desktop/assets/app-icon.icns",
+      "entitlements": "apps/desktop/assets/entitlements.mac.plist",
+      "entitlementsInherit": "apps/desktop/assets/entitlements.mac.plist",
       "protocols": [
         {
           "name": "Agentic Crafting Table link",
