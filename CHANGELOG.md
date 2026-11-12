@@ -3,7 +3,7 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
-## Unreleased
+## 0.20.1 — 2026-11-12
 
 ### Desktop
 - **Microphone for sessions**: on macOS the app and the Claude sessions in it can now use the microphone, for example for voice input. macOS asks once; before, it refused without asking. (#26, @hwartig)
