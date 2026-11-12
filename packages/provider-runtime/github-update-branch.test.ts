@@ -39,7 +39,7 @@ test('pr.updateBranch is a human-only write bound to this pull request that retu
   const f = githubFixture(), connector = githubPullRequestConnector(() => f.client);
   const resource = { id: 'pr', pluginId: 'github.pull-request', schemaVersion: 1, title: 'PR', data: key } as any;
   const action = connector.actions!(resource).find(entry => entry.id === 'pr.updateBranch')!;
-  assert.deepEqual([action.readOnly, action.humanOnly, action.updatesSnapshot], [false, true, true]);
+  assert.deepEqual([action.readOnly, action.humanOnly, action.actsForPerson, action.updatesSnapshot], [false, undefined, true, true]);
   await assert.rejects(connector.execute!(resource, 'pr.updateBranch', signal(), { ...request, sourceResourceId: 'other', requestId: 'x' }), /another item/);
   await assert.rejects(connector.execute!(resource, 'pr.updateBranch', signal(), { ...request, expectedHeadOid: 'nope', sourceResourceId: 'pr', requestId: 'x' }), /incomplete/);
   assert.equal(f.branchUpdates.length, 0);

@@ -69,7 +69,7 @@ File I/O stays in the service, never in the renderer. The views reach the four a
   text. Creating a file there is refused.
 - A file whose mode does not let the service write it is refused with "No permission to write the file". The
   rename would otherwise replace it, because a rename only needs a writable folder.
-- Marked `humanOnly`: the open item saves, agent tools do not.
+- Marked `actsForPerson`: the open item saves, and agent tools save only while Settings → General → Agents may act for you is on (MCP-ACT-01).
 
 **`stat` action**
 - Returns `{ state: 'present', modifiedAt, size }` from the file's metadata, without reading the content.

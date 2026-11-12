@@ -50,6 +50,21 @@ port, and reserves stdout for protocol messages, following the
 | `workspace_apply` | Apply one typed command. `expectedRevision` is optional for commands that only add (see [Revisions](#revisions)). |
 | `workspace_run` | Dispatch generic item operations through plugin connectors, or session/workflow operations through the runtime adapter. |
 
+`workspace_run` refuses an agent by the policy each operation and item action declares:
+
+| Declared | For an agent |
+| --- | --- |
+| nothing, or `allow` | runs |
+| `actsForPerson` (merge, update branch, pull request state and title tag, approve a deployment, save a text file; starting or stopping an auto deploy, a review loop, a validation, Explain architecture; sending review findings to an agent or cancelling that; adding linked pull requests) | runs while Settings → General → **Agents may act for you** is on (the default); refused with a message naming the setting while it is off |
+| `humanOnly` (rename an agent, record an item as opened, plot edits, mute, hide, show or hide a validation agent, override whether a review finding is fixed) | always refused |
+| a redirect | refused with the name of the tool to use instead |
+
+`resource.actions` returns each action's `actsForPerson` and `humanOnly`, so an agent can tell
+before it asks. An agent never goes ahead past a blocker: an action that heeds blockers is refused
+when the agent's input carries `overrideBlockers`. `workspace_settings` refuses an update that changes `agentsActForPerson`: only
+the user changes it, in Settings. This server keeps no settings; `createServer` takes the
+value as its fourth argument (default on).
+
 `benchgrove://workspace` also exposes the state as an MCP resource.
 `benchgrove://agent-guide` exposes the same versioned workspace instructions that
 new agents, direct PR reviews and architecture runs receive as system instructions.

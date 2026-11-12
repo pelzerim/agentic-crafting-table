@@ -99,7 +99,7 @@ test('connector binds options to this PR title, switches or removes the tag and 
   const f = githubFixture(), connector = githubPullRequestConnector(() => f.client);
   const resource = { id: 'pr', pluginId: 'github.pull-request', schemaVersion: 1, title: 'PR', data: key } as any;
   const action = connector.actions!(resource).find(action => action.id === 'pr.showShip')!;
-  assert.equal(action.humanOnly, true); assert.equal(action.updatesSnapshot, true);
+  assert.deepEqual([action.humanOnly, action.actsForPerson], [undefined, true]); assert.equal(action.updatesSnapshot, true);
   assert.equal(connector.actions!(resource).find(action => action.id === 'pr.showShip.options')?.readOnly, true);
   const choices = await connector.execute!(resource, 'pr.showShip.options', signal()) as any;
   assert.deepEqual(choices.context, { sourceResourceId: 'pr', expectedTitle: base }); assert.equal(choices.current, '');

@@ -12,6 +12,11 @@ test('draft changes count changed leaves and name the page that holds each one',
   assert.deepEqual(draftChanges(saved, draft).sort(), ['AI features', 'Map', 'Map', 'agent.session:claude', 'agent.session:claude', 'workspace.note'].sort());
 });
 
+test('whether agents may act for the person belongs to the General page', () => {
+  const saved = settingsSchema.parse({});
+  assert.deepEqual(draftChanges(saved, { ...saved, agentsActForPerson: false }), ['General']);
+});
+
 test('the default working directory belongs to the Items page', () => {
   const saved = settingsSchema.parse({});
   assert.deepEqual(draftChanges(saved, { ...saved, defaultWorkingDirectory: '/Users/example/code' }), ['Items']);

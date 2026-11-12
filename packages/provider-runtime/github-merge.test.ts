@@ -117,7 +117,7 @@ test('connector binds options to this PR and head, and returns the merged or que
   assert.deepEqual(choices, { current: '', prompt: 'Merge #42 “Make billing plan changes predictable” into main at aaaaaaa?', context: { sourceResourceId: 'pr', pullRequestId: 'PR_kwDOfixture42', expectedHeadOid: head },
     options: [{ id: 'SQUASH', label: 'Squash and merge' }, { id: 'MERGE', label: 'Create a merge commit' }, { id: 'REBASE', label: 'Rebase and merge' }] });
   const action = connector.actions!(resource).find(action => action.id === 'pr.merge')!;
-  assert.equal(action.humanOnly, true); assert.equal(action.updatesSnapshot, true);
+  assert.deepEqual([action.humanOnly, action.actsForPerson], [undefined, true]); assert.equal(action.updatesSnapshot, true);
   assert.equal(connector.actions!(resource).find(action => action.id === 'pr.merge.options')?.readOnly, true);
   await assert.rejects(connector.execute!(resource, 'pr.merge', signal(), { ...choices.context, value: 'SQUASH', sourceResourceId: 'other', requestId: 'x' }), /another item/);
   await assert.rejects(connector.execute!(resource, 'pr.merge', signal(), { ...choices.context, value: 'FAST_FORWARD', requestId: 'x' }), /incomplete/);

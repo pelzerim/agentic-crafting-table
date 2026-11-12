@@ -13,9 +13,11 @@ import type { ResourceCoordinator } from '../workspace-service/resources.ts';
 import type { SessionCoordinator } from '../workspace-service/sessions.ts';
 import type { HostedAgents } from '../workspace-service/agents.ts';
 
-/** How an agent may use an operation through workspace_run. A redirect names the
- * dedicated tool that performs it instead. The person in the app is never limited. */
-export type AgentPolicyRule = 'allow' | 'humanOnly' | { redirect: string };
+/** How an agent may use an operation through workspace_run. `actsForPerson` marks a write or a launch
+ * made in the person's name (a merge, an approval, a run that spends their tokens): agents may run it
+ * while Settings → General → Agents may act for you is on. `humanOnly` is refused whatever that setting
+ * says. A redirect names the dedicated tool that performs it instead. The person in the app is never limited. */
+export type AgentPolicyRule = 'allow' | 'humanOnly' | 'actsForPerson' | { redirect: string };
 /** One rule, or a rule per `arguments.operation` value with a fallback. */
 export type AgentPolicy = AgentPolicyRule | { operations: Readonly<Record<string, AgentPolicyRule>>; otherwise: AgentPolicyRule };
 export interface RuntimeOperationDeclaration { id: string; description?: string; agentPolicy?: AgentPolicy }

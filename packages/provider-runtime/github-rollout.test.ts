@@ -162,7 +162,7 @@ test('connector offers a bound confirmation and returns the continued rollout af
   const choices = await connector.execute!(resource, 'rollout.approval.options', signal()) as any;
   assert.deepEqual(choices, { current: '', prompt: 'Approve production for run #28?', context: { runId: '101', attempt: '1', environmentIds: '1', sourceResourceId: 'rollout' }, options: [{ id: 'approve', label: 'Confirm' }] });
   const approve = connector.actions!(resource).find(action => action.id === 'rollout.approve')!;
-  assert.equal(approve.humanOnly, true); assert.equal(approve.updatesSnapshot, true);
+  assert.deepEqual([approve.humanOnly, approve.actsForPerson], [undefined, true]); assert.equal(approve.updatesSnapshot, true);
   await assert.rejects(connector.execute!(resource, 'rollout.approve', signal(), { ...choices.context, value: 'approve', sourceResourceId: 'other', requestId: 'x' }), /another item/);
   await assert.rejects(connector.execute!(resource, 'rollout.approve', signal(), { ...choices.context, environmentIds: '1,abc', value: 'approve', requestId: 'x' }), /incomplete/);
   assert.equal(f.approvals.length, 0);

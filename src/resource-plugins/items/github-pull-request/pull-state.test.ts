@@ -30,7 +30,7 @@ test('open PRs offer Convert to draft and Close…, drafts Mark ready and Close�
 test('the state actions are human-only, declared once and shown as one map menu group', () => {
   const connector = githubPullRequestConnector(() => githubFixture().client), actions = connector.actions!(resource);
   const apply = actions.find(action => action.id === 'pr.state')!;
-  assert.equal(apply.humanOnly, true); assert.equal(apply.updatesSnapshot, true); assert.equal(apply.inputFields?.comment?.required, false);
+  assert.deepEqual([apply.humanOnly, apply.actsForPerson], [undefined, true]); assert.equal(apply.updatesSnapshot, true); assert.equal(apply.inputFields?.comment?.required, false);
   assert.equal(actions.find(action => action.id === 'pr.state.options')?.readOnly, true);
   const group = githubPullRequest.contextMenu?.find(group => group.id === 'state');
   assert.deepEqual(group, { id: 'state', label: 'Change state', children: [], choices: { load: 'pr.state.options', apply: 'pr.state', loadingLabel: 'Checking the pull request…' } });

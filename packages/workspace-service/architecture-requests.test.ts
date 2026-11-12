@@ -211,8 +211,14 @@ test('shared runtime exposes preparation/status and gates queued recovery while 
     const [status] = await call('status', requestId) as ArchitectureRequestStatus[];
     assert.equal(status.state, 'prepared'); assert.equal(f.captures, 1);
     await assert.rejects(call('launch', randomUUID()), /not available|agents/i);
-    const refused = await mcp.callTool({ name: 'workspace_run', arguments: { action: 'pr.architecture', nodeId: 'pr', arguments: { operation: 'launch', requestId: randomUUID() } } });
-    assert.ok(refused.isError); assert.match(JSON.stringify(refused.content), /person|human|app/i);
+    const agentsActForPerson = (allowed: boolean) => { const settings = service.store.readSettings(); service.store.writeSettings({ expectedRevision: settings.revision, value: { ...settings.value, agentsActForPerson: allowed } }); };
+    const launch = () => mcp.callTool({ name: 'workspace_run', arguments: { action: 'pr.architecture', nodeId: 'pr', arguments: { operation: 'launch', requestId: randomUUID() } } });
+    agentsActForPerson(false);
+    const refused = await launch();
+    assert.ok(refused.isError); assert.match(JSON.stringify(refused.content), /Agents may act for you/);
+    agentsActForPerson(true);
+    const reached = await launch();
+    assert.ok(reached.isError); assert.match(JSON.stringify(reached.content), /native Claude sessions are not configured/, 'with the setting on the launch reaches the service, which answers for itself');
     assert.equal(service.store.listJobs().length, 1);
     for (let i = 0; i < 100 && service.store.readRecovery().phase === 'recovering'; i++) await new Promise(resolve => setTimeout(resolve, 5));
     const second = randomUUID();

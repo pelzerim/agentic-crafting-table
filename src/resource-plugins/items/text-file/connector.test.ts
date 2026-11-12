@@ -249,7 +249,7 @@ test('an agent gets the path as context and never the content, reads freely and 
     assert.equal((await textFileConnector.getContext!(f.resource(f.path('gone.ts')), AbortSignal.timeout(10_000))).content, `Path: ${f.path('gone.ts')}\n\nFile missing`);
     assert.equal((await textFileConnector.getContext!(f.resource(f.directory), AbortSignal.timeout(10_000))).content, `Path: ${f.directory}\n\nNot a file`);
     const actions = textFileConnector.actions!(f.resource(path));
-    assert.deepEqual(actions.map(action => [action.id, action.readOnly === true, action.humanOnly === true]), [['read', true, false], ['excerpt', true, false], ['stat', true, false], ['write', false, true]]);
+    assert.deepEqual(actions.map(action => [action.id, action.readOnly === true, action.humanOnly === true, action.actsForPerson === true]), [['read', true, false, false], ['excerpt', true, false, false], ['stat', true, false, false], ['write', false, false, true]]);
     assert.deepEqual(actions.filter(action => action.uncached).map(action => action.id), ['read', 'excerpt'], 'the host saves no result that holds text of the file');
     await assert.rejects(f.run(path, 'delete'), /Unknown action/);
   } finally { f.close(); }

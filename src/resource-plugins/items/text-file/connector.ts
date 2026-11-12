@@ -159,7 +159,7 @@ export const textFileConnector: ResourcePluginConnector = {
     { id: 'read', label: 'Read file', readOnly: true, uncached: true, description: `The file's text and the version of its content.` },
     { id: 'excerpt', label: 'Read first lines', readOnly: true, uncached: true, description: `The first lines of the file's text, and whether they are all of it.` },
     { id: 'stat', label: 'Check file', readOnly: true, description: 'The modification time and size, without reading the content.' },
-    { id: 'write', label: 'Save file', readOnly: false, humanOnly: true, description: 'Replaces the content while the file still has the version the text was read at.',
+    { id: 'write', label: 'Save file', readOnly: false, actsForPerson: true, description: 'Replaces the content while the file still has the version the text was read at.',
       inputFields: { text: { label: 'Text', kind: 'text', multiline: true }, path: { label: 'Path the text was read from', kind: 'text' }, baseVersion: { label: 'Version the text was read at', kind: 'text' } } },
   ],
   async execute(resource, actionId, signal, input) {

@@ -37,8 +37,6 @@ export const rolloutValidationInput = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('hide'), validationId: label }).strict(),
   z.object({ operation: z.literal('report'), agentNodeId: z.string().min(1).max(200), ...reportShape }).strict(),
 ]);
-/** Operations only a person starts; agents list, read options and report through their own tool. */
-export const humanRolloutValidationOperations = ['trigger', 'ask', 'show', 'hide'];
 /** An agent that stays idle this long without a final report has not reported. */
 /** The attention.set a validation's outcome needs on its rollout node, or nothing. An event the node already
  * records is settled, also once its alert was acknowledged and the source is gone: raising it again would be refused

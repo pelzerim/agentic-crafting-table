@@ -29,8 +29,6 @@ export const reviewFindingsInput = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('report'), agentNodeId: z.string().min(1), findingIds: ids.min(1),
     commit: z.string().regex(/^[0-9a-f]{7,40}$/i, 'commit must be a 7–40 character hex SHA').optional(), note: z.string().max(500).optional() }).strict(),
 ]);
-/** Operations that change who works on what; agents may only list and report. */
-export const humanReviewFindingOperations = ['send', 'spawn', 'cancel', 'mark'];
 /** Starts a native agent item through the same creation path as the map. */
 export interface AgentSpawner { create(request: ResourceCreate): Promise<unknown>; model(provider: 'claude' | 'codex'): Promise<string> }
 export const derivedId = (requestId: string, part: string) => { const hex = createHash('sha256').update(`${requestId}:${part}`).digest('hex'); return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`; };

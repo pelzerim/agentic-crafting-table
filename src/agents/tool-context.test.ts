@@ -18,9 +18,9 @@ test('the guide without package snippets stays within 3,100 characters', () => {
   assert.ok(length <= 3100, `${length} characters`);
 });
 
-test('the guide that explains note badges carries its own version, so resumed sessions receive it', () => {
-  assert.equal(AGENT_TOOL_CONTEXT_VERSION, '2026-10-22.2');
-  assert.ok(buildAgentToolContext(binding, []).prompt.startsWith('Agentic Crafting Table · workspace guide v2026-10-22.2\n'));
+test('the guide that explains acting for the user carries its own version, so resumed sessions receive it', () => {
+  assert.equal(AGENT_TOOL_CONTEXT_VERSION, '2026-11-12.1');
+  assert.ok(buildAgentToolContext(binding, []).prompt.startsWith('Agentic Crafting Table · workspace guide v2026-11-12.1\n'));
 });
 
 test('the compact guide keeps every behavioural rule', () => {
@@ -41,6 +41,7 @@ test('the compact guide keeps every behavioural rule', () => {
     'status': [/summary very short/, /activity working/, /attentionNote/, /48/, /sentence case/, /no trailing period/],
     'archive-only deletion': [/archive-only/i, /node\.archive/],
     'authorization': [/launch/i, /comments/, /external writes/],
+    'acting for the user': [/actsForPerson actions/, /unless user-authorized for that step/],
     'skills': [/workspace_skills/, /authorized/],
     'honest sync': [/sync limitation/, /never claim/i],
     'map placement': [/node\.attach/, /node\.move/, /node\.update/],

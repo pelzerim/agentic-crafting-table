@@ -197,7 +197,8 @@ For writes that cannot be undone from the app (merge, approve a deployment, dele
 2. Use `choices: { load, apply, irreversible: true }` (or `openResourceChoices` with it). The menu
    then lists **Cancel** first with focus, and choosing an option asks again: "**Squash and
    merge?** This can’t be undone from here." with **Back** and a danger **Confirm**.
-3. Declare the operation or action `humanOnly`; agents are refused.
+3. Declare the operation or action `actsForPerson`: agents run it only while Settings → General →
+   Agents may act for you is on. Use `humanOnly` when an agent must never run it.
 4. One trigger per irreversible action in a view. Do not offer the same approval from the chip,
    a row and the timeline.
 
@@ -284,6 +285,6 @@ chevrons.
 - [ ] No amber, rims, outlines or corner checks drawn by the plugin.
 - [ ] View: title once, one chip with one job, meta line without labels, at most one primary action.
 - [ ] Loading, empty, error and stale states use the shared helpers and copy.
-- [ ] Irreversible actions: copper trigger, `irreversible: true`, `humanOnly`.
+- [ ] Irreversible actions: copper trigger, `irreversible: true`, `actsForPerson` or `humanOnly`.
 - [ ] Needs me reason is 2–5 words, sentence case, no period.
 - [ ] Focus visible, keyboard complete, names on icon buttons, tokens only.

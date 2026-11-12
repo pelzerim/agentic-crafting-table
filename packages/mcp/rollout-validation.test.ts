@@ -5,9 +5,13 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServiceMcpServer } from './service-server.ts';
 import { createServer } from '../../src/mcp/server.ts';
 
-async function connect(binding: { agentNodeId?: string }) {
+/** `calls` leaves out reads of the settings, which the server makes only to decide a request the setting governs. */
+async function connect(binding: { agentNodeId?: string }, agentsActForPerson = true) {
   const calls: { method: string; input: any }[] = [];
-  const server = createServiceMcpServer({ async call(method: string, input?: unknown) { calls.push({ method, input }); return { ok: true } as any; } }, binding);
+  const server = createServiceMcpServer({ async call(method: string, input?: unknown) {
+    if (method === 'settings.read') return { revision: 1, value: { agentsActForPerson } } as any;
+    calls.push({ method, input }); return { ok: true } as any;
+  } }, binding);
   const client = new Client({ name: 'validation-agent', version: '1' }), [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(serverSide), client.connect(clientSide)]);
   const text = (result: any) => (result.content as { text: string }[])[0].text;
@@ -38,12 +42,20 @@ test('the validation report tool forwards as the bound agent only, and refuses w
   } finally { await unbound.client.close(); }
 });
 
-test('agents cannot trigger validations or ask for reports through workspace_run; options and the list stay readable', async () => {
-  const { client, calls, text } = await connect({ agentNodeId: 'claude' });
+test('agents trigger validations and ask for reports through workspace_run only while agents may act for the person; options and the list stay readable', async () => {
+  const acting = await connect({ agentNodeId: 'claude' });
+  try {
+    for (const operation of ['trigger', 'ask']) {
+      const started = await acting.client.callTool({ name: 'workspace_run', arguments: { action: 'rollout.validation', nodeId: 'rollout', arguments: { operation, value: 'claude', requestId: crypto.randomUUID(), validationId: 'V1' } } });
+      assert.notEqual(started.isError, true, acting.text(started));
+    }
+    assert.deepEqual(acting.calls.map(call => [call.method, call.input.arguments.operation]), [['runtime.run', 'trigger'], ['runtime.run', 'ask']]);
+  } finally { await acting.client.close(); }
+  const { client, calls, text } = await connect({ agentNodeId: 'claude' }, false);
   try {
     for (const operation of ['trigger', 'ask']) {
       const refused = await client.callTool({ name: 'workspace_run', arguments: { action: 'rollout.validation', nodeId: 'rollout', arguments: { operation, value: 'claude', requestId: crypto.randomUUID(), validationId: 'V1' } } });
-      assert.equal(refused.isError, true); assert.match(text(refused), /needs a person to confirm it in the app/);
+      assert.equal(refused.isError, true); assert.match(text(refused), /“Agents may act for you” is off in Settings/);
     }
     const forged = await client.callTool({ name: 'workspace_run', arguments: { action: 'rollout.validation', nodeId: 'rollout', arguments: { operation: 'report', agentNodeId: 'codex', validationId: 'V1' } } });
     assert.equal(forged.isError, true); assert.match(text(forged), /workspace_report_validation/);
@@ -52,11 +64,11 @@ test('agents cannot trigger validations or ask for reports through workspace_run
     assert.equal(calls.length, 2);
   } finally { await client.close(); }
   const executed: unknown[] = [];
-  const server = createServer(undefined, { async execute(request) { executed.push(request); return {}; } });
+  const server = createServer(undefined, { async execute(request) { executed.push(request); return {}; } }, undefined, false);
   const compat = new Client({ name: 'compat-agent', version: '1' }), [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(serverSide), compat.connect(clientSide)]);
   try {
     const refused = await compat.callTool({ name: 'workspace_run', arguments: { action: 'rollout.validation', nodeId: 'rollout', arguments: { operation: 'trigger' } } });
-    assert.equal(refused.isError, true); assert.match((refused.content as { text: string }[])[0].text, /needs a person/); assert.equal(executed.length, 0);
+    assert.equal(refused.isError, true); assert.match((refused.content as { text: string }[])[0].text, /“Agents may act for you” is off in Settings/); assert.equal(executed.length, 0);
   } finally { await compat.close(); }
 });

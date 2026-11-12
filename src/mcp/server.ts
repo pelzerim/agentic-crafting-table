@@ -8,7 +8,7 @@ import type { WorkspaceState } from './control.ts';
 import { FileStore } from './store.ts';
 import { createResourcePluginHost } from '../resource-plugins/catalog.server.ts';
 import type { ResourcePluginHost } from '../resource-plugins/host.ts';
-import { humanOnlyMessage } from '../resource-plugins/host.ts';
+import { agentActionRefusal } from '../resource-plugins/host.ts';
 import { buildAgentToolContext } from '../agents/tool-context.ts';
 
 import { runtimeSchema, agentRuntimeRefusal } from '../../packages/core/runtime.ts';
@@ -18,7 +18,8 @@ export type { RuntimeRequest, RuntimeAdapter, RuntimeExecutionContext } from '..
 const response = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
 const errorResponse = (error: unknown) => ({ ...response({ error: error instanceof Error ? error.message : String(error) }), isError: true });
 
-export function createServer(control = new WorkspaceControl(), runtime?: RuntimeAdapter, plugins: ResourcePluginHost = createResourcePluginHost(control.registry)) {
+/** This server keeps no settings, so `agentsActForPerson` stands in for the setting of that name. */
+export function createServer(control = new WorkspaceControl(), runtime?: RuntimeAdapter, plugins: ResourcePluginHost = createResourcePluginHost(control.registry), agentsActForPerson = true) {
   if (plugins.registry !== control.registry) throw new Error('MCP and plugin host must share the same item registry');
   const server = new McpServer({ name: 'benchgrove', version: '0.1.0' }, { instructions: buildAgentToolContext().prompt });
   server.registerTool('workspace_read', {
@@ -51,7 +52,7 @@ export function createServer(control = new WorkspaceControl(), runtime?: Runtime
     inputSchema: runtimeSchema, annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   }, async (request, extra) => {
     try {
-      const refusal = agentRuntimeRefusal(request); if (refusal) throw new Error(refusal);
+      const refusal = agentRuntimeRefusal(request, undefined, agentsActForPerson); if (refusal) throw new Error(refusal);
       if (request.action.startsWith('resource.')) {
         const state = await control.read();
         const node = state.nodes.find(n => n.id === request.nodeId);
@@ -61,7 +62,7 @@ export function createServer(control = new WorkspaceControl(), runtime?: Runtime
         if (request.action === 'resource.actions') return response(plugins.actions(resource, extra.signal));
         if (request.action === 'resource.context') return response(await plugins.getContext(resource, extra.signal));
         const args = z.object({ actionId: z.string().min(1), input: z.record(z.string(), z.json()).default({}) }).parse(request.arguments);
-        if (plugins.actions(resource, extra.signal).find(action => action.id === args.actionId)?.humanOnly) throw new Error(humanOnlyMessage);
+        const refused = agentActionRefusal(plugins.actions(resource, extra.signal).find(action => action.id === args.actionId), agentsActForPerson, args.input); if (refused) throw new Error(refused);
         return response(await plugins.execute(resource, args.actionId, args.input, extra.signal));
       }
       if (!runtime) throw new Error('Provider runtime is not connected. No session, command, review or comment was started.');

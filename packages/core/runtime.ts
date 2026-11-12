@@ -1,22 +1,22 @@
 import * as z from 'zod/v4';
 import type { WorkspaceState } from './control.ts';
-import { humanOnlyMessage } from '../../src/resource-plugins/host.ts';
+import { agentsMayNotActMessage, humanOnlyMessage } from '../../src/resource-plugins/host.ts';
 import { createPluginPackageRegistry } from '../../src/resource-plugins/builtins.ts';
 import type { AgentPolicy, RuntimeOperationDeclaration } from '../plugin-sdk/host.ts';
 
 /** Operations the host provides itself. Packages declare their own in act-plugin.json;
- * choosing who fixes review findings is the user's, and reports go through their own tool. */
+ * reports of fixed review findings go through their own tool. */
 export const hostRuntimeOperations: readonly RuntimeOperationDeclaration[] = [
   { id: 'agent.start' }, { id: 'agent.resume' }, { id: 'agent.reply' }, { id: 'agent.context' }, { id: 'agent.context.ack' }, { id: 'agent.context.inject' },
   { id: 'agent.title', agentPolicy: 'humanOnly' },
   { id: 'terminal.start' }, { id: 'terminal.startup' }, { id: 'terminal.input' }, { id: 'session.read' }, { id: 'skill.run' },
   { id: 'pr.comments' }, { id: 'pr.review.options' }, { id: 'pr.review.status' }, { id: 'review.result' }, { id: 'review.retry' },
-  { id: 'review.findings', agentPolicy: { operations: { report: { redirect: 'Report fixed review findings with workspace_report_review_fixes.' }, list: 'allow', options: 'allow', preview: 'allow' }, otherwise: 'humanOnly' } },
+  { id: 'review.findings', agentPolicy: { operations: { report: { redirect: 'Report fixed review findings with workspace_report_review_fixes.' }, list: 'allow', options: 'allow', preview: 'allow', mark: 'humanOnly' }, otherwise: 'actsForPerson' } },
   { id: 'pr.review.codex' }, { id: 'pr.review.claude' }, { id: 'pr.review.workflow' },
-  // Arming spends review and agent runs on a person's behalf; agents may read its status and options.
-  { id: 'review.loop', agentPolicy: { operations: { status: 'allow', options: 'allow' }, otherwise: 'humanOnly' } },
-  // Launching spends a model run and publishes to claude.ai; agents may prepare and read status.
-  { id: 'pr.architecture', agentPolicy: { operations: { options: 'allow', prepare: 'allow', status: 'allow' }, otherwise: 'humanOnly' } },
+  // Arming spends review and agent runs on a person's behalf.
+  { id: 'review.loop', agentPolicy: { operations: { status: 'allow', options: 'allow' }, otherwise: 'actsForPerson' } },
+  // Launching spends a model run and publishes to claude.ai.
+  { id: 'pr.architecture', agentPolicy: { operations: { options: 'allow', prepare: 'allow', status: 'allow' }, otherwise: 'actsForPerson' } },
   { id: 'resource.read' }, { id: 'resource.actions' }, { id: 'resource.action' }, { id: 'resource.content' }, { id: 'resource.context' }, { id: 'resource.viewed' },
   { id: 'resource.opened', agentPolicy: 'humanOnly' },
   { id: 'plot', agentPolicy: 'humanOnly' },
@@ -51,9 +51,11 @@ function agentRule(policy: AgentPolicy | undefined, operation: unknown) {
   return typeof operation === 'string' && Object.hasOwn(policy.operations, operation) ? policy.operations[operation] : policy.otherwise;
 }
 
-/** Why an agent may not run this operation through workspace_run, from its declared policy. */
-export function agentRuntimeRefusal(request: { action: string; arguments?: RuntimeRequest['arguments'] }, known: readonly RuntimeOperationDeclaration[] = runtimeOperationDeclarations()) {
+/** Why an agent may not run this operation through workspace_run, from its declared policy.
+ * `agentsActForPerson` is the setting of that name. */
+export function agentRuntimeRefusal(request: { action: string; arguments?: RuntimeRequest['arguments'] }, known: readonly RuntimeOperationDeclaration[] = runtimeOperationDeclarations(), agentsActForPerson = true) {
   const rule = agentRule(known.find(declaration => declaration.id === request.action)?.agentPolicy, request.arguments?.operation);
   if (rule === 'allow') return undefined;
+  if (rule === 'actsForPerson') return agentsActForPerson ? undefined : agentsMayNotActMessage;
   return rule === 'humanOnly' ? humanOnlyMessage : rule.redirect;
 }

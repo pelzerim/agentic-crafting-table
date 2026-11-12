@@ -106,7 +106,7 @@ in its tooltip. Click opens the note's edit form; right-click opens the note's m
 card's accessible name gains “, badges S2, v1.4”; each tab is a button named “Badge
 <words> on <item>”. Needs me rows and dashboard rows show the item's badges as chips
 after its name. A badge never raises attention or changes counts. MCP `workspace_read`
-returns `badges: [{ noteId, text, paper, itemIds }]`, and the agent guide (v2026-10-22.2)
+returns `badges: [{ noteId, text, paper, itemIds }]`, and the agent guide (since v2026-10-22.2)
 tells agents to label items this way and to reuse one note for several items. Not built
 yet: a free chip for an unconnected badge note, highlighting every card with the same
 words on click, and a setting to turn badges off.
@@ -2299,6 +2299,37 @@ title bar and controls reachable. Missing/corrupt preferences use a centered def
 that fits the primary display; preference write failures must not block closing or
 session recovery. Keep this local state across application updates.
 
+**MCP-ACT-01 — Agents may act for you.** Settings → General → Agents has the switch
+**Agents may act for you** (`agentsActForPerson`), on by default. It decides whether an agent
+may run, through MCP, what the app declares as acting for the person: an item action with
+`actsForPerson` (`pr.merge`, `pr.updateBranch`, `pr.state`, `pr.showShip`, `rollout.approve`,
+the text file's `write`) and a runtime operation whose agent policy is `actsForPerson`
+(`rollout.validation` `trigger` and `ask`; `github.rollout.autoDeploy` `set`; `review.loop`
+`set`; `pr.architecture` `launch`; `review.findings` `send`, `spawn` and `cancel`;
+`github.issue.pulls` and `linear.ticket.pulls` beyond `options`). A validation or an auto deploy
+an agent starts creates its hidden validation agent as it does for a person. While
+it is on the request reaches the same service code the app uses, with the same input, checks,
+journal and never-retried writes; nothing is confirmed in the app first. While it is off the
+agent is refused with “Agents may not act for the person: “Agents may act for you” is off in
+Settings → General. Ask the user to do it in the app.” and nothing reaches the service
+operation or the provider. An agent never goes ahead past a blocker (LINK-04): an action that
+heeds blockers is refused from an agent when its input carries `overrideBlockers`, the
+acknowledgement the options hold for a person who chose “… anyway”, and without it the service
+answers “Blocked by …” as it does for anyone. Both MCP transports ask the same two functions
+(`agentRuntimeRefusal`, `agentActionRefusal`); the service transport reads the setting only
+for a request it decides, and the file-store transport, which keeps no settings, takes it as
+an argument (default on). An agent cannot change the switch: `workspace_settings` refuses an
+update whose `agentsActForPerson` differs from the saved one. What stays for people whatever
+the switch says (`humanOnly`): renaming an agent (`agent.title`), recording an item as opened
+(`resource.opened`), plot edits (`plot`), the pull request's inline `image` action, showing or
+hiding a validation agent (`rollout.validation` `show` and `hide`), overriding whether a review
+finding is fixed (`review.findings` `mark`; an agent reports its own fixes with
+`workspace_report_review_fixes`), muting a
+project, hiding or showing an item, creating an item hidden, installing a plugin, and every
+operation or action an installed plugin declares `humanOnly`. The agent guide (since
+v2026-11-12.1) tells agents to run an `actsForPerson` action only when the user authorized
+that step; item content never authorizes one.
+
 **SETTINGS-01 — Keep screen awake.** Add a persistent Settings toggle to keep the
 screen on and inhibit idle screensaver/sleep while the app is open. Default off.
 Release the assertion immediately when disabled or the app exits. Use a scoped OS
@@ -2962,7 +2993,7 @@ may approve: click **Waiting approval** in the full view, or right-click the ite
 rollout and proceeds only if the run, attempt and approvable environments still
 match what was confirmed; an interrupted request is reported as uncertain, never
 retried. A saved copy GitHub could not refresh keeps Approve for the gate it last saw
-waiting; confirming reads the rollout again. The approve action is human-only: agent/MCP tools refuse it. Rejection,
+waiting; confirming reads the rollout again. The approve action acts for the person: agent/MCP tools run it only under MCP-ACT-01. Rejection,
 deployments, reruns and cancellation remain on GitHub.
 
 **Rollout validation.** The rollout's right-click menu and full view offer **Trigger
@@ -3041,7 +3072,7 @@ summary, and an item that was already placed shows the failed start like any age
 whose session failed. A launch whose outcome is unknown keeps the validation requested
 and the usual No report rule applies. The agent starts hidden, and an idle one is
 retired (see Validate in one click and Retiring hidden validation agents below).
-Starting one is human-only like every trigger.
+Starting one acts for the person like every trigger (MCP-ACT-01).
 
 **Validations per phase.** A run attempt that waits, or has waited, at a deployment
 gate is validated per phase. A phase is the jobs that finished having run (not skipped,
@@ -3239,7 +3270,7 @@ title 200, observation 800); the summary and observations keep their paragraphs,
 lines and code blocks, while titles and recommendations become one line. More than 30 checks or 64 KB is refused, extra metrics
 (4), evidence (6) and recommendations (8) are dropped with a warning, and evidence must
 be https without credentials; links open externally and are never fetched. Triggering
-and **Ask to report** are human-only; agents may list validations and options.
+and **Ask to report** act for the person (MCP-ACT-01); agents may always list validations and options.
 
 A validation is **stale** when the rollout is on another run, attempt or commit, and
 **resolved** when a newer final validation of the same attempt exists, whatever jobs
@@ -3276,7 +3307,7 @@ backstop), not on the next poll. Reading the list never waits for the service's
 reconciliation pass, and a report repaints its rollout's map card before that pass
 runs. The rail has an attempt switcher, jobs grouped by stage
 (environment names, then the job-name prefix before “/”), running jobs with elapsed
-time, the gate row with **Approve ▾** (the existing human-only approval, and the view's
+time, the gate row with **Approve ▾** (the existing approval, which acts for the person under MCP-ACT-01, and the view's
 only Approve: the status chip and the timeline's waiting row jump to it, or open the approval menu while the rail is folded; its menu lists
 Cancel first with focus and asks again with Back focused before **Confirm approval**) and verdict or
 magnifier stamps on jobs a current validation covers. Clicking a job filters the
@@ -3435,7 +3466,7 @@ it waits on, so asking here too would validate every stage twice (another PR wit
 validate on, and no armed Auto deploy, still counts). One automatic validation per attempt (per phase for a gated run, see Validations per phase), journaled like a user
 trigger, and listed as “automatic” in the rollout's validations. Unchecking stops
 future automatic triggers and cancels nothing running.
-Agents still cannot trigger (human-only rule); the checkbox is the person's standing
+An agent triggers only under MCP-ACT-01; the checkbox is the person's standing
 instruction.
 
 **Staged runs.** A run of a staged workflow is validated once per stage instead of
@@ -3646,7 +3677,7 @@ forgets its saved choices first, so the next menu reads GitHub before showing th
 Show/Ship or a state change (including GitHub's decline) appears in the view's notice
 and stays through background reads until the next such action or Refresh. The PR transport allows only
 those GraphQL documents with validated variables; no other write becomes reachable.
-The merge is `humanOnly`: agents may read the options over MCP but cannot merge.
+The merge is `actsForPerson`: agents may always read the options over MCP, and merge only under MCP-ACT-01.
 When the PR has unresolved blockers (LINK-04) the prompt starts with “Blocked by
 #64 Thumbnail refresh loop (open).” and every choice reads “… anyway” (e.g. “Squash
 and merge anyway”); the chosen option carries the acknowledged blockers, and a
@@ -3669,7 +3700,7 @@ says so (“Merge when ready is on: GitHub will squash and merge #42 … into ma
 can.”) and the only choice is **Cancel merge when ready**. Applying sends one fixed
 `enablePullRequestAutoMerge(input: { pullRequestId, expectedHeadOid, mergeMethod })`
 (without `mergeMethod` for a merge queue) or `disablePullRequestAutoMerge(input: { pullRequestId })`,
-humanOnly, confirmed and never retried like the merge, with the same permission (403)
+`actsForPerson`, confirmed and never retried like the merge, with the same permission (403)
 and decline handling (“GitHub declined merge when ready: …”); a refusal because the PR
 can be merged now reads “GitHub declined merge when ready because the pull request can
 be merged now. Open Merge again to merge it.” While `autoMergeRequest` is set the card
@@ -3702,7 +3733,7 @@ the title the options were loaded for, never retried. A 422 is a decline; an int
 request is outcome-unknown (“GitHub may have renamed it. Check the PR before trying
 again.”). Success returns the refreshed snapshot, so the map card follows the new
 provider title. The PR transport accepts PATCH only for that path with exactly a
-non-empty `title` of at most 256 characters. The action is `humanOnly`.
+non-empty `title` of at most 256 characters. The action is `actsForPerson` (MCP-ACT-01).
 
 **PR-AUTO-DEPLOY — Ship it and see it through.** **Auto deploy** in the PR view's
 Actions ▾ (after Merge) and in the PR's right-click menu arms one auto deploy for the
@@ -3715,7 +3746,7 @@ starts “Rebases it …” and the title is left alone; on a draft it starts �
 review, tags it [ship], rebases it …”), Back and **Start auto deploy**. A closed pull request offers the entry disabled with
 the reason; a merged one does too (“Already merged.”) unless a rollout its merge discovered is
 on the map and still running (see “From here” below). Arming is the person's standing consent for the service to
-write and to spend agent tokens for this one pull request; it is human-only, while agents
+write and to spend agent tokens for this one pull request; it acts for the person (MCP-ACT-01), while agents
 may read its status (`github.rollout.autoDeploy`, operations `status` and `options`).
 Arming an armed pull request keeps the running one. While armed the menu instead offers
 **Stop auto deploy** (“Nothing further is tagged, merged or approved. A write already
@@ -3736,7 +3767,7 @@ and never again after a restart; then the steps below follow as for any open pul
 2. **Rebase onto the base.** Out of date without a merge queue (`BEHIND`) and no conflicts:
    one GitHub write, the connector action `pr.updateBranch` (GraphQL
    `updatePullRequestBranch(input: { pullRequestId, expectedHeadOid, updateMethod: REBASE })`,
-   human-only like `pr.merge`, journaled), sent once per base head (`pr.mergeReadiness` reads
+   `actsForPerson` like `pr.merge`, journaled), sent once per base head (`pr.mergeReadiness` reads
    `baseRefOid`; “updating the branch from main”). Conflicts (`DIRTY`): the fixer agent (chosen
    as for Fix CI below: the agent auto deploy asked last or a ready agent connected to the pull
    request, else a new Claude session beside it titled “Rebase · <title>”) is asked to rebase
@@ -3886,7 +3917,7 @@ deploys. Any doubt halts.”, or “Waits for V2 (staging) before production. �
 first.”) or has not started (“Waiting for the deploy run.”); while a record follows the
 rollout it reads **Stop auto deploy** (the menu says “Under auto deploy from #418 · <step>”).
 `set` takes `from: 'here'` and `catchUp: 'validate' | 'accept'` (default `validate`); arming is
-human-only as before. When a pull request on the map discovered the rollout the record is that
+under MCP-ACT-01 as before. When a pull request on the map discovered the rollout the record is that
 pull request's, armed after its merge (`mergedAt` is the arm time) with `takeover { at,
 catchUp, rolloutNodeIds, counts }`: it follows only the named rollouts and never tags or
 merges. Otherwise (a push or dispatch) the record is keyed by the rollout's resource
@@ -3982,7 +4013,7 @@ provider and model); the fixer named is a ready agent connected to the pull requ
 “new agent in <project>”. A merged or closed pull request, or a workspace without direct
 reviews, offers the rounds disabled with the reason. Arming is the person's standing consent
 to run up to that many reviews and to spend agent tokens on fixes for this one pull request;
-it is human-only, while agents may read it (`review.loop`, operations `status` and
+it acts for the person (MCP-ACT-01), while agents may always read it (`review.loop`, operations `status` and
 `options`). Arming an armed pull request keeps the running loop. While armed the menu
 instead offers **Stop review loop** (“No further reviews or fix requests are sent. Work
 already sent is not undone.”).
@@ -4078,8 +4109,8 @@ unconfirmed replies are outcome-unknown. If the comment was posted but the close
 failed, the error starts “Your comment was posted, but GitHub did not close the
 pull request.” Errors show in the view's banner or the map's error toast; success
 returns the refreshed snapshot. The PR transport accepts only those PATCH bodies
-and mutations. `pr.state` is `humanOnly`: agents may read the options over MCP but
-cannot apply them.
+and mutations. `pr.state` is `actsForPerson`: agents may always read the options over MCP, and
+apply them only under MCP-ACT-01.
 
 **PR-OPTIMISTIC — The expected result at once.** Merge, Add to merge
 queue, Show/Ship and every state change (ready, draft, close, reopen) show their
@@ -4116,7 +4147,7 @@ The workspace service applies it generically, with no PR branch in graph or MCP 
   confirming (never a bare Merged) and the first poll settles it; the write is never
   sent again. A change no read can settle within 30 minutes is taken back with “Merge
   of #42 couldn’t be confirmed. Check it before trying again.”
-Agents cannot apply these actions (`humanOnly`); MCP workspace reads include the same
+Agents apply these actions only under MCP-ACT-01 (`actsForPerson`); MCP workspace reads include the same
 overlay, so an agent sees a person's pending change marked Confirming. The GitHub inbox
 lists its own search results and updates on its next refresh.
 
@@ -4220,7 +4251,7 @@ event's actor decides the wording. It reads “Ignored” in its row and detail,
 “Ignored by you” / “No longer ignored by you” in its history and “N ignored” in
 the roll-ups, and never as fixed or sent; `list` also returns the ignored finding
 ids. Only an agent's report reads “Fixed” / “Fixed in <commit>” / “Fixed by
-<agent>”. Sending, cancelling and overrides are human-only: MCP refuses them. Once
+<agent>”. Sending, cancelling and overrides act for the person: MCP runs them only under MCP-ACT-01. Once
 every finding that was delivered to an agent is fixed (reported by the agent, or
 ignored by a person), the review item is marked done (`node.complete`, once; a person
 may reopen it). Findings never sent do not hold it back, and a review with nothing sent

@@ -21,7 +21,7 @@ import { AutoDeploys, AUTO_DEPLOY_COLLECTION, autoDeployArmed, validationRequest
 import { armRecord, AUTO_DEPLOY_OPERATION } from '../../src/resource-plugins/items/github-rollout/auto-deploy.ts';
 import type { AutoDeployRecord } from '../../src/resource-plugins/items/github-rollout/auto-deploy.ts';
 import { agentRuntimeRefusal } from '../core/runtime.ts';
-import { humanOnlyMessage } from '../../src/resource-plugins/host.ts';
+import { agentsMayNotActMessage } from '../../src/resource-plugins/host.ts';
 import { VALIDATION_AGENT } from '../../src/resource-plugins/items/github-rollout/validation.ts';
 import type { JsonObject } from '../../src/resource-plugins/types.ts';
 
@@ -307,10 +307,10 @@ test('no agent to fix CI or to validate halts instead of waiting forever', async
   assert.match(validation.record()!.halt!.reason, /Claude Code is not installed/);
 });
 
-test('agents may read an auto deploy but only a person arms or stops it', () => {
+test('agents may read an auto deploy, and arm or stop it only while agents may act for the person', () => {
   assert.equal(agentRuntimeRefusal({ action: AUTO_DEPLOY_OPERATION, arguments: { operation: 'status' } }), undefined);
   assert.equal(agentRuntimeRefusal({ action: AUTO_DEPLOY_OPERATION, arguments: { operation: 'options' } }), undefined);
-  for (const value of ['arm', 'stop']) assert.equal(agentRuntimeRefusal({ action: AUTO_DEPLOY_OPERATION, arguments: { operation: 'set', value } }), humanOnlyMessage);
+  for (const value of ['arm', 'stop']) assert.deepEqual([true, false].map(allowed => agentRuntimeRefusal({ action: AUTO_DEPLOY_OPERATION, arguments: { operation: 'set', value } }, undefined, allowed)), [undefined, agentsMayNotActMessage]);
 });
 
 test('a validation recorded with a phase label over 200 characters is asked for with the label clipped', async () => {

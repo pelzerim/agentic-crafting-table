@@ -18,9 +18,9 @@ const plugin: PluginDefinitionsModule = {
       description: 'A JSON list of rules. Each rule matches workflow names with a case-insensitive regular expression and lists its stages: an environment from the job names, with optional delayMinutes and focus. Leave empty to stage no workflow.' } },
     validate: values => { parseStageRules(typeof values.stageRules === 'string' ? values.stageRules : ''); } },
   runtimeOperations: [{ id: 'rollout.validation', description: 'List, trigger or report validations of a rollout by connected agents.',
-    agentPolicy: { operations: { report: { redirect: 'Report rollout validations with workspace_report_validation.' }, options: 'allow', list: 'allow' }, otherwise: 'humanOnly' } },
-  { id: AUTO_DEPLOY_OPERATION, description: 'Read the auto deploy of a pull request or of a rollout it follows: its step, why it halted, and on a rollout its phase track and what it did. Only a person starts or stops it.',
-    agentPolicy: { operations: { status: 'allow', options: 'allow' }, otherwise: 'humanOnly' } }],
+    agentPolicy: { operations: { report: { redirect: 'Report rollout validations with workspace_report_validation.' }, options: 'allow', list: 'allow', show: 'humanOnly', hide: 'humanOnly' }, otherwise: 'actsForPerson' } },
+  { id: AUTO_DEPLOY_OPERATION, description: 'Read the auto deploy of a pull request or of a rollout it follows: its step, why it halted, and on a rollout its phase track and what it did. Starting or stopping it acts for the person.',
+    agentPolicy: { operations: { status: 'allow', options: 'allow' }, otherwise: 'actsForPerson' } }],
   mcpTools: [{
     name: 'workspace_report_validation',
     description: 'Post progress, the final result or a follow-up of a rollout validation you were asked to run. Pass the rollout item ID and the validationId from the request. Each call replaces the previous report and needs a higher sequence; a final report needs a verdict and at least one check, and ends the validation; a "followup" report amends a final one the same way and may change its verdict. A report for an id nobody requested is recorded as an unrequested validation. Without a validationId (a validation someone asked for in your chat) the report goes to your open validation of this rollout, or starts one with the next id for the stage the rollout has reached; send later reports with the id the receipt names. Only the agent the validation was requested from can report it. Observes only: never approve, rerun or cancel.',

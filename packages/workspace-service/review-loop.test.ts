@@ -16,7 +16,7 @@ import { PUSH_DEADLINE_MS, REVIEW_LOOP_OPERATION } from '../../src/resource-plug
 import type { ReviewLoopRecord } from '../../src/resource-plugins/items/code-review/review-loop.ts';
 import type { Finding, ReviewFindings } from '../../src/pull-requests/review-findings.ts';
 import { agentRuntimeRefusal } from '../core/runtime.ts';
-import { humanOnlyMessage } from '../../src/resource-plugins/host.ts';
+import { agentsMayNotActMessage } from '../../src/resource-plugins/host.ts';
 import type { JsonObject } from '../../src/resource-plugins/types.ts';
 
 const T0 = Date.parse('2026-10-08T10:00:00Z'), MIN = 60_000;
@@ -118,7 +118,7 @@ test('arming confirms reviewer, fixer and limit, is human-only, and Stop ends it
   assert.equal(f.starts.length, before, 'nothing starts after Stop');
   assert.deepEqual(await f.attention(), [null, null], 'Stop raises no Needs me');
   for (const operation of ['status', 'options']) assert.equal(agentRuntimeRefusal({ action: REVIEW_LOOP_OPERATION, arguments: { operation } }), undefined);
-  assert.equal(agentRuntimeRefusal({ action: REVIEW_LOOP_OPERATION, arguments: { operation: 'set', value: 'arm:3' } }), humanOnlyMessage);
+  assert.deepEqual([true, false].map(allowed => agentRuntimeRefusal({ action: REVIEW_LOOP_OPERATION, arguments: { operation: 'set', value: 'arm:3' } }, undefined, allowed)), [undefined, agentsMayNotActMessage]);
   await assert.rejects(f.run({ operation: 'set', value: 'arm:3', sourceResourceId: 'other-r', requestId: randomUUID() }), /another item/);
 });
 

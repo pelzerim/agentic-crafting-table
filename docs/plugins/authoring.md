@@ -291,8 +291,10 @@ Poll budget etiquette:
   Its DNS check is a guard against accidents, not against DNS rebinding.
 
 Connector actions (`actions()` + `execute()`) are item-specific commands that both people and
-agents call through `resource.action`. Mark writes `readOnly: false` and give them
-`humanOnly: true` when only a person may confirm them; MCP refuses those.
+agents call through `resource.action`. Mark writes `readOnly: false`. Give a write made in the
+person's name (merge, approve, post) `actsForPerson: true`: MCP runs it for an agent only while Settings →
+General → Agents may act for you is on. Give an action `humanOnly: true` when only a person may
+ever run it; MCP always refuses those.
 
 **Done when** `resourceConnectorContract` passes with a fixture client (step 14).
 
@@ -360,11 +362,14 @@ Agent policy, declared next to the operation in `plugin.ts`:
 |---|---|
 | `'allow'` (default) | may run it |
 | `'humanOnly'` | are refused with "This action needs a person to confirm it in the app." |
+| `'actsForPerson'` | may run it while Settings → General → Agents may act for you is on; refused with a message naming that setting while it is off |
 | `{ redirect: 'Use acme_report.' }` | are refused with your message pointing to a tool |
 | `{ operations: { options: 'allow' }, otherwise: 'humanOnly' }` | per `arguments.operation` |
 
-Use `humanOnly` for anything that speaks for the person (marking read, approving, merging,
-posting) or cannot be undone. The person in the app is never limited by the policy.
+Use `actsForPerson` for a write or a launch in the person's name (approving, merging, posting,
+a run that spends their tokens), so the person decides once, in Settings, whether agents may make
+it. Use `humanOnly` for what an agent must never decide, whatever that setting says (marking
+read, hiding something from the person). The person in the app is never limited by the policy.
 
 `requiresNode: false` lets an operation run without a node (`context.node` and
 `context.resource` are then undefined). Otherwise check `context.resource?.pluginId`.
@@ -739,7 +744,7 @@ a new fetch of a tag and a new approval; **Roll back** returns to one of the thr
 - [ ] No credentials in item data, settings, `plugin_records`, logs or guide text.
 - [ ] Connector: `signal` passed on, failures throw short messages, polling justified.
 - [ ] Needs me: 2–5 word reason, clears with `null`.
-- [ ] Writes that speak for the person are `humanOnly`; irreversible menu choices are `irreversible`.
+- [ ] Writes that speak for the person are `actsForPerson` (or `humanOnly` when an agent must never make them); irreversible menu choices are `irreversible`.
 - [ ] View: frame header contract, loading/empty/error/stale states, `dispose` cleans up.
 - [ ] CSS: tokens only, scoped selectors, visible focus.
 - [ ] `npm test`, `npm run typecheck`, `npm run release` pass; the dev loop works in the app.

@@ -3,7 +3,10 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
-## Unreleased
+## 0.21.0 — 2026-11-12
+
+### Agents
+- **Agents may act for you**: an agent on the map can now do what before only you could in the app: merge a pull request, update its branch, change its state or its [show]/[ship] tag, approve a deployment, start or stop an auto deploy or a review loop, start validations and Explain architecture, send review findings to an agent, add linked pull requests and save a text file. Settings → General → Agents has the switch, on by default; turn it off and agents are told to ask you. An agent still cannot merge past a blocker, mute a project, hide items or change this switch.
 
 ### Map
 - **Cracks on quiet sessions**: an optional switch in Settings → Map → Agent sessions, off by default. An agent session card that has done nothing for a week gets a small crack in from its edge, more at two weeks and again at four, so you can see how old it is. The tooltip says how long the session has been quiet. The cracks go when the session works again, and nothing cracks in the Undermap, where everything is old anyway. (#27, @timohuovinen)

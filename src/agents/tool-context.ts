@@ -1,6 +1,6 @@
 import { createPluginPackageRegistry } from '../resource-plugins/builtins.ts';
 import type { AgentGuideSnippet } from '../../packages/plugin-sdk/host.ts';
-export const AGENT_TOOL_CONTEXT_VERSION = '2026-10-22.2';
+export const AGENT_TOOL_CONTEXT_VERSION = '2026-11-12.1';
 
 export interface AgentToolBinding {
   projectId?: string;
@@ -30,7 +30,7 @@ export const AGENT_TOOL_GUIDE = [
   '- link.save kinds: reference informs; context informs the target agent; blocks: source finishes before target. Membership: node.attach, not a link. New items: omit position: they land beside what they link to, or beside you; give one only when the user asked for a specific place. Move: node.move.',
   '- Keep your summary very short. node.update activity working while running, then complete or idle. Attention input (decision), error (failure) or review (findings) needs an attentionNote: plain, sentence case, no trailing period, ≤48 chars; clear when resolved. Never set the user\'s done state.',
   '- Deletion is archive-only (node.archive, todo.archive), never unasked. Put reasoning, links and next steps for a person or later agent in a to-do\'s context (todo.context): it stays when you are gone.',
-  '- Registering starts nothing. No agent/skill launches (workspace_skills, workspace_run_skill), comments or other external writes unless user-authorized; workspace_settings changes only when asked.',
+  '- Registering starts nothing. No agent/skill launches (workspace_skills, workspace_run_skill), comments, actsForPerson actions or other external writes unless user-authorized for that step; workspace_settings changes only when asked.',
   '- MCP or capability unavailable: continue, report the sync limitation, never claim success.',
 ].join('\n');
 

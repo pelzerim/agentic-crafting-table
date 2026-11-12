@@ -1459,8 +1459,8 @@ read-only `pr.mergeReadiness`, cached rollout observations, `rollout.validation`
 lists), performs the step through the existing journaled provider actions
 (`pr.showShip`, `pr.merge`, `rollout.approve`) and validation triggers, and
 persists one record per pull request in the package's plugin storage before every
-write. The runtime operation `github.rollout.autoDeploy` is human-only except
-`status`/`options`. The PR view and map menu reach it as a runtime choice source;
+write. The runtime operation `github.rollout.autoDeploy` acts for the person except
+`status`/`options` (MCP-ACT-01: agents run it while Settings → General → Agents may act for you is on). The PR view and map menu reach it as a runtime choice source;
 no graph or MCP transport code knows the item types involved.
 
 Review loop (spec PR-REVIEW-LOOP) follows the same shape. Its decisions are a pure

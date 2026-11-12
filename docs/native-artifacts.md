@@ -63,8 +63,9 @@ asks before publishing is Claude Code's decision and part of the supervised chec
 
 `workspace_run` `pr.architecture` operations: `options` (`canLaunch`), `prepare`,
 `status` (`pending` → `prepared` → `launching` → `launched` with `nodeId`, or `failed`)
-and `launch`. Agents may use options/prepare/status; `launch` is `humanOnly` because it
-spends a model run and publishes to claude.ai (Claude reviews remain agent-startable:
+and `launch`. Agents may always use options/prepare/status; `launch` is `actsForPerson` because it
+spends a model run and publishes to claude.ai, so agents run it only while Settings → General →
+Agents may act for you is on (Claude reviews remain agent-startable:
 they publish nothing).
 
 ## Automatic attachment

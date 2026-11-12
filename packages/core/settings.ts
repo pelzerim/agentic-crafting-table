@@ -156,6 +156,9 @@ export const settingsSchema = z.object({
   offscreenAttention: z.boolean().default(false),
   reviewOpenCounts: z.boolean().default(false),
   sessionCracks: z.boolean().default(false),
+  /** Agents may run, through MCP, the operations and item actions declared `actsForPerson`: merging, approving a
+   * deployment, starting an auto deploy and the like. Off refuses them and names this setting. */
+  agentsActForPerson: z.boolean().default(true),
   /** A moved item pushes the items in its way aside, or stops at them (MAP-13). */
   mapCollisions: z.enum(MAP_COLLISIONS).default('shove'),
   /** Item menus end in Delete…, which removes the item for good after a confirmation. */

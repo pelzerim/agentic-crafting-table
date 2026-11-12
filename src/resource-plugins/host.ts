@@ -18,6 +18,16 @@ function abortable<T>(pending: Promise<T>, signal: AbortSignal): Promise<T> {
 /** Backend dispatch. Provider clients are injected here, never into shared definitions. */
 /** Agent tools refuse actions marked humanOnly; the user confirms them in the app. */
 export const humanOnlyMessage = 'This action needs a person to confirm it in the app. Ask the user to do it there.';
+/** Agent tools refuse what acts for the person while the setting is off. */
+export const agentsMayNotActMessage = 'Agents may not act for the person: “Agents may act for you” is off in Settings → General. Ask the user to do it in the app.';
+/** Agent tools refuse to go ahead past a blocker; the options carry that acknowledgement for a person who chose “… anyway”. */
+export const agentBlockerOverrideMessage = 'This item is blocked, and an agent does not go ahead past a blocker. Leave overrideBlockers out; if it is still blocked, ask the user to do it in the app.';
+/** Why an agent may not run this item action with this input; every agent transport asks here. */
+export function agentActionRefusal(action: Pick<ResourceAction, 'humanOnly' | 'actsForPerson' | 'heedsBlockers'> | undefined, agentsActForPerson: boolean, input: Readonly<Record<string, unknown>> = {}): string | undefined {
+  if (action?.humanOnly) return humanOnlyMessage;
+  if (action?.actsForPerson && !agentsActForPerson) return agentsMayNotActMessage;
+  return action?.heedsBlockers && String(input.overrideBlockers ?? '') ? agentBlockerOverrideMessage : undefined;
+}
 export class ResourcePluginHost {
   readonly registry: ResourcePluginRegistry;
   private connectors = new Map<string, ResourcePluginConnector>();

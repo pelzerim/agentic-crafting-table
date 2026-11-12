@@ -19,8 +19,8 @@ export function githubRolloutConnector(clientFor: (resource: ResourceRecord) => 
       { id: 'rollout.shipped', label: 'Pull requests this run ships', readOnly: true, description: 'Pull requests merged since the previous successful run of the workflow.',
         inputFields: { runId: { label: 'Run ID', kind: 'number', integer: true, min: 1, required: true }, workflowId: { label: 'Workflow ID', kind: 'number', integer: true, min: 1, required: true },
           runNumber: { label: 'Run number', kind: 'number', integer: true, min: 1, required: true }, head: { label: 'Head commit', kind: 'text', required: true, pattern: '^[a-fA-F0-9]{40,64}$' }, branch: { label: 'Branch', kind: 'text', pattern: '^\\S{1,250}$' } } },
-      { id: 'rollout.approve', label: 'Approve deployment', readOnly: false, updatesSnapshot: true, humanOnly: true,
-        description: 'Approve the pending deployment gates on GitHub. Only a person can confirm this in the app.',
+      { id: 'rollout.approve', label: 'Approve deployment', readOnly: false, updatesSnapshot: true, actsForPerson: true,
+        description: 'Approve the pending deployment gates on GitHub. Acts for the person.',
         inputFields: Object.fromEntries(['value', 'runId', 'attempt', 'environmentIds', 'sourceResourceId', 'requestId'].map(key => [key, { label: key, kind: 'text' as const, required: true }])) },
     ],
     async execute(resource, action, signal, input = {}): Promise<JsonValue> {

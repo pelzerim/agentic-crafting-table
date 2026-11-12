@@ -264,6 +264,9 @@ export interface ResourceAction {
   readOnly?: boolean;
   /** Requires a person's confirmation in the app; agent tools refuse it. */
   humanOnly?: boolean;
+  /** A write made in the person's name. Agent tools run it while Settings → General → Agents may act
+   * for you is on, and refuse it while it is off. */
+  actsForPerson?: boolean;
   /** Explicit durable mutation returning a confirmed snapshot for map/cache sync. */
   updatesSnapshot?: boolean;
   /** While the item has unresolved blockers, choices from this read-only action

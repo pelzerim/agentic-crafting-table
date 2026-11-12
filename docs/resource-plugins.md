@@ -223,7 +223,7 @@ An item type needs no host branch for any of these:
 
 | Extension | Package side | Host side |
 |---|---|---|
-| Runtime operations | `runtimeOperations` declarations with an agent policy (`allow`, `humanOnly`, or a per-`operation` rule with redirects); handlers via `ServiceHost.runtimeOperation` | `packages/core/runtime.ts` builds the `workspace_run` vocabulary and refusals from host plus package declarations; the service dispatches by lookup |
+| Runtime operations | `runtimeOperations` declarations with an agent policy (`allow`, `actsForPerson`, `humanOnly`, or a per-`operation` rule with redirects); handlers via `ServiceHost.runtimeOperation` | `packages/core/runtime.ts` builds the `workspace_run` vocabulary and refusals from host plus package declarations; the service dispatches by lookup |
 | MCP tools | `mcpTools`: name, zod input, annotations, optional agent-only refusal, and the runtime request it forwards | `packages/mcp/service-server.ts` registers them generically |
 | Map presentation | `ServiceHost.presentation(type, { indicators, attention, opened })` | `resource-presentation.ts` applies the type's hooks to saved snapshots |
 | Account types | `ServiceHost.connectionProvider(adapter)`, optional Settings `order` | `ProviderConnections.register`; the host itself provides only GitHub |

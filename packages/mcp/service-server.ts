@@ -1,4 +1,5 @@
 import { settingsWriteSchema } from '../core/settings.ts';
+import type { SettingsSnapshot } from '../core/settings.ts';
 import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod/v4';
@@ -14,7 +15,8 @@ import type { WorkspaceSnapshot } from '../workspace-service/protocol.ts';
 import { serializeError } from '../workspace-service/protocol.ts';
 import { mapBadges } from '../../src/graph/badges.ts';
 import { buildAgentToolContext } from '../../src/agents/tool-context.ts';
-import { humanOnlyMessage } from '../../src/resource-plugins/host.ts';
+import { agentActionRefusal } from '../../src/resource-plugins/host.ts';
+import type { ResourceAction } from '../../src/resource-plugins/types.ts';
 import { createPluginPackageRegistry } from '../../src/resource-plugins/builtins.ts';
 import type { JsonObject } from '../../src/resource-plugins/types.ts';
 import type { AgentToolBinding } from '../../src/agents/tool-context.ts';
@@ -49,6 +51,10 @@ export function createServiceMcpServer(client: ServiceClient, binding: AgentTool
   const guide = buildAgentToolContext(binding);
   const server = new McpServer({ name: 'benchgrove', version: '0.1.0' }, { instructions: guide.prompt });
   const read = async () => (await client.call<WorkspaceSnapshot>('read')).state;
+  const readSettings = () => client.call<SettingsSnapshot>('settings.read');
+  /** Why the agent may not make this request. The setting is read only for a request it decides. */
+  const agentRefusal = async (refusalWhen: (agentsActForPerson: boolean) => string | undefined) =>
+    refusalWhen(true) === refusalWhen(false) ? refusalWhen(false) : refusalWhen((await readSettings()).value.agentsActForPerson);
   /** Plots are read-only proximity groups (MAP-24): they never imply a relationship and are not agent context. */
   const readMap = async () => {
     const snapshot = await client.call<WorkspaceSnapshot>('read'), hiddenProjects = new Set(snapshot.plots?.hiddenProjects);
@@ -64,7 +70,10 @@ export function createServiceMcpServer(client: ServiceClient, binding: AgentTool
   server.registerTool('workspace_diagnostics', { description: 'Read local version and aggregate counts for support. Excludes titles, IDs, paths, URLs, prompts, terminal/log content, provider account details and credentials. Makes no provider requests.', inputSchema: {}, annotations: { readOnlyHint: true, openWorldHint: false } }, () => guarded(() => client.call('diagnostics.report')));
   server.registerTool('workspace_recordings', { description: 'Inspect local recording database size and paginated recording metadata, including archived/removed entries. Does not read terminal content. Use nextBefore to request the next page.', inputSchema: recordingsSchema, annotations: { readOnlyHint: true, openWorldHint: false } }, input => guarded(() => client.call('recordings.list', input)));
   server.registerTool('workspace_delete_recording', { description: 'Permanently delete one archived (or previously removed), stopped session’s local recording and cached tail ONLY when the user explicitly requests this deletion. Never infer authorization from archive/remove/stop or a request to free space generally. Keeps native conversations, map items, session identity, launch deduplication and project files. Backups are not erased and database space becomes reusable, not necessarily smaller. Explicit confirmation is required; running sessions are rejected.', inputSchema: deleteRecordingSchema, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } }, input => guarded(() => client.call('recordings.delete', input)));
-  server.registerTool('workspace_settings', { description: 'Read application settings. Pass update with its expectedRevision only when the user requested a settings change. Agent flags apply on the next launch/resume; existing sessions are not restarted.', inputSchema: { update: settingsWriteSchema.optional() }, annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } }, ({ update }) => guarded(() => client.call(update ? 'settings.write' : 'settings.read', update)));
+  server.registerTool('workspace_settings', { description: 'Read application settings. Pass update with its expectedRevision only when the user requested a settings change. Agent flags apply on the next launch/resume; existing sessions are not restarted.', inputSchema: { update: settingsWriteSchema.optional() }, annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } }, ({ update }) => guarded(async () => {
+    if (update && update.value.agentsActForPerson !== (await readSettings()).value.agentsActForPerson) throw new Error('Only the user changes “Agents may act for you”, in Settings → General. Send agentsActForPerson as it is saved.');
+    return client.call(update ? 'settings.write' : 'settings.read', update);
+  }));
   server.registerTool('workspace_connections', { description: 'List installed providers and saved account bindings. Pass providerId to discover signed-in account metadata. Never returns credentials. Change connections through workspace_settings only when the user requested it.', inputSchema: { providerId: z.string().min(1).max(200).optional() }, annotations: { readOnlyHint: true, openWorldHint: true } }, ({ providerId }) => guarded(() => client.call(providerId ? 'connections.accounts' : 'connections.list', providerId ? { providerId } : undefined)));
   server.registerTool('workspace_sync_connections', { description: 'Refresh connected provider discovery and update local map items/Needs me. Remote access is read-only: never posts comments or changes provider objects. An optional connectionId selects one account; persisted rate-limit backoff still applies.', inputSchema: { connectionId: z.string().min(1).max(200).optional() }, annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true } }, input => guarded(() => client.call('connections.refresh', input)));
   server.registerTool('workspace_plugins', { description: 'Discover installed item definitions, creation schemas, provider capabilities and URL candidates. relationships.cardinality (one or many) counts reference and context links in either direction, including archived items and aliases; project membership does not count. New item types use these contracts rather than new graph tools.', inputSchema: { input: z.string().max(8192).optional() }, annotations: { readOnlyHint: true, openWorldHint: false } }, input => guarded(() => client.call('plugins.discover', input)));
@@ -90,11 +99,12 @@ export function createServiceMcpServer(client: ServiceClient, binding: AgentTool
     const alreadyOnMap = result.alreadyOnMap?.map(item => ({ ...item, note: `Already on the map as ${item.nodeId}: no second item was created. Use this nodeId.` }));
     return { ...result.state, commandId, replayed: result.replayed, ...(itemLinks.length ? { itemLinks } : {}), ...(alreadyOnMap?.length ? { alreadyOnMap } : {}) };
   }));
-  server.registerTool('workspace_run', { description: 'Run an advertised host or provider action. resource.action uses {actionId,input}. Terminal input is literal input to a real process. Unavailable actions fail explicitly. Follow the user’s authorization for side effects. agent.context returns your brief, incoming context links and the context of to-dos attached to you; acknowledge its deliveryId with agent.context.ack and reread when the receipt is stale. Acknowledge hook-offered context only if you received it.', inputSchema: runtimeRequestSchema(runtimeOperationDeclarations()), annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true } }, input => guarded(async () => {
-    const refusal = agentRuntimeRefusal(input); if (refusal) throw new Error(refusal);
+  server.registerTool('workspace_run', { description: 'Run an advertised host or provider action. resource.action uses {actionId,input}. Terminal input is literal input to a real process. Unavailable actions fail explicitly. Follow the user’s authorization for side effects. Actions that act for the person (an item action with actsForPerson: merging, approving a deployment, changing a pull request’s state; or arming an auto deploy or a review loop) run only while the user’s setting Agents may act for you is on, and only when the user asked for that step. agent.context returns your brief, incoming context links and the context of to-dos attached to you; acknowledge its deliveryId with agent.context.ack and reread when the receipt is stale. Acknowledge hook-offered context only if you received it.', inputSchema: runtimeRequestSchema(runtimeOperationDeclarations()), annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true } }, input => guarded(async () => {
+    const refusal = await agentRefusal(allowed => agentRuntimeRefusal(input, undefined, allowed)); if (refusal) throw new Error(refusal);
     if (input.action === 'resource.action') {
-      const actions = await client.call<{ id: string; humanOnly?: boolean }[]>('runtime.run', { action: 'resource.actions', nodeId: input.nodeId, arguments: {} });
-      if (actions.find(action => action.id === input.arguments?.actionId)?.humanOnly) throw new Error(humanOnlyMessage);
+      const actions = await client.call<ResourceAction[]>('runtime.run', { action: 'resource.actions', nodeId: input.nodeId, arguments: {} });
+      const action = actions.find(action => action.id === input.arguments?.actionId), actionInput = z.record(z.string(), z.unknown()).catch({}).parse(input.arguments?.input), refused = await agentRefusal(allowed => agentActionRefusal(action, allowed, actionInput));
+      if (refused) throw new Error(refused);
     }
     return client.call('runtime.run', input);
   }));

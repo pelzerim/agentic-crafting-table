@@ -86,7 +86,7 @@ test('only the person’s writes declare an expected result', async () => {
   const { connector } = await setup();
   const declared = connector.actions!(resource).filter(action => action.optimistic).map(action => action.id);
   assert.deepEqual(declared, ['pr.merge', 'pr.state', 'pr.showShip']);
-  for (const action of connector.actions!(resource).filter(action => action.optimistic)) assert.equal(action.humanOnly, true);
+  for (const action of connector.actions!(resource).filter(action => action.optimistic)) assert.deepEqual([action.humanOnly, action.actsForPerson], [undefined, true]);
 });
 
 test('merge when ready shows its cue at once, confirmed by a read with merge when ready on; cancelling restores the status beneath it', async () => {

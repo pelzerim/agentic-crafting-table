@@ -1613,7 +1613,7 @@ upgrade, identity across spellings, no page fetch), `agent-hook-event.test.ts`
 ambiguous URLs, local `<title>` read), `agent-artifacts.test.ts` (card placement,
 agent/PR links, reuse, renames kept, stale sessions), `architecture-requests.test.ts`
 (launch, comparison-key dedupe, archived runs, plain failures, no restart on reopen,
-humanOnly MCP launch), `claude.test.ts` (hosted prompt/provenance plan) and
+an MCP launch refused while agents may not act for the person and reaching the service while they may), `claude.test.ts` (hosted prompt/provenance plan) and
 `context-actions.test.ts` (shared menu/view action, lost-reply reconciliation).
 
 Desktop: `claude-artifacts.spec.ts` pastes an artifact link, dedupes a second spelling
