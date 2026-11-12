@@ -334,6 +334,7 @@ async function main() {
   });
   const startupId = randomUUID();
   workspace.on('status', value => { if (value === 'connected') void workspace.call<SettingsSnapshot>('settings.read').then(applySettings).catch(() => {}); });
+  workspace.on('status', value => { if (value === 'disconnected') workAwake.disconnected(); });
   workspace.on('snapshot', (value: WorkspaceSnapshot, parse?: FrameParse) => {
     const started = performance.now();
     notifications.snapshot(value); workAwake.nodes(value.state.nodes, value.layers?.below.working); broadcast('workspace:snapshot', value);

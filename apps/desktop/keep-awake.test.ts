@@ -16,5 +16,7 @@ test('the work hold is held only while the setting is on and a live board item i
   awake.nodes(working); assert.equal(held.size, 1);
   awake.nodes([{ id: 'a', activity: 'idle' }, { id: 'b', activity: 'complete' }]); assert.equal(held.size, 0, 'an idle board does not hold');
   awake.nodes([{ id: 'a', activity: 'idle' }], 1); assert.equal(held.size, 1, 'a working item below the map holds');
-  awake.nodes(working); awake.release(); assert.equal(held.size, 0);
+  awake.nodes(working); awake.disconnected(); assert.equal(held.size, 0, 'a lost workspace connection releases the hold');
+  awake.nodes(working); assert.equal(held.size, 1, 'the next snapshot restores it');
+  awake.release(); assert.equal(held.size, 0);
 });

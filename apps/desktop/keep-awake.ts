@@ -28,6 +28,8 @@ export function createWorkAwake(blocker: Blocker) {
     setting(value: boolean) { enabled = value; hold.apply(enabled && working); },
     /** `below` counts working items the map layer leaves out of `nodes`. */
     nodes(nodes: Parameters<typeof boardWorking>[0], below = 0) { working = below > 0 || boardWorking(nodes); hold.apply(enabled && working); },
+    /** No snapshot while disconnected, so unknown work does not hold; the next snapshot restores it. */
+    disconnected() { working = false; hold.apply(false); },
     release() { enabled = false; hold.apply(false); },
   };
 }
