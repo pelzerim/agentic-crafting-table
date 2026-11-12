@@ -58,7 +58,7 @@ function LaunchArguments({ value, change }: { value: string; change(value: strin
 const DASHBOARD_SECTION_CHOICES: [keyof DashboardSections, string][] = [['needsYou', 'Needs me'], ['working', 'Working'], ['todos', 'To-dos'], ['plots', 'Plots'], ['pipelines', 'Pull requests'], ['tallies', 'Tickets']];
 const percent = (value: number) => `${Math.round(value * 100)}%`, pixels = (value: number) => `${value} px`;
 
-export function Settings({ close, providers, plugins, openArchive, clearOverlaps, nodeTitles, initialSessionView, sessionRequestId, installRequest, initialSection, updates: updatesProp }: { nodeTitles: Map<string, string>; initialSessionView?: 'active' | 'archived'; sessionRequestId?: number; installRequest?: PluginInstallRequest; initialSection?: string; updates?: { status?: UpdateStatus; check(): Promise<unknown> }; close(): void; providers: ProviderDescription[]; plugins: PluginDescription[]; openArchive(): void; clearOverlaps(): Promise<void> }) {
+export function Settings({ startGuide, close, providers, plugins, openArchive, clearOverlaps, nodeTitles, initialSessionView, sessionRequestId, installRequest, initialSection, updates: updatesProp }: { startGuide?(): void; nodeTitles: Map<string, string>; initialSessionView?: 'active' | 'archived'; sessionRequestId?: number; installRequest?: PluginInstallRequest; initialSection?: string; updates?: { status?: UpdateStatus; check(): Promise<unknown> }; close(): void; providers: ProviderDescription[]; plugins: PluginDescription[]; openArchive(): void; clearOverlaps(): Promise<void> }) {
   const [saved, setSaved] = useState<SettingsSnapshot>(), [remote, setRemote] = useState(true), [awake, setAwake] = useState(false);
   const [notifications, setNotifications] = useState(notificationSettingsSchema.parse({}));
   const [autoMode, setAutoMode] = useState(true);
@@ -375,6 +375,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
         </>}
       </SettingsPage>
       <SettingsPage id="General" title="General" description="How the app behaves on this Mac." hidden={section !== 'General'}>
+        {startGuide && <SettingsSection label="Get started"><SettingRow label="First session guide" description="Choose a project folder, save a task and link it to an agent. Opens automatically for a new workspace; Hide keeps it closed."><Button disabled={dirty} onClick={startGuide}>Open first session guide</Button></SettingRow>{dirty && <p>Save or discard your settings changes before opening the guide.</p>}</SettingsSection>}
         <SettingsSection label="Appearance">
           <SettingRow label="Colours" meta="System by default">
             <Segmented<AppSettings['appearance']> label="Colours" value={appearance} change={setAppearance} options={[

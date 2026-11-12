@@ -1,3 +1,6 @@
+import { agentInstallation } from './agent-installation.ts';
+import { findExecutable, sessionPath } from '../../packages/platform/shell.ts';
+import { findCodexExecutable } from '../../packages/session-runtime/codex-executable.ts';
 import * as z from 'zod/v4';
 import { DesktopNotifications, announcementSchema } from './notifications.ts';
 import type { DesktopAnnouncement, NotificationTarget } from './notifications.ts';
@@ -284,6 +287,11 @@ async function main() {
     if (testDirectory) return;
     const failure = await shell.openPath(app.getPath('userData'));
     if (failure) throw new Error(failure);
+  });
+  ipcMain.handle('app:agent-installation', async event => {
+    assertCaller(event);
+    const path = await sessionPath();
+    return agentInstallation(() => findExecutable('claude', path), () => findCodexExecutable(path));
   });
   ipcMain.handle('app:choose-directory', async event => {
     assertCaller(event);

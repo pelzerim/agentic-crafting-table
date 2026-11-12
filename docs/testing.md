@@ -1745,3 +1745,17 @@ the scripted agent reporting through the MCP bridge: one validation per stage ar
 context, the V1 card shows finished and pending checks while progress is open, a
 follow-up turns V1 to concerns with its tag, and a report for an id nobody requested is kept and tagged.
 Nothing reaches GitHub or a model.
+
+
+### Guided first session
+
+`first-run.spec.ts` opens an isolated empty workspace, verifies the guide opens automatically, saves a
+local task, reloads to check progress, and hides it. A second journey uses the
+scripted native agent to create a project through the UI, inherit its folder,
+launch with an incoming task context link, verify delivery through the real MCP
+bridge, and open the session. Screenshots are saved under `test-results/pr/`.
+`agent-installation.test.ts` checks missing/present discovery without exposing paths.
+No real provider write or model request is involved.
+
+`first-run-state.test.ts` distinguishes pristine workspaces from prior edits, existing
+resources and Undermap content so clearing a map cannot trigger onboarding again.

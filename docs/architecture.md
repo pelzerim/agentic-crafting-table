@@ -2057,3 +2057,18 @@ status; `standup.status` returns `idle | running (step) | done (report) | error`
 renderer polls every 400 ms while running. Reports carry stories, evidence labels and
 links only, never transcript text. The panel is `standup-panel.tsx`; the rail slot and
 menu are `actions-tool.tsx`, using `CanvasMenu`.
+
+
+### Guided first session
+
+The renderer's first-session guide persists only its open state and selected
+project/task IDs in local storage. After the first successful snapshot, an unset
+preference opens the guide only for a pristine revision-zero workspace. Existing
+workspaces and legacy dismissals stay quiet; both initial outcomes are remembered.
+Projects and task notes use ordinary workspace
+commands; the existing agent creation form owns the idempotent launch and incoming
+context connection. No separate onboarding runtime is introduced. A narrow,
+caller-validated Electron IPC method checks Claude and Codex executable discovery
+using the platform shell PATH and Codex native executable resolver. It returns
+provider IDs and installed booleans, never executable paths, and executes neither
+CLI nor model. Authentication and feature compatibility remain launch checks.

@@ -4,6 +4,22 @@ The day-to-day guide: creating things on the map, agents and terminals, moving
 work around, and the settings you will meet first. The [specification](specification.md)
 is the complete reference.
 
+## Your first session
+
+A new workspace opens the first-session guide automatically. Create a project and
+choose its local repository folder, save a task as a note, then choose Claude or
+Codex. The guide checks whether the CLI is installed; sign in through that CLI
+before starting. Review the model and folder in the launch form, then start the
+session. Your task is linked to the agent as context.
+
+![The first-session guide on an empty fixture workspace](media/first-run-guide.png)
+
+The guide remembers progress. Hide closes it, and **Settings → General → Get
+started → Open first session guide** brings it back. Existing workspaces do not
+open it automatically. GitHub and Linear connections are optional.
+
+![A fixture task linked to its first agent session](media/first-session-ready.png)
+
 ## Creating items
 
 Double-click empty board space or right-click → **New item**. Choose Project from

@@ -48,6 +48,7 @@ export interface DesktopBridge {
   copyUrl(url: string | string[]): Promise<void>;
   /** Saves an image pasted into an agent's terminal and returns its local path. */
   savePastedImage(bytes: Uint8Array): Promise<string>;
+  agentInstallation(): Promise<import('./agent-installation.ts').AgentInstallation[]>;
   chooseDirectory(): Promise<string | undefined>;
   /** The native file picker; undefined when it is dismissed. */
   chooseFile(): Promise<string | undefined>;
