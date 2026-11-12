@@ -615,7 +615,9 @@ The first paddock holds a `u` whose pseudo-elements draw a posed sheep's head an
 pose adds (gate, block, wool, fence); `b` elements are the pinwheel, the flowers and the
 sheep that walks in or out. Stepped CSS animations on each paddock drive registered custom
 properties (`--graze-x`, `--graze-face`, `--graze-leg`, and `--graze-beat` for poses) that
-the pseudo-elements read; nothing is animated from script. All sprites are pixel rows in
+the pseudo-elements read. The stylesheet defines every animation and its play state; the
+only script is `mark-clock.ts`, which holds looping marks at rate 0 and moves them 8 times a
+second, because a running `steps()` animation recalculates style on every frame. All sprites are pixel rows in
 `grazing.ts`, turned into mask images once and set on the map area. A moment is a one-shot
 animation on the mark whose delay is the time it happened; each new one takes the other of
 two identical keyframe names so that it plays again, and one older than two seconds when

@@ -26,6 +26,24 @@ test.beforeEach(async ({ visual: { page } }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
 });
 
+test('working marks step on one clock, not every frame, and the stylesheet still pauses them', async ({ visual: { page } }) => {
+  await page.getByRole('slider', { name: 'Map zoom' }).fill('1');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const walk = () => mark(page).locator('> i').first().evaluate(item => { const [animation] = item.getAnimations(); return { rate: animation.playbackRate, time: Number(animation.currentTime) }; });
+  await expect.poll(async () => (await walk()).rate).toBe(0);
+  const first = await walk();
+  await expect.poll(async () => (await walk()).time).toBeGreaterThan(first.time);
+  const cdp = await page.context().newCDPSession(page); await cdp.send('Performance.enable');
+  const recalculations = async () => (await cdp.send('Performance.getMetrics')).metrics.find(metric => metric.name === 'RecalcStyleCount')!.value;
+  const before = await recalculations(); await page.waitForTimeout(2000);
+  expect(await recalculations() - before, 'about 8 a second at most, never one per frame').toBeLessThan(40);
+  await card(page).dblclick();
+  await expect(page.locator('.map-area')).not.toHaveAttribute('data-focus', '');
+  await expect.poll(() => mark(page).locator('> i').first().evaluate(item => getComputedStyle(item).animationPlayState.split(', ')[0])).toBe('paused');
+  const held = await walk(); await page.waitForTimeout(400);
+  expect((await walk()).time).toBe(held.time);
+});
+
 test('a prompt, a question and an error each pose the sheep on a card that is not working', async ({ visual: { page } }) => {
   const amber = await token(page, '--act-attention');
   // Permission prompt: the standing sheep at a closed amber gate, nudging it.

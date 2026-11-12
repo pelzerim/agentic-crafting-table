@@ -69,6 +69,17 @@ is why CI uses explicit budgets rather than exact baseline equality.
 
 ## Changes and ongoing checks
 
+- Working marks do not run every frame. A running `steps()` animation makes the browser
+  recalculate style on each frame even when the picture does not change. `mark-clock.ts`
+  sets looping marks to rate 0 and moves them from one 8 Hz timer. `pause()` is not used:
+  it would take the play state from the stylesheet, which pauses marks behind an open
+  item and in a muted project. On the 200-item dense map with 102 mark animations at
+  60 Hz (Linux x64, three interleaved runs, medians): renderer 17.2% → 6.8% of a core,
+  style recalculations 60 → 8 a second, style time 84 → 15 ms a second. Reading
+  `playState` flushes style, so the clock reads every mark before it moves any; reading
+  and moving in one loop gave one recalculation per mark.
+- `PostToolUse` is an asynchronous hook, so a tool call waits for one hook process, not
+  two. See [Native Claude](native-claude.md) for why `PreToolUse` stays blocking.
 - Visible terminals use the official WebGL renderer when available; hidden views
   release it, and initialization/context-loss failures keep a DOM fallback.
   Renderer changes preserve the terminal and process. The regression report

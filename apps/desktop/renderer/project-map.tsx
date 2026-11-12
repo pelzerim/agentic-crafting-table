@@ -33,6 +33,7 @@ import { ZoomBar } from './zoom-bar.tsx';
 import { OffscreenAttention } from './offscreen-attention.tsx';
 import type { WaitingBox } from './offscreen-attention.tsx';
 import type { Badge } from '../../../src/graph/badges.ts';
+import { startMarkClock } from './mark-clock.ts';
 import { WorkingAnimalContext, WorkingMark, workingMarkStyle } from './working-mark.tsx';
 import type { WorkingMarkSettings } from '../../../packages/core/settings.ts';
 import { leadPose, markLabel } from './grazing.ts';
@@ -508,6 +509,7 @@ function MapCanvas(props: ProjectMapProps) {
   const [size, setSize] = useState({ width: 1000, height: 700 });
   const [focus, setFocus] = useState<string>();
   useEffect(() => { props.onView?.(focus); }, [focus, props.onView]);
+  useEffect(() => startMarkClock(container.current!), []);
   const occupiedControls = useMapObstacles(container, size.width, size.height, Boolean(focus));
   const dashboardObstacles = useMapObstacles(container, size.width, size.height, Boolean(focus), DASHBOARD_OBSTACLES);
   const [closing, setClosing] = useState<string>();
