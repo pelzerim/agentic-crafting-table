@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { AgentNames, adoptedName, pendingName } from './agent-names.ts';
+import { AgentNames, NAME_MISSING_RETRY_MS, adoptedName, pendingName } from './agent-names.ts';
 import type { NativeNameIo } from './agent-names.ts';
 import { MemoryStore, WorkspaceControl } from '../core/control.ts';
 import type { WorkspaceCommand } from '../core/control.ts';
@@ -31,7 +31,8 @@ async function setup() {
     if (method === 'sessions.rename') { const record = records.find(record => record.id === args.sessionId)!; record.native = { ...record.native!, name: args.name }; return {} as T; }
     throw new Error('Unknown supervisor method');
   } };
-  const names = new AgentNames(control, runtime, async () => {}, () => true, native.io);
+  const clock = { now: 1_000 };
+  const names = new AgentNames(control, runtime, async () => {}, () => true, native.io, () => clock.now);
   const agent = async (id: string, title: string, provider: 'claude' | 'codex', options: { running?: boolean; nativeName?: string; claudeName?: string; driverName?: string } = {}) => {
     const nativeSessionId = randomUUID(), sessionId = randomUUID(), state = await control.read();
     await control.apply({ type: 'item.add', id, resourceId: `${id}-r`, pluginId: 'agent.session', title, position: { x: state.nodes.length * 400, y: 0 },
@@ -43,7 +44,7 @@ async function setup() {
   };
   const read = async (id: string) => { const state = await control.read(), node = state.nodes.find(node => node.id === id)!; return { title: node.title, synced: state.resources.find(resource => resource.id === node.resourceId)!.data.nativeName }; };
   const rename = async (id: string, title: string) => control.apply({ type: 'node.update', id, title } as WorkspaceCommand, (await control.read()).revision);
-  return { control, names, native, records, runtimeCalls, agent, read, rename };
+  return { control, names, native, records, runtimeCalls, agent, read, rename, clock };
 }
 
 test('the table name wins the first agreement unless it is a creation default; a later CLI name is taken', () => {
@@ -118,4 +119,19 @@ test('a rename on the table while a name was being sent is not undone by the nam
   assert.equal(native.claude.get(id)!.name, 'Fix login redirect');
   assert.deepEqual(await read('agent'), { title: 'Fix login redirect', synced: 'Fix login redirect' });
   assert.ok((await control.read()).revision > 0);
+});
+
+test('a name a CLI refused is sent again only after a while, or at once when the name changes', async () => {
+  const { names, native, agent, rename, clock } = await setup();
+  const lost = await agent('lost', 'Fix login', 'claude'); native.claude.delete(lost);
+  const renameCodex = native.io.renameCodex;
+  native.io.renameCodex = async names => { native.calls.push(...names.map(({ name }) => `codex ${name}`)); return []; };
+  await agent('gone', 'Deploy notes', 'codex');
+  const attempts = () => native.calls.filter(call => call.startsWith('claude') || call.startsWith('codex'));
+  await names.tick(); await names.tick();
+  assert.deepEqual(attempts(), ['claude Fix login', 'codex Deploy notes'], 'no process is started on every tick for a thread that is gone');
+  await rename('gone', 'Ship deploy notes'); await names.tick();
+  assert.deepEqual(attempts().slice(2), ['codex Ship deploy notes']);
+  clock.now += NAME_MISSING_RETRY_MS; native.io.renameCodex = renameCodex; await names.tick();
+  assert.deepEqual(attempts().slice(3), ['claude Fix login', 'codex Ship deploy notes']);
 });

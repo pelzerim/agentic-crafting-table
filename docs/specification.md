@@ -2302,6 +2302,8 @@ side changes. Every 30 seconds the service compares each on-map agent with a nat
   taken only when the item still has its creation default. An AI title Claude made up is never taken.
 - A rename on the table while a name was being sent wins: the name the CLI then holds is recorded, and
   the newer one goes out on the next tick.
+- A name a CLI refuses (a deleted transcript or thread) is sent again after 5 minutes, or at once when the
+  item is renamed, so a missing Codex thread does not start a process on every tick.
 
 **AGENT-08 — Skills.** Project actions can launch installed/configured AI skills
 with the same context, runtime and sync guide as direct agent creation. Runs are

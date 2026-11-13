@@ -8,7 +8,8 @@ import { renameCodexThreads } from '../session-runtime/codex.ts';
 import { isOffMap } from '../../src/graph/archive.ts';
 
 export const NAME_TICK_MS = 30_000;
-/** A transcript that was not found is looked for again after this long; the search lists every Claude project folder. */
+/** A transcript that was not found is looked for again after this long; the search lists every Claude project folder.
+ * A name a CLI refused (a deleted transcript or thread) is sent again after as long, or at once when the name changes. */
 export const NAME_MISSING_RETRY_MS = 5 * 60_000;
 
 /** How the ticks reach the native CLIs; every call is asynchronous. */
@@ -65,6 +66,8 @@ export class AgentNames {
   private control: WorkspaceControl; private runtime: Runtime; private changed: () => Promise<void>; private allowed: () => boolean; private io: NativeNameIo; private now: () => number;
   private transcripts = new Map<string, Transcript>();
   private missing = new Map<string, number>();
+  /** Names a CLI refused, by native ID: a stopped Codex thread costs a process for every attempt. */
+  private refused = new Map<string, { name: string; until: number }>();
   private timer?: ReturnType<typeof setTimeout>; private running?: Promise<void>; private paused = true;
   constructor(control: WorkspaceControl, runtime: Runtime, changed: () => Promise<void>, allowed: () => boolean, io: NativeNameIo = nativeNameIo, now: () => number = Date.now) {
     this.control = control; this.runtime = runtime; this.changed = changed; this.allowed = allowed; this.io = io; this.now = now;
@@ -84,6 +87,8 @@ export class AgentNames {
     const live = new Map(records.filter(record => ['starting', 'running'].includes(record.state)).map(record => [record.id, record]));
     const claude = new Set(agents.filter(agent => agent.provider === 'claude').map(agent => agent.id));
     for (const id of [...this.transcripts.keys(), ...this.missing.keys()]) if (!claude.has(id)) { this.transcripts.delete(id); this.missing.delete(id); }
+    const known = new Set(agents.map(agent => agent.id));
+    for (const id of this.refused.keys()) if (!known.has(id)) this.refused.delete(id);
     const agreed = new Map<string, { name: string; adopt?: string }>(), codex: { agent: Agent; name: string }[] = [];
     for (const agent of agents) {
       const record = live.get(String(agent.resource.data.sessionId));
@@ -91,12 +96,12 @@ export class AgentNames {
       const adopt = adoptedName(agent.node.title, agent.synced, native, defaults);
       if (adopt) { agreed.set(agent.node.id, { name: adopt, ...(adopt !== agent.node.title ? { adopt: agent.node.title } : {}) }); continue; }
       if (native !== undefined && native === nativeName(agent.node.title) && native !== agent.synced) { agreed.set(agent.node.id, { name: native}); continue; }
-      const name = pendingName(agent.node.title, agent.synced, defaults);
-      if (!name) continue;
+      const name = pendingName(agent.node.title, agent.synced, defaults), refused = this.refused.get(agent.id);
+      if (!name || (refused?.name === name && refused.until > this.now())) continue;
       if (agent.provider === 'codex') { codex.push({ agent, name }); continue; }
       if (record) continue; // The next prompt hook names it; Claude would write its own name back over this one.
-      try { await this.io.renameClaude(agent.id, name, typeof agent.resource.data.cwd === 'string' ? agent.resource.data.cwd : undefined); agreed.set(agent.node.id, { name}); }
-      catch { /* Not saved on this computer; the next tick tries again. */ }
+      try { await this.io.renameClaude(agent.id, name, typeof agent.resource.data.cwd === 'string' ? agent.resource.data.cwd : undefined); agreed.set(agent.node.id, { name }); }
+      catch { this.refuse(agent.id, name); } // Not saved on this computer.
     }
     const stopped: { agent: Agent; name: string }[] = [];
     for (const entry of codex) {
@@ -107,10 +112,12 @@ export class AgentNames {
     }
     if (stopped.length) {
       const renamed = new Set(await this.io.renameCodex(stopped.map(({ agent, name }) => ({ id: agent.id, name }))).catch(() => [] as string[]));
-      for (const { agent, name } of stopped) if (renamed.has(agent.id)) agreed.set(agent.node.id, { name});
+      for (const { agent, name } of stopped) if (renamed.has(agent.id)) agreed.set(agent.node.id, { name }); else this.refuse(agent.id, name);
     }
+    for (const agent of agents) if (agreed.has(agent.node.id)) this.refused.delete(agent.id);
     if (agreed.size) await this.record(agreed);
   }
+  private refuse(id: string, name: string) { this.refused.set(id, { name, until: this.now() + NAME_MISSING_RETRY_MS }); }
   /** Records the name each CLI holds now. A name typed in a CLI renames the item only if the item kept the title it had
    * when that was decided; a newer name on the table is sent on the next tick. */
   private async record(agreed: Map<string, { name: string; adopt?: string }>) {
