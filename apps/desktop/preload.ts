@@ -56,6 +56,7 @@ const bridge: DesktopBridge = {
   setBadgeCount: count => ipcRenderer.invoke('app:badge', count),
   copyUrl: url => ipcRenderer.invoke('app:copy-url', url),
   savePastedImage: bytes => ipcRenderer.invoke('app:save-pasted-image', bytes),
+  agentInstallation: () => ipcRenderer.invoke('app:agent-installation'),
   chooseDirectory: () => ipcRenderer.invoke('app:choose-directory'),
   chooseFile: () => ipcRenderer.invoke('app:choose-file'),
   pathForFile: file => webUtils.getPathForFile(file),

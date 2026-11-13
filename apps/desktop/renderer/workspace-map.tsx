@@ -1,3 +1,4 @@
+import { initialFirstRunActive } from './first-run-state.ts';
 import { loadResourceChoices, choiceInput } from '../../../src/resource-plugins/choices.ts';
 import { TodoOverlay } from './todo-overlay.tsx';
 import type { TodoOverlayHandle, TodoUndo } from './todo-overlay.tsx';
@@ -54,7 +55,7 @@ import type { MenuAction, MenuActionId } from '../../../packages/core/context-me
 import { NeedsMeTool } from './attention-list.tsx';
 import { ItemIcon } from './icons.tsx';
 import { ConnectionStatus } from './connection-status.tsx';
-import { FirstRunCard } from './first-run.tsx';
+import { FirstRunCard, readFirstRunActive, saveFirstRunActive } from './first-run.tsx';
 import { ResourceActionNotice, useResourceMenuActions } from './resource-menu-actions.tsx';
 import { NEEDS_ME, attentionCounts, attentionItems, attentionRestorable } from '../../../src/graph/attention.ts';
 import { needsMeIds } from '../../../src/graph/atlas.ts';
@@ -311,6 +312,14 @@ export function WorkspaceMap() {
   const [todoUndo, setTodoUndo] = useState<TodoUndo>(), todoUndoNotice = useNotice(todoUndo, true);
   const [copiedUrls, setCopiedUrls] = useState<{ count: number }>(), copyNotice = useNotice(copiedUrls, true);
   useNativeAnnouncement(removedLink, { title: 'Connection removed', body: 'Return to ACT to undo this change.' });
+  const [openItemId, setOpenItemId] = useState<string>();
+  const [firstRun, setFirstRun] = useState(readFirstRunActive);
+  useEffect(() => {
+    if (firstRun !== undefined || !snapshot) return;
+    const active = initialFirstRunActive(snapshot.state, (snapshot.layers?.below.items ?? 0) + (snapshot.layers?.below.projects.length ?? 0));
+    saveFirstRunActive(active); setFirstRun(active);
+  }, [firstRun, snapshot]);
+  const toggleFirstRun = (active: boolean) => { setFirstRun(active); saveFirstRunActive(active); };
   const [editor, setEditor] = useState<Editor>(), [error, setError] = useState(''), [connection, setConnection] = useState('connecting');
   const shownError = useMemo(() => error ? humanError(error) : undefined, [error]);
   const retryLoad = useRef(() => {});
@@ -505,7 +514,7 @@ export function WorkspaceMap() {
     return seenOnOpen(type, settingsRef.current?.value.notifications ?? { seenOnOpen: [] }, context);
   }, []);
   const { acknowledge, notices, opened: attentionOpened, view: viewing, kept, restore } = useAttention(snapshot, accept, setError, seenOnOpenFor);
-  const viewed = useCallback((id: string | undefined) => { viewedItem.current = id; viewing(id); }, [viewing]);
+  const viewed = useCallback((id: string | undefined) => { viewedItem.current = id; setOpenItemId(id); viewing(id); }, [viewing]);
   const opened = (id: string, origin: 'user' | 'program' = 'user') => {
     attentionOpened(id, origin);
     const recent = viewRef.current?.recentItems;
@@ -924,9 +933,12 @@ export function WorkspaceMap() {
       pick={id => { setEditor(undefined); revealNode(id, 'centred'); }} idle={recentlyOpened} transient={{ close: () => setMapFindOpen(false) }} /></div>}
     {snapshot && below && !layerGraph.nodes.length && <div className="map-message below-empty"><p>Undermap is empty. Right-click an item on the map and choose <b>Send to Undermap</b>.</p></div>}
     {below && riseCharge > 0 && <div className="below-rise" aria-hidden="true"><span>Keep zooming out to rise to the map</span><i style={{ width: `${riseCharge * 100}%` }} /></div>}
-    {snapshot && !below && !snapshot.state.nodes.length && !snapshot.layers?.below.items && <div className="map-message"><span className="eyebrow">YOUR WORKSPACE</span><h1>A place for every project.</h1><p>Double-click anywhere to add an item · right-click for more</p><button onClick={createProject}>Create your first project</button>
-      <FirstRunCard state={snapshot.state} connections={settings?.value.connections ?? []} docked={false} openConnections={openConnections} /></div>}
-    {snapshot && !below && snapshot.state.nodes.length > 0 && !snapshot.layers?.below.items && snapshot.state.nodes.every(node => !node.resourceId) && <FirstRunCard state={snapshot.state} connections={settings?.value.connections ?? []} docked openConnections={openConnections} />}
+    {snapshot && !below && !snapshot.state.nodes.length && !snapshot.layers?.below.items && firstRun === false && <div className="map-message"><span className="eyebrow">YOUR WORKSPACE</span><h1>A place for every project.</h1><p>Double-click anywhere to add an item · right-click for more</p><button onClick={createProject}>Create your first project</button><button onClick={() => toggleFirstRun(true)}>Guide me through my first session</button></div>}
+    {snapshot && firstRun && <FirstRunCard state={snapshot.state} hidden={below || Boolean(editor) || settingsOpen || Boolean(openItemId)} createProject={createProject}
+      editProject={id => { const node = snapshot.state.nodes.find(node => node.id === id); if (node) setEditor({ mode: 'edit', nodeId: id, position: node.position, screen: { x: innerWidth / 2, y: 100 } }); }}
+      startAgent={(projectId, taskId, provider) => { const task = snapshot.state.nodes.find(node => node.id === taskId); if (task) setEditor({ mode: 'create', initialType: 'agent.session', initialData: { provider }, projectId, connectedFromId: taskId, position: { x: task.position.x + 300, y: task.position.y }, screen: { x: innerWidth / 2, y: 100 } }); }}
+      openAgent={id => revealNode(id)} apply={apply} close={() => toggleFirstRun(false)} />}
+
     <div className="map-status"><ConnectionStatus connection={connection} /></div>
     {connectionDraft && snapshot && <ConnectionEditor draft={connectionDraft} state={snapshot.state} registry={registry} save={apply} close={() => setConnectionDraft(undefined)}
       highlight={nodeId => setMenuHighlight(nodeId ? { nodes: [nodeId], links: [] } : undefined)} />}
@@ -957,7 +969,7 @@ export function WorkspaceMap() {
     {controlsOpen && <ControlsCard close={() => setControlsOpen(false)} />}
     {standupOpen && <StandupPanel close={() => setStandupOpen(false)} reveal={nodeId => revealNode(nodeId, 'map')} openUrl={url => { void window.craftingTable.openUrl(url).catch(error => setError(error.message)); }}
       onMap={nodeId => { const nodes = withUndermapRef.current?.nodes ?? [], node = nodes.find(candidate => candidate.id === nodeId); return Boolean(node && !isArchived(node, nodes)); }} />}
-    {settingsOpen && <Settings sessionRequestId={sessionRequestId} initialSessionView={sessionListView} installRequest={installRequest} initialSection={settingsSection} updates={updates} nodeTitles={new Map(withUndermap?.nodes.map(node => [node.id, node.title]) ?? [])} plugins={plugins ?? []} providers={providers} openArchive={() => setArchiveOpen(true)} clearOverlaps={() => apply([{ type: 'layout.repair' }])} close={() => { setSettingsOpen(false); setInstallRequest(undefined); setSettingsSection(undefined); }} />}
+    {settingsOpen && <Settings startGuide={() => { setSettingsOpen(false); toggleFirstRun(true); }} sessionRequestId={sessionRequestId} initialSessionView={sessionListView} installRequest={installRequest} initialSection={settingsSection} updates={updates} nodeTitles={new Map(withUndermap?.nodes.map(node => [node.id, node.title]) ?? [])} plugins={plugins ?? []} providers={providers} openArchive={() => setArchiveOpen(true)} clearOverlaps={() => apply([{ type: 'layout.repair' }])} close={() => { setSettingsOpen(false); setInstallRequest(undefined); setSettingsSection(undefined); }} />}
     {editor?.mode === 'menu' && <CanvasMenu key={`${editor.nodeId ?? editor.linkId ?? ''}:${editor.screen.x}:${editor.screen.y}`} screen={editor.screen} avoid={editor.avoid} actions={menuActions}
       loadChoices={async (action, refreshed) => {
         if (!selected || !action.choices) return [];
