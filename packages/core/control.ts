@@ -180,6 +180,7 @@ const otherCommands = [
   z.object({ type: z.literal('nodes.action'), ids: z.array(id).min(1).max(1000), action: z.enum(['archive', 'below', 'surface', 'complete', 'reopen', 'add-todo', 'remove-todo']) }),
   z.object({ type: z.literal('node.below'), id }),
   z.object({ type: z.literal('project.mute'), id, muted: z.boolean() }),
+  z.object({ type: z.literal('project.merge'), id, into: id }),
   z.object({ type: z.literal('node.surface'), id }),
   z.object({ type: z.literal('node.hide'), id }),
   z.object({ type: z.literal('node.show'), id, near: z.array(id).max(ITEM_LINK_LIMIT).optional() }),
@@ -283,7 +284,7 @@ export function itemLinkReport(state: WorkspaceState, commands: readonly Workspa
   });
 }
 /** Commands only a person may issue. Muting hides a project's questions from the user, so an agent must not decide it. */
-const HUMAN_ONLY_COMMANDS: ReadonlySet<string> = new Set<WorkspaceCommand['type']>(['project.mute', 'node.hide', 'node.show']);
+const HUMAN_ONLY_COMMANDS: ReadonlySet<string> = new Set<WorkspaceCommand['type']>(['project.mute', 'project.merge', 'node.hide', 'node.show']);
 /** Why an agent may not apply this command; every agent transport and the reducer share it. */
 export function agentCommandRefusal(command: WorkspaceCommand): string | undefined {
   return HUMAN_ONLY_COMMANDS.has(command.type) || (command.type === 'item.add' || command.type === 'item.create') && command.hidden ? humanOnlyMessage : undefined;
@@ -470,10 +471,10 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
        * A to-do (or an item kept in the to-do list) brings its attached items: those from its own
        * project keep their place beside it, the rest stack below. Projects, archived items and items
        * in Undermap never travel, and items already in the project stay where they are. */
-      const sendBlock = (leads: readonly WorkspaceState['nodes'][number][], target: WorkspaceState['nodes'][number], created: ReadonlySet<string> = new Set()) => {
+      const sendBlock = (leads: readonly WorkspaceState['nodes'][number][], target: WorkspaceState['nodes'][number], created: ReadonlySet<string> = new Set(), attachments = true) => {
         const members = new Map(leads.map(lead => [lead.id, lead])), kept = new Set(members.keys());
         const todoResources = new Set(state.resources.filter(resource => resource.pluginId === 'workspace.todo').map(resource => resource.id));
-        for (const lead of leads) {
+        for (const lead of attachments ? leads : []) {
           if (!todoResources.has(lead.resourceId!) && !lead.inTodoList) continue;
           const attached = state.links.filter(link => link.sourceId === lead.id || link.targetId === lead.id).map(link => find(link.sourceId === lead.id ? link.targetId : link.sourceId))
             .filter(member => member.resourceId && !isOffMap(member, state.nodes) && !members.has(member.id));
@@ -784,6 +785,21 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
         }
         case 'node.archive': state.nodes = archiveNode(state.nodes, command.id, new Date().toISOString()); break;
         case 'node.below': sendBelowDraft([command.id]); break;
+        case 'project.merge': {
+          // Archived and Undermap members move too; drawn ones land as one block.
+          const source = project(command.id), target = project(command.into);
+          if (source.id === target.id) throw new Error('Choose another project');
+          if (isArchived(source, state.nodes) || isArchived(target, state.nodes)) throw new Error('Restore this project from the archive first');
+          if (isOffMap(target, state.nodes)) throw new Error('Bring this project back to the map before moving items to it');
+          const members = new Set(state.nodes.filter(node => node.projectId === source.id).map(node => node.id));
+          const drawn = state.nodes.filter(node => members.has(node.id) && !isArchived(node, state.nodes) && !isOffMap(node, state.nodes));
+          // Only the source's own members move: a to-do's attached items in other projects stay put.
+          if (drawn.length) sendBlock(drawn, target, new Set(), false);
+          for (const node of state.nodes) if (members.has(node.id)) node.projectId = target.id;
+          for (const task of state.todos) if (task.nodeIds.includes(source.id)) task.nodeIds = [...new Set(task.nodeIds.map(nodeId => nodeId === source.id ? target.id : nodeId))];
+          state.nodes = archiveNode(state.nodes, source.id, new Date().toISOString());
+          break;
+        }
         case 'project.mute': {
           // Display only: members, sessions, polling and unread attention are untouched.
           const target = project(command.id);

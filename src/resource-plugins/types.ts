@@ -20,6 +20,8 @@ export interface MapSizePreset {
   presentationPips?: boolean;
   /** Dotted data path to `{ tone, count }` entries drawn as coloured numbers in the cue row when the person turns on open finding counts; an empty list draws a quiet check. */
   counts?: string;
+  /** Dotted data path to `{ name, color }` entries drawn as coloured chips on the card's lower edge: three, then +N for the rest. */
+  tags?: string;
   /** Draws the type's map view (`ResourcePluginViews.mountNode`) under the title, in the height the card leaves it. */
   nodeView?: boolean;
   /** Height follows the wrapped text of `field` between `min` and `max` lines; a stored
@@ -141,6 +143,8 @@ export interface ResourcePluginDefinition {
   appearance?: ResourceAppearance;
   /** Declarative map tiers, independent of expanded content dimensions. */
   mapSizes?: MapSizeProfile;
+  /** Data keys the provider rewrites on every load, such as labels: left out of the item's identity, so a read or action racing a refresh still matches. */
+  providerData?: readonly string[];
   /** The pipeline this type is counted in by project headers (e.g. PRs), or the
    * tally that far-zoom dashboards count by state (e.g. tickets). */
   overview?: { pipeline?: { singular: string; plural: string }; tally?: { singular: string; plural: string } };
@@ -207,6 +211,8 @@ export interface ResourceSnapshot {
   /** Backend-verified canonical payload and old payload identities for provider
    * renames. The host validates these with the same plugin/account before merging. */
   resolution?: { data: JsonObject; aliases: JsonObject[] };
+  /** Provider-owned fields saved into the matched items' data: each replaces, null removes, and their other fields (local settings) stay. */
+  dataPatch?: JsonObject;
   /** Authoritative provider title; never infer it from a URL slug or status label. */
   title?: string;
   activity: 'working' | 'idle' | 'complete' | 'unknown';

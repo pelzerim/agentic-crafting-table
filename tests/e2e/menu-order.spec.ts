@@ -22,7 +22,7 @@ const typeSelect = (page: Page) => section(page).getByLabel('Item type', { exact
 const savedMenus = (page: Page) => page.evaluate(async () => (await window.craftingTable.settingsRead()).value.menus);
 async function openMenus(page: Page, type = PR) {
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Settings' }).getByRole('treeitem', { name: 'Items', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Settings' }).getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
   await typeSelect(page).selectOption(type);
   await section(page).getByRole('list').evaluate(list => list.scrollIntoView({ block: 'start' }));
 }

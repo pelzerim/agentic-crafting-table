@@ -18,6 +18,7 @@ import { previewPull } from './preview.ts';
 import { formatWhen } from '../../format-when.ts';
 import { emptyState, mountViewHeader, skeleton, staleNotice } from '../../view-header.ts';
 import { autoValidates, pullHeader, pullViewIdentity } from './header.ts';
+import { cardTags, tagInk } from '../../indicators.ts';
 import type { JsonObject, ResourcePluginViews, ResourceSnapshot, RelatedResourceItem } from '../../types.ts';
 import type { GitHubPullRequest, MergeWhenReady } from '../../../../packages/provider-runtime/github.ts';
 
@@ -41,6 +42,7 @@ export const githubPullRequestViews: ResourcePluginViews = {
     reviewToggle.onclick = () => { actions.hidden = !actions.hidden; reviewToggle.setAttribute('aria-expanded', String(!actions.hidden)); };
     const author = element('span', '', 'pr-meta'), refs = element('code', '', 'pr-refs'), commits = element('code', '', 'pr-commits');
     const meta = element('div', '', 'pr-metadata'); meta.append(author, refs);
+    const labels = element('ul', '', 'pr-labels'); labels.setAttribute('aria-label', 'Labels'); labels.hidden = true;
     const description = element('div', '', 'pr-description markdown-content');
     const descriptionPanel = element('details', '', 'pr-description-panel'), descriptionSummary = element('summary', 'Description');
     descriptionPanel.append(descriptionSummary, meta, description, commits);
@@ -151,7 +153,7 @@ export const githubPullRequestViews: ResourcePluginViews = {
     const relatedSummary = element('summary', 'Connected reviews'), relatedEntries = element('div'); sidebar.append(relatedSummary, relatedEntries);
     tools.append(sidebar); desk.append(discussion);
     const loadingBody = skeleton(document);
-    body.append(loadingBody, tools, actions, desk);
+    body.append(loadingBody, labels, tools, actions, desk);
     const workflowAction = mountWorkflowAction(actions, services);
     const reviewStatus = element('span', '', 'pr-review-status'); reviewStatus.setAttribute('role', 'status');
     // Explain architecture sits with the other Claude/Codex analyses; the map menu shares runArchitectureAction.
@@ -423,6 +425,8 @@ export const githubPullRequestViews: ResourcePluginViews = {
       loadingBody.remove();
       author.textContent = `by ${pull.user.login}`;
       refs.textContent = `${pull.base.ref} ← ${pull.head.ref}`;
+      const tags = cardTags(pull.labels); labels.hidden = !tags.length;
+      labels.replaceChildren(...tags.map(tag => { const chip = element('li', tag.name); chip.style.background = `#${tag.color}`; chip.style.color = tagInk(tag.color); return chip; }));
       commits.textContent = `Commits: ${pull.base.sha.slice(0, 12)} ← ${pull.head.sha.slice(0, 12)}`; commits.title = `${pull.base.sha} ← ${pull.head.sha}`;
       renderMarkdown(description, pull.body || 'No description provided.', { allowHtml: true, images: isAttachment });
       if (descriptionPanel.open) loadImages(description, { kind: 'description' }, services);

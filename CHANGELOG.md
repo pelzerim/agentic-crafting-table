@@ -3,6 +3,30 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Map
+- **Lock plot**: a locked plot keeps its members; nearby items and plots no longer join it. (#24, @shiini2)
+- **Move plot to**: merge a plot into another plot, or move it with its items to another project. (#24, @shiini2)
+- **Move project into**: move all of a project's items, plots and to-dos into another project. (#24, @shiini2)
+
+### Needs me
+- **Newest first**: Needs me now lists the newest first within each group. A toggle in its header switches to oldest first, and this Mac remembers the choice. (#24, @shiini2)
+- **Clear all**: one button in the Needs me header marks every row it shows as seen, the same as pressing Seen on each. (#24, @shiini2)
+
+### Pull requests
+- **Labels on pull requests**: a pull request's GitHub labels show in their own colours, up to three on its map card then +N, and all of them in the open view. They stay after merge or close. (#24, @shiini2)
+
+### Notifications
+- **Quiet startup resumes**: turn off Settings → Notifications → **Notify for sessions resumed at startup** and agents ACT resumes after a restart raise no macOS banner until you next prompt them. Permission requests, questions and errors still notify, and Needs me rows still appear. On by default. (#24, @shiini2)
+
+### Settings
+- **Keep the Mac awake while work is running**: a new switch in Settings → General stops idle sleep while any item on the board is working, and lets the Mac sleep once everything is idle. (#24, @shiini2)
+- **Settings remembers its page**: closing and reopening Settings returns to the page it last showed, until the app restarts. (#24, @shiini2)
+
+### Agents
+- **Map writes on a large workspace**: once the map is large, `workspace_apply` answers with a short receipt in place of the whole map. Before, every status update cost an agent the full map again, and on a large workspace Claude Code refused the result and showed the saved write as an error. (#30, @timohuovinen)
+
 ## 0.21.0 — 2026-11-12
 
 ### Agents
@@ -10,9 +34,6 @@ their pull request and author.
 
 ### Map
 - **Cracks on quiet sessions**: an optional switch in Settings → Map → Agent sessions, off by default. An agent session card that has done nothing for a week gets a small crack in from its edge, more at two weeks and again at four, so you can see how old it is. The tooltip says how long the session has been quiet. The cracks go when the session works again, and nothing cracks in the Undermap, where everything is old anyway. (#27, @timohuovinen)
-
-### Agents
-- **Map writes on a large workspace**: once the map is large, `workspace_apply` answers with a short receipt in place of the whole map. Before, every status update cost an agent the full map again, and on a large workspace Claude Code refused the result and showed the saved write as an error. (#30, @timohuovinen)
 
 ## 0.20.1 — 2026-11-12
 

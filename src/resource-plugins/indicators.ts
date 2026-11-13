@@ -26,3 +26,19 @@ export type CardPips = z.infer<typeof cardPipsSchema>;
 export function unreadCommentsIndicator(count: number, word: 'unread' | 'unseen', options: { showLabel?: boolean } = {}): ResourceIndicator {
   return { id: 'comments', label: `${count} ${word} comment${count === 1 ? '' : 's'}`, icon: 'message-square', tone: 'blue', ...(options.showLabel ? { showLabel: true } : {}) };
 }
+
+/** A coloured chip a type's map preset reads from its item data (`MapSizePreset.tags`), such as a GitHub label. */
+export interface CardTag { name: string; color: string }
+/** The well-formed `{ name, color }` entries of `value`, colours as six lower-case hex digits; anything else, a missing list included, reads as none. */
+export function cardTags(value: unknown): CardTag[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(entry => {
+    const { name, color } = (entry ?? {}) as { name?: unknown; color?: unknown };
+    return typeof name === 'string' && name.trim() && typeof color === 'string' && /^[0-9a-f]{6}$/i.test(color) ? [{ name: name.trim().slice(0, 100), color: color.toLowerCase() }] : [];
+  }).slice(0, 50);
+}
+/** Dark or white text, whichever reads on the tag's own colour; the chip looks the same in either theme. */
+export function tagInk(color: string) {
+  const [red, green, blue] = [0, 2, 4].map(index => parseInt(color.slice(index, index + 2), 16));
+  return (red * 299 + green * 587 + blue * 114) / 255_000 > .6 ? '#1f2328' : '#ffffff';
+}

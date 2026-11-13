@@ -156,8 +156,13 @@ test('background PR updates paint map indicators and approval enters Needs me un
     await list().getByRole('button', { name: `Dismiss ${providers.pull.title} from Needs me`, exact: true }).click();
     await expect(list()).toContainText('Nothing needs me.');
     await tick(); await expect(list()).toContainText('Nothing needs me.');
+    const names = ['backend', 'db-migration', 'webapp', 'webapp-test'], tags = page.locator('.card-tags');
+    providers.pull = { ...providers.pull, labels: names.map((name, index) => ({ name, color: ['d73a4a', 'fbca04', '0e8a16', '1d76db'][index] })) as never[] }; await tick();
+    await expect(tags.locator('.card-tag')).toHaveText(names.slice(0, 3)); await expect(tags.locator('.card-tag-more')).toHaveText('+1');
     providers.pull = { ...providers.pull, merged: true, state: 'closed' }; await tick();
     await expect(card().locator('[data-indicator="review-state"]')).toHaveAttribute('aria-label', 'Merged');
+    await expect(tags.locator('.card-tag')).toHaveText(names.slice(0, 3));
+    await card().click(); await expect(page.locator('.pr-labels li')).toHaveText(names);
   } finally { await app.close(); await service.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
@@ -313,7 +318,7 @@ test('PR conversation defaults to human comments and settings persist bot/activi
     await page.getByRole('button', { name: 'Back to project', exact: true }).click();
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Settings' });
-    await dialog.getByRole('treeitem', { name: 'Items', exact: true }).click();
+    await dialog.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
     await page.keyboard.press('ArrowRight');
     await dialog.getByRole('treeitem', { name: 'GitHub pull request', exact: true }).click();
     await expect(dialog.getByLabel('Include bots and GitHub Actions')).not.toBeChecked();
@@ -414,13 +419,13 @@ test('map comment pill disappears at zero unseen, survives restart and returns f
     const beforeSettings = providers.requests;
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Settings' });
-    await dialog.getByRole('treeitem', { name: 'Items', exact: true }).click();
+    await dialog.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
     await dialog.getByRole('treeitem', { name: 'GitHub pull request', exact: true }).click();
     await dialog.getByLabel('Include bots and GitHub Actions').check();
     await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();
     await expect(pill).toHaveAttribute('aria-label', '1 unseen comment');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await dialog.getByRole('treeitem', { name: 'Items', exact: true }).click();
+    await dialog.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
     await dialog.getByRole('treeitem', { name: 'GitHub pull request', exact: true }).click();
     await dialog.getByLabel('Human discussion comments').uncheck();
     await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();

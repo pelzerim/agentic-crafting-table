@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { contextMenuActions, convertLinkActions, enabledMenuGroups, itemEditLabel, addMenuSeparator, canHideMenuEntry, drawnMenuLayout, isCustomMenu, itemMenuCustom, itemMenuEntries, linkMenuActions, MENU_SEPARATOR, menuLayout, menuSlot, mergeMenuOrder, moveMenuRow, muteProjectAction, removeMenuSeparator, resetItemMenu, saveItemMenu, setMenuEntryHidden, plotMenuActions, deleteItemAction, itemPlotActions, moveToPlotAction, moveToProjectAction, removeFromPlotAction, sendToProjectAction, sharedContextMenuActions, todoContextActions, fieldMenuActions } from './context-menu.ts';
+import { contextMenuActions, convertLinkActions, enabledMenuGroups, itemEditLabel, addMenuSeparator, canHideMenuEntry, drawnMenuLayout, isCustomMenu, itemMenuCustom, itemMenuEntries, linkMenuActions, MENU_SEPARATOR, menuLayout, menuSlot, mergeMenuOrder, moveMenuRow, muteProjectAction, removeMenuSeparator, resetItemMenu, saveItemMenu, setMenuEntryHidden, plotMenuActions, deleteItemAction, itemPlotActions, moveToPlotAction, moveToProjectAction, projectIntoAction, removeFromPlotAction, sendToProjectAction, sharedContextMenuActions, todoContextActions, fieldMenuActions } from './context-menu.ts';
 import { noteItem } from '../../src/resource-plugins/items/note/definition.ts';
 import { pluginSettingsValues } from '../../src/resource-plugins/describe.client.ts';
 import { githubPullRequest } from '../../src/resource-plugins/items/github-pull-request/definition.ts';
@@ -111,6 +111,17 @@ test(`a sign's menu moves the whole plot to another project or to none, and send
   assert.deepEqual(move.children!.map(child => [child.id, child.label, child.checked, child.disabled, child.divider]), [
     ['send:billing', 'Billing', true, true, undefined], ['send:docs', 'Docs', false, undefined, undefined], ['plot-leave', 'No project', undefined, undefined, true]]);
   assert.equal(actions.find(action => action.label === 'Send plot to Undermap')!.id, 'plot-below');
+  const merging = plotMenuActions(true, undefined, undefined, [{ id: 'docs', title: 'Docs', current: false }], { locked: true, others: [{ id: 'p2', name: 'Upload', hidden: false }, { id: 'p3', name: 'Ideas', hidden: true }] });
+  assert.deepEqual(merging.find(action => action.id === 'plot-lock')?.checked, true);
+  assert.deepEqual(merging.find(action => action.id === 'send-project')!.children!.map(child => [child.id, child.label, child.divider]), [
+    ['plot-merge:p2', 'Upload', undefined], ['plot-merge:p3', 'Ideas (hidden)', undefined], ['send:docs', 'Docs', true], ['plot-leave', 'No project', true]], 'other plots first, then projects');
+});
+
+test('a project moves into another project only after a confirmation that counts its items', () => {
+  const into = projectIntoAction('Billing', 12, [{ id: 'billing', title: 'Billing', current: true }, { id: 'docs', title: 'Docs', current: false }]);
+  assert.deepEqual(into.children!.map(child => [child.id, child.confirm?.action]), [['project-into:docs', 'Move 12 items into “Docs”']]);
+  assert.ok(contextMenuActions('project', false, undefined, [], undefined, undefined, undefined, false, undefined, into).some(action => action.id === 'project-into'));
+  assert.ok(!contextMenuActions('item', false, undefined, [], undefined, undefined, undefined, false, undefined, into).some(action => action.id === 'project-into'));
 });
 
 test(`a sign's menu names the colors of its project's neighborhood`, () => {

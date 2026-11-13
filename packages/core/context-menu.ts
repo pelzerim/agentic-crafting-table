@@ -7,7 +7,7 @@ import type { GraphNode } from '../../src/graph/graph.ts';
 import { plotMapOrder } from '../../src/graph/project-column.ts';
 
 export type MenuScope = 'board' | 'neighborhood' | 'item' | 'project' | 'link';
-export type MenuActionId = 'open' | 'connect' | 'new-item' | 'new-project' | 'archive-browser' | 'edit' | 'complete' | 'reopen' | 'archive' | 'below' | 'surface' | 'remove-link' | 'make-blocking' | 'make-normal' | 'reverse-link' | 'open-web' | 'copy-url' | 'add-todo' | 'remove-todo' | 'auto-title' | 'move-plot' | 'plot-new' | 'plot-unpin' | `plot-pin:${string}` | 'plot-select' | 'plot-rename' | 'plot-auto' | 'plot-color' | 'plot-color-auto' | 'plot-hide' | 'plot-leave' | 'plot-below' | 'delete' | 'delete-cancel' | 'delete-confirm' | 'plots-toggle' | 'plots-unhide' | 'send-project' | 'context-show' | 'context-hide' | 'context-add' | 'context-clear' | 'archive-stale' | 'mute' | 'unmute' | 'settings' | 'size-default' | 'standup-report' | 'show-hidden' | 'hide-item' | `send:${string}` | `convert:${string}` | `plugin:${string}` | `field:${string}`;
+export type MenuActionId = 'open' | 'connect' | 'new-item' | 'new-project' | 'archive-browser' | 'edit' | 'complete' | 'reopen' | 'archive' | 'below' | 'surface' | 'remove-link' | 'make-blocking' | 'make-normal' | 'reverse-link' | 'open-web' | 'copy-url' | 'add-todo' | 'remove-todo' | 'auto-title' | 'move-plot' | 'plot-new' | 'plot-unpin' | `plot-pin:${string}` | 'plot-select' | 'plot-rename' | 'plot-auto' | 'plot-color' | 'plot-color-auto' | 'plot-hide' | 'plot-leave' | 'plot-below' | 'plot-lock' | `plot-merge:${string}` | 'project-into' | `project-into:${string}` | 'delete' | 'delete-cancel' | 'delete-confirm' | 'plots-toggle' | 'plots-unhide' | 'send-project' | 'context-show' | 'context-hide' | 'context-add' | 'context-clear' | 'archive-stale' | 'mute' | 'unmute' | 'settings' | 'size-default' | 'standup-report' | 'show-hidden' | 'hide-item' | `send:${string}` | `convert:${string}` | `plugin:${string}` | `field:${string}`;
 /** One choice of a row: `swatch` is the colour it is drawn in. */
 export interface MenuRowChoice { value: string; label: string; swatch?: string; checked: boolean }
 /** `remote` marks actions that write to a provider (drawn with a remote glyph). An action with a `row` is a labelled
@@ -170,7 +170,7 @@ export function contextMenuActions(scope: MenuScope, completed = false, editLabe
     [...open, ...(project ? [{ id: 'edit' as const, label: 'Project settings…' }] : [...convert, ...fields, { id: 'settings' as const, label: 'Settings', children: [{ id: 'edit' as const, label: editLabel },
       { id: 'size-default' as const, label: 'Use size as default', ...(size?.disabled ? { disabled: true, description: size.disabled } : {}) }] }])],
     [
-      ...(send && !project ? [send] : []),
+      ...(send && (send.id === 'project-into') === project ? [send] : []),
       ...(project ? [] : plot),
       ...(todo ? [{ id: todo.enabled ? 'remove-todo' as const : 'add-todo' as const, label: todo.enabled ? 'Remove from to-dos' : 'Turn into todo' }] : []),
       ...(autoTitle && !project ? [{ id: 'auto-title' as const, label: 'Auto-name from activity' }] : []),
@@ -229,6 +229,13 @@ export const todoContextActions = (hasContext: boolean, shown: boolean): MenuAct
   : [{ id: 'context-add', label: 'Add context…', divider: true }];
 /** The Later group's menu in the to-do list (TODO-12): rows untouched for `days` go to Archive. */
 export const laterGroupActions = (stale: number, days: number): MenuAction[] => [{ id: 'archive-stale', label: `Archive rows untouched for ${days} days`, ...(stale ? {} : { disabled: true }) }];
+/** A project's Move project into submenu: the other projects, each asking before it moves the project's `items` and archives it. */
+export const projectIntoAction = (title: string, items: number, targets: readonly ProjectTarget[]): MenuAction => {
+  const others = targets.filter(target => !target.current), count = `${items} ${items === 1 ? 'item' : 'items'}`;
+  return { id: 'project-into', label: 'Move project into', children: others.length
+    ? others.map(target => ({ id: `project-into:${target.id}` as const, label: target.title, confirm: { prompt: `Move “${title}” into “${target.title}”?`, note: `“${title}” is archived afterwards.`, action: `Move ${count} into “${target.title}”` } }))
+    : [{ id: 'project-into:' as const, label: 'No other projects', disabled: true }] };
+};
 /** A map item's (or selection's) Move to project submenu; `targets` come from `moveTargets`. */
 export const moveToProjectAction = (targets: readonly ProjectTarget[]): MenuAction => projectSubmenu('Move to project', targets);
 type PlotTarget = { id: string; name: string; hidden: boolean; current: boolean };
@@ -257,8 +264,9 @@ export function enabledMenuGroups(groups: readonly ResourceMenuGroup[] = [], set
 
 /** A plot's signpost menu (MAP-24). Name automatically needs Name plots on. With the plot's colors it offers
  * the six swatches of its project's neighborhood, the shown one checked, and Automatic, checked while no color is chosen. */
-/** A sign's menu. With `targets` (from `moveTargets` for its members) the whole plot can move to another project or to none, or go to Undermap. */
-export function plotMenuActions(naming = true, colors?: { color: PlotColor; chosenColor?: PlotColor | string }, neighborhoodColor?: string, targets?: readonly ProjectTarget[]): MenuAction[] {
+/** A sign's menu. With `targets` (from `moveTargets` for its members) the whole plot can move to another project or to none, or go to Undermap.
+ * With `plot`, Lock plot is checked while it is locked, and Move plot to first lists the project's other plots to merge into. */
+export function plotMenuActions(naming = true, colors?: { color: PlotColor; chosenColor?: PlotColor | string }, neighborhoodColor?: string, targets?: readonly ProjectTarget[], plot?: { locked: boolean; others: readonly Pick<PlotView, 'id' | 'name' | 'hidden'>[] }): MenuAction[] {
   const shown = colors && (colors.chosenColor ?? colors.color), palette = plotPalette(neighborhoodColor);
   return [
     { id: 'plot-select', label: 'Select items' },
@@ -268,8 +276,12 @@ export function plotMenuActions(naming = true, colors?: { color: PlotColor; chos
       { id: 'plot-color' as const, label: 'Color', divider: true, row: palette.map(({ slot, name, color }) => ({ value: slot, label: name, swatch: color, checked: slot === shown })), customColor: { shown: isPlotColor(shown) ? undefined : shown } },
       { id: 'plot-color-auto' as const, label: `Automatic · ${palette.find(swatch => swatch.slot === colors.color)!.name}`, checked: !colors.chosenColor },
     ] : [],
+    ...plot ? [{ id: 'plot-lock' as const, label: 'Lock plot', divider: true, checked: plot.locked, description: 'Keeps its items; nearby items and plots never join it' }] : [],
     ...targets ? [
-      { id: 'send-project' as const, label: 'Move plot to', divider: true, children: [...projectSubmenu('', targets).children!.filter(child => child.id !== 'send:'), { id: 'plot-leave' as const, label: 'No project', divider: true }] },
+      { id: 'send-project' as const, label: 'Move plot to', divider: true, children: [
+        ...(plot?.others ?? []).map(other => ({ id: `plot-merge:${other.id}` as const, label: other.hidden ? `${other.name} (hidden)` : other.name })),
+        ...projectSubmenu('', targets).children!.filter(child => child.id !== 'send:').map((child, index) => index === 0 && plot?.others.length ? { ...child, divider: true } : child),
+        { id: 'plot-leave' as const, label: 'No project', divider: true }] },
       { id: 'plot-below' as const, label: 'Send plot to Undermap' },
     ] : [],
     { id: 'plot-hide', label: 'Hide this plot', divider: true },

@@ -94,7 +94,7 @@ test('the reading list example loads from a folder, raises Needs me, shows its v
     plugins = page.getByRole('region', { name: 'Plugins' });
     await expect(plugins.locator('[data-plugin-id="reading-list"]')).toContainText('Running');
     // A type loaded from a plugin gets its menu order in Settings → Items like every built-in type.
-    await page.getByRole('treeitem', { name: 'Items', exact: true }).click();
+    await page.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
     const menus = page.getByRole('group', { name: 'Right-click menus', exact: true });
     await menus.getByLabel('Item type', { exact: true }).selectOption({ label: 'Reading link' });
     await expect(menus.getByRole('listitem').locator('.menu-order-label')).toHaveText(['Open', 'Connect to…', 'Read state', 'Open in browser', 'Copy URL', 'Settings', 'Move to project', 'Move to plot', 'Remove from plot', 'Mark done / Reopen', 'Send to Undermap']);

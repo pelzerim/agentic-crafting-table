@@ -58,8 +58,11 @@ function LaunchArguments({ value, change }: { value: string; change(value: strin
 const DASHBOARD_SECTION_CHOICES: [keyof DashboardSections, string][] = [['needsYou', 'Needs me'], ['working', 'Working'], ['todos', 'To-dos'], ['plots', 'Plots'], ['pipelines', 'Pull requests'], ['tallies', 'Tickets']];
 const percent = (value: number) => `${Math.round(value * 100)}%`, pixels = (value: number) => `${value} px`;
 
+/** The page Settings last showed; reopening returns there until the app restarts. */
+let lastSection = 'Connections';
+
 export function Settings({ close, providers, plugins, openArchive, clearOverlaps, nodeTitles, initialSessionView, sessionRequestId, installRequest, initialSection, updates: updatesProp }: { nodeTitles: Map<string, string>; initialSessionView?: 'active' | 'archived'; sessionRequestId?: number; installRequest?: PluginInstallRequest; initialSection?: string; updates?: { status?: UpdateStatus; check(): Promise<unknown> }; close(): void; providers: ProviderDescription[]; plugins: PluginDescription[]; openArchive(): void; clearOverlaps(): Promise<void> }) {
-  const [saved, setSaved] = useState<SettingsSnapshot>(), [remote, setRemote] = useState(true), [awake, setAwake] = useState(false);
+  const [saved, setSaved] = useState<SettingsSnapshot>(), [remote, setRemote] = useState(true), [awake, setAwake] = useState(false), [workAwake, setWorkAwake] = useState(false);
   const [notifications, setNotifications] = useState(notificationSettingsSchema.parse({}));
   const [autoMode, setAutoMode] = useState(true);
   const [terminal, setTerminal] = useState(TERMINAL_DEFAULTS), [assistive, setAssistive] = useState(false);
@@ -77,10 +80,12 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
   const updateAndRestart = () => { setRestartError(undefined); window.craftingTable.updatesRestart().catch(error => setRestartError(error.message)); };
   useEffect(() => { let mounted = true; window.craftingTable.appInfo().then(info => { if (mounted) setAppInfo(info); }).catch(error => { if (mounted) setInfoError(String(error)); }); return () => { mounted = false; }; }, []);
   const sections = ['Connections', 'Items', 'Map', 'Corners', 'Notifications', 'AI features', 'General', 'Plugins', 'Data & diagnostics'] as const;
-  const [section, setSection] = useState<string>(installRequest ? 'Plugins' : initialSessionView ? 'Data & diagnostics' : initialSection ?? 'Connections');
+  const [section, setSection] = useState<string>(() => installRequest ? 'Plugins' : initialSessionView ? 'Data & diagnostics' : initialSection
+    ?? (([...sections] as string[]).includes(lastSection) || plugins.flatMap(itemViewProfiles).some(profile => profile.key === lastSection) ? lastSection : 'Connections'));
+  useEffect(() => { lastSection = section; }, [section]);
   useEffect(() => { if (initialSessionView) setSection('Data & diagnostics'); }, [initialSessionView, sessionRequestId]);
   useEffect(() => { if (installRequest) setSection('Plugins'); }, [installRequest?.id]);
-  const [expanded, setExpanded] = useState(new Set<string>());
+  const [expanded, setExpanded] = useState(() => new Set<string>(section === 'Items' || !([...sections] as string[]).includes(section) ? ['Items'] : []));
   const content = useRef<HTMLDivElement>(null);
   const invalidField = useRef<HTMLInputElement | undefined>(undefined);
   const profiles = useMemo(() => plugins.flatMap(itemViewProfiles).sort((a, b) => a.name.localeCompare(b.name)), [plugins]);
@@ -129,14 +134,14 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
       setWarnBeforeClosing(snapshot.value.warnBeforeClosing); setAgentsActForPerson(snapshot.value.agentsActForPerson); setConversation(snapshot.value.pullRequestConversation); setDiagnostics(snapshot.value.diagnostics); setItemViews(snapshot.value.itemViews); setItemMapSizes(snapshot.value.itemMapSizes); setPluginSettings(snapshot.value.plugins);
       setNeighborhood(snapshot.value.neighborhoodAppearance); setBelowAnimation(snapshot.value.belowAnimation); setUndermapLayout(snapshot.value.undermapLayout); setWorkingMark(snapshot.value.workingMark); setMapDashboards(snapshot.value.mapDashboards); setMapPlots(snapshot.value.mapPlots); setHideImpliedLinks(snapshot.value.hideImpliedLinks); setDoubleClickOpensWeb(snapshot.value.doubleClickOpensWeb); setSnapToGrid(snapshot.value.snapToGrid); setGroundRightClickRing(snapshot.value.groundRightClickRing); setOffscreenAttention(snapshot.value.offscreenAttention); setReviewOpenCounts(snapshot.value.reviewOpenCounts); setSessionCracks(snapshot.value.sessionCracks); setMapCorner(snapshot.value.mapCorner); setMapCollisions(snapshot.value.mapCollisions); setAppearance(snapshot.value.appearance); setItemDelete(snapshot.value.itemDelete); setAutoReview(snapshot.value.autoReview); setTerminal(snapshot.value.terminal);
       setAutoMode(snapshot.value.claude.autoMode); setNotifications(snapshot.value.notifications);
-      setQuickIds(snapshot.value.quickItemTypes); setMenus(snapshot.value.menus); setDefaultDirectory(snapshot.value.defaultWorkingDirectory); setSummaries(snapshot.value.summaries); setPadding(String(snapshot.value.neighborhoodPadding)); setSaved(snapshot); setRemote(snapshot.value.claude.remoteControl); setAwake(snapshot.value.keepAwake); setUpdateCheck(snapshot.value.updates.check); setArgumentsText(snapshot.value.claude.arguments.join('\n'));
+      setQuickIds(snapshot.value.quickItemTypes); setMenus(snapshot.value.menus); setDefaultDirectory(snapshot.value.defaultWorkingDirectory); setSummaries(snapshot.value.summaries); setPadding(String(snapshot.value.neighborhoodPadding)); setSaved(snapshot); setRemote(snapshot.value.claude.remoteControl); setAwake(snapshot.value.keepAwake); setWorkAwake(snapshot.value.keepAwakeWhileWorking); setUpdateCheck(snapshot.value.updates.check); setArgumentsText(snapshot.value.claude.arguments.join('\n'));
     }).catch(error => { if (mounted) setError(error.message); });
     return () => { mounted = false; };
   }, []);
   const limited = Boolean(summaries && (summaries.enabled || summaries.agentTitles || summaries.attachTitles || summaries.plotNames || summaries.projectSummaries || (STANDUP_ENABLED && summaries.standupDigests)));
   const claude = { remoteControl: remote, autoMode, arguments: argumentsText.split(/\r?\n/).map(value => value.trim()).filter(Boolean) };
   const permission = claudePermissionSettings(claude);
-  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, agentsActForPerson, pullRequestConversation: conversation, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, groundRightClickRing, offscreenAttention, reviewOpenCounts, sessionCracks, mapCorner, mapCollisions, appearance, itemDelete, autoReview, terminal, keepAwake: awake, claude, updates: { check: updateCheck } };
+  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, agentsActForPerson, pullRequestConversation: conversation, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, groundRightClickRing, offscreenAttention, reviewOpenCounts, sessionCracks, mapCorner, mapCollisions, appearance, itemDelete, autoReview, terminal, keepAwake: awake, keepAwakeWhileWorking: workAwake, claude, updates: { check: updateCheck } };
   const changes = useMemo(() => saved ? draftChanges(saved.value, draft!, pluginPages) : [], [saved, JSON.stringify(draft)]);
   const dirty = changes.length > 0, [discarding, setDiscarding] = useState(false);
   const requestClose = () => { if (dirty) setDiscarding(true); else close(); };
@@ -386,6 +391,7 @@ export function Settings({ close, providers, plugins, openArchive, clearOverlaps
         </SettingsSection>
         <SettingsSection label="Screen">
           <SettingRow label="Keep screen awake while the app is open" description="Keeps the display on until you turn this off or quit. Manual locking and macOS security settings stay in effect."><Switch checked={awake} change={setAwake} /></SettingRow>
+          <SettingRow label="Keep the Mac awake while work is running" description="Stops idle sleep while any item on the board is working, and lets the Mac sleep once everything is idle. The screen can still turn off and lock. Closing the lid still sleeps."><Switch checked={workAwake} change={setWorkAwake} /></SettingRow>
         </SettingsSection>
         <SettingsSection label="Terminals" description="Applies to open terminal and agent views right away after saving.">
           <SettingRow label="Screen reader support for terminals" description="Keeps a copy of the visible terminal text for VoiceOver and other screen readers. It slows down large sessions, so it is off unless you need it."

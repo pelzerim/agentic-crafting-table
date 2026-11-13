@@ -256,6 +256,19 @@ test('an unpinned neighbour joins a pinned plot within the join gap and leaves o
   assert.deepEqual(ids(detectPlots([...base, card('far', 0, 5000)], [], fresh, [link('far', 'p2')], pinned)), ['far,p1,p2']);
 });
 
+test('a locked plot keeps exactly its members: no near or linked item joins it, and a plot that comes close stays apart', () => {
+  const members = ['a1', 'a2', 'a3'], pinned = [pin('kept', members)], locked = [{ ...pin('kept', members), locked: true }];
+  const near = [...sample(), card('n', 0, 160 + PLOT_JOIN)];
+  assert.deepEqual(plotOf(detectPlots(near, [], fresh, [], pinned), 'kept')?.memberIds, ['a1', 'a2', 'a3', 'n'], 'pinned only, the neighbour joins');
+  assert.deepEqual(plotOf(detectPlots(near, [], fresh, [], locked), 'kept')?.memberIds, members);
+  assert.deepEqual(plotOf(detectPlots([...sample(), card('far', 0, 5000)], [], fresh, [link('far', 'a1')], locked), 'kept')?.memberIds, members, 'a linked item stays out');
+  const start = detectPlots(sample(), [], fresh, [], locked), other = start.find(plot => plot.memberIds.includes('b1'))!;
+  const close = [...sample().filter(box => !box.id.startsWith('b')), card('b1', 500, 0), card('b2', 760, 0), card('b3', 500, 100)];
+  assert.deepEqual(plotOf(detectPlots(close, start, fresh, [], pinned), 'kept')?.memberIds, members, 'pinned only, the plot stays apart too');
+  const after = detectPlots(close, start, fresh, [], locked);
+  assert.deepEqual([plotOf(after, 'kept')?.memberIds, plotOf(after, other.id)?.memberIds], [members, ['b1', 'b2', 'b3']]);
+});
+
 test('two pinned plots never merge, however close or linked', () => {
   const boxes = [card('a', 0, 0), card('b', 100, 20), card('c', 260, 20), ...loose(4)];
   const plots = detectPlots(boxes, [], fresh, [link('a', 'b')], [pin('first', ['a']), pin('second', ['b'])]);

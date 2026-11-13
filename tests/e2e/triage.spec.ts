@@ -155,7 +155,7 @@ test('duplicate tickets stay out of the inbox and the status checkboxes decide w
     const priority = dialog.getByRole('combobox', { name: 'Minimum priority', exact: true }), hint = dialog.getByText('No status is selected, so nothing is imported. The to-dos you already have stay.', { exact: true });
     const settings = async (change: () => Promise<void>) => {
       await page.getByRole('button', { name: 'Settings', exact: true }).click();
-      await tree.getByRole('treeitem', { name: 'Items', exact: true }).click(); await tree.getByRole('treeitem', { name: 'Linear ticket', exact: true }).click();
+      await tree.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click(); await tree.getByRole('treeitem', { name: 'Linear ticket', exact: true }).click();
       await change();
       await dialog.getByRole('button', { name: 'Save settings', exact: true }).click(); await expect(dialog).toHaveCount(0);
     };
@@ -200,7 +200,7 @@ test('the Linear setting turns the assigned-ticket import off and on, and says w
     const toggle = dialog.getByRole('switch', { name: 'Show my assigned Linear tickets in the to-do inbox', exact: true });
     const settings = async (change: () => Promise<void>) => {
       await page.getByRole('button', { name: 'Settings', exact: true }).click();
-      await tree.getByRole('treeitem', { name: 'Items', exact: true }).click(); await tree.getByRole('treeitem', { name: 'Linear ticket', exact: true }).click();
+      await tree.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click(); await tree.getByRole('treeitem', { name: 'Linear ticket', exact: true }).click();
       await change();
       await expect(dialog).toHaveCount(0);
     };

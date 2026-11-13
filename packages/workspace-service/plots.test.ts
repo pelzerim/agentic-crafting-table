@@ -186,6 +186,79 @@ test('a person creates a pinned plot of far-apart items, pins more into it and u
   assert.deepEqual(groups(view), ['a1,a2,a3', 'b1,b2,b3'], 'unpinned, the items follow detection again');
 }));
 
+test('moving an item to another plot or a new plot takes only that item; the plot it sat in stays', () => fixture(async ({ store, control, apply }) => {
+  const plots = new Plots(store, control);
+  await apply(note('b4', 3000, 0), note('b5', 3000, 0));
+  const start = plots.observe(await control.read()), billing = start.list.find(plot => plot.memberIds.includes('a1'))!, upload = start.list.find(plot => plot.memberIds.includes('b1'))!;
+  await plots.run('photos', { operation: 'pin', plotId: billing.id, memberIds: ['b1'] });
+  let view = plots.observe(await control.read());
+  assert.deepEqual(view.list.map(plot => [plot.id, plot.memberIds.join(',')]), [[billing.id, 'a1,a2,a3,b1'], [upload.id, 'b2,b3,b4,b5']]);
+  const { plotId } = await plots.run('photos', { operation: 'create', memberIds: ['b2'] }) as { plotId: string };
+  view = plots.observe(await control.read());
+  assert.deepEqual(view.list.map(plot => [plot.id, plot.memberIds.join(',')]).sort(), [[billing.id, 'a1,a2,a3,b1'], [plotId, 'b2'], [upload.id, 'b3,b4,b5']].sort());
+}));
+
+test('moving a linked item to another plot or a new plot leaves the rest of its plot apart', () => fixture(async ({ store, control, apply }) => {
+  const plots = new Plots(store, control), link = (id: string, sourceId: string, targetId: string): WorkspaceCommand => ({ type: 'link.save', link: { id, sourceId, targetId, kind: 'reference', label: '' } });
+  await apply(note('b4', 3000, 0), note('b5', 3000, 0), link('l1', 'b1', 'b2'), link('l2', 'b3', 'b4'));
+  const start = plots.observe(await control.read()), billing = start.list.find(plot => plot.memberIds.includes('a1'))!, upload = start.list.find(plot => plot.memberIds.includes('b1'))!;
+  await plots.run('photos', { operation: 'pin', plotId: billing.id, memberIds: ['b1'] });
+  let view = plots.observe(await control.read());
+  assert.deepEqual(view.list.map(plot => [plot.id, plot.memberIds.join(',')]).sort(), [[billing.id, 'a1,a2,a3,b1'], [upload.id, 'b2,b3,b4,b5']].sort());
+  const { plotId } = await plots.run('photos', { operation: 'create', memberIds: ['b3'] }) as { plotId: string };
+  view = plots.observe(await control.read());
+  assert.deepEqual(view.list.map(plot => [plot.id, plot.memberIds.join(',')]).sort(), [[billing.id, 'a1,a2,a3,b1'], [plotId, 'b3'], [upload.id, 'b2,b4,b5']].sort());
+}));
+
+test('unlocking keeps the pins set before locking, so it never merges with a plot 100 px away', () => fixture(async ({ store, control, apply }) => {
+  // Notes are 160 wide: A and B sit 100 px apart, b1 (pinned in A by a person) sits 32 px from b2.
+  const plots = new Plots(store, control);
+  const at: [string, number, number][] = [['a1', 0, 0], ['a2', 192, 0], ['a3', 384, 0], ['b1', 644, 0], ['b2', 836, 0], ['b3', 1028, 0], ['b4', 836, 120], ...Array.from({ length: 8 }, (_, i) => [`z${i}`, i * 960, 2880 + i * 960] as [string, number, number])];
+  await apply(...at.filter(([id]) => id === 'b4' || id.startsWith('z')).map(([id, x, y]) => note(id, x, y)));
+  await apply({ type: 'nodes.move', positions: at.map(([id, x, y]) => ({ id, position: { x, y } })) });
+  const billing = plots.observe(await control.read()).list.find(plot => plot.memberIds.includes('a1'))!;
+  await plots.run('photos', { operation: 'pin', plotId: billing.id, memberIds: ['b1'] });
+  assert.deepEqual(plots.observe(await control.read()).list.map(plot => plot.memberIds.join(',')).sort(), ['a1,a2,a3,b1', 'b2,b3,b4']);
+  await plots.run('photos', { operation: 'lock', plotId: billing.id, locked: true });
+  await plots.run('photos', { operation: 'lock', plotId: billing.id, locked: false });
+  assert.deepEqual(plots.observe(await control.read()).list.map(plot => plot.memberIds.join(',')).sort(), ['a1,a2,a3,b1', 'b2,b3,b4']);
+}));
+
+test('a locked plot keeps its members through a restart and a project merge; merging a plot into another forgets it', () => fixture(async ({ store, control, apply }) => {
+  const plots = new Plots(store, control), [billing, upload] = plots.observe(await control.read()).list;
+  await plots.run('photos', { operation: 'lock', plotId: billing.id, locked: true });
+  await plots.run('photos', { operation: 'rename', plotId: billing.id, name: 'Pricing' });
+  const at = (await control.read()).nodes.find(node => node.id === 'a1')!.position;
+  await apply({ ...note('near', at.x, at.y + 120) });
+  let view = new Plots(store, control).observe(await control.read()), kept = view.list.find(plot => plot.id === billing.id)!;
+  assert.deepEqual([kept.memberIds, kept.locked], [['a1', 'a2', 'a3'], true], 'a new neighbour stays out, also after a restart');
+  await apply({ type: 'project.create', id: 'video', title: 'Video', summary: '', position: { x: 0, y: 6000 } }, { type: 'project.merge', id: 'photos', into: 'video' });
+  kept = plots.observe(await control.read()).list.find(plot => plot.id === billing.id)!;
+  assert.deepEqual([kept.projectId, kept.name, kept.memberIds, kept.locked], ['video', 'Pricing', ['a1', 'a2', 'a3'], true]);
+  await plots.run('video', { operation: 'merge', plotId: upload.id, into: billing.id });
+  view = plots.observe(await control.read()); kept = view.list.find(plot => plot.id === billing.id)!;
+  assert.deepEqual([kept.memberIds, kept.locked, view.list.some(plot => plot.id === upload.id), store.plotRecords().some(record => record.id === upload.id)], [['a1', 'a2', 'a3', 'b1', 'b2', 'b3'], true, false, false]);
+  await plots.run('video', { operation: 'lock', plotId: billing.id, locked: false });
+  kept = plots.observe(await control.read()).list.find(plot => plot.id === billing.id) ?? plots.observe(await control.read()).list.find(plot => plot.memberIds.includes('a1'))!;
+  assert.deepEqual([kept.locked, kept.pinnedMemberIds], [undefined, ['b1', 'b2', 'b3']], 'unlocked, the pins the merge set stay and the lock pins go');
+}));
+
+test('a project merge moves its plot records at once, so joining a resident plot never prunes a named one', () => fixture(async ({ store, control, apply }) => {
+  const plots = new Plots(store, control), [billing] = plots.observe(await control.read()).list;
+  await plots.run('photos', { operation: 'rename', plotId: billing.id, name: 'Pricing' });
+  // Twenty newer dormant records in the source project would outrank the named one once it goes dormant there.
+  const active = store.plotRecords().filter(record => record.active).map(record => ({ id: record.id, projectId: record.projectId, memberIds: record.memberIds }));
+  store.savePlots([...active, ...Array.from({ length: 20 }, (_, i) => ({ id: `old-${i}`, projectId: 'photos', memberIds: [`gone-${i}`] }))], Date.now() + 60_000);
+  store.savePlots(active, Date.now() + 60_000);
+  await apply({ type: 'project.create', id: 'video', title: 'Video', summary: '', position: { x: 0, y: 6000 } },
+    ...[note('v1', 0, 6000), note('v2', 0, 6000), note('v3', 0, 6000), note('w1', -6000, 6000), note('w2', -6000, 12000), note('w3', 0, 12000)].map(command => ({ ...command, projectId: 'video' }) as WorkspaceCommand));
+  assert.ok(plots.observe(await control.read()).list.some(plot => plot.projectId === 'video' && plot.memberIds.includes('v1')), 'the target has a resident plot');
+  await apply({ type: 'project.merge', id: 'photos', into: 'video' });
+  const view = plots.observe(await control.read()), record = store.plotRecords().find(record => record.id === billing.id);
+  assert.ok(view.list.some(plot => plot.memberIds.includes('a1') && plot.memberIds.includes('v1')), 'the merged plot joined the resident one');
+  assert.deepEqual([record?.projectId, record?.name], ['video', 'Pricing'], 'the named record moved with its items and survived pruning');
+}));
+
 test('pinned members in another project or below are left out and come back; the pin stays', () => fixture(async ({ store, control, apply }) => {
   const plots = new Plots(store, control);
   await apply(note('f1', -4000, 4000), note('f2', 6000, 5000), note('f3', 6000, -5000), { type: 'project.create', id: 'video', title: 'Video', summary: '', position: { x: 0, y: 9000 } });

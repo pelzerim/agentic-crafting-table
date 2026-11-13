@@ -38,6 +38,20 @@ test('URL attachment reuses an MCP item, preserves lifecycle/layout/links and cr
   input.restart(); assert.deepEqual(await input.coordinator.attach(first), result); assert.equal((await input.control.read()).nodes.length, 3);
 }));
 
+test('reattaching or polling a PR saves its labels but keeps the local auto-validate opt-out, cross-project aliases included', () => fixture(async input => {
+  const pr = (id: string, projectId: string): WorkspaceCommand => ({ type: 'item.add', id, resourceId: 'pr', pluginId: 'github.pull-request', title: id, projectId, position: { x: 50, y: 80 }, data: { owner: 'fixture', repo: 'billing', number: 42, autoValidate: false } });
+  await input.apply([{ type: 'project.create', id: 'project', title: 'Billing', summary: '', position: { x: 0, y: 0 } }, { type: 'project.create', id: 'other', title: 'Other', summary: '', position: { x: 800, y: 0 } }, pr('existing', 'project'), { type: 'item.bind', id: 'existing', connectionId: 'github-fixture' }]);
+  input.providers.pull = { ...input.providers.pull, labels: [{ name: 'backend', color: 'D73A4A' }] as never[] };
+  await input.coordinator.attach({ ...request('project'), expectedRevision: (await input.control.read()).revision });
+  await input.coordinator.attach({ ...request('other'), expectedRevision: (await input.control.read()).revision });
+  let state = await input.control.read();
+  assert.equal(state.nodes.filter(node => node.resourceId === 'pr').length, 2, 'the other project gets an alias of the same item');
+  assert.deepEqual(state.resources.map(resource => resource.data), [{ owner: 'fixture', repo: 'billing', number: 42, autoValidate: false, labels: [{ name: 'backend', color: 'd73a4a' }] }]);
+  input.providers.pull = { ...input.providers.pull, labels: [] }; input.advance(61_000); await input.coordinator.poll();
+  state = await input.control.read();
+  assert.deepEqual(state.resources.map(resource => resource.data), [{ owner: 'fixture', repo: 'billing', number: 42, autoValidate: false }], 'a poll drops removed labels only');
+}));
+
 test('URL attachment brings an item back from Undermap instead of leaving it below', () => fixture(async input => {
   await input.apply([{ type: 'project.create', id: 'project', title: 'Billing', summary: '', position: { x: 0, y: 0 } }, { type: 'item.add', id: 'below', resourceId: 'pr', pluginId: 'github.pull-request', title: 'Old title', projectId: 'project', position: { x: 50, y: 80 }, data: { owner: 'fixture', repo: 'billing', number: 42 } }, { type: 'node.below', id: 'below' }]);
   const before = await input.control.read();

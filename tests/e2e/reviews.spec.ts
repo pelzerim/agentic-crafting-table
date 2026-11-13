@@ -333,7 +333,7 @@ test('Automatic reviews: turned on in Settings, a pull request added afterwards 
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Settings' });
-    await dialog.getByRole('treeitem', { name: 'Items', exact: true }).click();
+    await dialog.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
     await dialog.getByRole('treeitem', { name: 'GitHub pull request', exact: true }).click();
     const toggle = dialog.getByRole('switch', { name: 'Review new pull requests', exact: true });
     await expect(toggle).not.toBeChecked();

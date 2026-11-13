@@ -814,8 +814,9 @@ pinned members on the map are always its members wherever they sit, one member i
 keeps its id outright. Detection treats them as one linked group that is never cut by size or
 share, never merged with another pinned plot and kept first among the six plots of a project; an
 unpinned item near a pinned member (72 px, or 120 px for an item already in the plot) or linked
-to one joins the plot as it would join a linked group, and leaves again by the same rules, so a
-detected plot whose items sit next to a pinned member becomes part of the pinned plot. Pinned
+to one joins the plot as it would join a linked group, and leaves again by the same rules. An item
+already in another plot never joins a pinned plot by nearness, so moving an item into a plot or a
+new plot takes only that item and the plot it sat in stays. Pinned
 members moved to another project, below or archived are left out while they are, the pin
 is kept and they come back when they return; a pinned plot with none on the map is dormant and
 never reclaimed by another group. The sign of a pinned plot shows an 8 px pin glyph in the sign
@@ -823,6 +824,11 @@ tone between the sprout and the name, and its tooltip starts “Pinned · N item
 and unpin are person-only `plot` requests (`pin` refused for items outside the project or a plot
 of another project); pins are stored per plot (`plots.pinned_member_ids`), and `PlotView` gains
 `pinnedMemberIds`, the pinned members it holds.
+*Locked plots.* **Lock plot** (a checked toggle in the sign's menu, person-only `plot` request
+`lock`) pins every current member and keeps exactly them: no nearby or linked item joins it, it
+never merges with or absorbs another plot and is never absorbed. Unlocking removes only the pins
+the lock added (`plots.lock_pinned_ids`, old rows read as none), so pins set before locking stay.
+Stored as `plots.locked` (old rows read as unlocked); `PlotView` gains `locked`.
 
 **Look:** each plot is a tinted patch on the neighbourhood's 24 px world grid: a quiet
 tint in the plot's color (about 0.13 inside and 0.07 on a one-cell edge ring, so the
@@ -894,7 +900,7 @@ the same delta as one `nodes.move` revision; Escape puts them back. Double-click
 renames inline (Enter saves, Escape cancels, an empty name hands it back to
 automation). Right-click or Shift+F10 opens **Select items · Rename plot… · Name
 automatically**, then a **Color** section, then **Move plot to ▸** and **Send plot to Undermap**,
-then **Hide this plot**. The Color section is a
+then **Hide this plot**; **Lock plot** sits between the Color section and Move plot to. The Color section is a
 row of the project's six swatches (one radio group named “Color”; each swatch is named and titled by its
 color's neighborhood name, the shown one is ringed and checked; Left/Right walk the row, Up/Down treat it as one
 stop, Enter, Space or a click picks) and below it **Automatic · <assigned color's name>**, checked
@@ -903,14 +909,16 @@ while no color is chosen. Choosing a color or Automatic is the person-only plot 
 enough to be a new plot; the project menu lists **Show hidden plots (N)** and a
 **Show plots** switch for that project.
 
-*Moving a plot.* **Move plot to ▸** lists the map's projects like Move to project
-(MAP-26), the plot's own project checked and disabled, then **No project**. A project
+*Moving a plot.* **Move plot to ▸** lists the project's other plots first: choosing one merges
+this plot into it (person-only `plot` request `merge`: the members join and are pinned there, the
+target keeps its name, color and lock, the source record goes away). Then it lists the map's
+projects like Move to project (MAP-26), the plot's own project checked and disabled, then **No project**. A project
 sends all the plot's items as one `nodes.send` block led by its first member: they keep
 their layout and land beside the target's items. **No project** is `nodes.send` with
 `projectId: null`: the items leave their project together, keep their layout and land
 beside the project's items but off its ground, never inside another neighbourhood; an
-item already without a project stays put. The plot keeps its identity, name and chosen
-color in the new project when its items form a plot there again (a record that left
+item already without a project stays put. The plot record then moves too (`plot` request
+`move`), so it keeps its identity, name, chosen color, pins and lock in the new project when its items form a plot there again (a record that left
 another project is reclaimed by member overlap, as a dormant plot is); items without a
 project form no plot. **Send plot to Undermap** sends every member with the selection's
 Send to Undermap.
@@ -1011,6 +1019,13 @@ panel's edge.
 
 Not built: the optional “! N waiting Xh” safety valve on the plate, timed mute, and a
 “N muted” total in the Atlas footer.
+
+*Move project into.* A project's menu on the map offers **Move project into ▸** with the other
+map projects. Choosing one opens a confirm step in the menu (“Move 12 items into “B””, the source
+is archived afterwards). The person-only command `project.merge { id, into }` moves every member,
+archived and Undermap ones too, the members on the map as one `nodes.send` block, re-points
+to-dos attached to the project, and archives the source (never deletes it); in the same store
+transaction its active and pinned plot records move to the target, while dormant ones stay behind.
 
 **MAP-26 — Move to project.** Right-clicking any item card on the map (agent,
 terminal, PR, rollout, ticket, Notion, Slack, note, bookmark, artifact, to-do…)
@@ -1590,7 +1605,11 @@ Settings → Notifications → **Also count finished work** (`notifications.coun
 off by default) adds it to the number and lets it raise a banner. Seen and Mark seen clear
 a Finished entry like any other, and “Opening an item marks it seen” applies unchanged.
 The sheet groups its rows under “Asking me · N”, “My turn · N” and “Finished · N” in that
-order (Finished says “not counted” while it is not), each group the longest wait first.
+order (Finished says “not counted” while it is not), each group the newest first; undated
+rows come last. **Newest first / Oldest first** in the sheet's header flips only that time
+order, remembered on this Mac like the folded groups. **Clear all** beside it does what Seen
+does on every row the sheet shows (folded groups and a closed Muted line are left alone),
+with the same receipts in Earlier.
 **Age is text only** (“4h”, from `attentionAt`, recorded when a cycle is raised): nothing
 pulses, grows or changes colour with age.
 
@@ -1747,6 +1766,11 @@ Always / Off, separate Needs me and completion-announcement switches and sound
 (disabled, not hidden, while Off), and an immediate test action whose result
 appears on its row. Completion notices use one native notification,
 even when both switches are enabled. Existing in-app notices stay unchanged.
+**Notify for sessions resumed at startup** (`notifications.startupResumes`, on by default):
+off, an agent that startup recovery (AGENT-06) resumes raises no banner or sound through its
+continuation turn and the wait after it, until it next starts a turn. A permission request,
+question or error still banners (Asking me other than “Agent waiting”), and its Needs me rows still
+appear. The main process learns which items from the recovery it starts, kept in memory only.
 Do not replay saved unread events at startup or repeated provider polls. Attention
 that arrives for the open item while ACT is focused and visible is acknowledged at
 once; while ACT is in the background it stays unread until marked seen. Clicking
@@ -2336,6 +2360,13 @@ Release the assertion immediately when disabled or the app exits. Use a scoped O
 assertion, without changing global sleep preferences, defeating manual lock or
 bypassing managed security policy. Reflect the setting accurately on restart.
 
+**SETTINGS-01b — Keep the Mac awake while work is running.** A separate persistent
+toggle in Settings → General, default off. While on, the app holds a scoped
+"prevent app suspension" assertion whenever any unarchived item on the board, in any
+project, is working, and releases it once nothing is working, when turned off, when the
+connection to the workspace service drops, or on quit. An item working only because of a rework
+note does not hold: the agent doing the rework holds on its own. The display may still sleep and lock; closing the lid still sleeps.
+
 **SETTINGS-APPEARANCE — Light and dark colours.** Settings → General, section
 **Appearance**, has **Colours**: **System** (default) / Light / Dark (additive
 `appearance`; older settings read System; other values are rejected). System follows
@@ -2462,7 +2493,7 @@ is on (auto-titles and plot names default on) and are shown disabled, not hidden
 off. The privacy caveat appears once, as a page note, and says plot names send item
 titles and agent summaries only, project summaries send project, item and agent titles, Needs me
 reasons, agent recaps and agent summaries, and Slack titles send the attached message. Settings → General holds
-Keep screen awake and the closing warning.
+Keep screen awake, Keep the Mac awake while work is running and the closing warning.
 
 **SETTINGS-DASHBOARDS — Project dashboards.** Settings → Map (not advanced) has
 **Show project dashboards when zoomed out** (on by default), **Show below**
@@ -3404,7 +3435,7 @@ carry a plain tooltip instead.
 
 | ID | Type | Required behavior |
 | --- | --- | --- |
-| RES-01 | Pull request | URL-only creation; authenticated provider title, description, comparison summary and state inside the item. “Open pull request” opens its canonical GitHub URL directly, with state shown separately. The expanded view uses Review desk: repository/PR number in the movable frame, one content title, lifecycle/review state, compact author/diff metadata (branch details inside the description), and refresh. Conversation threads are ordered by latest activity with oldest-first replies grouped by GitHub parent identity, file/line context when available, author/date and canonical source links; bodyless approvals and other review activity are hidden by default. Settings → Items → GitHub pull request configures discussion comments, code comments/thread replies, written review feedback, bots/GitHub Actions and textless review activity. Default to human comments and replies. The map comment pill counts only unseen comments under the saved conversation filters and disappears at zero. Mark seen/unseen updates it immediately across aliases; edited comments and new replies count again. Count only known cached comments, without guessing unread totals outside bounded coverage. Keep approval/check status syncing independently of conversation visibility; retain cached content and seen receipts. A collapsed Connected reviews row above the single conversation column shows directly connected review summaries, state and revision freshness when expanded. No right-hand column. Root comments have distinct stepped cards and replies are inset. An unseen comment is marked new: a blue (info) bar on its left edge, a blue edge and a “New” chip after the author; a seen one has a quiet grey bar and a softer author name, and loses the chip. Every comment starts with a 180-code-point plain-text preview; click or keyboard expands safe full content independently of Seen. Human comments opens per-view visibility controls; persistent defaults remain in Settings. Missing or filtered code-thread parents have an explicit source link, never a fabricated root. Description is collapsed behind Show/Hide description, rendered as safe Markdown. Group the three review-launch actions under a collapsed Trigger Review button. Show discussion comments, inline code comments and review bodies with author/date, safe Markdown and sanitized HTML (including details/summary; no scripts, renderer image requests, events or active form fields). **Inline images:** GitHub image attachments (`https://github.com/user-attachments/assets/<id>` and the older `https://github.com/<owner>/<repo>/assets/<n>/<id>`) in the description and comments show inline once the description or comment is opened; nothing is fetched for a collapsed one. The service reads GitHub's rendered HTML of that one body for the attachment's short-lived signed copy, fetches it without credentials from a GitHub image host only (PNG, JPEG, GIF or WebP, at most 4 MB) and hands it to the view as a data URL, keeping it in memory for the session and never in the cache. Any other image, and an attachment that cannot be loaded, stays the attachment link it was; the renderer CSP is unchanged. Comments have Copy link, Mark seen/unseen, Reply and, when linked, Fix with agent. Seen is local, persists across restart and aliases, collapses fully read threads under one Seen disclosure below unseen; edits or new replies resurface the thread. Preserve comment expansion and Seen disclosure state across unchanged polls. Replies post only on explicit submission: inline code replies stay in their root thread, discussion/review-summary replies link the original in the PR discussion. Preserve drafts during refresh. Fix prompts are explicitly sent to a selected connected idle agent, bound to this PR/comment and process; busy/stopped agents are unavailable. Journal writes/delivery before dispatch; do not automatically retry uncertain outcomes. On opening a PR after restart, immediately display its persisted description, state and comments with Seen receipts, even when the cache is expired or credentials are disconnected. Show that saved content is being refreshed and its last checked time; refresh in the background, retain content on failure, and never acknowledge newer attention from the saved preview alone. Retain saved comments when offline; large conversations explicitly show recent bounded coverage and a GitHub link. No Files/Discussion/Reviews tabs. Preserve immutable revisions for analyses. **Mark all seen:** beside “Conversation · N unseen” a button marks every comment loaded in the view as seen in one local request, filtered ones included; it shows only while one is unseen, never writes to GitHub, and a comment edited or added after the list was shown stays unseen. **Menu choices:** Merge, Change state and Show/Ship show the choices saved from their last read at once and refresh them from GitHub in the background (PR-MERGE); only the first open of an item shows “Checking …” while it reads. |
+| RES-01 | Pull request | URL-only creation; authenticated provider title, description, comparison summary and state inside the item. “Open pull request” opens its canonical GitHub URL directly, with state shown separately. The expanded view uses Review desk: repository/PR number in the movable frame, one content title, lifecycle/review state, compact author/diff metadata (branch details inside the description), and refresh. Conversation threads are ordered by latest activity with oldest-first replies grouped by GitHub parent identity, file/line context when available, author/date and canonical source links; bodyless approvals and other review activity are hidden by default. Settings → Items → GitHub pull request configures discussion comments, code comments/thread replies, written review feedback, bots/GitHub Actions and textless review activity. Default to human comments and replies. The map comment pill counts only unseen comments under the saved conversation filters and disappears at zero. Mark seen/unseen updates it immediately across aliases; edited comments and new replies count again. Count only known cached comments, without guessing unread totals outside bounded coverage. Keep approval/check status syncing independently of conversation visibility; retain cached content and seen receipts. A collapsed Connected reviews row above the single conversation column shows directly connected review summaries, state and revision freshness when expanded. No right-hand column. Root comments have distinct stepped cards and replies are inset. An unseen comment is marked new: a blue (info) bar on its left edge, a blue edge and a “New” chip after the author; a seen one has a quiet grey bar and a softer author name, and loses the chip. Every comment starts with a 180-code-point plain-text preview; click or keyboard expands safe full content independently of Seen. Human comments opens per-view visibility controls; persistent defaults remain in Settings. Missing or filtered code-thread parents have an explicit source link, never a fabricated root. Description is collapsed behind Show/Hide description, rendered as safe Markdown. Group the three review-launch actions under a collapsed Trigger Review button. Show discussion comments, inline code comments and review bodies with author/date, safe Markdown and sanitized HTML (including details/summary; no scripts, renderer image requests, events or active form fields). **Inline images:** GitHub image attachments (`https://github.com/user-attachments/assets/<id>` and the older `https://github.com/<owner>/<repo>/assets/<n>/<id>`) in the description and comments show inline once the description or comment is opened; nothing is fetched for a collapsed one. The service reads GitHub's rendered HTML of that one body for the attachment's short-lived signed copy, fetches it without credentials from a GitHub image host only (PNG, JPEG, GIF or WebP, at most 4 MB) and hands it to the view as a data URL, keeping it in memory for the session and never in the cache. Any other image, and an attachment that cannot be loaded, stays the attachment link it was; the renderer CSP is unchanged. Comments have Copy link, Mark seen/unseen, Reply and, when linked, Fix with agent. Seen is local, persists across restart and aliases, collapses fully read threads under one Seen disclosure below unseen; edits or new replies resurface the thread. Preserve comment expansion and Seen disclosure state across unchanged polls. Replies post only on explicit submission: inline code replies stay in their root thread, discussion/review-summary replies link the original in the PR discussion. Preserve drafts during refresh. Fix prompts are explicitly sent to a selected connected idle agent, bound to this PR/comment and process; busy/stopped agents are unavailable. Journal writes/delivery before dispatch; do not automatically retry uncertain outcomes. On opening a PR after restart, immediately display its persisted description, state and comments with Seen receipts, even when the cache is expired or credentials are disconnected. Show that saved content is being refreshed and its last checked time; refresh in the background, retain content on failure, and never acknowledge newer attention from the saved preview alone. Retain saved comments when offline; large conversations explicitly show recent bounded coverage and a GitHub link. No Files/Discussion/Reviews tabs. Preserve immutable revisions for analyses. **Labels:** the pull request's GitHub labels, saved in its item data as name and colour on each read, show as chips in each label's own colour: up to three on the card's lower edge then +N, all of them above the description in the open view; they stay after merge or close. **Mark all seen:** beside “Conversation · N unseen” a button marks every comment loaded in the view as seen in one local request, filtered ones included; it shows only while one is unseen, never writes to GitHub, and a comment edited or added after the list was shown stays unseen. **Menu choices:** Merge, Change state and Show/Ship show the choices saved from their last read at once and refresh them from GitHub in the background (PR-MERGE); only the first open of an item shows “Checking …” while it reads. |
 | RES-02 | Types from a plugin pack | Not part of the public app. A plugin pack may contribute a type (for example an internal ticket tracker) with its account type and views; its own documentation holds the requirements. Saved items of a pack that is not installed stay as placeholders with their data. |
 | RES-03 | Notion | URL-only creation from `www.notion.so`, `*.notion.site`, `notion.com` and `app.notion.com/p/<workspace>/<slug>-<id>` links; provider title and readable page content with source link. Auth/error/loading states are explicit. **Title:** the item is named after the page's title property, read in full on the first read and again on every read that sees a new edit time, so renaming the page in Notion renames the item (and its resource) on the next poll; a page without a title is “Untitled”. As for every provider-titled type, Item settings shows the name read-only. The one exception is a web link upgraded under RES-10 whose title the person had chosen: that title is kept and later reads leave it alone, while the full view still shows the page title. **Comments:** pages are polled on the shared cadence (60 s, stretching to 10 min while unchanged; an unchanged page costs two page requests). Each read lists the page's open page-level comments plus inline discussions on blocks: up to 10 blocks already known to have discussions and the next 10 blocks of the page in turn (first 500 eligible blocks), so an inline comment on a block not yet visited appears within a few reads. Resolved discussions are not listed by Notion. Unread state is local, never written to Notion: a watermark per item (whole minute + ids of that minute) in the resource cache, surviving restarts. Comments present at the first observation are read; later comments by anyone but me are unread. “Me” is the connected integration (its bot, plus a user owner for OAuth integrations) and the IDs in Settings → Items → Notion page → Comments (“Your Notion user ID”); the Notion CLI's internal integration tokens cannot identify the person, so without that setting comments written by the person in Notion count. The map card shows the unread count with the shared comment cue, the same one a pull request uses for unseen comments (one builder, `unreadCommentsIndicator`; cue id `comments`, message glyph, blue, label “N unread comments”, which a narrow card shortens to glyph plus number; the count stays visible at the small size). Being an ordinary indicator it also is the item's far-zoom badge and its status in dashboard rows and previews. The full view's status chip reads “N unread comments” (in the meta line while Archived); both hide at zero. New unread comments raise Needs me (reason `comment`, source `notion.comments`) with “New comment” / “N new comments” once per batch; unchanged polls and restarts do not notify again. Opening the page link from the app (Open on Notion in the item menu, double-click to web, or ↗ Open in Notion in the full view) moves the watermark to that minute and clears the count, but does not withdraw Needs me: the entry stays until the person marks it seen (Seen in Needs me or Mark seen in the frame; STATE-02). Expanding the item changes neither. A later unread comment raises a new Needs me cycle. A missing Read comments capability (403) is an explicit degraded state (“Comments unavailable” in the full view, no badge); page content still loads, background polls ask again after 30 minutes and Refresh asks at once. |
 | RES-04 | Linear | URL-only creation; issue identifier, provider title, status and Markdown description rendered with an established library. Support headings, emphasis, nested/task lists, links, quotes, fenced code and tables; keep code/tables horizontally scrollable inside the view. Provider HTML stays inert, task checkboxes are read-only and links use the existing browser-opening path. Compact bubble shows identifier, title and a colored workflow status label. Default small footprint is 240×64: allow a two-line title beside the icon and place the status on a separate, left-aligned row with a clear gap. Preserve manually saved sizes; shorter cards use a single-line title to prevent overlap. Right-click → Change status and clicking the current status in the full view open the ticket team’s actual workflow states, including custom states. **Linked pull requests.** The issue read asks for `attachments(first: 50) { nodes { url } }` and keeps the GitHub pull requests among them (`https://github.com/{owner}/{repo}/pull/{n}`, each once, owner and repository compared without case) as `pulls` in the cached detail. The ticket's map menu offers **Linked pull requests ▸ Add to the map** (runtime operation `linear.ticket.pulls`, human only; agents may read `options`): every listed pull request is attached as a pull request item with the default GitHub account, in the ticket's project, placed beside the ticket and linked from it (reference); one already in that project is reused, not added twice. The map flies to the first; one that cannot load is reported while the rest are added; a ticket Linear lists none on says so. Nothing is added without the click. |

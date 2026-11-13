@@ -57,7 +57,9 @@ export const notificationSettingsSchema = z.object({
   seenOnOpen: z.array(z.string().min(1).max(200)).max(500).default([]),
   /** Reminders notify regardless of `mode`; `app` shows only the in-app notice. */
   reminders: z.enum(['sound', 'silent', 'app']).default('sound'),
-}).default({ mode: 'background', needsMe: true, announcements: true, sound: true, dockBadge: true, countFinished: false, seenOnOpen: [], reminders: 'sound' });
+  /** Off: a session startup recovery resumed raises no banner until it next starts a turn; Needs me still lists it. */
+  startupResumes: z.boolean().default(true),
+}).default({ mode: 'background', needsMe: true, announcements: true, sound: true, dockBadge: true, countFinished: false, seenOnOpen: [], reminders: 'sound', startupResumes: true });
 /** How an item came to be opened: by a person's gesture, or by the app on its own. */
 export interface OpenContext { origin: 'user' | 'program'; windowFocused: boolean; documentVisible: boolean }
 /** Whether opening an item of this type marks its Needs me entry seen. */
@@ -133,6 +135,8 @@ export const settingsSchema = z.object({
   /** Light or dark colours; System follows macOS and switches with it. */
   appearance: z.enum(APPEARANCES).default('system'),
   keepAwake: z.boolean().default(false),
+  /** Holds off idle system sleep while any board item is working. */
+  keepAwakeWhileWorking: z.boolean().default(false),
   warnBeforeClosing: z.boolean().default(false),
   diagnostics: logPolicySchema.default(() => ({ ...DEFAULT_LOG_POLICY })),
   neighborhoodPadding: z.number().finite().nonnegative().default(LARGE_ITEM_WIDTH),

@@ -2154,6 +2154,39 @@
   display: none;
 }
 
+/* Tags such as GitHub labels: one line of chips straddling the card's bottom edge, each in its own colour. */
+.card-tags {
+  position: absolute;
+  bottom: 0;
+  left: 12px;
+  z-index: 4;
+  display: flex;
+  gap: 4px;
+  overflow: hidden;
+  padding: 2px;
+  transform: translateY(55%);
+  pointer-events: none;
+}
+
+.card-tag,
+.card-tag-more {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--act-fw-strong) .9em/1 var(--act-font-mono);
+  padding: .3em .45em;
+  box-shadow: 0 0 0 2px var(--act-bg);
+  pointer-events: auto;
+}
+
+.card-tag-more {
+  flex: none;
+  color: var(--act-ink);
+  background: var(--act-raised);
+}
+
 /* An item's note badges beside its name in Needs me and dashboard rows. */
 .badge-chips {
   display: inline-flex;

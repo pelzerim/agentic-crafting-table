@@ -85,6 +85,7 @@ export class ResourcePluginRegistry {
           || (preset.presentationPips !== undefined && typeof preset.presentationPips !== 'boolean')
           || (preset.nodeView !== undefined && typeof preset.nodeView !== 'boolean')
           || (preset.counts !== undefined && typeof preset.counts !== 'string')
+          || (preset.tags !== undefined && typeof preset.tags !== 'string')
           || preset.fields?.some(key => !plugin.fields?.[key])) throw new Error('Invalid map size preset');
       }
     }

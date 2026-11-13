@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ATTENTION_NOTE_LENGTH, attentionAge, attentionCounts, attentionCountText, attentionDetails, attentionItems, attentionLabel, attentionNote, attentionReasons, attentionTier, attentionTierInfo, attentionTierOf, attentionTiers, needsMeButton, nodeAttention, attentionRestorable } from './attention.ts';
+import { ATTENTION_NOTE_LENGTH, attentionAge, attentionCounts, attentionCountText, attentionDetails, attentionItems, attentionLabel, attentionNote, attentionReasons, attentionTier, attentionTierInfo, attentionTierOf, attentionTiers, needsMeButton, nodeAttention, orderAttention, attentionRestorable } from './attention.ts';
 import { projectActivity } from './project-neighborhoods.ts';
 
 test('global attention deduplicates aliases and reasons, retains done items and excludes archived projects', () => {
@@ -64,7 +64,7 @@ test('every reason has exactly one tier: stopped work asks, waiting work is my t
   assert.deepEqual(attentionTiers.map(tier => attentionTierInfo[tier].glyph), ['asking', 'my-turn', 'finished']);
 });
 
-test('an item takes its highest tier; the list sorts by tier, then the longest wait first', () => {
+test('an item takes its highest tier; the list sorts by tier, then newest or oldest first, undated last', () => {
   assert.equal(attentionTier(['finished', 'review']), 'turn'); assert.equal(attentionTier(['approved', 'input']), 'asking'); assert.equal(attentionTier([]), undefined);
   const nodes = [
     at('done', { attention: 'finished', attentionAt: '2026-10-01T08:00:00.000Z' }),
@@ -76,8 +76,9 @@ test('an item takes its highest tier; the list sorts by tier, then the longest w
     at('both', { attention: 'none', attentionSources: { completion: 'finished', gate: 'input' }, attentionAt: '2026-10-06T08:30:00.000Z' }),
   ];
   const items = attentionItems(nodes);
-  assert.deepEqual(items.map(item => [item.node.id, item.tier]), [['ask-old', 'asking'], ['both', 'asking'], ['ask-new', 'asking'], ['ask-undated', 'asking'], ['checks-old', 'turn'], ['review-new', 'turn'], ['done', 'finished']]);
-  assert.equal(items[0].since, '2026-10-06T07:00:00.000Z'); assert.equal(items[3].since, undefined);
+  assert.deepEqual(items.map(item => [item.node.id, item.tier]), [['ask-new', 'asking'], ['both', 'asking'], ['ask-old', 'asking'], ['ask-undated', 'asking'], ['review-new', 'turn'], ['checks-old', 'turn'], ['done', 'finished']]);
+  assert.equal(items[0].since, '2026-10-06T09:00:00.000Z'); assert.equal(items[3].since, undefined);
+  assert.deepEqual(orderAttention(items, 'oldest').map(item => item.node.id), ['ask-old', 'both', 'ask-new', 'ask-undated', 'checks-old', 'review-new', 'done']);
   assert.deepEqual(attentionItems([...nodes].reverse()).map(item => item.node.id), items.map(item => item.node.id));
 });
 

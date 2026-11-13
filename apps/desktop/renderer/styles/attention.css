@@ -363,6 +363,12 @@
   background: var(--act-pending-bg);
 }
 
+.needs-me-actions {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
 .needs-me-tiers .tier-count-gap {
   display: inline-block;
   width: 7px;

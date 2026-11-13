@@ -1,6 +1,7 @@
 import { formatWhen } from '../../format-when.ts';
 import type { ViewChip } from '../../view-header.ts';
-import type { ResourceRecord } from '../../types.ts';
+import type { JsonObject, ResourceRecord } from '../../types.ts';
+import { cardTags } from '../../indicators.ts';
 import { mergeWhenReadyCue } from '../../../../packages/provider-runtime/github-status.ts';
 import type { MergeWhenReady } from '../../../../packages/provider-runtime/github.ts';
 
@@ -8,8 +9,13 @@ import type { MergeWhenReady } from '../../../../packages/provider-runtime/githu
 export const autoValidates = (resource: Pick<ResourceRecord, 'data'>) => resource.data.autoValidate !== false;
 /** What remounts the open view. Auto validate is a setting of the view itself, so toggling it does not. */
 export function pullViewIdentity(resource: Pick<ResourceRecord, 'connectionId' | 'data'>) {
-  const data = { ...resource.data }; delete data.autoValidate;
+  const data = { ...resource.data }; delete data.autoValidate; delete data.labels;
   return JSON.stringify([resource.connectionId, data]);
+}
+/** The pull request's GitHub labels as `{ name, color }` for the item data; null removes them when it has none. */
+export function labelPatch(pull: { labels?: unknown }): JsonObject {
+  const labels = cardTags(pull.labels);
+  return { labels: labels.length ? labels.map(label => ({ ...label })) : null };
 }
 
 interface PullFacts { number: number; state: string; merged?: boolean; draft?: boolean; changed_files: number; additions: number; deletions: number; updated_at: string }

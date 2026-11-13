@@ -347,7 +347,7 @@ test('Needs me rows carry their tier and wait; the counted number leaves Finishe
     at('ask', { attention: 'input', attentionNote: 'Needs permission to push', attentionAt: '2026-10-06T10:00:00.000Z' }), at('checks', { attentionSources: { ci: 'checks-failing' }, attentionAt: '2026-10-06T08:00:00.000Z' })];
   const plots = [{ id: 'plot', projectId: 'p', name: 'Thumbnail', memberIds: ['ask', 'done', 'review'], source: 'local' as const, hidden: false, color: 'rose' as const, pinnedMemberIds: [] }];
   const board = projectDashboard('p', members, { plots });
-  assert.deepEqual(board.needsYou.map(row => [row.id, row.tier, row.detail, row.since]), [['ask', 'asking', 'Needs permission to push', '2026-10-06T10:00:00.000Z'], ['checks', 'turn', 'Checks failing', '2026-10-06T08:00:00.000Z'], ['review', 'turn', 'Ready for your review', '2026-10-06T09:00:00.000Z'], ['done', 'finished', 'Finished · ready to view', '2026-10-06T07:00:00.000Z']]);
+  assert.deepEqual(board.needsYou.map(row => [row.id, row.tier, row.detail, row.since]), [['ask', 'asking', 'Needs permission to push', '2026-10-06T10:00:00.000Z'], ['review', 'turn', 'Ready for your review', '2026-10-06T09:00:00.000Z'], ['checks', 'turn', 'Checks failing', '2026-10-06T08:00:00.000Z'], ['done', 'finished', 'Finished · ready to view', '2026-10-06T07:00:00.000Z']]);
   assert.deepEqual(board.counts, { asking: 1, turn: 2, finished: 1, needsMe: 3, top: 'asking' });
   assert.equal(projectDashboard('p', members, { counting: { countFinished: true } }).counts.needsMe, 4);
   assert.deepEqual(board.plots.map(plot => plot.tiers), [{ asking: 1, turn: 1, finished: 1 }]);

@@ -3,8 +3,8 @@ import { mapBadges } from '../../../src/graph/badges.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { WorkspaceState } from '../../../packages/core/control.ts';
 import type { AttentionHistoryEntry } from '../../../packages/workspace-service/sqlite-store.ts';
-import { NEEDS_ME, attentionAge, attentionCounts, attentionLabel, attentionReasons, attentionTierInfo, attentionTiers, needsMeButton } from '../../../src/graph/attention.ts';
-import type { AttentionCounting, AttentionItem } from '../../../src/graph/attention.ts';
+import { NEEDS_ME, attentionAge, attentionReceipt, attentionCounts, attentionLabel, attentionReasons, attentionTierInfo, attentionTiers, needsMeButton, orderAttention } from '../../../src/graph/attention.ts';
+import type { AttentionCounting, AttentionItem, AttentionOrder } from '../../../src/graph/attention.ts';
 import { isArchived, isBelow } from '../../../src/graph/archive.ts';
 import { agentSaid } from '../../../packages/core/last-line.ts';
 import { RailPanel } from './rail-panel.tsx';
@@ -44,6 +44,13 @@ function useFolded() {
   });
   return { folded, toggle };
 }
+/** Newest or oldest first within a tier, remembered on this Mac only. */
+const ORDER_KEY = 'craft.needsMe.order';
+function useTimeOrder() {
+  const [time, setTime] = useState<AttentionOrder>(() => { try { return localStorage.getItem(ORDER_KEY) === 'oldest' ? 'oldest' : 'newest'; } catch { return 'newest'; } });
+  const flip = () => setTime(old => { const next = old === 'newest' ? 'oldest' : 'newest'; try { localStorage.setItem(ORDER_KEY, next); } catch { /* the order lasts for this window */ } return next; });
+  return { time, flip };
+}
 /** Keys typed into text or a terminal belong there, Escape included. */
 const TYPING = 'input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],.terminal-surface,.xterm';
 const covers = (panel: DOMRect, card: DOMRect) => {
@@ -70,12 +77,18 @@ function useAttentionHistory(refresh: string) {
 
 interface AttentionRowsProps { items: AttentionItem[]; muted?: AttentionItem[];
   /** Whether Finished joins the number (Settings → Notifications); it is always listed. */
-  counting?: AttentionCounting; state: WorkspaceState; reveal(id: string): void; locate(id: string): void; highlight(id: string | undefined): void; dismiss(id: string): void; openWeb?(id: string): boolean; unavailable(message: string): void }
+  counting?: AttentionCounting; state: WorkspaceState; reveal(id: string): void; locate(id: string): void; highlight(id: string | undefined): void; dismiss(id: string, receipt?: ReturnType<typeof attentionReceipt>): unknown; openWeb?(id: string): boolean; unavailable(message: string): void }
 
 /** Needs me as the rail's top tool: the slot takes the shape of the highest tier present and counts
  * Asking me and My turn. It is amber-filled while one of those waits, quiet with a dim dot when only
  * Finished remains, and a plain "!" at zero. Its sheet follows the rail's rules: rest to peek, click or N to keep open. */
-export function NeedsMeTool({ size, onSize, ...rows }: AttentionRowsProps & { size: PanelSize; onSize(size: PanelSize): void }) {
+export function NeedsMeTool({ size, onSize, ...props }: AttentionRowsProps & { size: PanelSize; onSize(size: PanelSize): void }) {
+  const fold = useFolded(), { time, flip } = useTimeOrder(), [mutedOpen, setMutedOpen] = useState(false), [clearing, setClearing] = useState(false);
+  const rows = { ...props, items: orderAttention(props.items, time), muted: orderAttention(props.muted ?? [], time) };
+  // Clear all is Seen on every row shown right now: folded groups and closed Muted are left alone.
+  const shown = [...rows.items.filter(item => !fold.folded.has(item.tier)), ...(mutedOpen ? rows.muted : [])];
+  // Receipts freeze at click time, so attention that arrives while earlier rows clear stays unread.
+  const clearAll = async () => { const receipts = shown.map(item => attentionReceipt(item.aliases, item.node.id)); setClearing(true); try { for (const receipt of receipts) await rows.dismiss(receipt.id, receipt); } finally { setClearing(false); } };
   const { rail, open, pinned } = useRailTool('attention'), counts = attentionCounts(rows.items, rows.counting), count = counts.needsMe, button = needsMeButton(counts);
   // The slot is filled for the highest tier that is counted; uncounted Finished work only tints it.
   const filled = counts.top && (counts.top !== 'finished' || count > 0);
@@ -116,14 +129,19 @@ export function NeedsMeTool({ size, onSize, ...rows }: AttentionRowsProps & { si
     toggle={{ label: button.label, title: button.title, pressed: pinned, className: `${filled ? 'needs-me-button' : 'needs-me-quiet'}${counts.top ? ` needs-me-tier-${counts.top}` : ''}`,
       shortcut: `${shortcutKey('rail.attention')} ${shortcutKey('attention.toggle')}`, onClick: slotClick, onDwell: () => { clearTimeout(closeTimer.current); rail.open('attention'); },
       icon: counts.top ? <TierMark tier={counts.top} className="needs-me-shape" /> : <ItemIcon icon="bang" />, badge: count > 0 && <span className="needs-me-count" aria-hidden="true">{count}</span> }}
-    heading={<><h2 className="needs-me-title">{NEEDS_ME}</h2>{counts.top && <span className="needs-me-tiers"><TierCounts counts={counts} /></span>}</>}>
-    <AttentionRows {...rows} close={close} occluded={setOccluded} />
+    heading={<><h2 className="needs-me-title">{NEEDS_ME}</h2>{counts.top && <span className="needs-me-tiers"><TierCounts counts={counts} /></span>}
+      <span className="needs-me-actions">
+        <Button size="sm" variant="quiet" className="needs-me-order" title={time === 'newest' ? 'Show the oldest first in each group' : 'Show the newest first in each group'} onClick={flip}>{time === 'newest' ? 'Newest first' : 'Oldest first'}</Button>
+        {shown.length > 0 && <Button size="sm" variant="quiet" className="needs-me-clear" title="Mark every row shown here as seen" disabled={clearing} onClick={() => void clearAll()}>Clear all</Button>}
+      </span></>}>
+    <AttentionRows {...rows} fold={fold} mutedOpen={mutedOpen} setMutedOpen={setMutedOpen} close={close} occluded={setOccluded} />
   </RailPanel>;
 }
 
 /** `muted` are the rows of muted projects (MAP-25): never counted, kept behind one collapsed line. */
-function AttentionRows({ items, muted = [], counting, state, reveal, locate, highlight, dismiss, openWeb, unavailable, close, occluded: setOccluded }: AttentionRowsProps & { close(): void; occluded(value: boolean): void }) {
-  const [hovered, setHovered] = useState<string>(), [focused, setFocused] = useState<string>(), [mutedOpen, setMutedOpen] = useState(false), { folded, toggle } = useFolded();
+function AttentionRows({ items, muted = [], counting, state, reveal, locate, highlight, dismiss, openWeb, unavailable, close, occluded: setOccluded, fold: { folded, toggle }, mutedOpen, setMutedOpen }: AttentionRowsProps & {
+  close(): void; occluded(value: boolean): void; fold: ReturnType<typeof useFolded>; mutedOpen: boolean; setMutedOpen(update: (open: boolean) => boolean): void }) {
+  const [hovered, setHovered] = useState<string>(), [focused, setFocused] = useState<string>();
   const nodes = useMemo(() => new Map(state.nodes.map(node => [node.id, node])), [state.nodes]);
   const badges = useMemo(() => mapBadges(state.nodes, state.resources, state.links).onItems, [state.nodes, state.resources, state.links]);
   const history = useAttentionHistory([...items, ...muted].map(item => item.identity).join('\n')), end = useRef<HTMLDivElement>(null), next = useRef(history.next); next.current = history.next;
