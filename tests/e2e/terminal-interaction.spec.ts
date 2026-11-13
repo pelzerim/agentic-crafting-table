@@ -36,11 +36,11 @@ for (const mode of ['', 'no-paste']) test(`Shift+Enter inserts a newline and Ent
   await expect(page.locator('.xterm-accessibility-tree')).toContainText('Draft: ""');
 });
 
-test('agent views send native Shift+Enter even with bracketed paste enabled', async ({ visual: { page } }) => {
-  await start(page, '');
+/** Opens an agent view on the fixture CLI that `start` runs; no Claude process/model. */
+async function startAgent(page: Page, mode: string) {
+  await start(page, mode);
   const sessionId = (await page.locator('.terminal-surface').getAttribute('data-terminal-id'))!;
   await page.getByRole('button', { name: 'Back to project', exact: true }).click();
-  // Attach the agent view to this isolated local CLI; no Claude process/model.
   await page.evaluate(async sessionId => {
     const { state } = await window.craftingTable.workspaceRead();
     await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: state.revision, actor: { kind: 'user', id: 'test' }, commands: [
@@ -51,6 +51,27 @@ test('agent views send native Shift+Enter even with bracketed paste enabled', as
   await expect(page.getByRole('button', { name: 'Agent session menu' })).toBeVisible();
   await expect(page.locator('.native-terminal:visible')).toHaveAttribute('data-session-state', 'running');
   await page.locator('.terminal-surface:visible .xterm-helper-textarea').focus();
+}
+
+test('a quick second Ctrl+C never reaches an agent, so it cannot quit the session', async ({ visual: { page } }) => {
+  await startAgent(page, 'count-ctrl-c');
+  const output = page.locator('.terminal-surface:visible .xterm-accessibility-tree');
+  await expect(output).toContainText('Ctrl+C presses: 0');
+  await page.keyboard.press('Control+c'); await page.keyboard.press('Control+c'); await page.keyboard.press('Control+c');
+  await page.keyboard.type('x');
+  await expect(output).toContainText('Draft: "x"');
+  await expect(output).toContainText('Ctrl+C presses: 1');
+  await expect(page.locator('.native-terminal:visible')).toHaveAttribute('data-session-state', 'running');
+});
+
+test('a shell gets every Ctrl+C', async ({ visual: { page } }) => {
+  await start(page, 'count-ctrl-c');
+  await page.keyboard.press('Control+c'); await page.keyboard.press('Control+c'); await page.keyboard.press('Control+c');
+  await expect(page.locator('.xterm-accessibility-tree')).toContainText('Ctrl+C presses: 3');
+});
+
+test('agent views send native Shift+Enter even with bracketed paste enabled', async ({ visual: { page } }) => {
+  await startAgent(page, '');
   await page.keyboard.type('first'); await page.keyboard.press('Shift+Enter'); await page.keyboard.type('second');
   const output = page.locator('.terminal-surface:visible .xterm-accessibility-tree');
   await expect(output).toContainText('Draft: "first\\nsecond"');

@@ -2,11 +2,30 @@ import type { Terminal } from '@xterm/xterm';
 
 const CMD_LINE_KEYS: Record<string, string> = { Backspace: '\x15', ArrowLeft: '\x01', ArrowRight: '\x05' };
 
+/** Claude Code and Codex quit on a second Ctrl+C within about a second, which ends the
+ * session on the map. The window is longer than theirs, so they never get a second press. */
+export const CTRL_C_GUARD_MS = 2000;
+
+/** Tells whether a Ctrl+C at `now` may reach the agent. A dropped press does not extend the window. */
+export function ctrlCGuard(windowMs = CTRL_C_GUARD_MS) {
+  let last = -Infinity;
+  return (now: number) => {
+    if (now - last < windowMs) return false;
+    last = now;
+    return true;
+  };
+}
+
 /** Agents interpret the modified key themselves. Shell line editors receive a
  * bracketed newline so neither line executes until ordinary Enter. */
-export function terminalKey(terminal: Pick<Terminal, 'options' | 'paste' | 'input' | 'hasSelection'> & { modes: Pick<Terminal['modes'], 'bracketedPasteMode' | 'mouseTrackingMode'> }, event: KeyboardEvent, agent = false, find?: () => void, browserPaste = false, cut?: () => boolean) {
+export function terminalKey(terminal: Pick<Terminal, 'options' | 'paste' | 'input' | 'hasSelection'> & { modes: Pick<Terminal['modes'], 'bracketedPasteMode' | 'mouseTrackingMode'> }, event: KeyboardEvent, agent = false, find?: () => void, browserPaste = false, cut?: () => boolean, ctrlC?: (now: number) => boolean) {
   // An IME composition keeps every key.
   if (event.isComposing || event.keyCode === 229) return true;
+  // keyCode, as xterm reads it: Ctrl+C is the same control key on every keyboard layout.
+  if (agent && ctrlC && event.type === 'keydown' && event.keyCode === 67 && event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && !terminal.options.disableStdin && !ctrlC(event.timeStamp)) {
+    event.preventDefault(); event.stopPropagation();
+    return false;
+  }
   if (event.key === 'f' && event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
     event.preventDefault(); event.stopPropagation();
     if (event.type === 'keydown') find?.();

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { terminalKey } from './terminal-keys.ts';
+import { ctrlCGuard, terminalKey } from './terminal-keys.ts';
 
 function fixture() {
   const sent: string[] = [];
@@ -79,4 +79,21 @@ test('the cut key is taken only when something was cut, and modified keys stay k
   assert.equal(terminalKey(terminal, key(otherKey).event, true, undefined, false, notACut), true, 'the other platform\'s modifier stays a key');
   assert.equal(terminalKey(terminal, key({ ...cutKey, shiftKey: true }).event, true, undefined, false, notACut), true);
   assert.equal(terminalKey(terminal, key({ ...cutKey, type: 'keyup' }).event, true, undefined, false, notACut), true);
+});
+
+test('an agent gets one Ctrl+C per guard window, so a repeated press cannot quit it', () => {
+  const { terminal, event } = fixture();
+  const guard = ctrlCGuard(2000), ctrlC = (timeStamp: number, fields: Partial<KeyboardEvent> = {}) => event({ key: 'c', keyCode: 67, ctrlKey: true, shiftKey: false, timeStamp, ...fields });
+  assert.equal(terminalKey(terminal, ctrlC(1000), true, undefined, false, undefined, guard), true, 'the first press interrupts or clears');
+  assert.equal(terminalKey(terminal, ctrlC(1000, { type: 'keyup' }), true, undefined, false, undefined, guard), true);
+  assert.equal(terminalKey(terminal, ctrlC(1500), true, undefined, false, undefined, guard), false, 'the second press would quit the agent');
+  assert.equal(terminalKey(terminal, ctrlC(2900, { repeat: true }), true, undefined, false, undefined, guard), false, 'a held key repeats inside the window');
+  assert.equal(terminalKey(terminal, ctrlC(3000), true, undefined, false, undefined, guard), true, 'after the window the press is a first press again');
+  assert.equal(terminalKey(terminal, ctrlC(3100, { key: 'с' }), true, undefined, false, undefined, guard), false, 'another keyboard layout sends the same control key');
+  for (const fields of [{ shiftKey: true }, { altKey: true }, { metaKey: true }]) assert.equal(terminalKey(terminal, ctrlC(3200, fields), true, undefined, false, undefined, guard), true, 'other chords stay keys');
+});
+test('Ctrl+C always reaches shells and other programs', () => {
+  const { terminal, event } = fixture();
+  const guard = ctrlCGuard(2000), ctrlC = (timeStamp: number) => event({ key: 'c', keyCode: 67, ctrlKey: true, shiftKey: false, timeStamp });
+  for (const at of [0, 100, 200]) assert.equal(terminalKey(terminal, ctrlC(at), false, undefined, false, undefined, guard), true);
 });

@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Terminals
+- **Ctrl+C no longer quits an agent by accident**: an agent view drops a Ctrl+C that comes within 2 seconds of the last one it sent. Claude Code and Codex quit on a quick second Ctrl+C, so one press too many ended the session. Shells get every press. To quit an agent, use its exit command or Stop session. (#31, @timohuovinen)
+
 ## 0.22.0 — 2026-11-13
 
 ### Map
