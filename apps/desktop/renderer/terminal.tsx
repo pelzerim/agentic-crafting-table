@@ -1,7 +1,7 @@
 import type { NativeTerminalOptions } from '../../../src/resource-plugins/types.ts';
 import { droppedPaths, pastedImage, pastedPath } from './terminal-input.ts';
 import { TuiDrag, dragIsEditable, dragText, lineDeletion } from './terminal-selection.ts';
-import { ctrlCGuard, terminalKey } from './terminal-keys.ts';
+import { terminalKey } from './terminal-keys.ts';
 import { bindTerminalLinks } from './terminal-links.ts';
 import type { TerminalLink } from './terminal-links.ts';
 import { TerminalLinkMenu } from './terminal-link-menu.tsx';
@@ -81,9 +81,8 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
       copied(text, editable ? () => terminal.input('\x7f', true) : undefined);
       return true;
     };
-    const ctrlC = ctrlCGuard();
-    const dragInput = terminal.onData(data => { tuiDrag.input(data); ctrlC.sent(data); });
-    terminal.attachCustomKeyEventHandler(event => terminalKey(terminal, event, nativeKeyRef.current, openFind, nativePasteRef.current && !navigator.platform.startsWith('Mac'), cut, ctrlC));
+    const dragInput = terminal.onData(data => tuiDrag.input(data));
+    terminal.attachCustomKeyEventHandler(event => terminalKey(terminal, event, nativeKeyRef.current, openFind, nativePasteRef.current && !navigator.platform.startsWith('Mac'), cut));
     // Before xterm's handler, which reads text only: an image reaches the agent as a local path it can attach.
     const pasteImage = (event: ClipboardEvent) => {
       if (!nativePasteRef.current || event.clipboardData?.getData('text/plain')) return;

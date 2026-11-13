@@ -20,6 +20,7 @@ import { stopProcessTree } from '../platform/process-tree.ts';
 import type { ProcessTreeStop } from '../platform/process-tree.ts';
 import { outputSuffix } from './output-tail.ts';
 import { isDecisiveInput } from './decisive-input.ts';
+import { ctrlCQuit } from './ctrl-c-quit.ts';
 import { HeadlessTerminal } from './terminal-identity.ts';
 
 export const OUTPUT_BYTES = 256 * 1024;
@@ -101,6 +102,7 @@ export async function startSupervisor(directory: string) {
     events.emit('session', { kind: 'output', sessionId: id, chunk } satisfies SessionEvent);
   };
   const decisive = new Map<string, { at: number; sequence: number }>();
+  const typedKeys = new Map<string, ReturnType<typeof ctrlCQuit>>();
   const record = (id: string): SessionRecord => {
     const session = journal.get(id), input = decisive.get(id);
     return input ? { ...session, decisiveInputAt: input.at, decisiveInputSequence: input.sequence } : session;
@@ -217,10 +219,11 @@ export async function startSupervisor(directory: string) {
             if (replies && !watched(request.sessionId)) pty.write(replies);
           });
           pty.onExit(({ exitCode, signal }) => {
+            const quitOnCtrlC = Boolean(typedKeys.get(request.sessionId)?.quit(Date.now())) && !journal.get(request.sessionId).stopRequestedAt;
             void (async () => {
               running.stopping?.settle();
               try { drivers.delete(request.sessionId); await native?.close(); }
-              finally { live.delete(request.sessionId); decisive.delete(request.sessionId); emitState(journal.update(request.sessionId, { state: 'exited', exitCode, signal })); flush(request.sessionId); end(); }
+              finally { live.delete(request.sessionId); decisive.delete(request.sessionId); typedKeys.delete(request.sessionId); emitState(journal.update(request.sessionId, { state: 'exited', exitCode, signal, ...(quitOnCtrlC ? { quitOnCtrlC } : {}) })); flush(request.sessionId); end(); }
             })().catch(error => { process.stderr.write(`Native session cleanup failed: ${(error as Error).message}\n`); });
           });
           emitState(journal.update(request.sessionId, { state: 'running', pid: pty.pid }));
@@ -249,6 +252,10 @@ export async function startSupervisor(directory: string) {
       }
       case 'sessions.input': { const request = inputSchema.parse(input), running = live.get(request.sessionId); if (!running) throw new Error('Session has no live process'); if (journal.get(request.sessionId).readOnly) throw new Error('One-off analysis sessions do not accept terminal input');
         if (request.source === 'user' && request.encoding !== 'binary' && isDecisiveInput(request.data)) decisive.set(request.sessionId, { at: Date.now(), sequence: bufferFor(request.sessionId).sequence });
+        if (request.source === 'user' && request.encoding !== 'binary') {
+          const keys = typedKeys.get(request.sessionId) ?? ctrlCQuit(); typedKeys.set(request.sessionId, keys);
+          keys.typed(request.data, Date.now());
+        }
         running.pty.write(request.encoding === 'binary' ? Buffer.from(request.data, 'latin1') : request.data); return {}; }
       case 'sessions.inject': {
         const request = injectSchema.parse(input), driver = drivers.get(request.sessionId);
