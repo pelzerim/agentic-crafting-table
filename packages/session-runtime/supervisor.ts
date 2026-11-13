@@ -14,7 +14,7 @@ import { prepareWorkspace } from '../workspace-service/paths.ts';
 import { serveLocal } from '../workspace-service/local-rpc.ts';
 import type { RpcPeer } from '../workspace-service/local-rpc.ts';
 import { RuntimeJournal } from './journal.ts';
-import { managedSessionsSchema, sessionPageSchema, manageSessionSchema, launchSchema, inputSchema, resizeSchema, sessionIdSchema, readSessionSchema, stopSessionSchema, recordingsSchema, deleteRecordingSchema, injectSchema } from './protocol.ts';
+import { managedSessionsSchema, sessionPageSchema, manageSessionSchema, launchSchema, inputSchema, renameSchema, resizeSchema, sessionIdSchema, readSessionSchema, stopSessionSchema, recordingsSchema, deleteRecordingSchema, injectSchema } from './protocol.ts';
 import type { OutputChunk, SessionSnapshot, SessionEvent, SessionRecord } from './protocol.ts';
 import { stopProcessTree } from '../platform/process-tree.ts';
 import type { ProcessTreeStop } from '../platform/process-tree.ts';
@@ -254,6 +254,11 @@ export async function startSupervisor(directory: string) {
         const request = injectSchema.parse(input), driver = drivers.get(request.sessionId);
         if (!driver || !live.has(request.sessionId)) throw Object.assign(new Error('This session has no live Codex conversation'), { code: 'SESSION_NOT_NATIVE' });
         await driver.inject(request.instructions, request.context); return {};
+      }
+      case 'sessions.rename': {
+        const request = renameSchema.parse(input), driver = drivers.get(request.sessionId);
+        if (!driver || !live.has(request.sessionId)) throw Object.assign(new Error('This session has no live Codex conversation'), { code: 'SESSION_NOT_NATIVE' });
+        await driver.rename(request.name); return {};
       }
       case 'sessions.resize': { const request = resizeSchema.parse(input), running = live.get(request.sessionId); if (!running) throw new Error('Session has no live process'); running.pty.resize(request.cols, request.rows); return journal.update(request.sessionId, { cols: request.cols, rows: request.rows }); }
       case 'sessions.stop': { const request = stopSessionSchema.parse(input); return stop(request.sessionId, request.preservePids); }

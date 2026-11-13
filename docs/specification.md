@@ -2284,6 +2284,25 @@ with the title the request started from and are refused if it changed; a rename,
 archive or setting change cancels a pending request. Settings → AI features →
 **Auto-title agents** controls it and is on by default, like other AI titles.
 
+**AGENT-07b — One name in the table and the CLI.** A Claude or Codex agent's item title is also the
+conversation's name in that CLI's own session picker (`claude --resume`, `/resume`, `codex resume`), so a
+conversation started on the table is not listed under the AI title its CLI made up from the table's
+context offer. A creation default (“Claude session”, “Codex session”) is no name and is never sent. The
+resource keeps `nativeName`, the last name both sides agreed on, so nothing is written again while neither
+side changes. Every 30 seconds the service compares each on-map agent with a native ID:
+- **Table to CLI.** A running Claude takes the name from the next `UserPromptSubmit` hook
+  (`sessionTitle`, as `/rename` would): a running Claude writes the name it holds back over any name
+  written from outside. A stopped Claude conversation is renamed in its transcript. A running Codex
+  thread is renamed through the server its terminal uses; a stopped one, or one on a supervisor from
+  before this rule, through a metadata process.
+- **CLI to table.** A name typed with `/rename` in either CLI renames the item, as a rename of the person's
+  would (automatic titles stop, AGENT-07a). Claude's name is read from the end of its transcript, where
+  Claude's own picker reads it, only when the file changed; Codex reports it from the running terminal.
+- **First agreement.** For a conversation never synchronised, the table's name wins; the CLI's name is
+  taken only when the item still has its creation default. An AI title Claude made up is never taken.
+- A rename on the table while a name was being sent wins: the name the CLI then holds is recorded, and
+  the newer one goes out on the next tick.
+
 **AGENT-08 — Skills.** Project actions can launch installed/configured AI skills
 with the same context, runtime and sync guide as direct agent creation. Runs are
 visible items with explicit provider/model/workspace and real execution status.
