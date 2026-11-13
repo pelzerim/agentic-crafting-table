@@ -166,6 +166,14 @@ test('merging a project leaves an item of another project that a moved to-do lin
   assert.deepEqual([at(state, 'far').projectId, at(state, 'far').position], ['empty', at(before, 'far').position]);
 });
 
+test('a project in Undermap is not merged: its items would surface unplaced', async () => {
+  const { apply } = await fixture();
+  const before = await apply([{ type: 'node.below', id: 'billing' }]);
+  await assert.rejects(apply([{ type: 'project.merge', id: 'billing', into: 'docs' }]), /Bring this project back to the map/);
+  const state = await apply([{ type: 'node.surface', id: 'billing' }, { type: 'project.merge', id: 'billing', into: 'docs' }]);
+  assert.deepEqual([at(before, 'pr').projectId, at(state, 'pr').projectId], ['billing', 'docs']);
+});
+
 test('merging a project moves all its items, archived and in Undermap too, as one block and archives the emptied project', async () => {
   const { control, apply } = await fixture();
   const before = await apply([note('old', { x: 0, y: 400 }, 'billing'), note('deep', { x: 400, y: 400 }, 'billing'), { type: 'node.archive', id: 'old' }, { type: 'node.below', id: 'deep' },

@@ -25,7 +25,7 @@ test('menus are scoped, short and identical through project options and keyboard
   await expect(page.getByRole('article', { name: 'Claude · implementation', exact: true })).toBeVisible();
   await page.mouse.click(100, 650); await expect(page.getByRole('menu')).toHaveCount(0);
   await page.getByRole('button', { name: 'Project options: Billing redesign' }).click();
-  const projectActions = ['Project settings…', 'Mark done', 'Mute project (Needs me: 2)', 'Send project to Undermap'];
+  const projectActions = ['Project settings…', 'Move project into', 'Mark done', 'Mute project (Needs me: 2)', 'Send project to Undermap'];
   expect(await labels()).toEqual(projectActions);
   await page.keyboard.press('End'); await expect(page.getByRole('menuitem', { name: 'Send project to Undermap' })).toBeFocused();
   await page.keyboard.press('Home'); await expect(page.getByRole('menuitem', { name: 'Project settings…' })).toBeFocused();

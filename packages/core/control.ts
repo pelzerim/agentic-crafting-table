@@ -790,6 +790,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           const source = project(command.id), target = project(command.into);
           if (source.id === target.id) throw new Error('Choose another project');
           if (isArchived(source, state.nodes) || isArchived(target, state.nodes)) throw new Error('Restore this project from the archive first');
+          if (isOffMap(source, state.nodes)) throw new Error('Bring this project back to the map before moving it into another');
           if (isOffMap(target, state.nodes)) throw new Error('Bring this project back to the map before moving items to it');
           const members = new Set(state.nodes.filter(node => node.projectId === source.id).map(node => node.id));
           const drawn = state.nodes.filter(node => members.has(node.id) && !isArchived(node, state.nodes) && !isOffMap(node, state.nodes));

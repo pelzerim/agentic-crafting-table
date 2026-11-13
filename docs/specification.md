@@ -1025,7 +1025,8 @@ map projects. Choosing one opens a confirm step in the menu (“Move 12 items in
 is archived afterwards). The person-only command `project.merge { id, into }` moves every member,
 archived and Undermap ones too, the members on the map as one `nodes.send` block, re-points
 to-dos attached to the project, and archives the source (never deletes it); in the same store
-transaction its active and pinned plot records move to the target, while dormant ones stay behind.
+transaction its active and pinned plot records move to the target, while dormant ones stay behind. It
+refuses a source or target project that is archived or in Undermap, and a project as its own target.
 
 **MAP-26 — Move to project.** Right-clicking any item card on the map (agent,
 terminal, PR, rollout, ticket, Notion, Slack, note, bookmark, artifact, to-do…)

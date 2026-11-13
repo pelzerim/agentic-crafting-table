@@ -3,7 +3,7 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
-## Unreleased
+## 0.22.0 — 2026-11-13
 
 ### Map
 - **Lock plot**: a locked plot keeps its members; nearby items and plots no longer join it. (#24, @shiini2)
