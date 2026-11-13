@@ -81,16 +81,28 @@ test('the cut key is taken only when something was cut, and modified keys stay k
   assert.equal(terminalKey(terminal, key({ ...cutKey, type: 'keyup' }).event, true, undefined, false, notACut), true);
 });
 
-test('an agent gets one Ctrl+C per guard window, so a repeated press cannot quit it', () => {
+test('an agent gets a Ctrl+C only after other input and outside the window, so repeated presses cannot quit it', () => {
   const { terminal, event } = fixture();
   const guard = ctrlCGuard(2000), ctrlC = (timeStamp: number, fields: Partial<KeyboardEvent> = {}) => event({ key: 'c', keyCode: 67, ctrlKey: true, shiftKey: false, timeStamp, ...fields });
-  assert.equal(terminalKey(terminal, ctrlC(1000), true, undefined, false, undefined, guard), true, 'the first press interrupts or clears');
-  assert.equal(terminalKey(terminal, ctrlC(1000, { type: 'keyup' }), true, undefined, false, undefined, guard), true);
-  assert.equal(terminalKey(terminal, ctrlC(1500), true, undefined, false, undefined, guard), false, 'the second press would quit the agent');
-  assert.equal(terminalKey(terminal, ctrlC(2900, { repeat: true }), true, undefined, false, undefined, guard), false, 'a held key repeats inside the window');
-  assert.equal(terminalKey(terminal, ctrlC(3000), true, undefined, false, undefined, guard), true, 'after the window the press is a first press again');
-  assert.equal(terminalKey(terminal, ctrlC(3100, { key: 'с' }), true, undefined, false, undefined, guard), false, 'another keyboard layout sends the same control key');
-  for (const fields of [{ shiftKey: true }, { altKey: true }, { metaKey: true }]) assert.equal(terminalKey(terminal, ctrlC(3200, fields), true, undefined, false, undefined, guard), true, 'other chords stay keys');
+  const press = (timeStamp: number, fields: Partial<KeyboardEvent> = {}) => {
+    const allowed = terminalKey(terminal, ctrlC(timeStamp, fields), true, undefined, false, undefined, guard);
+    if (allowed && fields.type !== 'keyup') guard.sent('\x03');
+    return allowed;
+  };
+  assert.equal(press(1000), true, 'the first press stops the turn or clears the prompt');
+  assert.equal(press(1000, { type: 'keyup' }), true);
+  assert.equal(press(1500), false, 'a second press could only quit the agent');
+  assert.equal(press(1600, { repeat: true }), false, 'a held key repeats');
+  assert.equal(press(60_000), false, 'nothing typed since: still a second press, however late');
+  guard.sent('\x1b[<35;10;5M'); guard.sent('\x1b[I');
+  assert.equal(press(61_000), false, 'mouse moves and focus changes are not typing');
+  guard.sent('x');
+  assert.equal(press(62_000), true, 'after typing, a press stops the next turn');
+  guard.sent('y');
+  assert.equal(press(63_000), false, 'Claude Code quits on a press within 800 ms of the last one even after typing');
+  guard.sent('z');
+  assert.equal(press(64_100, { key: 'с' }), true, 'another keyboard layout sends the same control key');
+  for (const fields of [{ shiftKey: true }, { altKey: true }, { metaKey: true }]) assert.equal(press(70_000, fields), true, 'other chords stay keys');
 });
 test('Ctrl+C always reaches shells and other programs', () => {
   const { terminal, event } = fixture();

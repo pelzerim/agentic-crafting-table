@@ -53,14 +53,19 @@ async function startAgent(page: Page, mode: string) {
   await page.locator('.terminal-surface:visible .xterm-helper-textarea').focus();
 }
 
-test('a quick second Ctrl+C never reaches an agent, so it cannot quit the session', async ({ visual: { page } }) => {
+test('a second Ctrl+C never reaches an agent, so it cannot quit the session; typing lets the next one through', async ({ visual: { page } }) => {
   await startAgent(page, 'count-ctrl-c');
   const output = page.locator('.terminal-surface:visible .xterm-accessibility-tree');
   await expect(output).toContainText('Ctrl+C presses: 0');
   await page.keyboard.press('Control+c'); await page.keyboard.press('Control+c'); await page.keyboard.press('Control+c');
+  await page.waitForTimeout(2100);
+  await page.keyboard.press('Control+c');
   await page.keyboard.type('x');
   await expect(output).toContainText('Draft: "x"');
   await expect(output).toContainText('Ctrl+C presses: 1');
+  await page.keyboard.press('Control+c'); await page.keyboard.type('y');
+  await expect(output).toContainText('Draft: "xy"');
+  await expect(output).toContainText('Ctrl+C presses: 2');
   await expect(page.locator('.native-terminal:visible')).toHaveAttribute('data-session-state', 'running');
 });
 

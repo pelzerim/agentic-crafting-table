@@ -6,7 +6,7 @@ their pull request and author.
 ## Unreleased
 
 ### Terminals
-- **Ctrl+C no longer quits an agent by accident**: an agent view drops a Ctrl+C that comes within 2 seconds of the last one it sent. Claude Code and Codex quit on a quick second Ctrl+C, so one press too many ended the session. Shells get every press. To quit an agent, use its exit command or Stop session. (#31, @timohuovinen)
+- **Ctrl+C no longer quits an agent**: in an agent view Ctrl+C still stops a turn or a command, but a second one never reaches the agent. A Ctrl+C gets through again only after you type or paste something and 2 seconds have passed. Claude Code and Codex quit on a second Ctrl+C, so one press too many ended the session. Shells get every press. To quit an agent, use its exit command or Stop session. (#31, @timohuovinen)
 
 ## 0.22.0 — 2026-11-13
 

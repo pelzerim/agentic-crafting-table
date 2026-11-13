@@ -81,8 +81,8 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
       copied(text, editable ? () => terminal.input('\x7f', true) : undefined);
       return true;
     };
-    const dragInput = terminal.onData(data => tuiDrag.input(data));
     const ctrlC = ctrlCGuard();
+    const dragInput = terminal.onData(data => { tuiDrag.input(data); ctrlC.sent(data); });
     terminal.attachCustomKeyEventHandler(event => terminalKey(terminal, event, nativeKeyRef.current, openFind, nativePasteRef.current && !navigator.platform.startsWith('Mac'), cut, ctrlC));
     // Before xterm's handler, which reads text only: an image reaches the agent as a local path it can attach.
     const pasteImage = (event: ClipboardEvent) => {

@@ -1854,9 +1854,11 @@ CLI’s submit behavior. Agent views send distinct Shift+Enter (CSI-u) for the
 native CLI to interpret. Plain terminals use a bracketed newline when supported,
 otherwise the distinct key; never substitute a plain submit key.
 Do not send input from inactive/stopped/read-only surfaces or while composing text.
-An agent view drops a Ctrl+C that comes within 2 seconds of the last Ctrl+C it sent; a
-dropped press does not extend the window. Claude Code and Codex quit on a second Ctrl+C
-within about a second, so one press too many would end the session. Shells and other
+In an agent view Ctrl+C stops a turn or a command, but a second one never reaches the
+agent: Claude Code and Codex quit on it, which would end the session. A Ctrl+C reaches the
+agent only when something was typed or pasted since the last one that did, and 2 seconds
+have passed since then (Claude Code also quits on a press within 800 ms after typing).
+Mouse and focus reports are not typing; a dropped press changes nothing. Shells and other
 programs get every Ctrl+C. An agent still quits by its exit command or Stop session.
 Files dropped on a terminal are typed as their paths, shell-escaped and one space
 apart, as a terminal app does; an agent attaches a dropped image from its path. An image
