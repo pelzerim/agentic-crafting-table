@@ -877,3 +877,24 @@ test('/clear in a conversation that never had a prompt keeps the item on its pro
     assert.equal(followedConversation(directory, processSessionId), next, 'later hooks speak for the new id');
   } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
 });
+
+test('the prompt hook names a running Claude conversation after its item once, and never with a creation default', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-agent-name-'));
+  const store = new SqliteStore(join(directory, 'workspace.sqlite')), control = new WorkspaceControl(store);
+  try {
+    const processSessionId = randomUUID(), nativeSessionId = randomUUID();
+    await control.apply({ type: 'item.add', id: 'agent', resourceId: 'conversation', pluginId: 'agent.session', title: 'Claude session', position: { x: 0, y: 0 }, data: { provider: 'claude', sessionId: processSessionId, nativeSessionId } }, 0);
+    const coordinator = new AgentCoordinator(directory, {} as any, control, {} as any, { prepare: async () => ({}) } as any, async () => {}, store);
+    let at = 0;
+    const prompt = async () => { const result = await coordinator.hook({ nodeId: 'agent', processSessionId, nativeSessionId, observedAt: ++at, event: 'UserPromptSubmit' }) as { sessionTitle?: string }; await coordinator.hook({ nodeId: 'agent', processSessionId, nativeSessionId, observedAt: ++at, event: 'Stop' }); return result.sessionTitle; };
+    const synced = async () => (await control.read()).resources[0].data.nativeName;
+    assert.equal(await prompt(), undefined);
+    await control.apply({ type: 'node.update', id: 'agent', title: 'Fix   login' }, (await control.read()).revision);
+    assert.equal(await prompt(), 'Fix login');
+    assert.equal(await synced(), 'Fix login');
+    assert.equal(await prompt(), undefined, 'an agreed name is not sent again');
+    const started = await coordinator.hook({ nodeId: 'agent', processSessionId, nativeSessionId, observedAt: ++at, event: 'SessionStart' }) as { sessionTitle?: string };
+    assert.equal(started.sessionTitle, undefined, 'Claude takes a title only from UserPromptSubmit');
+    assert.equal(await synced(), 'Fix login', 'SessionStart keeps the agreed name');
+  } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
+});

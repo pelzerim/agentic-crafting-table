@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Agents
+- **Same name in Claude and Codex**: an agent's name on the table is now also its name in `claude --resume` and `codex resume`, instead of an AI title such as “Table context offer acknowledgment”. A running Claude session takes a new name with its next prompt; a stopped one, and Codex threads, take it within 30 seconds. A `/rename` in either CLI renames the item on the table too. (#32, @timohuovinen)
+
 ## 0.22.0 — 2026-11-13
 
 ### Map

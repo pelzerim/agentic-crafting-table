@@ -26,6 +26,7 @@ import { agentScene, sceneChanges } from './agent-scene.ts';
 import type { BackgroundState, BackgroundTask } from './agent-background.ts';
 import { attachPublishedArtifact } from './agent-artifacts.ts';
 import { applyAtHead } from './apply-at-head.ts';
+import { pendingName } from './agent-names.ts';
 import { parseClaudeArtifactUrl } from '../../src/resource-plugins/items/claude-artifact/url.ts';
 import { findById } from '../../src/graph/lookup.ts';
 
@@ -446,7 +447,9 @@ export class AgentCoordinator {
       const inputNeeded = event.event === 'PermissionRequest' || (event.event === 'PreToolUse' && event.toolName === 'AskUserQuestion') || (event.event === 'Notification' && ['permission_prompt', 'idle_prompt'].includes(event.notificationType ?? ''));
       const working = ['UserPromptSubmit', 'PreToolUse', 'PostToolUse'].includes(event.event) && !inputNeeded;
       const commands: WorkspaceCommand[] = [];
-      if (event.event === 'SessionStart') commands.push({ type: 'item.update', id: node.id, data: { ...resource.data, nativeStartedAt: new Date().toISOString() } });
+      // A running Claude writes the name it holds back over any other, so the prompt hook is how it learns the table's (AGENT-07b).
+      const sessionTitle = event.event === 'UserPromptSubmit' ? pendingName(node.title, typeof resource.data.nativeName === 'string' ? resource.data.nativeName : undefined, this.control.registry.get(resource.pluginId)?.activityTitle?.defaults ?? []) : undefined;
+      if (event.event === 'SessionStart' || sessionTitle) commands.push({ type: 'item.update', id: node.id, data: { ...resource.data, ...(event.event === 'SessionStart' ? { nativeStartedAt: new Date().toISOString() } : {}), ...(sessionTitle ? { nativeName: sessionTitle } : {}) } });
       const attentionNote = event.event === 'PermissionRequest' || event.notificationType === 'permission_prompt' ? 'Agent needs permission' : event.event === 'PreToolUse' && inputNeeded ? 'Agent asked a question'
         : event.notificationType === 'idle_prompt' ? 'Agent waiting' : event.event === 'StopFailure' ? 'Agent hit an error' : undefined;
       // The line the agent ended its turn on stays on the node until the next prompt starts a turn.
@@ -467,7 +470,7 @@ export class AgentCoordinator {
       if (event.event === 'Stop' && !waitingSummary) commands.push(...completionAttention(node, `claude:${event.processSessionId}:${event.observedAt}`, 'Agent finished'));
       try {
         if (commands.length) { await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'provider', id: event.processSessionId }, commands }); await this.changed(); }
-        return ['SessionStart', 'UserPromptSubmit'].includes(event.event) ? { context: await this.context.prepare(node.id) } : {};
+        return ['SessionStart', 'UserPromptSubmit'].includes(event.event) ? { context: await this.context.prepare(node.id), ...(sessionTitle ? { sessionTitle } : {}) } : {};
       } catch (error) { if ((error as { code?: string }).code !== 'REVISION_CONFLICT') throw error; }
     }
     throw new Error('Agent status changed concurrently; a newer observation will reconcile it');

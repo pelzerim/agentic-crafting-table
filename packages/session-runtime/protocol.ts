@@ -24,7 +24,9 @@ export const launchSchema = z.object({
 export type LaunchRequest = z.infer<typeof launchSchema>;
 /** A native CLI left its conversation from inside its terminal: `/new` or `/clear`, a fork, or `/resume`. */
 export interface ConversationSwitch { kind: 'new' | 'fork' | 'resume'; nativeSessionId: string }
-export interface NativeAgentState { provider: 'codex'; nativeSessionId: string; status: 'idle' | 'working' | 'input' | 'error' | 'unknown'; input?: 'approval' | 'question'; observedAt: string; readyAt?: string; completionId?: string; switched?: ConversationSwitch }
+export interface NativeAgentState { provider: 'codex'; nativeSessionId: string; status: 'idle' | 'working' | 'input' | 'error' | 'unknown'; input?: 'approval' | 'question'; observedAt: string; readyAt?: string; completionId?: string; switched?: ConversationSwitch;
+  /** The thread's name as this process knows it: from its resume and from a `/rename` in its terminal. */
+  name?: string }
 export interface SessionRecord {
   id: string; requestId: string; nodeId: string; workspaceId: string; cwd: string;
   state: 'starting' | 'running' | 'exited' | 'failed' | 'lost';
@@ -71,6 +73,7 @@ export const stopSessionSchema = sessionIdSchema.extend({ preservePids: z.array(
 export const inputSchema = sessionIdSchema.extend({ data: z.string().max(MAX_SESSION_INPUT), encoding: z.literal('binary').optional(), source: z.literal('user').optional() })
   .refine(input => input.encoding !== 'binary' || !/[^\u0000-\u00ff]/.test(input.data), 'Binary input must contain only byte values');
 /** The workbench guide and reference data for a running Codex conversation; the launch's own limits. */
+export const renameSchema = sessionIdSchema.extend({ name: z.string().trim().min(1).max(200) }).strict();
 export const injectSchema = sessionIdSchema.extend({ instructions: launchSchema.shape.native.unwrap().shape.instructions, context: launchSchema.shape.native.unwrap().shape.context }).strict();
 export const resizeSchema = sessionIdSchema.extend({ cols: launchSchema.shape.cols, rows: launchSchema.shape.rows });
 export const readSessionSchema = sessionIdSchema.extend({ after: z.number().int().nonnegative().optional(), history: z.boolean().optional(), through: z.number().int().nonnegative().optional(), tail: z.number().int().positive().optional() });
