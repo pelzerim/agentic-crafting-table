@@ -877,3 +877,18 @@ test('/clear in a conversation that never had a prompt keeps the item on its pro
     assert.equal(followedConversation(directory, processSessionId), next, 'later hooks speak for the new id');
   } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
 });
+
+test('an agent that quit on a Ctrl+C resumes its conversation in its item, once per process', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-agent-ctrl-c-'));
+  const store = new SqliteStore(join(directory, 'workspace.sqlite')), control = new WorkspaceControl(store);
+  try {
+    const sessions = { runtime: {} } as { runtime: unknown; onCtrlCQuit?: (nodeId: string, sessionId: string) => void };
+    const coordinator = new AgentCoordinator(directory, {} as any, control, sessions as any, {} as any, async () => {}, store);
+    const resumed: string[] = [];
+    coordinator.resume = (async (nodeId: string) => { resumed.push(nodeId); throw new Error('No saved native conversation for this item'); }) as any;
+    sessions.onCtrlCQuit!('agent', 'first'); sessions.onCtrlCQuit!('agent', 'first');
+    sessions.onCtrlCQuit!('agent', 'second');
+    await new Promise(resolve => setTimeout(resolve));
+    assert.deepEqual(resumed, ['agent', 'agent'], 'every reconcile pass reports the exit; each process resumes once, and a failed resume stays quiet');
+  } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
+});

@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Agents
+- **Ctrl+C no longer ends an agent**: every Ctrl+C still reaches Claude Code or Codex, so it stops a turn or a command as before. When the agent quits on one (both quit on a second Ctrl+C), the table resumes its conversation in the same item. `/exit` and Stop session still end it. (#31, @timohuovinen)
+
 ## 0.22.0 — 2026-11-13
 
 ### Map

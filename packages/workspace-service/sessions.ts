@@ -37,6 +37,8 @@ export class SessionCoordinator {
   readonly runtime: SupervisorConnection;
   /** Told when a running native CLI has moved to another conversation. */
   onConversationSwitch?: (nodeId: string, sessionId: string, switched: ConversationSwitch) => void;
+  /** Told when an agent quit on a Ctrl+C the person typed, until the item holds another process. */
+  onCtrlCQuit?: (nodeId: string, sessionId: string) => void;
   /** The native status last written per running session. */
   private nativeApplied = new Map<string, string>();
   private store: SqliteStore;
@@ -186,6 +188,7 @@ export class SessionCoordinator {
     const commands: WorkspaceCommand[] = [];
     let nativeKey: string | undefined;
     if (session.native?.switched && session.state === 'running' && !session.stopRequestedAt) this.onConversationSwitch?.(node.id, session.id, session.native.switched);
+    if (session.quitOnCtrlC && session.state === 'exited' && node.acceptsContext) this.onCtrlCQuit?.(node.id, session.id);
     if (session.native) {
       const native = session.native;
       // The switch may give the item another conversation; this process no longer speaks for its identity.
