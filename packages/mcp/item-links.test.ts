@@ -48,6 +48,23 @@ test('workspace_apply commands apply together in one revision under one commandI
   } finally { await table.close(); }
 });
 
+test('workspace_apply answers with the map only while that is small, and with a receipt after that', async () => {
+  const table = await bridge('agent');
+  try {
+    const small = parse(await table.apply({ command: note('first') }));
+    assert.ok(small.nodes.some((node: any) => node.id === 'first')); assert.ok(!('stateOmitted' in small));
+    const filler = Array.from({ length: 60 }, (_, index) => note(`filler-${index}`, { data: { text: 'x'.repeat(1000) } }));
+    await table.control.dispatch({ commandId: 'filler', expectedRevision: (await table.control.read()).revision, actor: { kind: 'user', id: 'test' }, commands: filler as never });
+    const before = await table.control.read();
+    const large = parse(await table.apply({ commandId: 'large', command: note('last', { links: [{ agent: true, kind: 'reference' }] }) }));
+    assert.deepEqual(Object.keys(large).sort(), ['commandId', 'itemLinks', 'replayed', 'revision', 'stateOmitted']);
+    assert.equal(large.revision, before.revision + 1); assert.equal(large.commandId, 'large'); assert.equal(large.replayed, false);
+    assert.equal(large.itemLinks[0].nodeId, 'last'); assert.match(large.stateOmitted, /workspace_read/);
+    assert.ok((await table.control.read()).nodes.some(node => node.id === 'last'), 'the write itself is saved');
+    assert.deepEqual(parse(await table.client.callTool({ name: 'workspace_apply', arguments: { commandId: 'large', expectedRevision: before.revision, command: note('last', { links: [{ agent: true, kind: 'reference' }] }) } })), { ...large, replayed: true });
+  } finally { await table.close(); }
+});
+
 test('workspace_apply takes exactly one of command and commands, and a human-only command refuses the whole batch', async () => {
   const table = await bridge('agent');
   try {

@@ -47,7 +47,7 @@ port, and reserves stdout for protocol messages, following the
 | --- | --- |
 | `workspace_read` | Read the graph, status, links, tasks, archive flags and view; obtain the revision. |
 | `workspace_plugins` | Discover type schemas, creation fields, appearance and backend capabilities; resolve supported pasted URLs. |
-| `workspace_apply` | Apply one typed command. `expectedRevision` is optional for commands that only add (see [Revisions](#revisions)). |
+| `workspace_apply` | Apply one typed command. `expectedRevision` is optional for commands that only add (see [Revisions](#revisions)). The desktop bridge answers with the new map while that is under 32 KiB; on a larger map it answers with a receipt (`revision`, `commandId`, `replayed`, `itemLinks`, `alreadyOnMap`) and `stateOmitted`. |
 | `workspace_run` | Dispatch generic item operations through plugin connectors, or session/workflow operations through the runtime adapter. |
 
 `workspace_run` refuses an agent by the policy each operation and item action declares:
