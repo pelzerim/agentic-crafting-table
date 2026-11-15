@@ -1,9 +1,34 @@
-import { newestTag, parseVersionTag } from '../core/updates.ts';
+import { APP_REPOSITORY, newestTag, parseVersionTag } from '../core/updates.ts';
 
 /** What `npm run update` is about to do, decided from the checkout alone so it can be shown before anything runs. */
 export interface UpdatePlan { tag: string; current?: string; steps: string[] }
 export class UpdateRefused extends Error {}
 
+const APP_CLONE_URL = `https://github.com/${APP_REPOSITORY}.git`;
+/** `owner/repo` of a GitHub remote URL in any spelling git accepts (https, ssh://, scp-like), lower-cased; undefined for other hosts. */
+const githubRepository = (url: string) => /^(?:https?:\/\/|ssh:\/\/)?(?:[^@/]+@)?github\.com[:/]+([^/]+\/[^/]+?)(?:\.git)?\/?$/i.exec(url.trim())?.[1]?.toLowerCase();
+/** Which remote `npm run update` fetches release tags from, out of `git remote -v`: the one `git config act.updateRemote` names,
+ * else one that points at the app repository (origin first), so a checkout whose remotes have other names still updates. */
+export function releaseRemote({ remotes, configured }: { remotes: string; configured?: string }): { name: string; url: string } {
+  const fetch = new Map<string, string>();
+  for (const line of remotes.split('\n')) {
+    const match = /^(\S+)\s+(\S+)\s+\(fetch\)$/.exec(line.trim());
+    if (match) fetch.set(match[1], match[2]);
+  }
+  const listed = [...fetch].map(([name, url]) => `  ${name}  ${url}`).join('\n');
+  if (configured) {
+    const url = fetch.get(configured);
+    if (url) return { name: configured, url };
+    throw new UpdateRefused(`git config act.updateRemote names "${configured}", which is not a remote of this checkout. Its remotes:\n${listed || '  (none)'}\nSet it to one of them, or unset it with git config --unset act.updateRemote.`);
+  }
+  const matching = [...fetch].filter(([, url]) => githubRepository(url) === APP_REPOSITORY.toLowerCase());
+  const [name, url] = matching.find(([remote]) => remote === 'origin') ?? matching[0] ?? [];
+  if (name && url) return { name, url };
+  const add = `git remote add upstream ${APP_CLONE_URL}`;
+  if (!fetch.size) throw new UpdateRefused(`This checkout has no git remote to fetch releases from. Add one with:\n  ${add}`);
+  throw new UpdateRefused(`None of this checkout's remotes points to github.com/${APP_REPOSITORY}, where releases are tagged:\n${listed}\n`
+    + `Add it with:\n  ${add}\nor, to fetch releases from one of the remotes above (a mirror, say): git config act.updateRemote <name>`);
+}
 /** `git tag --list` output to the newest release tag, or why there is none. */
 export function chooseReleaseTag(tags: readonly string[]): string {
   const tag = newestTag(tags);
