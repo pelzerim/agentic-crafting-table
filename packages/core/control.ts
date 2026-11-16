@@ -402,7 +402,7 @@ export class WorkspaceControl {
     const alreadyOnMap = itemsAlreadyOnMap(result.state, envelope, this.registry);
     const step = landed && !result.replayed && envelope.actor.kind === 'user' && envelope.actor.id === PERSON_ACTOR
       ? buildUndoStep('', landed, result.state, { registry: this.registry, sizes: this.store.readMapLayout?.().sizes }, undefined, commandSubjects(envelope.commands)) : undefined;
-    const receipt = step && { items: step.items, links: step.links, plots: step.plots };
+    const receipt = step && { items: step.items, links: step.links, plots: step.plots, ...step.pairs ? { anchors: step.anchors, pairs: step.pairs } : {} };
     return { ...result, ...alreadyOnMap.length ? { alreadyOnMap } : {}, ...receipt ? { receipt } : {} };
   }
 }
@@ -566,7 +566,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
         case 'project.create': {
           createId(command.id);
           const created = node.parse({ id: command.id, title: command.title, summary: command.summary, ...(command.workingDirectory !== undefined ? { workingDirectory: command.workingDirectory } : {}), ...(command.color ? { color: command.color.toLowerCase() } : {}), position: command.position ?? { x: 0, y: 0 },
-            ...(actor?.kind === 'user' && actor.id === PERSON_ACTOR ? { titleChosen: true } : {}) });
+            ...(actor?.kind === 'user' && actor.id === PERSON_ACTOR ? { titleChosen: true } : actor ? { generatedTitle: command.title } : {}) });
           const anchors = anchorsOf(command.near);
           place(created, anchors ? projectPlacement(state.nodes, footprint, anchors, footprint(created), command.position) : command.position, command.position);
           break;
@@ -898,9 +898,9 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
         }
         case 'node.title.generated': {
           const target = find(command.id), resource = state.resources.find(r => r.id === target.resourceId);
-          const plugin = resource && registry.get(resource.pluginId);
-          if (!plugin || !(plugin.activityTitle || plugin.attachTitle) || target.title !== command.sourceTitle) throw new Error('Title changed before the generated title was ready');
-          target.title = resource.title = target.generatedTitle = command.title; delete target.titleChosen; break;
+          const plugin = resource && registry.get(resource.pluginId), project = !target.resourceId && !target.projectId && !target.titleChosen;
+          if (!(project || (plugin && (plugin.activityTitle || plugin.attachTitle))) || target.title !== command.sourceTitle) throw new Error('Title changed before the generated title was ready');
+          target.title = target.generatedTitle = command.title; if (resource) resource.title = command.title; delete target.titleChosen; break;
         }
         case 'node.todo': {
           const target = find(command.id), resource = state.resources.find(r => r.id === target.resourceId);

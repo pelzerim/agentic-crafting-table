@@ -602,9 +602,9 @@ export function WorkspaceMap() {
     active: () => layerRef.current === 'map' && Boolean(snapshotRef.current),
     revert: async (step, direction) => {
       const result = await window.craftingTable.runtimeRun({ action: 'map.tidy', nodeId: 'board', arguments: { operation: 'revert', direction, step } as never }) as { applied?: UndoStep; reverted: number; skipped: number };
-      accept(await window.craftingTable.workspaceRead());
       return result;
     },
+    refresh: async () => accept(await window.craftingTable.workspaceRead()),
     notify: text => setUndoNotice({ text }), fail: setError,
   });
   /** Saves and resolves with the revision now held, which has the saved commands. */

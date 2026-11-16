@@ -5,8 +5,8 @@ import { layoutFootprints } from '../../src/graph/movement.ts';
 import { mapDimensionsSchema } from '../core/item-map-sizes.ts';
 import { stateSchema } from '../core/control.ts';
 import type { CommandEnvelope, CommandResult, WorkspaceCommand, WorkspaceControl, WorkspaceState } from '../core/control.ts';
-import { buildUndoStep, commandSubjects, planReversal, plotSnap } from '../core/map-undo.ts';
-import type { UndoStep } from '../core/map-undo.ts';
+import { UNDO_ANCHOR_CAP, UNDO_PAIR_CAP, buildUndoStep, commandSubjects, placeExactly, planReversal, plotSnap } from '../core/map-undo.ts';
+import type { PlotSnap, UndoStep } from '../core/map-undo.ts';
 import { finishedItems, newPlotKey, planTidy, tidyDrift, tidyFingerprint } from '../core/tidy.ts';
 import type { TidyPlan, TidyRegroup } from '../core/tidy.ts';
 import { summaryEvidence } from '../session-runtime/activity-summary.ts';
@@ -20,8 +20,11 @@ import type { SqliteStore } from './sqlite-store.ts';
 
 /** Tidy runs as the person but is never the person typing: its renames stay machine names. */
 export const TIDY_ACTOR = { kind: 'user', id: 'tidy' } as const;
-/** Item names asked per project and run, so one Tidy never spends the hour's allowance. */
+/** Item names asked per project and run, so no project takes the whole run's budget. */
 export const TIDY_RENAME_LIMIT = 8;
+/** AI requests one suggest may make across the board; the hour's allowance still applies on top. */
+export const TIDY_AI_BUDGET = 12;
+const TIDY_AI_CONCURRENCY = 3;
 const id = z.string().min(1).max(200), name = z.string().trim().min(1).max(48).regex(/^[^\x00-\x1f\x7f<>`]*$/);
 const options = z.object({ lineUp: z.boolean(), spacePlots: z.boolean(), colors: z.boolean(), archive: z.boolean(), rename: z.boolean(), regroup: z.boolean() });
 const rename = z.object({ kind: z.enum(['item', 'plot', 'project']), id, to: name });
@@ -31,7 +34,9 @@ const itemSnapSchema = z.object({ position: point, projectId: id.nullable(), siz
 const plotSnapSchema = z.object({ id, projectId: id, name: z.string().max(200).optional(), generated: z.boolean(), color: z.string().max(40), chosenColor: z.string().max(40).optional(), pinnedMemberIds: z.array(id).max(500), locked: z.boolean() }).strict();
 const link = stateSchema.shape.links.element;
 const stepSchema = z.object({ label: z.string().max(60), items: z.array(z.object({ id, before: itemSnapSchema, after: itemSnapSchema })).max(2000),
-  links: z.array(z.object({ before: link.optional(), after: link.optional() }).refine(change => Boolean(change.before || change.after))).max(500), plots: z.array(z.object({ id, before: plotSnapSchema.optional(), after: plotSnapSchema })).max(200) });
+  links: z.array(z.object({ before: link.optional(), after: link.optional() }).refine(change => Boolean(change.before || change.after))).max(500),
+  plots: z.array(z.object({ id, before: plotSnapSchema.optional(), after: plotSnapSchema.optional() }).refine(change => Boolean(change.before || change.after))).max(200),
+  anchors: z.array(z.object({ id, position: point })).max(UNDO_ANCHOR_CAP).optional(), pairs: z.array(z.tuple([id, id])).max(UNDO_PAIR_CAP).optional() });
 type Commit = (envelope: CommandEnvelope, change: (state: WorkspaceState) => WorkspaceState) => CommandResult;
 export const tidyRequestSchema = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('suggest'), projectId: id.optional(), options }),
@@ -68,9 +73,17 @@ export class Tidy {
   }
   private context() { return { registry: this.control.registry, sizes: this.store.readSettings().value.itemMapSizes }; }
   /** Commits `commands` as Tidy inside the open transaction; it always takes a revision, so plot-only changes version too. */
-  private land(commit: Commit, state: WorkspaceState, commands: WorkspaceCommand[]) {
+  private land(commit: Commit, state: WorkspaceState, commands: WorkspaceCommand[], place: Parameters<typeof placeExactly>[1] = []) {
     const envelope = { commandId: randomUUID(), expectedRevision: state.revision, actor: TIDY_ACTOR, commands };
-    return commit(envelope, current => { const next = this.control.reduce(current, envelope); return next.revision === current.revision ? { ...next, revision: current.revision + 1 } : next; }).state;
+    return commit(envelope, current => { const next = placeExactly(this.control.reduce(current, envelope), place); return next.revision === current.revision ? { ...next, revision: current.revision + 1 } : next; }).state;
+  }
+  /** Every plot record as undo sees it: shown plots, plus dormant ones kept for their identity, name and pins. */
+  private plotSnaps(state: WorkspaceState): PlotSnap[] {
+    const records = new Map(this.store.plotRecords().map(record => [record.id, record]));
+    // Stored pins, so an archived member keeps its pin through undo.
+    const shown = this.list(state).map(plot => { const snap = plotSnap(plot), record = records.get(plot.id); return record ? { ...snap, pinnedMemberIds: [...record.pinnedMemberIds].sort() } : snap; }), ids = new Set(shown.map(plot => plot.id));
+    return [...shown, ...[...records.values()].filter(record => !ids.has(record.id)).map(record => ({ id: record.id, projectId: record.projectId, ...record.name !== undefined ? { name: record.name } : {},
+      generated: record.name !== undefined && record.generated, color: record.color ?? '', ...record.chosenColor ? { chosenColor: record.chosenColor } : {}, pinnedMemberIds: [...record.pinnedMemberIds].sort(), locked: record.locked }))];
   }
 
   private list(state: WorkspaceState) { return this.plots.observe(state).list; }
@@ -99,6 +112,9 @@ export class Tidy {
     const renames: RenameRow[] = [], moves: RegroupRow[] = [];
     if (!chosen.rename && !chosen.regroup) return { revision: state.revision, renames, regroup: moves };
     this.aiAllowed();
+    // Requests are queued in board order and only the first TIDY_AI_BUDGET are sent; rows keep that order.
+    const jobs: { request: Parameters<ActivitySummaryClient['complete']>[0]; done: (reply: string) => void }[] = [];
+    const ask = (request: (typeof jobs)[number]['request'], done: (reply: string) => void) => { jobs.push({ request, done }); };
     const plots = this.plotsIn(state, projectId), byId = new Map(state.nodes.map(node => [node.id, node]));
     const evidence = (node: Node) => ({ title: summaryEvidence(node.title).slice(0, 120), ...node.summary ? { summary: summaryEvidence(node.summary).slice(0, 80) } : {} });
     for (const project of this.projects(state, projectId)) {
@@ -106,18 +122,22 @@ export class Tidy {
       if (chosen.rename) {
         for (const node of members.filter(node => this.renamable(state, node)).slice(0, TIDY_RENAME_LIMIT)) {
           const linked = state.links.flatMap(link => link.sourceId === node.id ? [link.targetId] : link.targetId === node.id ? [link.sourceId] : []).flatMap(other => byId.get(other)?.title ?? []);
-          const reply = normalizeAgentTitle(await this.ask(buildAgentTitleRequest({ provider: 'agent', status: node.activity ?? 'idle', currentTitle: node.title, linked, recentOutput: node.summary ?? node.title })));
-          if (reply && reply !== 'KEEP' && reply !== node.title) renames.push({ kind: 'item', id: node.id, from: node.title, to: reply, ticked: true });
+          ask(buildAgentTitleRequest({ provider: 'agent', status: node.activity ?? 'idle', currentTitle: node.title, linked, recentOutput: node.summary ?? node.title }), text => {
+            const reply = normalizeAgentTitle(text);
+            if (reply && reply !== 'KEEP' && reply !== node.title) renames.push({ kind: 'item', id: node.id, from: node.title, to: reply, ticked: true });
+          });
         }
         for (const plot of own.filter(plot => plot.source !== 'user' && !plot.locked)) {
           const items = plot.memberIds.flatMap(member => byId.get(member) ?? []).map(node => ({ type: 'Item', ...evidence(node) }));
-          const reply = normalizePlotName(await this.ask(buildPlotNameRequest({ project: project.title, ...plot.source === 'generated' ? { currentName: plot.name } : {}, items })));
-          if (reply && reply !== 'KEEP' && reply !== plot.name) renames.push({ kind: 'plot', id: plot.id, from: plot.name, to: reply, ticked: true });
+          ask(buildPlotNameRequest({ project: project.title, ...plot.source === 'generated' ? { currentName: plot.name } : {}, items }), text => {
+            const reply = normalizePlotName(text);
+            if (reply && reply !== 'KEEP' && reply !== plot.name) renames.push({ kind: 'plot', id: plot.id, from: plot.name, to: reply, ticked: true });
+          });
         }
-        if (machineNamed(project)) {
-          const reply = normalizePlotName(await this.ask(buildProjectNameRequest({ currentName: project.title, plots: own.map(plot => plot.name), items: members.map(node => node.title) })));
+        if (machineNamed(project)) ask(buildProjectNameRequest({ currentName: project.title, plots: own.map(plot => plot.name), items: members.map(node => node.title) }), text => {
+          const reply = normalizePlotName(text);
           if (reply && reply !== 'KEEP' && reply !== project.title) renames.push({ kind: 'project', id: project.id, from: project.title, to: reply, ticked: true });
-        }
+        });
       }
       if (chosen.regroup) {
         const open = own.filter(plot => !plot.locked), locked = new Set(own.filter(plot => plot.locked).flatMap(plot => plot.memberIds));
@@ -125,11 +145,23 @@ export class Tidy {
         const sample = { project: project.title, plots: open.map(plot => ({ id: plot.id, name: plot.name })),
           items: members.filter(node => !locked.has(node.id)).map(node => ({ id: node.id, plot: plotOf.get(node.id) ?? null, ...evidence(node) })) };
         if (sample.items.length < 2) continue;
-        for (const move of parseRegroupReply(await this.ask(buildRegroupRequest(sample)), sample))
-          moves.push({ ...move, title: byId.get(move.itemId)!.title, plotName: move.newPlot ?? open.find(plot => plot.id === move.plotId)!.name });
+        ask(buildRegroupRequest(sample), text => {
+          for (const move of parseRegroupReply(text, sample)) moves.push({ ...move, title: byId.get(move.itemId)!.title, plotName: move.newPlot ?? open.find(plot => plot.id === move.plotId)!.name });
+        });
       }
     }
-    return { revision: state.revision, renames, regroup: moves };
+    const sent = jobs.slice(0, TIDY_AI_BUDGET), replies: string[] = [];
+    let next = 0, failed: unknown;
+    const worker = async () => {
+      while (next < sent.length && failed === undefined) {
+        const at = next++;
+        try { replies[at] = await this.ask(sent[at].request); } catch (error) { failed ??= error; }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(TIDY_AI_CONCURRENCY, sent.length) }, worker));
+    if (failed !== undefined) throw failed;
+    sent.forEach((job, at) => job.done(replies[at]));
+    return { revision: state.revision, renames, regroup: moves, ...jobs.length > sent.length ? { limited: true } : {} };
   }
 
   /** Checks the preview's fingerprint and writes moves, names, archives and plots in one transaction, returning its receipt. */
@@ -137,7 +169,7 @@ export class Tidy {
     const context = this.context();
     return this.atomic((state, commit) => {
       this.inScope(state, request.projectId);
-      const plots = this.plotsIn(state, request.projectId), list = this.list(state), byId = new Map(state.nodes.map(node => [node.id, node]));
+      const plots = this.plotsIn(state, request.projectId), plotsBefore = this.plotSnaps(state), byId = new Map(state.nodes.map(node => [node.id, node]));
       const input = { state, registry: this.control.registry, sizes: context.sizes, plots, projectId: request.projectId, now: this.clock(), regroup: request.regroup, archived: request.archives };
       if (tidyFingerprint(input, planTidy(input, request.options)) !== request.fingerprint) throw Object.assign(new Error('The map changed since this preview. Check the new preview and apply again.'), { code: 'TIDY_STALE' });
       // An item that got busy since the preview stays; the layout is planned again without archiving it.
@@ -154,9 +186,7 @@ export class Tidy {
       if (request.regroup.length && !request.options.regroup) throw new Error('Regroup is off.');
       for (const pin of plan.pins) if (pin.memberIds.some(member => request.regroup.some(row => row.itemId === member) && byId.get(member)?.projectId !== pin.projectId)) throw new Error('Regroup never moves items between projects.');
       const batch = (moves: TidyPlan['moves']): WorkspaceCommand[] => [
-        ...request.renames.filter(row => row.kind !== 'plot').map(row => row.kind === 'item'
-          ? { type: 'node.title.generated' as const, id: row.id, title: row.to, sourceTitle: byId.get(row.id)!.title }
-          : { type: 'node.update' as const, id: row.id, title: row.to }),
+        ...request.renames.filter(row => row.kind !== 'plot').map(row => ({ type: 'node.title.generated' as const, id: row.id, title: row.to, sourceTitle: byId.get(row.id)!.title })),
         ...moves.length ? [{ type: 'nodes.move' as const, positions: moves.map(move => ({ id: move.id, position: move.to })) }] : [],
         ...archives.map(archived => ({ type: 'node.archive' as const, id: archived })),
       ];
@@ -172,20 +202,20 @@ export class Tidy {
       }
       const commands = batch(moves), plotNames = request.renames.filter(row => row.kind === 'plot');
       if (!commands.length && !plan.colors.length && !plan.pins.length && !plotNames.length) return { revision: state.revision, moved: [], created: [], skipped };
-      const after = this.land(commit, state, commands), created = this.writePlots(plan, request.renames, request.regroup);
+      const after = this.land(commit, state, commands), created = this.writePlots(plan, request.renames, request.regroup, byId);
       this.plots.invalidate();
-      const touched = new Set([...plan.colors.map(change => change.plotId), ...plan.pins.map(pin => created.get(pin.plotId) ?? pin.plotId), ...plotNames.map(row => row.id)]);
-      const pick = (snaps: ReturnType<typeof plotSnap>[]) => snaps.filter(plot => touched.has(plot.id));
-      const step = buildUndoStep('Tidy', state, after, context, { before: pick(list.map(plotSnap)), after: pick(this.list(after).map(plotSnap)) }, commandSubjects(commands));
-      return { revision: after.revision, moved: moves.map(move => move.id), created: [...created.values()], skipped, ...step ? { receipt: { items: step.items, links: step.links, plots: step.plots } } : {} };
+      // Every plot record the apply changed, plots it emptied or removed included, so undo can bring them back.
+      const step = buildUndoStep('Tidy', state, after, context, { before: plotsBefore, after: this.plotSnaps(after) }, commandSubjects(commands));
+      return { revision: after.revision, moved: moves.map(move => move.id), created: [...created.values()], skipped,
+        ...step ? { receipt: { items: step.items, links: step.links, plots: step.plots, ...step.pairs ? { anchors: step.anchors, pairs: step.pairs } : {} } } : {} };
     });
   }
   /** Colours, pins, new plots and plot names, in one store transaction; returns new plot ids by their `new:` key. */
-  private writePlots(plan: TidyPlan, renames: readonly z.infer<typeof rename>[], rows: readonly TidyRegroup[]) {
+  private writePlots(plan: TidyPlan, renames: readonly z.infer<typeof rename>[], rows: readonly TidyRegroup[], byId: ReadonlyMap<string, Node>) {
     const created = new Map<string, string>(), now = this.clock();
     for (const pin of plan.pins) if (pin.plotId.startsWith('new:')) created.set(pin.plotId, randomUUID());
     const names = new Map(renames.filter(row => row.kind === 'plot').map(row => [row.id, row.to]));
-    for (const row of rows) if (row.newPlot) names.set(created.get(newPlotKey(row.newPlot)) ?? '', row.newPlot);
+    for (const row of rows) { const projectId = byId.get(row.itemId)?.projectId; if (row.newPlot && projectId) names.set(created.get(newPlotKey(projectId, row.newPlot)) ?? '', row.newPlot); }
     names.delete('');
     this.store.writeTidyPlots({ colors: new Map(plan.colors.map(change => [change.plotId, change.to])), pins: plan.pins.map(pin => ({ ...pin, plotId: created.get(pin.plotId) ?? pin.plotId, create: created.has(pin.plotId) })), names }, now);
     return created;
@@ -196,9 +226,9 @@ export class Tidy {
     const context = this.context();
     return this.atomic((state, commit) => {
       const simulate = (commands: WorkspaceCommand[]) => this.control.reduce(state, { commandId: randomUUID(), expectedRevision: state.revision, actor: TIDY_ACTOR, commands });
-      const reversal = planReversal(step, state, this.list(state).map(plotSnap), context, direction, simulate, current => layoutFootprints(current.nodes, current.resources, context.registry, context.sizes));
+      const reversal = planReversal(step, state, this.plotSnaps(state), context, direction, simulate, current => layoutFootprints(current.nodes, current.resources, context.registry, context.sizes));
       if (!reversal.applied) return { revision: state.revision, reverted: 0, skipped: reversal.skipped };
-      const after = this.land(commit, state, reversal.commands);
+      const after = this.land(commit, state, reversal.commands, reversal.place);
       if (reversal.plots.length || reversal.removePlots.length) { this.store.restorePlots(reversal.plots, reversal.removePlots, this.clock()); this.plots.invalidate(); }
       // The other direction gets what this commit really did to each item, never what was aimed for.
       const ids = new Set(reversal.applied.items.map(item => item.id)), done = buildUndoStep(step.label, state, after, context, undefined, ids)?.items.filter(item => ids.has(item.id)) ?? [];

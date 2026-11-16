@@ -979,7 +979,10 @@ latest map in the same transaction that reverts it, and puts it back only while 
 step left; items outside the step are never pushed, so one that would land on them, or stop short of its
 old place, stays too. A plot locked since the step is left alone, and a member another plot has pinned
 since stays there. A part that can no longer be put back (its project archived, a link's endpoint gone) is
-skipped. Anything
+skipped, and an item is never put back into a project archived since. Undoing **Clear overlaps** puts an
+item back exactly onto the items it overlapped while every one of them is still where the step found it
+or goes back with it; if one moved since, the item stays. A Tidy step also holds plots it emptied, so undo brings back their name and
+pins. Anything
 changed since (by an agent, another window or the person) stays and the notice says so: “Undid move · 2
 items changed since, left in place”. Redo replays only what the undo put back. When nothing can revert the
 notice says so and the step is dropped. One undo or redo is one transaction and one revision. History lives in
@@ -1019,10 +1022,13 @@ Archived items can be restored from the archive or by undo.
 *Rename and Regroup* use the same tool-free title helper as AI titles, need AI features on, and never run
 for agents or MCP. Rename suggests names for agent sessions, plots and projects, never for names a
 provider owns. A title the person types, or gives a project they create, is marked as **chosen by the
-person**; a name with no mark counts as chosen unless it still equals the last machine title. A chosen name is never
+person**; a name with no mark counts as chosen unless it still equals the last machine title. A project an
+agent or MCP creates starts with a machine name. A chosen name is never
 suggested, and a row is ticked by default only when the current name is provably machine made. A name
 Tidy applies is a machine name, so a later Tidy may rename it again. Regroup asks once per project, only
-moves items between plots of that project, and never moves a locked plot's members.
+moves items between plots of that project, and never moves a locked plot's members. One Tidy run sends at
+most 12 AI requests across the board, three at a time; when that runs out, the preview says some
+suggestions were skipped.
 
 **MAP-25 — Mute a project.** (Night.) Mute is a **display
 preference on one project**. It changes what the app shows and announces and almost

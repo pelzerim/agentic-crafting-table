@@ -143,3 +143,12 @@ test('undoing Move to project brings a to-do\'s attached items back too', async 
   const undone = await revert(sent, 'undo');
   assert.deepEqual(['task', 'a'].map(id => undone.state.nodes.find(node => node.id === id)!.projectId), ['acme', 'acme']);
 });
+
+test('undo never puts an item back into a project archived since', async () => {
+  const { send, edit, revert } = await board();
+  await send([{ type: 'project.create', id: 'beta', title: 'Beta', workingDirectory: '/Users/example/beta', position: { x: 4000, y: 0 } }]);
+  const sent = await edit([{ type: 'nodes.send', ids: ['a'], projectId: 'beta' }]);
+  await send([{ type: 'node.archive', id: 'acme' }], AGENT);
+  const undone = await revert(sent, 'undo');
+  assert.deepEqual([undone.state.nodes.find(node => node.id === 'a')!.projectId, undone.skipped], ['beta', 1]);
+});

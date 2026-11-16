@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PERSON_ACTOR, WorkspaceControl } from '../core/control.ts';
 import type { WorkspaceCommand } from '../core/control.ts';
+import { UNDO_ANCHOR_CAP, UNDO_PAIR_CAP } from '../core/map-undo.ts';
 import type { UndoStep } from '../core/map-undo.ts';
 import { planTidy, tidyFingerprint } from '../core/tidy.ts';
 import type { TidyRegroup } from '../core/tidy.ts';
@@ -12,6 +13,7 @@ import { plotSnap } from '../core/map-undo.ts';
 import { SqliteStore } from './sqlite-store.ts';
 import { Plots } from './plots.ts';
 import { Tidy } from './tidy.ts';
+import { layoutFootprints } from '../../src/graph/movement.ts';
 import type { ActivitySummaryClient } from '../../src/agents/activity-summary.ts';
 
 const ALL = { lineUp: true, spacePlots: true, colors: true, archive: false, rename: false, regroup: false };
@@ -39,6 +41,12 @@ async function fixture(run: (value: Fixture) => Promise<void>) {
   } finally { await plots.close(); store.close(); await rm(directory, { recursive: true, force: true }); }
 }
 const positions = (state: { nodes: { id: string; position: unknown }[] }) => Object.fromEntries(state.nodes.map(node => [node.id, node.position]));
+const noteIn = (projectId: string, id: string, x: number, y: number): WorkspaceCommand => ({ type: 'item.add', id, resourceId: `${id}-r`, pluginId: 'workspace.note', title: `Note ${id}`, data: { text: `Note ${id}` }, projectId, position: { x, y } });
+const aiOn = (store: SqliteStore, requestsPerHour = 12) => store.writeSettings({ expectedRevision: store.readSettings().revision, value: { ...store.readSettings().value, summaries: { ...store.readSettings().value.summaries, enabled: true, requestsPerHour } } });
+type Reverted = { applied?: UndoStep; reverted: number; skipped: number };
+/** Sets positions directly, the way an older layout or another client left them, without collision handling. */
+const setPositions = (store: SqliteStore, at: Record<string, { x: number; y: number }>) => store.atomic((state, commit) => commit({ commandId: crypto.randomUUID(), expectedRevision: state.revision, actor: AGENT, commands: [] },
+  current => ({ ...current, revision: current.revision + 1, nodes: current.nodes.map(node => at[node.id] ? { ...node, position: at[node.id] } : node) })));
 
 const apply = (fingerprint: string, options = ALL) => ({ operation: 'apply', fingerprint, options, archives: [], renames: [], regroup: [] });
 type Applied = { revision: number; receipt?: Omit<UndoStep, 'label'> };
@@ -181,4 +189,124 @@ test('a move the final map would carry into another plot is dropped before the c
   assert.ok(carried > 0, 'the plan did send a1');
   assert.equal(result.moved.includes('a1'), false);
   assert.deepEqual(members(await control.read()), members(seen));
+}));
+
+test('undoing a regroup brings back a named singleton plot the regroup emptied, with its id, name and pin', () => fixture(async ({ control, plots, tidy, store, preview }) => {
+  store.createPinnedPlot('P', 'acme', ['loose'], NOW); store.renamePlot('P', 'Mine', false); plots.invalidate();
+  const target = plots.observe(await control.read()).list.find(plot => plot.memberIds.includes('a1'))!;
+  const options = { ...ALL, lineUp: false, spacePlots: false, colors: false, regroup: true }, regroup = [{ itemId: 'loose', plotId: target.id }];
+  const result = await tidy.run({ ...apply(await preview(options, regroup), options), regroup }) as Applied;
+  assert.equal(plots.observe(await control.read()).list.some(plot => plot.id === 'P'), false, 'the regroup emptied P');
+  await tidy.run({ operation: 'revert', direction: 'undo', step: { label: 'Tidy', ...result.receipt! } });
+  const back = plots.observe(await control.read()).list.find(plot => plot.id === 'P');
+  assert.deepEqual([back?.name, back?.source, back?.memberIds], ['Mine', 'user', ['loose']]);
+  assert.deepEqual(store.plotRecords().find(record => record.id === 'P')!.pinnedMemberIds, ['loose']);
+}));
+
+test('undoing a regroup out of a pinned plot pins the item there again', () => fixture(async ({ control, plots, tidy, store, preview }) => {
+  const list = plots.observe(await control.read()).list, from = list.find(plot => plot.memberIds.includes('a1'))!, to = list.find(plot => plot.memberIds.includes('b1'))!;
+  store.pinPlotMembers(from.id, ['a1', 'a2', 'a3']); plots.invalidate();
+  const options = { ...ALL, lineUp: false, spacePlots: false, colors: false, regroup: true }, regroup = [{ itemId: 'a1', plotId: to.id }];
+  const result = await tidy.run({ ...apply(await preview(options, regroup), options), regroup }) as Applied;
+  await tidy.run({ operation: 'revert', direction: 'undo', step: { label: 'Tidy', ...result.receipt! } });
+  assert.deepEqual(store.plotRecords().find(record => record.id === from.id)!.pinnedMemberIds, ['a1', 'a2', 'a3']);
+}));
+
+test('undoing a regroup keeps the pin of a member archived before it', () => fixture(async ({ control, plots, tidy, store, person, preview }) => {
+  const list = plots.observe(await control.read()).list, from = list.find(plot => plot.memberIds.includes('a1'))!, to = list.find(plot => plot.memberIds.includes('b1'))!;
+  store.pinPlotMembers(from.id, ['a1', 'a2', 'a3']); plots.invalidate();
+  await person({ type: 'node.archive', id: 'a2' });
+  const options = { ...ALL, lineUp: false, spacePlots: false, colors: false, regroup: true }, regroup = [{ itemId: 'a1', plotId: to.id }];
+  const result = await tidy.run({ ...apply(await preview(options, regroup), options), regroup }) as Applied;
+  await tidy.run({ operation: 'revert', direction: 'undo', step: { label: 'Tidy', ...result.receipt! } });
+  assert.deepEqual(store.plotRecords().find(record => record.id === from.id)!.pinnedMemberIds, ['a1', 'a2', 'a3']);
+}));
+
+test('two projects can each regroup into a new plot of the same name', () => fixture(async ({ tidy, person, preview }) => {
+  await person({ type: 'project.create', id: 'beta', title: 'Beta', summary: '', position: { x: 0, y: 8000 } });
+  await person(noteIn('beta', 'c1', 0, 8000), noteIn('beta', 'c2', 0, 8000));
+  const options = { ...ALL, lineUp: false, spacePlots: false, colors: false, regroup: true }, regroup = [{ itemId: 'a1', newPlot: 'Fresh' }, { itemId: 'c1', newPlot: 'Fresh' }];
+  const result = await tidy.run({ ...apply(await preview(options, regroup), options), regroup }) as { created: string[] };
+  assert.equal(result.created.length, 2);
+}));
+
+test('a project an agent created is offered for rename and stays a machine name once renamed; a person\'s project never is', () => fixture(async ({ control, tidy, person, agent, store, asked, preview }) => {
+  aiOn(store);
+  await agent({ type: 'project.create', id: 'billing', title: 'Billing', summary: '', position: { x: 0, y: 8000 } });
+  await person(noteIn('billing', 'c1', 0, 8000));
+  const options = { ...ALL, lineUp: false, spacePlots: false, colors: false, rename: true }, projectAsks = () => asked.filter(system => system.includes('Name the project')).length;
+  const suggested = await tidy.run({ operation: 'suggest', options }) as { renames: { kind: 'project'; id: string; to: string }[] };
+  const rows = suggested.renames.filter(row => row.kind === 'project').map(({ kind, id, to }) => ({ kind, id, to }));
+  assert.deepEqual(rows, [{ kind: 'project', id: 'billing', to: 'Checkout total fix' }]);
+  assert.equal(projectAsks(), 1, 'never asked for Acme');
+  await tidy.run({ ...apply(await preview(options), options), renames: rows });
+  const billing = (await control.read()).nodes.find(node => node.id === 'billing')!;
+  assert.deepEqual([billing.title, billing.generatedTitle, billing.titleChosen], ['Checkout total fix', 'Checkout total fix', undefined]);
+  await tidy.run({ operation: 'suggest', options });
+  assert.equal(projectAsks(), 2, 'a later Tidy may rename it again');
+}));
+
+test('one suggest makes at most 12 AI requests across the board and says it stopped', () => fixture(async ({ tidy, person, store, asked }) => {
+  aiOn(store, 120);
+  for (let i = 0; i < 6; i++) {
+    const y = 8000 + i * 3000;
+    await person({ type: 'project.create', id: `p${i}`, title: `Project ${i}`, summary: '', position: { x: 0, y } });
+    await person(...['a', 'b', 'c'].map(id => noteIn(`p${i}`, `p${i}${id}`, 0, y)), ...['d', 'e', 'f'].map(id => noteIn(`p${i}`, `p${i}${id}`, 3000, y)));
+  }
+  const result = await tidy.run({ operation: 'suggest', options: { ...ALL, rename: true, regroup: true } }) as { limited?: boolean };
+  assert.equal(asked.length, 12);
+  assert.equal(result.limited, true);
+}));
+
+test('Clear overlaps undoes to the exact overlap and redoes, but not once the item it overlapped moved', () => fixture(async ({ control, store, tidy, person, agent }) => {
+  await person(noteIn('acme', 'o1', 6000, 0), noteIn('acme', 'o2', 6600, 0));
+  const o1 = (await control.read()).nodes.find(node => node.id === 'o1')!.position;
+  store.atomic((state, commit) => commit({ commandId: crypto.randomUUID(), expectedRevision: state.revision, actor: AGENT, commands: [] },
+    current => ({ ...current, revision: current.revision + 1, nodes: current.nodes.map(node => node.id === 'o2' ? { ...node, position: { x: o1.x + 30, y: o1.y + 10 } } : node) })));
+  const overlapped = positions(await control.read()), step = (await person({ type: 'layout.repair' }))!, cleared = positions(await control.read());
+  assert.equal(step.items.length, 1, 'repair moved one of the two');
+  const moved = step.items[0].id, anchor = moved === 'o1' ? 'o2' : 'o1';
+  const undone = await tidy.run({ operation: 'revert', direction: 'undo', step }) as Reverted;
+  assert.deepEqual([positions(await control.read()), undone.skipped], [overlapped, 0]);
+  const redone = await tidy.run({ operation: 'revert', direction: 'redo', step: undone.applied! }) as Reverted;
+  assert.deepEqual([positions(await control.read()), redone.skipped], [cleared, 0]);
+  const at = cleared[anchor] as { x: number; y: number }, away = Math.sign(at.x - (cleared[moved] as { x: number }).x) || 1;
+  await agent({ type: 'node.move', id: anchor, position: { x: at.x + 10 * away, y: at.y } });
+  const again = await tidy.run({ operation: 'revert', direction: 'undo', step: redone.applied! }) as Reverted;
+  assert.deepEqual([again.skipped, (await control.read()).nodes.find(node => node.id === moved)!.position], [1, cleared[moved]]);
+}));
+
+test('Clear overlaps on a pile of three undoes to the exact pile and redoes', () => fixture(async ({ control, store, tidy, person }) => {
+  await person(noteIn('acme', 'o1', 6000, 0), noteIn('acme', 'o2', 6600, 0), noteIn('acme', 'o3', 7200, 0));
+  setPositions(store, { o1: { x: 6000, y: 0 }, o2: { x: 6020, y: 10 }, o3: { x: 6040, y: 20 } });
+  const pile = positions(await control.read()), step = (await person({ type: 'layout.repair' }))!, cleared = positions(await control.read());
+  assert.ok(step.items.length >= 2, 'repair moved at least two of the pile');
+  const undone = await tidy.run({ operation: 'revert', direction: 'undo', step }) as Reverted;
+  assert.deepEqual([positions(await control.read()), undone.skipped], [pile, 0]);
+  const redone = await tidy.run({ operation: 'revert', direction: 'redo', step: undone.applied! }) as Reverted;
+  assert.deepEqual([positions(await control.read()), redone.skipped], [cleared, 0]);
+}));
+
+test('undo puts an item back onto what it overlapped only while every one of those is still in place', () => fixture(async ({ control, store, tidy, person, agent }) => {
+  await person(noteIn('acme', 'p', 6000, 0), noteIn('acme', 'q', 7000, 0), noteIn('acme', 'x', 8000, 0));
+  const state = await control.read(), width = layoutFootprints(state.nodes, state.resources, control.registry).find(box => box.id === 'p')!.width;
+  setPositions(store, { p: { x: 6000, y: 0 }, q: { x: 6000 + width + 100, y: 0 }, x: { x: 6000 + (width + 100) / 2, y: 0 } });
+  const straddled = positions(await control.read()), step = (await person({ type: 'node.move', id: 'x', position: { x: 6000, y: 3000 } }))!;
+  assert.deepEqual(step.anchors?.map(anchor => anchor.id).sort(), ['p', 'q']);
+  const undone = await tidy.run({ operation: 'revert', direction: 'undo', step }) as Reverted;
+  assert.deepEqual([positions(await control.read()), undone.skipped], [straddled, 0]);
+  const redone = await tidy.run({ operation: 'revert', direction: 'redo', step: undone.applied! }) as Reverted;
+  await agent({ type: 'node.move', id: 'p', position: { x: 6000, y: 6000 } });
+  const again = await tidy.run({ operation: 'revert', direction: 'undo', step: redone.applied! }) as Reverted;
+  assert.deepEqual([again.skipped, (await control.read()).nodes.find(node => node.id === 'x')!.position], [1, { x: 6000, y: 3000 }]);
+}));
+
+test('a step over the anchor caps records none for the items past them, so its receipt still passes the revert schema', () => fixture(async ({ control, store, tidy, person }) => {
+  for (let batch = 0; batch < 6; batch++) await person(...Array.from({ length: 100 }, (_, i) => noteIn('acme', `n${batch * 100 + i}`, 6000, 0)));
+  await person(noteIn('acme', 'x', 6000, 0));
+  setPositions(store, Object.fromEntries([...Array.from({ length: 600 }, (_, i) => `n${i}`), 'x'].map(id => [id, { x: 6000, y: 0 }])));
+  const step = (await person({ type: 'node.move', id: 'x', position: { x: 6000, y: -8000 } }))!;
+  assert.ok(step.pairs!.length <= UNDO_PAIR_CAP && step.anchors!.length <= UNDO_ANCHOR_CAP);
+  const undone = await tidy.run({ operation: 'revert', direction: 'undo', step }) as Reverted;
+  assert.ok(undone.skipped > 0, 'items whose overlaps were not recorded stay where they are');
 }));

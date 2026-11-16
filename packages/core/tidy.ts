@@ -40,13 +40,13 @@ export interface TidyInput {
 export interface TidyPlan {
   moves: { id: string; from: Position; to: Position }[];
   colors: { plotId: string; from: PlotColor; to: PlotColor }[];
-  /** Pins written in the same batch; `new:<name>` is a plot Regroup creates. */
+  /** Pins written in the same batch; `new:<project>:<name>` is a plot Regroup creates. */
   pins: { plotId: string; projectId: string; memberIds: string[] }[];
   /** Finished items Tidy may archive. */
   archives: string[];
 }
 
-export const newPlotKey = (name: string) => `new:${name}`;
+export const newPlotKey = (projectId: string, name: string) => `new:${projectId}:${name}`;
 const top = (box: SpatialBox) => box.y - box.height / 2, left = (box: SpatialBox) => box.x - box.width / 2;
 const same = (a: Position, b: Position) => Math.abs(a.x - b.x) < .5 && Math.abs(a.y - b.y) < .5;
 
@@ -176,7 +176,7 @@ function prepare(input: TidyInput) {
   const lockedIds = new Set(plots.filter(plot => plot.locked).flatMap(plot => plot.memberIds));
   const regrouped = new Map<string, string>();
   for (const row of input.regroup ?? []) {
-    const node = nodes.find(candidate => candidate.id === row.itemId), target = row.plotId ?? (row.newPlot ? newPlotKey(row.newPlot) : undefined);
+    const node = nodes.find(candidate => candidate.id === row.itemId), target = row.plotId ?? (row.newPlot && node?.projectId ? newPlotKey(node.projectId, row.newPlot) : undefined);
     const plot = row.plotId ? plots.find(candidate => candidate.id === row.plotId) : undefined;
     if (!node || !target || lockedIds.has(node.id) || !onGround(node) || (row.plotId && (!plot || plot.locked || plot.projectId !== node.projectId))) continue;
     groupOf.set(node.id, target); regrouped.set(node.id, target);

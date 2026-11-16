@@ -30,7 +30,7 @@ export function TidyDialog({ seen: live, registry, sizes, projectId, title, ai, 
   const [seen, setSeen] = useState(live), latest = useRef(live);
   latest.current = live;
   const [choices, setChoices] = useState(TIDY_DEFAULTS), [off, setOff] = useState<ReadonlySet<string>>(new Set()), [on, setOn] = useState<ReadonlySet<string>>(new Set());
-  const [suggested, setSuggested] = useState<{ renames: RenameRow[]; regroup: RegroupRow[] }>({ renames: [], regroup: [] }), [asking, setAsking] = useState(false);
+  const [suggested, setSuggested] = useState<{ renames: RenameRow[]; regroup: RegroupRow[]; limited?: boolean }>({ renames: [], regroup: [] }), [asking, setAsking] = useState(false);
   const [problem, setProblem] = useState(''), [applying, setApplying] = useState(false);
   const plots = useMemo(() => (seen.plots?.list ?? []).filter(plot => projectId === undefined || plot.projectId === projectId), [seen.plots, projectId]);
   const now = useMemo(() => Date.now(), [seen]);
@@ -83,6 +83,7 @@ export function TidyDialog({ seen: live, registry, sizes, projectId, title, ai, 
       {suggested.regroup.length > 0 && choices.regroup && <><h3>Regroup</h3><ul>{suggested.regroup.map(entry => row(`g:${entry.itemId}`, true, `${entry.title} → ${entry.plotName}`))}</ul></>}
       {finished.length > 0 && <><h3>Archive</h3><ul>{finished.map(id => row(`a:${id}`, true, titleOf(id)))}</ul></>}
       {asking && changes > 0 && <p className="tidy-asking">Asking for suggestions…</p>}
+      {!asking && suggested.limited && <p className="tidy-asking">Some suggestions were skipped to save the AI allowance.</p>}
     </section>
     {problem && <p className="tidy-problem" role="alert">{problem}</p>}
     <div className="tidy-actions">

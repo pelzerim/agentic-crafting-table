@@ -3,7 +3,7 @@ import { resolveMapSize } from './item-map-sizes.ts';
 import type { ItemMapSizes } from './item-map-sizes.ts';
 import type { ResourcePluginRegistry } from '../../src/resource-plugins/registry.ts';
 import type { PlotView } from '../../src/graph/plots.ts';
-import { ITEM_GAP } from '../../src/graph/movement.ts';
+import { ITEM_GAP, layoutFootprints } from '../../src/graph/movement.ts';
 import { overlaps } from '../../src/graph/spatial.ts';
 import type { SpatialBox } from '../../src/graph/spatial.ts';
 
@@ -19,13 +19,20 @@ export interface UndoStep {
   label: string;
   items: { id: string; before: ItemSnap; after: ItemSnap }[];
   links: { before?: Link; after?: Link }[];
-  /** `before` is absent for a plot the step created. */
-  plots: { id: string; before?: PlotSnap; after: PlotSnap }[];
+  /** `before` is absent for a plot the step created, `after` for one it removed. */
+  plots: { id: string; before?: PlotSnap; after?: PlotSnap }[];
+  /** Unmoved items the moved ones overlapped before the step, where they stood; undo may overlap them again. */
+  anchors?: { id: string; position: Position }[];
+  /** [moved item, item it overlapped before the step]; a moved item with no pair here is never placed onto another. */
+  pairs?: [string, string][];
 }
+export const UNDO_ANCHOR_CAP = 500, UNDO_PAIR_CAP = 1000;
 /** Only the plot fields a step changed; `null` clears one, `create` brings back a plot the step made. */
 export interface PlotPatch { id: string; projectId: string; create?: true; name?: string | null; generated?: boolean; color?: string; chosenColor?: string | null; pinnedMemberIds?: string[] }
 export interface Reversal {
   commands: WorkspaceCommand[];
+  /** Items set exactly at these positions after `commands`, overlapping only the step's anchors (`placeExactly`). */
+  place: { id: string; position: Position }[];
   /** The part of the step that was put back; absent when nothing was. */
   applied?: UndoStep;
   plots: PlotPatch[];
@@ -75,9 +82,35 @@ export function buildUndoStep(label: string, before: Pick<WorkspaceState, 'nodes
   });
   const linksBefore = new Map(before.links.map(link => [link.id, link])), linksAfter = new Map(after.links.map(link => [link.id, link]));
   const links = [...new Set([...linksBefore.keys(), ...linksAfter.keys()])].flatMap(id => same(linksBefore.get(id), linksAfter.get(id)) ? [] : [{ before: linksBefore.get(id), after: linksAfter.get(id) }]);
-  const plotsBefore = new Map(plots.before.map(plot => [plot.id, plot]));
-  const plotChanges = plots.after.flatMap(plot => { const old = plotsBefore.get(plot.id); return old && PLOT_FIELDS.every(field => same(old[field], plot[field])) ? [] : [{ id: plot.id, ...old ? { before: old } : {}, after: plot }]; });
-  return items.length || links.length || plotChanges.length ? { label, items, links, plots: plotChanges } : undefined;
+  const plotsBefore = new Map(plots.before.map(plot => [plot.id, plot])), plotsAfter = new Map(plots.after.map(plot => [plot.id, plot]));
+  const plotChanges = [...new Set([...plotsBefore.keys(), ...plotsAfter.keys()])].flatMap(id => {
+    const old = plotsBefore.get(id), now = plotsAfter.get(id);
+    return old && now && PLOT_FIELDS.every(field => same(old[field], now[field])) ? [] : [{ id, ...old ? { before: old } : {}, ...now ? { after: now } : {} }];
+  });
+  const { anchors, pairs } = overlapPairs(before, context, items);
+  return items.length || links.length || plotChanges.length ? { label, items, links, plots: plotChanges, ...pairs.length ? { anchors, pairs } : {} } : undefined;
+}
+
+/** Overlaps of each moved item's old footprint (an older layout Clear overlaps repaired); an item past the caps records none. */
+function overlapPairs(before: Pick<WorkspaceState, 'nodes' | 'resources'>, context: SnapContext, items: UndoStep['items']) {
+  const moved = new Set(items.filter(item => !same(item.before.position, item.after.position)).map(item => item.id));
+  const anchors = new Map<string, Position>(), pairs: [string, string][] = [];
+  if (!moved.size) return { anchors: [], pairs };
+  const boxes = layoutFootprints(before.nodes, before.resources, context.registry, context.sizes), byId = new Map(before.nodes.map(node => [node.id, node]));
+  for (const box of boxes.filter(box => moved.has(box.id))) {
+    const hits = boxes.filter(other => other.id !== box.id && overlaps(box, other, ITEM_GAP)), added = hits.filter(other => !moved.has(other.id) && !anchors.has(other.id));
+    if (anchors.size + added.length > UNDO_ANCHOR_CAP || pairs.length + hits.length > UNDO_PAIR_CAP) continue;
+    for (const other of added) anchors.set(other.id, byId.get(other.id)!.position);
+    for (const other of hits) pairs.push([box.id, other.id]);
+  }
+  return { anchors: [...anchors].map(([id, position]) => ({ id, position })), pairs };
+}
+
+/** `state` with these items set at exactly these positions, with no collision handling. */
+export function placeExactly<T extends Pick<WorkspaceState, 'nodes'>>(state: T, place: readonly { id: string; position: Position }[]): T {
+  if (!place.length) return state;
+  const at = new Map(place.map(entry => [entry.id, entry.position]));
+  return { ...state, nodes: state.nodes.map(node => at.has(node.id) ? { ...node, position: at.get(node.id)! } : node) };
 }
 
 /** Item fields an undo guards and restores together. */
@@ -101,6 +134,21 @@ export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'node
     if (ok.length) eligible.set(change.id, new Set(ok));
   }
   const toOf = new Map(step.items.map(change => [change.id, back ? change.before : change.after]));
+  const drop = (id: string, groups = GROUP_NAMES) => {
+    const own = eligible.get(id);
+    if (!own) return;
+    for (const group of groups) own.delete(group);
+    skipped.add(id);
+    if (!own.size) eligible.delete(id);
+  };
+  // Putting an item back into a project archived or gone since would hide it in the archive, so it stays where it is.
+  const restoring = new Set([...eligible].filter(([id, groups]) => groups.has('archived') && !toOf.get(id)!.archived).map(([id]) => id));
+  for (const [id, groups] of [...eligible]) {
+    const projectId = toOf.get(id)!.projectId, project = projectId ? nodes.get(projectId) : undefined;
+    if (groups.has('projectId') && projectId && !restoring.has(projectId) && (!project || project.archivedAt)) drop(id);
+  }
+  // Items placed exactly, before any simulation: nodes.move refuses a request whose positions overlap.
+  const exact = new Set<string>();
   const build = (only?: ReadonlySet<string>) => {
     const restore: WorkspaceCommand[] = [], attach: WorkspaceCommand[] = [], resize: WorkspaceCommand[] = [], titles: WorkspaceCommand[] = [], archive: WorkspaceCommand[] = [];
     const positions: { id: string; position: Position }[] = [];
@@ -111,18 +159,27 @@ export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'node
       if (groups.has('projectId')) attach.push({ type: 'node.attach', id, projectId: to.projectId });
       if (groups.has('size')) resize.push(to.mapDimensions ? { type: 'node.resize', id, dimensions: to.mapDimensions, position: groups.has('position') ? to.position : node.position } : { type: 'node.resize', id, size: to.size });
       if (groups.has('title')) titles.push(to.machineTitle && to.title.length <= 48 ? { type: 'node.title.generated', id, title: to.title, sourceTitle: node.title } : { type: 'node.update', id, title: to.title });
-      if (groups.has('position')) positions.push({ id, position: to.position });
+      if (groups.has('position') && !exact.has(id)) positions.push({ id, position: to.position });
     }
     return [...restore, ...attach, ...resize, ...titles, ...positions.length ? [{ type: 'nodes.move' as const, positions }] : [], ...archive];
   };
-  const runs = (commands: WorkspaceCommand[]) => { try { return simulate(commands); } catch { return undefined; } };
-  const drop = (id: string, groups = GROUP_NAMES) => {
-    const own = eligible.get(id);
-    if (!own) return;
-    for (const group of groups) own.delete(group);
-    skipped.add(id);
-    if (!own.size) eligible.delete(id);
+  // An item goes back onto what it overlapped only while every one of those is in place or placed with it.
+  const anchored = new Set((step.anchors ?? []).filter(anchor => near(nodes.get(anchor.id)?.position, anchor.position)).map(anchor => anchor.id));
+  const partners = new Map<string, Set<string>>();
+  for (const [id, other] of back ? step.pairs ?? [] : []) partners.set(id, (partners.get(id) ?? new Set()).add(other));
+  const only = (id: string) => eligible.get(id)?.size === 1 && eligible.get(id)!.has('position') && Boolean(nodes.get(id)?.resourceId);
+  for (const id of partners.keys()) if (only(id)) exact.add(id);
+  const placed = (id: string) => exact.has(id) && Boolean(eligible.get(id)?.has('position'));
+  const paired = (a: string, b: string) => Boolean(partners.get(a)?.has(b) || partners.get(b)?.has(a));
+  const settleExact = () => {
+    for (let lost = true; lost;) {
+      lost = false;
+      for (const id of exact) if (placed(id) && [...partners.get(id)!].some(other => !anchored.has(other) && !placed(other))) { drop(id); lost = true; }
+    }
   };
+  settleExact();
+  const place = () => [...exact].filter(id => eligible.get(id)?.has('position')).map(id => ({ id, position: toOf.get(id)!.position }));
+  const runs = (commands: WorkspaceCommand[]) => { try { return placeExactly(simulate(commands), place()); } catch { return undefined; } };
   // A change that can no longer run (its project archived, a link end deleted) is skipped; projects go first so their items can follow.
   if (eligible.size && !runs(build())) {
     const kept = new Set<string>();
@@ -131,20 +188,24 @@ export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'node
       if (!runs(build(kept))) { kept.delete(id); drop(id); }
     }
   }
-  // Items outside the reversal are fixed: whatever would push one, or cannot reach its exact spot, keeps its place instead.
   const aim = (id: string) => eligible.get(id)!.has('position') ? toOf.get(id)!.position : nodes.get(id)!.position;
+  // Items outside the reversal are fixed: whatever would push one, or cannot reach its exact spot, keeps its place instead.
+  const blocks = (box: SpatialBox, other: SpatialBox) => box.id !== other.id && overlaps(box, other, ITEM_GAP) && !(placed(box.id) && paired(box.id, other.id) && (anchored.has(other.id) || placed(other.id)));
   for (let round = 0; round <= step.items.length; round++) {
+    settleExact();
     const movers = new Set([...eligible].filter(([id, groups]) => [...groups].some(group => placing(group, toOf.get(id)!))).map(([id]) => id));
     if (!movers.size) break;
     const simulated = runs(build()), after = new Map(simulated?.nodes.map(node => [node.id, node]));
     const pushed = current.nodes.filter(node => !movers.has(node.id) && !same(node.position, after.get(node.id)?.position));
     const unreached = [...movers].filter(id => !near(after.get(id)?.position, aim(id)));
-    if (simulated && !pushed.length && !unreached.length) break;
+    // Collision handling never sees an exactly placed item, so its overlaps are checked here.
+    const landed = simulated ? footprints(simulated) : [], stacked = landed.filter(box => exact.has(box.id) && movers.has(box.id) && landed.some(other => blocks(box, other))).map(box => box.id);
+    if (simulated && !pushed.length && !unreached.length && !stacked.length) break;
     const fixed = footprints(current).filter(box => !movers.has(box.id));
     const aimed = simulated ? footprints({ ...simulated, nodes: simulated.nodes.map(node => movers.has(node.id) ? { ...node, position: aim(node.id) } : node) }).filter(box => movers.has(box.id)) : [];
-    const culprits = new Set([...aimed.filter(box => fixed.some(other => overlaps(box, other, ITEM_GAP))).map(box => box.id),
+    const culprits = new Set([...aimed.filter(box => fixed.some(other => blocks(box, other))).map(box => box.id),
       ...pushed.flatMap(node => node.projectId && movers.has(node.projectId) ? [node.projectId] : [])]);
-    for (const id of culprits.size ? culprits : unreached.length ? unreached : movers) drop(id, GROUP_NAMES.filter(group => placing(group, toOf.get(id)!)));
+    for (const id of culprits.size ? culprits : stacked.length ? stacked : unreached.length ? unreached : movers) drop(id, GROUP_NAMES.filter(group => placing(group, toOf.get(id)!)));
   }
   const links: WorkspaceCommand[] = [], appliedLinks: UndoStep['links'] = [], items = build();
   for (const change of step.links) {
@@ -156,7 +217,7 @@ export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'node
   const chosen: { change: UndoStep['plots'][number]; from?: PlotSnap; to?: PlotSnap; fields: (typeof PLOT_FIELDS)[number][] }[] = [], shown = new Map(currentPlots.map(plot => [plot.id, plot]));
   for (const change of step.plots) {
     const from = back ? change.after : change.before, to = back ? change.before : change.after, now = shown.get(change.id);
-    const fields = PLOT_FIELDS.filter(field => !same(change.before?.[field], change.after[field]));
+    const fields = PLOT_FIELDS.filter(field => !same(change.before?.[field], change.after?.[field]));
     // A plot locked or unlocked since the step is the person's later word on it.
     if (from ? !now || [...fields, 'locked' as const].some(field => !same(now[field], from[field])) : now !== undefined) { skipped.add(`plot:${change.id}`); continue; }
     chosen.push({ change, from, to, fields });
@@ -179,8 +240,8 @@ export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'node
     return [{ id: change.id, before: { ...change.after, ...Object.fromEntries(fields.map(field => [field, change.before[field]])) } as ItemSnap, after: change.after }];
   });
   const reverted = appliedItems.length + appliedLinks.length + appliedPlots.length;
-  return { commands: [...items, ...links], plots, removePlots, reverted, skipped: skipped.size,
-    ...reverted ? { applied: { label: step.label, items: appliedItems, links: appliedLinks, plots: appliedPlots } } : {} };
+  return { commands: [...items, ...links], place: place(), plots, removePlots, reverted, skipped: skipped.size,
+    ...reverted ? { applied: { label: step.label, items: appliedItems, links: appliedLinks, plots: appliedPlots, ...step.pairs ? { anchors: step.anchors ?? [], pairs: step.pairs } : {} } } : {} };
 }
 
 /** What a person's own commit did, for their undo history. */
