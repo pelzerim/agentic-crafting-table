@@ -15,7 +15,7 @@ function DefaultSize({ value, choices, change }: { value: string; choices: strin
   return <select {...useRowControl()} value={value} onChange={event => change(event.target.value)}>{choices.map(size => <option key={size} value={size}>{title(size)}</option>)}</select>;
 }
 
-export function ItemViewSettings({ plugins, sizes, change, mapSizes, changeMap, claude, codex, pullRequest, pluginSettings, changePluginSettings, disconnected, selected, advanced, toggleAdvanced }: { plugins: PluginDescription[]; /** A provider's name while it has no connected account. */ disconnected(providerId?: string): string | undefined; sizes: ItemViewSizes; change(value: ItemViewSizes): void; mapSizes: ItemMapSizes; changeMap(value: ItemMapSizes): void; claude: ReactNode; codex: ReactNode; pullRequest: ReactNode; pluginSettings: Readonly<Record<string, JsonObject>>; changePluginSettings(owner: string, value: JsonObject): void; selected: string; advanced: Set<string>; toggleAdvanced(id: string): void }) {
+export function ItemViewSettings({ plugins, sizes, change, mapSizes, changeMap, claude, codex, agentProvider, pullRequest, pluginSettings, changePluginSettings, disconnected, selected, advanced, toggleAdvanced }: { plugins: PluginDescription[]; /** A provider's name while it has no connected account. */ disconnected(providerId?: string): string | undefined; sizes: ItemViewSizes; change(value: ItemViewSizes): void; mapSizes: ItemMapSizes; changeMap(value: ItemMapSizes): void; claude: ReactNode; codex: ReactNode; /** The start-form switch of one agent provider, by its id. */ agentProvider(id: string): ReactNode; pullRequest: ReactNode; pluginSettings: Readonly<Record<string, JsonObject>>; changePluginSettings(owner: string, value: JsonObject): void; selected: string; advanced: Set<string>; toggleAdvanced(id: string): void }) {
   const profiles = plugins.flatMap(plugin => itemViewProfiles(plugin).map(profile => ({ ...profile, plugin }))).sort((a, b) => a.name.localeCompare(b.name));
   return <>{profiles.map(profile => {
     const value = sizes[profile.key] ?? profile, expands = profile.mode !== 'inline' && profile.mode !== 'browser';
@@ -27,6 +27,7 @@ export function ItemViewSettings({ plugins, sizes, change, mapSizes, changeMap, 
       description={<span className="item-purpose">{profile.plugin.settingsHelp?.replaceAll('{name}', profile.name) ?? `Use ${profile.name} to keep related work on the map. Open the item to view its content and connect it to other items for context.`}</span>}>
       <div role="group" aria-label={`${profile.name} settings`}>
         {profile.key === 'github.pull-request' && pullRequest}
+        {profile.key.startsWith('agent.session:') && agentProvider(profile.key.slice('agent.session:'.length))}
         {profile.key === 'agent.session:claude' && claude}
         {profile.key === 'agent.session:codex' && codex}
         {profile.plugin.settingsSections?.map(section => <PluginSettings key={section.owner} section={section} value={pluginSettings[section.owner]} change={value => changePluginSettings(section.owner, value)} disconnected={disconnected(profile.plugin.connectionProvider)} />)}

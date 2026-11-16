@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Agents
+- **OpenCode, Pi, Gemini and Grok**: an agent session can run these CLIs in a real terminal too. They are off by default; turn each on in Settings → Items → <name> → Start form, where Claude and Codex can be turned off as well. OpenCode and Gemini get the table tools through a private per-launch config; Pi and Gemini can be resumed. These items show no working state, Continue list or skills. (#34, @timohuovinen)
+
 ## 0.23.0 — 2026-11-16
 
 ### Getting started

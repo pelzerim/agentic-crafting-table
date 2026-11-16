@@ -19,7 +19,9 @@ export const launchSchema = z.object({
   executable: z.string().min(1).max(4096), args: z.array(z.string().max(200_000)).max(100),
   cwd: z.string().min(1).max(4096), cols: z.number().int().min(2).max(500).default(100), rows: z.number().int().min(2).max(300).default(30),
   // Explicit host-generated bindings, never credentials supplied by the renderer.
-  bindings: z.partialRecord(z.enum(['ACT_DATA_DIR', 'ACT_NODE_ID', 'ACT_PROJECT_ID', 'ACT_SESSION_ID', 'CLAUDE_CODE_FORCE_SYNC_OUTPUT']), z.string()).optional(),
+  bindings: z.partialRecord(z.enum(['ACT_DATA_DIR', 'ACT_NODE_ID', 'ACT_PROJECT_ID', 'ACT_SESSION_ID', 'CLAUDE_CODE_FORCE_SYNC_OUTPUT',
+    // Per-launch config files of OpenCode and Gemini, which add the table's MCP server without touching user configuration.
+    'OPENCODE_CONFIG', 'GEMINI_CLI_SYSTEM_DEFAULTS_PATH']), z.string()).optional(),
 });
 export type LaunchRequest = z.infer<typeof launchSchema>;
 /** A native CLI left its conversation from inside its terminal: `/new` or `/clear`, a fork, or `/resume`. */

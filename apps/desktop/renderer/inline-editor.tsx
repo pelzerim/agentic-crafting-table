@@ -14,7 +14,7 @@ import type { PluginDescription } from '../../../src/resource-plugins/describe.c
 import type { JsonObject, ResourceField, ResourceFields, SavedSessionOption } from '../../../src/resource-plugins/types.ts';
 import { SessionPicker } from './session-picker.tsx';
 import { useUrlCandidates } from './use-url-candidates.ts';
-import { ItemIcon } from './icons.tsx';
+import { ItemIcon, hasBrandMark } from './icons.tsx';
 import { FROM_URL, RUN_SKILL, itemChoices } from '../../../packages/core/item-picker.ts';
 import { SkillPicker } from './skill-picker.tsx';
 import { PixelCombobox } from './ui/combobox.tsx';
@@ -56,17 +56,30 @@ function ColorField({ field, value, change }: { field: ResourceField; value: str
   const presets = (field.options ?? []).map(option => ({ id: option, label: field.optionLabels?.[option] ?? option, color: field.menu?.swatches?.[option] ?? 'var(--act-control)' }));
   return <ColorPicker label={field.label} presets={presets} value={value ?? field.menu?.fallback} recent={recent} onRecent={remember} onChange={next => change('custom' in next ? next.custom : next.id)} />;
 }
-/** Native radios keep arrow keys and focus; the logos are the visible control. */
-function BrandField({ name, field, value, change }: { name: string; field: ResourceField; value: string; change(value: string): void }) {
-  return <div className="field-brands" role="radiogroup" aria-label={field.label}>{(field.options ?? []).map(option => {
-    const label = field.optionLabels?.[option] ?? option;
-    return <label key={option} title={label} data-selected={option === value || undefined}><input type="radio" name={name} aria-label={label} checked={option === value} onChange={() => change(option)} /><ItemIcon brand={field.optionBrands?.[option]} /></label>;
-  })}</div>;
+/** Native radios keep arrow keys and focus; the logos are the visible control, and a provider without one shows its name.
+ * With an `optionsSource` the host lists the choices, such as the agent providers turned on in Settings. */
+function BrandField({ pluginId, name, field, values, change }: { pluginId?: string; name: string; field: ResourceField; values: JsonObject; change(key: string, value: string): void }) {
+  const [options, setOptions] = useState(field.optionsSource ? undefined : field.options ?? []), [error, setError] = useState('');
+  const latest = useRef({ values, change }); latest.current = { values, change };
+  useEffect(() => {
+    if (!field.optionsSource || !pluginId) return;
+    let cancelled = false;
+    void window.craftingTable.resourceOptions(pluginId, name, latest.current.values).then(result => {
+      if (cancelled) return; setOptions(result.options); setError(result.options.length ? '' : 'Turn on an agent in Settings.');
+      if (!result.options.includes(String(latest.current.values[name] ?? '')) && result.default) latest.current.change(name, result.default);
+    }).catch(error => { if (!cancelled) { setError(error.message); setOptions(field.options ?? []); } });
+    return () => { cancelled = true; };
+  }, [pluginId, name, field.optionsSource, field.options]);
+  const value = String(values[name] ?? '');
+  return <><div className="field-brands" role="radiogroup" aria-label={field.label}>{(options ?? []).map(option => {
+    const label = field.optionLabels?.[option] ?? option, brand = field.optionBrands?.[option];
+    return <label key={option} title={label} data-selected={option === value || undefined} data-named={hasBrandMark(brand) ? undefined : true}><input type="radio" name={name} aria-label={label} checked={option === value} onChange={() => change(name, option)} />{hasBrandMark(brand) ? <ItemIcon brand={brand} /> : <span>{label}</span>}</label>;
+  })}</div>{error && <small role="alert">{error}</small>}</>;
 }
 function Fields({ fields, values, change, pluginId, focusField, directories, projectDirectory, error }: { focusField?: string; fields: ResourceFields; values: JsonObject; change(key: string, value: string | number | boolean): void; pluginId?: string; directories: DirectoryChoices; projectDirectory?: string; error(message: string): void }) {
   return Object.entries(fields).filter(([, field]) => field.form !== false).map(([key, field]) => field.kind === 'select' && field.customColor
     ? <div key={key} className="field-color"><span aria-hidden="true">{field.label}</span><ColorField field={field} value={typeof values[key] === 'string' ? values[key] as string : undefined} change={value => change(key, value)} /></div>
-    : field.optionBrands ? <div key={key} className="field-color"><span aria-hidden="true">{field.label}</span><BrandField name={key} field={field} value={String(values[key] ?? '')} change={value => change(key, value)} /></div>
+    : field.optionBrands ? <div key={key} className="field-color"><span aria-hidden="true">{field.label}</span><BrandField pluginId={pluginId} name={key} field={field} values={values} change={change} /></div>
     : <label key={key}>{field.label}
     {field.kind === 'directory' ? <DirectoryField label={field.label} required={field.required} value={String(values[key] ?? '')} change={value => change(key, value)} choices={directories} project={field.fromProject ? projectDirectory : undefined} error={error} />
       : field.kind === 'file' ? <FileField label={field.label} required={field.required} pattern={field.pattern} placeholder={field.placeholder} value={String(values[key] ?? '')} change={value => change(key, value)} error={error} />

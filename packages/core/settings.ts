@@ -124,6 +124,16 @@ const menuLists = (max: number) => z.record(z.string().min(1).max(200), z.array(
  * separators could be placed (entry ids only); it is still read and is replaced by a layout when that type's menu is
  * next changed. An absent type uses the default menu; ids the menu does not have are kept and ignored. */
 export const menuSettingsSchema = z.object({ order: menuLists(200), layout: menuLists(400), hidden: menuLists(200) }).default({ order: {}, layout: {}, hidden: {} });
+/** Agent CLIs the start form offers (AGENT-01b). Claude and Codex are on by default; the others are off until turned on in Settings. */
+export const AGENT_PROVIDER_IDS = ['claude', 'codex', 'opencode', 'pi', 'gemini', 'grok'] as const;
+export type AgentProviderId = typeof AGENT_PROVIDER_IDS[number];
+export const DEFAULT_AGENT_PROVIDERS: Readonly<Record<AgentProviderId, boolean>> = { claude: true, codex: true, opencode: false, pi: false, gemini: false, grok: false };
+export const agentProvidersSchema = z.object({
+  claude: z.boolean().default(true), codex: z.boolean().default(true), opencode: z.boolean().default(false),
+  pi: z.boolean().default(false), gemini: z.boolean().default(false), grok: z.boolean().default(false),
+}).default(() => ({ ...DEFAULT_AGENT_PROVIDERS }));
+/** The enabled providers in start-form order. */
+export function enabledAgentProviders(settings: Pick<AppSettings, 'agentProviders'>): AgentProviderId[] { return AGENT_PROVIDER_IDS.filter(id => settings.agentProviders[id]); }
 export const settingsSchema = z.object({
   notifications: notificationSettingsSchema,
   connections: providerConnectionsSchema,
@@ -177,6 +187,7 @@ export const settingsSchema = z.object({
   /** Absolute folder used for new launches when their project has none; empty means unset. */
   defaultWorkingDirectory: z.string().max(4096).default(''),
   quickItemTypes: z.array(z.string().min(1).max(200)).max(MAX_QUICK_ITEMS).refine(ids => new Set(ids).size === ids.length, 'Choose each type only once').default(DEFAULT_QUICK_ITEMS),
+  agentProviders: agentProvidersSchema,
   claude: z.object({ remoteControl: z.boolean().default(true), autoMode: z.boolean().default(true), arguments: agentArgumentsSchema.default([]) }).default({ remoteControl: true, autoMode: true, arguments: [] }),
   summaries: z.object({
     enabled: z.boolean().default(false), model: z.string().trim().min(1).max(100).default('haiku'),

@@ -36,6 +36,8 @@ export function StatusGlyph({ icon, tone }: { icon: string; tone?: string }) {
 
 /** A pixel icon: 12×12 for item types and controls, `size={8}` for status cues and 8px marks.
  * Provider logos keep their brand path; `tint` keeps the type icon and only takes the brand's colour. */
+/** Whether a provider has a logo; one without is named in text where its logo would identify it. */
+export function hasBrandMark(brand: string | undefined) { return Boolean(brand && Object.hasOwn(brands, brand)); }
 export function ItemIcon({ icon = 'item', brand, tint = false, size = 12, className = '' }: { icon?: string; brand?: string; tint?: boolean; size?: GlyphSize; className?: string }) {
   const path = tint ? undefined : brands[brand as keyof typeof brands];
   if (path) return <svg className={`item-icon brand-${brand} ${className}`} data-icon={icon} aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d={path} /></svg>;

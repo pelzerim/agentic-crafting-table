@@ -2,6 +2,9 @@ import { NotificationSettings } from './notification-settings.tsx';
 import { AdvancedDisclosure, DefaultMeta, InlineConfirm, NumberField, SettingRow, SettingsPage, SettingsSection, SliderField, Switch, TextField, useRowControl } from './settings-ui.tsx';
 import { DirectoryField, useDirectoryChoices } from './ui/directory-field.tsx';
 import type { RowStatus } from './settings-ui.tsx';
+import { AGENT_PROVIDER_IDS, DEFAULT_AGENT_PROVIDERS } from '../../../packages/core/settings.ts';
+import type { AgentProviderId } from '../../../packages/core/settings.ts';
+import { providerLabels } from '../../../src/agents/display-names.ts';
 import { DEFAULT_BELOW_ANIMATION, DEFAULT_TERMINAL_SCROLLBACK, TERMINAL_SCROLLBACK_CHOICES, RIGHT_CLICK_CLOSES, notificationSettingsSchema, settingsSchema } from '../../../packages/core/settings.ts';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { AppInfo } from '../bridge.ts';
@@ -115,6 +118,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
   }, [section, advanced]);
   const [itemMapSizes, setItemMapSizes] = useState<AppSettings['itemMapSizes']>({});
   const [conversation, setConversation] = useState<AppSettings['pullRequestConversation']>({ comments: true, threads: true, reviewBodies: true, bots: false, activity: false }), [cardLabels, setCardLabels] = useState(false);
+  const [agentProviders, setAgentProviders] = useState<AppSettings['agentProviders']>({ ...DEFAULT_AGENT_PROVIDERS });
   const [warnBeforeClosing, setWarnBeforeClosing] = useState(true), [agentsActForPerson, setAgentsActForPerson] = useState(true), [doubleClickOpensWeb, setDoubleClickOpensWeb] = useState(false), [snapToGrid, setSnapToGrid] = useState(false), [groundRightClickRing, setGroundRightClickRing] = useState(false), [offscreenAttention, setOffscreenAttention] = useState(false), [reviewOpenCounts, setReviewOpenCounts] = useState(false), [sessionCracks, setSessionCracks] = useState(false), [mapCorner, setMapCorner] = useState<AppSettings['mapCorner']>('projects'), [mapCollisions, setMapCollisions] = useState<AppSettings['mapCollisions']>('shove'), [appearance, setAppearance] = useState<AppSettings['appearance']>('system'), [itemDelete, setItemDelete] = useState(false), [autoReview, setAutoReview] = useState<AppSettings['autoReview']>({ enabled: false, agents: ['claude'] }), [mapPlots, setMapPlots] = useState(true), [hideImpliedLinks, setHideImpliedLinks] = useState(true);
   const [itemViews, setItemViews] = useState<AppSettings['itemViews']>({});
   const [pluginSettings, setPluginSettings] = useState<AppSettings['plugins']>({}), pluginPages = useMemo(() => pluginSettingsPages(plugins), [plugins]);
@@ -133,7 +137,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
       if (!mounted) return;
       setWarnBeforeClosing(snapshot.value.warnBeforeClosing); setAgentsActForPerson(snapshot.value.agentsActForPerson); setConversation(snapshot.value.pullRequestConversation); setCardLabels(snapshot.value.pullRequestCardLabels); setDiagnostics(snapshot.value.diagnostics); setItemViews(snapshot.value.itemViews); setItemMapSizes(snapshot.value.itemMapSizes); setPluginSettings(snapshot.value.plugins);
       setNeighborhood(snapshot.value.neighborhoodAppearance); setBelowAnimation(snapshot.value.belowAnimation); setUndermapLayout(snapshot.value.undermapLayout); setWorkingMark(snapshot.value.workingMark); setMapDashboards(snapshot.value.mapDashboards); setMapPlots(snapshot.value.mapPlots); setHideImpliedLinks(snapshot.value.hideImpliedLinks); setDoubleClickOpensWeb(snapshot.value.doubleClickOpensWeb); setSnapToGrid(snapshot.value.snapToGrid); setGroundRightClickRing(snapshot.value.groundRightClickRing); setOffscreenAttention(snapshot.value.offscreenAttention); setReviewOpenCounts(snapshot.value.reviewOpenCounts); setSessionCracks(snapshot.value.sessionCracks); setMapCorner(snapshot.value.mapCorner); setMapCollisions(snapshot.value.mapCollisions); setAppearance(snapshot.value.appearance); setItemDelete(snapshot.value.itemDelete); setAutoReview(snapshot.value.autoReview); setTerminal(snapshot.value.terminal);
-      setAutoMode(snapshot.value.claude.autoMode); setNotifications(snapshot.value.notifications);
+      setAgentProviders(snapshot.value.agentProviders); setAutoMode(snapshot.value.claude.autoMode); setNotifications(snapshot.value.notifications);
       setQuickIds(snapshot.value.quickItemTypes); setMenus(snapshot.value.menus); setDefaultDirectory(snapshot.value.defaultWorkingDirectory); setSummaries(snapshot.value.summaries); setPadding(String(snapshot.value.neighborhoodPadding)); setSaved(snapshot); setRemote(snapshot.value.claude.remoteControl); setAwake(snapshot.value.keepAwake); setWorkAwake(snapshot.value.keepAwakeWhileWorking); setUpdateCheck(snapshot.value.updates.check); setArgumentsText(snapshot.value.claude.arguments.join('\n'));
     }).catch(error => { if (mounted) setError(error.message); });
     return () => { mounted = false; };
@@ -141,7 +145,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
   const limited = Boolean(summaries && (summaries.enabled || summaries.agentTitles || summaries.attachTitles || summaries.plotNames || summaries.projectSummaries || (STANDUP_ENABLED && summaries.standupDigests)));
   const claude = { remoteControl: remote, autoMode, arguments: argumentsText.split(/\r?\n/).map(value => value.trim()).filter(Boolean) };
   const permission = claudePermissionSettings(claude);
-  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, agentsActForPerson, pullRequestConversation: conversation, pullRequestCardLabels: cardLabels, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, groundRightClickRing, offscreenAttention, reviewOpenCounts, sessionCracks, mapCorner, mapCollisions, appearance, itemDelete, autoReview, terminal, keepAwake: awake, keepAwakeWhileWorking: workAwake, claude, updates: { check: updateCheck } };
+  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, agentsActForPerson, pullRequestConversation: conversation, pullRequestCardLabels: cardLabels, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, groundRightClickRing, offscreenAttention, reviewOpenCounts, sessionCracks, mapCorner, mapCollisions, appearance, itemDelete, autoReview, terminal, keepAwake: awake, keepAwakeWhileWorking: workAwake, claude, agentProviders, updates: { check: updateCheck } };
   const changes = useMemo(() => saved ? draftChanges(saved.value, draft!, pluginPages) : [], [saved, JSON.stringify(draft)]);
   const dirty = changes.length > 0, [discarding, setDiscarding] = useState(false);
   const requestClose = () => { if (dirty) setDiscarding(true); else close(); };
@@ -209,6 +213,13 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
           <SettingRow label="Remote Control" description="Connect from Claude on your phone or browser. Claude handles sign-in and any first-time confirmation." meta="On by default"><Switch checked={remote} change={setRemote} /></SettingRow>
           <SettingRow stack label="Additional launch arguments" description="One argument per line. Session identity and table synchronization are managed automatically.">
             <LaunchArguments value={argumentsText} change={setArgumentsText} />
+          </SettingRow>
+        </SettingsSection>}
+        agentProvider={id => (AGENT_PROVIDER_IDS as readonly string[]).includes(id) && <SettingsSection label="Start form">
+          <SettingRow label={`Offer ${providerLabels[id]}`} description={id === 'claude' || id === 'codex' ? `Lists ${providerLabels[id]} when you start an agent. Items already on the map keep working when this is off.`
+            : `Lists ${providerLabels[id]} when you start an agent. The table runs the installed CLI in a terminal; it shows no working state, and Continue is not available.`}
+            meta={DEFAULT_AGENT_PROVIDERS[id as AgentProviderId] ? 'On by default' : 'Off by default'}>
+            <Switch checked={agentProviders[id as AgentProviderId]} change={checked => setAgentProviders({ ...agentProviders, [id]: checked })} />
           </SettingRow>
         </SettingsSection>}
         codex={<SettingsSection label="Session launch"><SettingRow label="Model" description="Chosen when you start or continue a Codex session." /></SettingsSection>} />

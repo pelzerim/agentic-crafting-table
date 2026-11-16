@@ -16,15 +16,15 @@ export const agentSession = defineResourcePlugin({
   } },
   appearance: { tone: 'teal', shape: 'terminal', size: 'large', editableViewTitle: true },
   preferredView: 'focus',
-  view: { variants: { field: 'provider', options: { claude: 'Claude', codex: 'Codex' } } },
+  view: { variants: { field: 'provider', options: { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode', pi: 'Pi', gemini: 'Gemini', grok: 'Grok' } } },
   acceptsContext: true,
-  activityTitle: { defaults: ['Claude session', 'Codex session'] },
+  activityTitle: { defaults: ['Claude session', 'Codex session', 'OpenCode session', 'Pi session', 'Gemini session', 'Grok session'] },
   fields: {
     sessionId: { label: 'Session ID', kind: 'text', required: true },
     provider: { label: 'Provider', kind: 'text', required: true },
   },
-  creation: { label: 'Start agent', shortLabel: 'Agent', labelByField: { field: 'provider', labels: { claude: 'Start Claude', codex: 'Start Codex' } }, requires: 'runtime', action: 'agent.create', resume: true, fields: {
-    provider: { label: 'Provider', kind: 'select', options: ['claude', 'codex'], optionLabels: providerLabels, optionBrands: { claude: 'claude', codex: 'codex' }, default: 'claude', required: true },
+  creation: { label: 'Start agent', shortLabel: 'Agent', labelByField: { field: 'provider', labels: { claude: 'Start Claude', codex: 'Start Codex', opencode: 'Start OpenCode', pi: 'Start Pi', gemini: 'Start Gemini', grok: 'Start Grok' } }, requires: 'runtime', action: 'agent.create', resume: true, fields: {
+    provider: { label: 'Provider', kind: 'select', options: ['claude', 'codex', 'opencode', 'pi', 'gemini', 'grok'], optionsSource: 'agent.providers', optionLabels: providerLabels, optionBrands: { claude: 'claude', codex: 'codex' }, default: 'claude', required: true },
     cwd: { label: 'Working directory', kind: 'directory', fromProject: 'workingDirectory', description: 'Defaults to the project, global default or most recent folder.' },
     model: { label: 'Model', kind: 'select', options: ['opus', 'fable', 'sonnet', 'haiku'], optionsSource: 'agent.models', optionLabels: modelLabels, dependsOn: 'provider', default: 'opus', required: true },
   } },
