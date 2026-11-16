@@ -3,6 +3,12 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Updates
+- **Any remote name**: `npm run update` and Update and restart fetch releases from the remote that points at the public repository, whatever it is called, instead of requiring `origin`. With none, they say so, list your remotes and give the command to add it; `git config act.updateRemote <name>` picks another, such as a mirror. (#33, @MegaMaddin)
+- **Clearer update failures**: a failed update says which step failed, why where git says so, whether the checkout moved and what to do next, in the terminal and in Settings → About, instead of “Command failed: …”. (#33, @MegaMaddin)
+
 ## 0.22.0 — 2026-11-13
 
 ### Map

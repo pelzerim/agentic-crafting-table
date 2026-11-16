@@ -5,10 +5,12 @@ const atLeast = (a, b) => a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b
 
 /** Marks a refusal in `npm run update`'s stderr. A refusal can span many lines, so a fixed tail of the output could lose its reason. */
 export const UPDATE_REFUSED = 'Update refused: ';
-/** What `npm run update`'s stderr says went wrong: a refusal whole, a thrown error's line without its stack, or else the end of the output. */
+/** Marks a step of `npm run update` that ran and failed, followed by what failed and what to do. */
+export const UPDATE_FAILED = 'Update failed: ';
+/** What `npm run update`'s stderr says went wrong: a refusal or failure whole, a thrown error's line without its stack, or else the end of the output. */
 export function failureReason(stderr) {
-  const lines = stderr.trim().split('\n'), refused = lines.findLastIndex(line => line.startsWith(UPDATE_REFUSED));
-  if (refused >= 0) return lines.slice(refused).join('\n').slice(UPDATE_REFUSED.length);
+  const lines = stderr.trim().split('\n'), marked = lines.findLastIndex(line => line.startsWith(UPDATE_REFUSED) || line.startsWith(UPDATE_FAILED));
+  if (marked >= 0) { const text = lines.slice(marked).join('\n'); return text.slice((text.startsWith(UPDATE_REFUSED) ? UPDATE_REFUSED : UPDATE_FAILED).length); }
   const error = lines.findLastIndex(line => /^\w*Error: /.test(line));
   return error >= 0 ? lines[error].replace(/^\w*Error: /, '') : lines.slice(-12).join('\n');
 }

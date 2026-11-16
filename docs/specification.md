@@ -4882,7 +4882,13 @@ Settings → Plugins with the pack's source and new tag filled in for the usual 
 Nothing is downloaded or installed by the check. `npm run update` in a checkout refuses
 while the app runs or tracked files have local changes, fetches tags, checks out the
 newest release (detached), then `npm ci`, `npm run package`, `npm run install:local`;
-`--dry-run` prints the plan. Builds without a release version (`dev`) are never offered
+`--dry-run` prints the plan. It fetches from the remote that `git config act.updateRemote`
+names, else from a remote whose URL points at the public repository in any spelling (https,
+ssh, `git@github.com:`), `origin` first when several do; the remote's name does not matter.
+Without one it refuses, listing the remotes with the command that adds the repository and the
+setting that picks one of them (a mirror, say). A step that fails says which step, what is
+known about why (git's own message for a failed fetch, the exit status otherwise), whether the
+checkout moved, and what to do next; Settings → About shows that text, not a stack trace. Builds without a release version (`dev`) are never offered
 an update.
 When a newer release is available and the app runs from the checkout it was installed into
 (`<checkout>/release/mac-arm64/Agentic Crafting Table.app`, with `.git` and this `package.json`),

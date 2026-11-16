@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LAUNCHER_MARKER, UpdateRefused, chooseReleaseTag, parseLauncher, planUpdate } from './release.ts';
+import { LAUNCHER_MARKER, UpdateRefused, chooseReleaseTag, parseLauncher, planUpdate, releaseRemote } from './release.ts';
 
 const tags = ['v0.1.0', 'v0.2.0', 'v0.10.0', 'nightly'];
 
@@ -31,4 +31,28 @@ test('the login shell launcher is read after the marker, past any profile output
   assert.equal(parseLauncher(`\n${LAUNCHER_MARKER}\n\n/usr/bin:/bin`), undefined);
   assert.equal(parseLauncher(`\n${LAUNCHER_MARKER}\nnode: aliased to x\n/usr/bin`), undefined);
   assert.equal(parseLauncher('zsh: command not found'), undefined);
+});
+
+const remote = (name: string, url: string) => `${name}\t${url} (fetch)\n${name}\t${url} (push)\n`;
+
+test('the update fetches from the remote that points at the app repository, whatever it is called', () => {
+  const remotes = remote('fork', 'git@github.com:alice/agentic-crafting-table.git') + remote('github', 'https://github.com/pelzerim/agentic-crafting-table');
+  assert.deepEqual(releaseRemote({ remotes }), { name: 'github', url: 'https://github.com/pelzerim/agentic-crafting-table' });
+  for (const url of ['git@github.com:pelzerim/agentic-crafting-table.git', 'ssh://git@github.com/Pelzerim/Agentic-Crafting-Table.git', 'https://alice@github.com/pelzerim/agentic-crafting-table.git/'])
+    assert.equal(releaseRemote({ remotes: remote('upstream', url) }).name, 'upstream', url);
+  const both = remote('mirror', 'git@github.com:pelzerim/agentic-crafting-table.git') + remote('origin', 'https://github.com/pelzerim/agentic-crafting-table.git');
+  assert.equal(releaseRemote({ remotes: both }).name, 'origin', 'origin wins among several that point there');
+});
+
+test('a configured update remote is used as named, and one that does not exist is refused', () => {
+  const remotes = remote('origin', 'git@github.com:pelzerim/agentic-crafting-table.git') + remote('mirror', 'https://git.example.com/act.git');
+  assert.equal(releaseRemote({ remotes, configured: 'mirror' }).name, 'mirror');
+  assert.throws(() => releaseRemote({ remotes, configured: 'gone' }), (error: Error) => error instanceof UpdateRefused && /act\.updateRemote/.test(error.message) && /gone/.test(error.message) && /origin/.test(error.message));
+});
+
+test('without a remote for the app repository the update is refused, listing the remotes and how to add one', () => {
+  const remotes = remote('fork', 'git@github.com:alice/agentic-crafting-table.git');
+  assert.throws(() => releaseRemote({ remotes }), (error: Error) => error instanceof UpdateRefused && /^  fork\s+git@github\.com:alice/m.test(error.message)
+    && /git remote add upstream https:\/\/github\.com\/pelzerim\/agentic-crafting-table\.git/.test(error.message) && /git config act\.updateRemote/.test(error.message));
+  assert.throws(() => releaseRemote({ remotes: '' }), (error: Error) => error instanceof UpdateRefused && /no git remote/.test(error.message));
 });
