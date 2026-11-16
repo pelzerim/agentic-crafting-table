@@ -93,6 +93,8 @@ test('native hooks ignore old processes and observations; attaching live Claude 
     await control.apply({ type: 'node.move', id: 'agent', position: { x: 20, y: 40 } }, revision);
     await coordinator.hook({ ...event, observedAt: 102, event: 'PermissionRequest' });
     assert.equal((await control.read()).nodes[0].attention, 'input');
+    assert.deepEqual(await coordinator.hook({ ...event, observedAt: 101, event: 'PostToolUse' }), { ignored: true }, 'an asynchronous PostToolUse that lands late cannot clear a newer prompt');
+    assert.equal((await control.read()).nodes[0].attention, 'input');
     await coordinator.hook({ ...event, observedAt: 103, event: 'PostToolUse' });
     assert.equal((await control.read()).nodes[0].attention, 'none');
     const attached = await coordinator.resume('agent', randomUUID());
@@ -726,6 +728,22 @@ test('a shell command shows only after it has run a while, stays long enough to 
     assert.equal(await pose(f), 'gate');
     await f.hook('PostToolUse', 83_000, { toolName: 'Bash' }); await settle(90_000);
     await f.hook('SubagentToolStart', 91_000, { agentId: 'fg', toolName: 'Bash' }); await settle(95_000);
+    assert.equal(await pose(f), undefined);
+  } finally { await f.close(); }
+});
+
+test('a PostToolUse that lands after a newer hook still ends its shell command', async () => {
+  const f = await promptFixture('pose-late-command');
+  const settle = (at: number) => { f.session.sequence++; return f.coordinator.settleQuiet(() => at); };
+  try {
+    await f.hook('UserPromptSubmit', 1_000);
+    await f.hook('PreToolUse', 2_000, { toolName: 'Bash' });
+    await settle(4_000);
+    assert.equal(await pose(f), 'command');
+    // The command ended at 5,000, but its asynchronous hook lands after the next tool started.
+    await f.hook('PreToolUse', 5_600, { toolName: 'Read' });
+    await f.hook('PostToolUse', 5_000, { toolName: 'Bash' });
+    await settle(9_000);
     assert.equal(await pose(f), undefined);
   } finally { await f.close(); }
 });

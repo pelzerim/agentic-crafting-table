@@ -558,6 +558,8 @@ test('every working card grows grass in its own colour, a card too small for the
   await expect.poll(async () => (await glint('brief')).x).not.toBe(first.x);
   await page.mouse.move(4, 4);
   const area = (await page.locator('.map-area').boundingBox())!;
+  // `animations: 'disabled'` skips an animation at rate 0, so the marks the clock holds need the same reset by hand.
+  await page.locator('.map-area').evaluate(element => { for (const animation of element.getAnimations({ subtree: true })) if (animation.playbackRate === 0) animation.cancel(); });
   await expect(page).toHaveScreenshot('working-small-and-tones.png', { clip: area });
   // Undermap shows that an item works without moving anything: tufts and a standing sheep, tufts alone where there is no room.
   for (const title of ['Billing experience', 'Claude · implementation']) { await page.getByRole('article', { name: title, exact: true }).click({ button: 'right' }); await page.getByRole('menuitem', { name: 'Send to Undermap', exact: true }).click(); await expect(page.getByRole('article', { name: title, exact: true })).toHaveCount(0); }

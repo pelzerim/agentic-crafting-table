@@ -440,7 +440,13 @@ export class AgentCoordinator {
     for (let attempt = 0; attempt < 3; attempt++) {
       const state = await this.control.read(), node = findById(state.nodes, event.nodeId), resource = findById(state.resources, node?.resourceId);
       if (!node || !resource || resource.data.sessionId !== event.processSessionId || resource.data.nativeSessionId !== event.nativeSessionId || resource.data.provider !== 'claude') return { ignored: true };
-      if (!this.observations.observeAgent(event.processSessionId, event.observedAt, event.event === 'Notification' && event.notificationType ? `Notification:${event.notificationType}` : event.event)) return { ignored: true };
+      if (!this.observations.observeAgent(event.processSessionId, event.observedAt, event.event === 'Notification' && event.notificationType ? `Notification:${event.notificationType}` : event.event)) {
+        // An asynchronous PostToolUse can land after a newer hook. Its status is stale, but the shell it ended and the agent
+        // it launched are still facts, and the settle pass shows them.
+        if (!attempt && event.event === 'PostToolUse' && (event.toolName === 'Bash' || event.launched))
+          this.observations.observeBackground(event.processSessionId, { observedAt: event.observedAt, launched: event.launched, ...(event.toolName === 'Bash' ? { shell: 'end' as const } : {}) });
+        return { ignored: true };
+      }
       const waiting = this.background(event), waitingSummary = event.event === 'Stop' ? backgroundSummary(waiting) : undefined;
       if (waiting.length && event.event === 'Notification' && event.notificationType === 'idle_prompt') return {};
       const inputNeeded = event.event === 'PermissionRequest' || (event.event === 'PreToolUse' && event.toolName === 'AskUserQuestion') || (event.event === 'Notification' && ['permission_prompt', 'idle_prompt'].includes(event.notificationType ?? ''));

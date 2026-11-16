@@ -50,6 +50,7 @@ test('Claude plans keep native arguments, trusted guide and project brief separa
     assert.deepEqual(hooks.hooks.SubagentStop[0].hooks[0].args, hooks.hooks.Stop[0].hooks[0].args, 'background subagent completions reach the table');
     assert.deepEqual(hooks.hooks.TeammateIdle[0].hooks[0].args, hooks.hooks.Stop[0].hooks[0].args, 'a teammate going idle reaches the table');
     for (const event of ['SubagentStart', 'PreCompact', 'PostCompact', 'PostToolUseFailure', 'PermissionDenied', 'TaskCreated', 'TaskCompleted', 'PostModelSwitch']) assert.deepEqual(hooks.hooks[event]?.[0].hooks[0].args, hooks.hooks.Stop[0].hooks[0].args, `${event} reaches the table`);
+    assert.deepEqual(Object.keys(hooks.hooks).filter(event => hooks.hooks[event][0].hooks[0].async), ['PostToolUse'], 'a late PreToolUse could clear the permission prompt that follows it');
     assert.equal(hooks.hooks.WorktreeCreate, undefined, 'that hook would have to create the worktree itself'); assert.equal(hooks.hooks.WorktreeRemove, undefined);
     assert.ok(!args.includes('--settings')); assert.ok(!args.includes('--dangerously-skip-permissions'));
     assert.deepEqual(prepareClaude({ request, state: await control.read(), directory, runtime, capability, settings: { remoteControl: false, autoMode: false, arguments: ['--verbose'] } }), plan, 'retry retains the original argv despite settings changes');

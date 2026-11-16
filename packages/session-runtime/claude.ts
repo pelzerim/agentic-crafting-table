@@ -91,7 +91,9 @@ export function prepareClaude(input: ClaudePreparation): PreparedSession {
   const events = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PermissionRequest', 'Notification', 'Stop', 'StopFailure', 'SessionEnd', 'SubagentStop', 'TeammateIdle',
     'SubagentStart', 'PreCompact', 'PostCompact', 'PostToolUseFailure', 'PermissionDenied', 'TaskCreated', 'TaskCompleted', 'PostModelSwitch'];
   // A session-local plugin adds hooks without rewriting user/project settings.
-  save(join(launchDirectory, 'plugin', 'hooks', 'hooks.json'), { hooks: Object.fromEntries(events.map(event => [event, [{ hooks: [{ type: 'command', ...hookCommand, timeout: 5 }] }]])) });
+  // Nothing reads a PostToolUse answer and a model turn separates it from the next hook, so Claude need not wait for it.
+  // PreToolUse stays blocking: stamped late, it would clear the permission prompt that follows it.
+  save(join(launchDirectory, 'plugin', 'hooks', 'hooks.json'), { hooks: Object.fromEntries(events.map(event => [event, [{ hooks: [{ type: 'command', ...hookCommand, timeout: 5, ...(event === 'PostToolUse' ? { async: true } : {}) }] }]])) });
   const launchSettings = input.settings ?? settingsSchema.parse({}).claude;
   if (launchSettings.remoteControl && capability.remoteControl === false) throw new Error('This Claude Code version does not support Remote Control. Update Claude or turn it off in Settings.');
   const permission = claudePermissionSettings(launchSettings);
