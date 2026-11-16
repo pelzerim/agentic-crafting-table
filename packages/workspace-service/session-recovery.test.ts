@@ -334,3 +334,18 @@ test('native agent statuses that need me have short copy', () => {
     ['Agent needs permission', 'Agent asked a question', 'Agent waiting', 'Agent disconnected']);
   for (const status of ['idle', 'working', 'unknown'] as const) assert.equal(nativeAttentionNote({ status }), undefined);
 });
+
+test('an agent that quit on a Ctrl+C is reported for resuming while its item holds that process; a shell is not', async () => {
+  const f = await fixture(1), coordinator = f.coordinator(), update = (session: unknown) => (coordinator as unknown as { updateSession(session: unknown): Promise<boolean> }).updateSession(session);
+  try {
+    await f.control.apply({ type: 'item.add', id: 'agent', resourceId: 'agent-resource', pluginId: 'agent.session', title: 'Claude', position: { x: 900, y: 0 }, data: { provider: 'claude', sessionId: 'agent-session' } }, (await f.control.read()).revision);
+    const reported: [string, string][] = [];
+    coordinator.onCtrlCQuit = (nodeId, sessionId) => reported.push([nodeId, sessionId]);
+    await update({ id: 'agent-session', nodeId: 'agent', state: 'exited', exitCode: 0 });
+    await update({ id: 'session-0', nodeId: 'item-0', state: 'exited', exitCode: 0, quitOnCtrlC: true });
+    await update({ id: 'old-session', nodeId: 'agent', state: 'exited', exitCode: 0, quitOnCtrlC: true });
+    assert.deepEqual(reported, [], 'a plain exit, a shell and an old process of the item are not resumed');
+    await update({ id: 'agent-session', nodeId: 'agent', state: 'exited', exitCode: 0, quitOnCtrlC: true });
+    assert.deepEqual(reported, [['agent', 'agent-session']]);
+  } finally { await f.close(); }
+});

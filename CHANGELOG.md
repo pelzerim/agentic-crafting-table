@@ -9,6 +9,9 @@ their pull request and author.
 - **Any remote name**: `npm run update` and Update and restart fetch releases from the remote that points at the public repository, whatever it is called, instead of requiring `origin`. With none, they say so, list your remotes and give the command to add it; `git config act.updateRemote <name>` picks another, such as a mirror. (#33, @MegaMaddin)
 - **Clearer update failures**: a failed update says which step failed, why where git says so, whether the checkout moved and what to do next, in the terminal and in Settings → About, instead of “Command failed: …”. (#33, @MegaMaddin)
 
+### Agents
+- **Ctrl+C no longer ends an agent**: every Ctrl+C still reaches Claude Code or Codex, so it stops a turn or a command as before. When the agent quits on one (both quit on a second Ctrl+C), the table resumes its conversation in the same item. `/exit` and Stop session still end it. (#31, @timohuovinen)
+
 ## 0.22.0 — 2026-11-13
 
 ### Map

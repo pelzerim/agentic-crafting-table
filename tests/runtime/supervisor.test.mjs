@@ -206,6 +206,25 @@ test('the supervisor records only deciding keys the person typed, with the outpu
   } finally { await cleanup(service, directory); }
 });
 
+test('an exit just after a typed Ctrl+C is marked as a Ctrl+C quit; typing after the press is a choice to quit', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-pty-ctrl-c-')); const service = await start(directory);
+  try {
+    const quit = async (sessionId, typedExit) => {
+      // Like an agent, it survives the first Ctrl+C.
+      const launch = { ...request(directory, sessionId), executable: '/bin/sh', args: ['-c', 'trap "echo CONTROL:SIGINT" INT; echo READY:; until read line; do :; done; exit 0'] };
+      await service.client.call('sessions.launch', launch); await output(service.client, sessionId, 'READY:');
+      await service.client.call('sessions.input', { sessionId, data: '\x1b[I', source: 'user' });
+      await service.client.call('sessions.input', { sessionId, data: '\x03', source: 'user' }); await output(service.client, sessionId, 'CONTROL:SIGINT');
+      await service.client.call('sessions.input', { sessionId, data: '\x1b[<35;10;5M', source: 'user' });
+      // The fixture quits on a line; sent by the table, it stands in for an agent quitting on its own.
+      await service.client.call('sessions.input', { sessionId, data: 'exit\r', ...(typedExit ? { source: 'user' } : {}) });
+      return until(async () => { const { session } = await service.client.call('sessions.read', { sessionId, after: Number.MAX_SAFE_INTEGER }); return session.state === 'exited' && session; });
+    };
+    assert.equal((await quit('pressed', false)).quitOnCtrlC, true);
+    assert.equal((await quit('typed', true)).quitOnCtrlC, undefined);
+  } finally { await cleanup(service, directory); }
+});
+
 test('a tail read of a large recording starts at a line boundary and pages on without gaps or duplicates', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'craft-tail-read-')); const service = await start(directory);
   try {

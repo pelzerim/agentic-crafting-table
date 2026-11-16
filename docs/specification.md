@@ -1854,6 +1854,12 @@ CLI’s submit behavior. Agent views send distinct Shift+Enter (CSI-u) for the
 native CLI to interpret. Plain terminals use a bracketed newline when supported,
 otherwise the distinct key; never substitute a plain submit key.
 Do not send input from inactive/stopped/read-only surfaces or while composing text.
+Every Ctrl+C reaches the process. Claude Code and Codex quit on a second Ctrl+C, so when an
+agent quits within 2 seconds of a Ctrl+C typed in its terminal, with nothing typed since
+(mouse, focus and cursor reports do not count), the table resumes its conversation in the
+same item, once per process, as Resume does. `/exit` or anything else typed after the press,
+Stop session and archiving still end it. An item with nothing said yet has no conversation
+to resume and stays ended.
 Files dropped on a terminal are typed as their paths, shell-escaped and one space
 apart, as a terminal app does; an agent attaches a dropped image from its path. An image
 with no file on disk behind it, as dragged from a web page, is saved like a pasted one

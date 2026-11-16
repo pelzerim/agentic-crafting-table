@@ -66,12 +66,20 @@ export class AgentCoordinator {
   private skillRuns = new Map<string, { source: string; promise: Promise<SessionSnapshot> }>();
   /** Processes that have left their item's conversation, and those whose switch is being followed. */
   private moved = new Set<string>(); private switching = new Set<string>();
+  /** Processes that quit on a Ctrl+C, each resumed once. */
+  private quitOnCtrlC = new Set<string>();
   /** Told when a person's session view should follow a switch from one item to another. */
   onSwitched?: (fromNodeId: string, toNodeId: string) => void;
   constructor(directory: string, options: RuntimeOptions, control: WorkspaceControl, sessions: SessionCoordinator, context: AgentContextCoordinator, changed: () => Promise<void>, observations: Observations) {
     this.directory = directory; this.options = options; this.control = control; this.sessions = sessions; this.context = context; this.changed = changed;
     this.observations = observations;
     sessions.onConversationSwitch = (nodeId, sessionId, switched) => { this.moved.add(sessionId); void this.followSwitch(nodeId, sessionId, switched); };
+    // One Ctrl+C too many must not end the item's conversation. An item with nothing said yet has none to resume and stays ended.
+    sessions.onCtrlCQuit = (nodeId, sessionId) => {
+      if (this.quitOnCtrlC.has(sessionId)) return;
+      this.quitOnCtrlC.add(sessionId);
+      void this.resume(nodeId, randomUUID()).catch(() => {});
+    };
   }
   start() { this.quietTimer ??= setInterval(() => { this.settling ??= this.settleQuiet().catch(() => {}).finally(() => { this.settling = undefined; }); }, 5_000); this.quietTimer.unref?.(); }
   async pause() { clearInterval(this.quietTimer); this.quietTimer = undefined; await this.settling; }

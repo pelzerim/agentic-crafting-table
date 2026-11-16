@@ -44,6 +44,9 @@ export interface SessionRecord {
    * session's terminal, and the output sequence at that moment. Input the table
    * sends itself never counts. Kept in memory for the life of the process. */
   decisiveInputAt?: number; decisiveInputSequence?: number;
+  /** The process quit just after a Ctrl+C the person typed, with nothing typed since. Claude Code
+   * and Codex quit on a second Ctrl+C; the table resumes such an agent in its item. */
+  quitOnCtrlC?: boolean;
 }
 export interface OutputChunk { sequence: number; data: string }
 export interface SessionSnapshot { session: SessionRecord; chunks: OutputChunk[]; firstSequence: number; lastSequence: number; truncated: boolean; hasMore?: boolean; recordingEnd?: number; replayFrom?: number }
