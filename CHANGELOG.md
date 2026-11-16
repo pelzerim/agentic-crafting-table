@@ -5,6 +5,9 @@ their pull request and author.
 
 ## Unreleased
 
+### Getting started
+- **A guided first session**: choose a project folder, save a local task and link it to a Claude or Codex session. The guide opens automatically on a new workspace, checks installed CLIs and keeps progress when you return. Hiding or finishing it keeps it closed; reopen it from the empty workspace or Settings → General → Get started. GitHub and Linear are optional. (#28, @ferrandiaz)
+
 ### Updates
 - **Any remote name**: `npm run update` and Update and restart fetch releases from the remote that points at the public repository, whatever it is called, instead of requiring `origin`. With none, they say so, list your remotes and give the command to add it; `git config act.updateRemote <name>` picks another, such as a mirror. (#33, @MegaMaddin)
 - **Clearer update failures**: a failed update says which step failed, why where git says so, whether the checkout moved and what to do next, in the terminal and in Settings → About, instead of “Command failed: …”. (#33, @MegaMaddin)

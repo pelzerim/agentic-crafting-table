@@ -426,14 +426,41 @@ Connections; a failed read as an alert ("Couldn't refresh · …") with **Retry*
 above the last list. Refresh is an icon button whose tooltip says when the list
 was last updated.
 
-**First run.** The empty workspace gives one instruction (“Double-click anywhere
-to add an item · right-click for more”), a Create your first project button and a
-three-step Get started checklist: Create a project → Connect GitHub or Linear
-(Connect… opens Settings on Connections) → Start an agent. A finished step
-collapses to one struck-through line with its result. While the map holds only
-projects the checklist docks at the bottom centre; it disappears once an item
-exists, all steps are done, or Hide is chosen (remembered on this machine). The
-card never takes map gestures; only its buttons are interactive.
+**First run — guided first session.** The empty workspace keeps the existing
+Create your first project action. On its first successful workspace load, the app
+opens the three-step guide automatically only when no guide preference was saved
+and the workspace is pristine (revision zero, no nodes or resources, and nothing
+in Undermap). It remembers this initial decision, including choosing not to open
+for an existing workspace; deleting or archiving existing work never reopens it.
+A dismissal of the older checklist is respected too. Hide or completion persists
+the closed preference. Once hidden, the empty map shows its gesture instruction
+and **Guide me through my first session** to open the guide again. This first-use
+welcome is the deliberate exception to the quiet-by-default rule.
+**Settings → General → Get started → Open first session guide** reopens it on an
+existing workspace. Unsaved Settings changes must be saved or discarded first.
+The guide remembers its open state, selected project and saved task on this machine;
+Hide or Escape closes it without removing work. It is hidden while an item, creation
+form, Settings or Undermap is open, and returns when that surface closes.
+
+1. Choose a visible project (or create one with the normal project form), then
+   choose its local working folder using Project settings. No repository is cloned.
+2. Write a first task and explicitly save it as an ordinary local note in that
+   project. GitHub and Linear connections are optional. Adding this note does not
+   dismiss the guide. An archived or removed task does not count as saved.
+3. Check installed Claude and Codex CLIs using the native launch-path discovery;
+   Check again retries discovery. This check starts no CLI or model and makes no
+   claim about authentication or version compatibility. Missing tools get setup
+   guidance; discovery failure is retryable. Review and start session requires a
+   saved task and a detected selected CLI, and opens the existing agent creation
+   form with provider, project folder and the task's context connection preselected.
+   Only its normal Start action launches a process. Existing launch errors and
+   retry handling apply. The guide does not submit an implementation prompt.
+
+A visible agent in the chosen project with an incoming context link from the saved
+task completes the guide. **Open my first session** opens that item and closes the
+guide, explaining that Needs me reports when it needs attention. Progress comes
+from saved map state; an unrelated agent never completes this task. The guide
+creates no provider connections, imports or remote writes.
 
 **MAP-REMINDERS — Reminders.**
 A rail tool for daily reminders at set times per weekday, for breaks and routines:

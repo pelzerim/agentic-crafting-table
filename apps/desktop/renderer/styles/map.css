@@ -33,109 +33,38 @@
   margin-top: 0;
 }
 
-/* First run: the core loop as a checklist. Centred in the empty workspace, docked
- * at the bottom while the map holds only projects. */
+/* Explicitly opened first-session guide; all colours follow the app theme. */
 .first-run-card {
   width: min(440px, calc(100% - 48px));
-  margin-top: var(--act-sp-6);
-  padding: var(--act-sp-2) 0 0;
+  max-height: calc(100% - 80px);
+  overflow: auto;
   background: var(--act-panel);
   border: 1px solid var(--act-line-accent);
   clip-path: var(--act-shape-panel);
   text-align: left;
-}
-
-/* The card never takes map gestures: double- and right-clicks reach the map. */
-.map-message>.first-run-card,
-.first-run-card {
-  pointer-events: none;
-}
-
-.first-run-card button {
-  pointer-events: auto;
-}
-
-.first-run-card[data-docked] {
   position: absolute;
   left: 50%;
   bottom: var(--act-sp-6);
   z-index: 115;
-  margin: 0;
   transform: translateX(-50%);
+  padding: var(--act-sp-4);
 }
-
-.first-run-card ol {
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.first-run-card[hidden] { display: none; }
+.first-run-card h2 { font-size: var(--act-fs-body); margin: var(--act-sp-2) 0; }
+.first-run-card p { font-size: var(--act-fs-ui); color: var(--act-ink-soft); margin: var(--act-sp-2) 0; }
+.first-run-card ol { margin: 0; padding: 0; list-style: none; }
+.first-run-card li { display: grid; gap: var(--act-sp-2); padding: var(--act-sp-3) 0; border-top: 1px solid var(--act-line); }
+.first-run-card label { display: grid; gap: var(--act-sp-1); font-size: var(--act-fs-ui); }
+.first-run-card textarea, .first-run-card select {
+  width: 100%; box-sizing: border-box; padding: var(--act-sp-2);
+  background: var(--act-control); color: var(--act-ink); border: 1px solid var(--act-line-control);
+  font: inherit;
 }
-
-.first-run-card li {
-  display: grid;
-  grid-template-columns: 16px 1fr auto;
-  align-items: center;
-  gap: var(--act-sp-1) var(--act-sp-3);
-  padding: var(--act-sp-2) var(--act-sp-4);
-  border-bottom: 1px solid var(--act-line);
-}
-
-.first-run-check {
-  width: 16px;
-  height: 16px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--act-line-control);
-  color: var(--act-ok);
-}
-
-.first-run-check .act-glyph {
-  width: 10px;
-  height: 10px;
-}
-
-.first-run-name {
-  font-size: var(--act-fs-body);
-  font-weight: var(--act-fw-medium);
-  color: var(--act-ink);
-}
-
-.first-run-state {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  clip-path: inset(50%);
-  overflow: hidden;
-}
-
-.first-run-card li[data-done=true] .first-run-name {
-  color: var(--act-ink-dim);
-  text-decoration: line-through;
-}
-
-.first-run-card li small {
-  font: var(--act-fs-meta)/1.3 var(--act-font-mono);
-  color: var(--act-ink-dim);
-}
-
-.first-run-card li p {
-  grid-column: 2 / 4;
-  margin: 0;
-  font-size: var(--act-fs-ui);
-  color: var(--act-ink-soft);
-}
-
-.first-run-card footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--act-sp-2) var(--act-sp-4);
-  font-size: var(--act-fs-meta);
-  color: var(--act-ink-dim);
-}
-
-.first-run-card .first-run-hide {
-  text-decoration: underline;
-}
+.first-run-card textarea { resize: vertical; min-height: 64px; max-height: 160px; }
+.first-run-card [role=status] { font-size: var(--act-fs-ui); color: var(--act-ink-soft); }
+.first-run-card li[data-done=true] > strong { color: var(--act-ink-dim); }
+.first-run-card footer { display: flex; align-items: center; justify-content: space-between; gap: var(--act-sp-2); font-size: var(--act-fs-meta); color: var(--act-ink-dim); border-top: 1px solid var(--act-line); padding-top: var(--act-sp-2); }
+.map-message > button + button { margin-top: var(--act-sp-3); }
 
 .map-locator {
   position: absolute;
