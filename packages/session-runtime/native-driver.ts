@@ -4,7 +4,8 @@ import { codexInput, codexStatus, codexSwitch, codexThreadStatus, isHelperThread
 import * as z from 'zod/v4';
 import { randomUUID } from 'node:crypto';
 
-export interface NativeDriver { args: string[]; close(): Promise<void>; /** Appends a guide to the conversation the terminal shows now, without a model turn. */ inject(instructions: string, context: string): Promise<void> }
+export interface NativeDriver { args: string[]; close(): Promise<void>; /** Appends a guide to the conversation the terminal shows now, without a model turn. */ inject(instructions: string, context: string): Promise<void>;
+  /** Names the conversation the terminal shows now; its own `thread/name/updated` reports it back. */ rename(name: string): Promise<void> }
 export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.ProcessEnv, observe: (state: NativeAgentState) => void, disconnected: (error: Error) => void, owner?: { executable: string; entrypoint: string; electron: boolean }, signal?: AbortSignal): Promise<NativeDriver | undefined> {
   signal?.throwIfAborted();
   if (!request.native) return;
@@ -41,6 +42,11 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
         return;
       }
       if (switched) { state = { ...current, switched, observedAt: new Date().toISOString() }; observe(state); return; }
+      if (event.method === 'thread/name/updated' && event.params?.threadId === current.nativeSessionId) {
+        const name = typeof event.params.threadName === 'string' && event.params.threadName.trim() ? event.params.threadName.trim() : undefined;
+        if (name !== current.name) { state = { ...current, observedAt: new Date().toISOString() }; if (name) state.name = name; else delete state.name; observe(state); }
+        return;
+      }
       const status = codexStatus(event, current.nativeSessionId);
       if (status === 'working' || status === 'input') talked = true;
       const started = event.method === 'thread/started' && event.params?.thread?.id === current.nativeSessionId;
@@ -57,14 +63,14 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
       if (state) apply(event, state); else notified.push(event);
     });
     const method = native.nativeSessionId ? 'thread/resume' : 'thread/start';
-    const response = z.object({ thread: z.object({ id: z.string().uuid(), status: codexThreadStatus.optional() }), model: z.string().min(1).max(100).optional().catch(undefined), reasoningEffort: z.string().regex(/^[a-z]{1,20}$/).nullish().catch(undefined) }).parse(await server.rpc.request(method, {
+    const response = z.object({ thread: z.object({ id: z.string().uuid(), status: codexThreadStatus.optional(), name: z.string().nullish().catch(undefined) }), model: z.string().min(1).max(100).optional().catch(undefined), reasoningEffort: z.string().regex(/^[a-z]{1,20}$/).nullish().catch(undefined) }).parse(await server.rpc.request(method, {
       ...(native.nativeSessionId ? { threadId: native.nativeSessionId, excludeTurns: true } : { ephemeral: false }),
       cwd: request.cwd, model: native.model, config: native.config,
     }));
     signal?.throwIfAborted();
     if (native.nativeSessionId && response.thread.id !== native.nativeSessionId) throw new Error('Codex resumed a different native conversation');
     const observedAt = new Date().toISOString(), status = response.thread.status ? nativeStatus(response.thread.status) : 'unknown', input = response.thread.status && status === 'input' ? nativeInput(response.thread.status) : undefined;
-    const seeded: NativeAgentState = { provider: 'codex', nativeSessionId: response.thread.id, status, ...(input ? { input } : {}), ...(status !== 'unknown' ? { readyAt: observedAt } : {}), observedAt };
+    const seeded: NativeAgentState = { provider: 'codex', nativeSessionId: response.thread.id, status, ...(input ? { input } : {}), ...(response.thread.name?.trim() ? { name: response.thread.name.trim() } : {}), ...(status !== 'unknown' ? { readyAt: observedAt } : {}), observedAt };
     state = seeded; observe(seeded); // Journal the returned identity before any subsequent external action.
     for (const event of notified.splice(0)) apply(event, state);
     // This persists an otherwise empty conversation without submitting a task or model turn.
@@ -84,6 +90,11 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
         const threadId = state?.switched?.nativeSessionId ?? state?.nativeSessionId;
         if (closing || !threadId) throw new Error('This Codex conversation is no longer connected');
         await deliverContext(threadId, instructions, context);
+      },
+      async rename(name) {
+        const threadId = state?.switched ? undefined : state?.nativeSessionId;
+        if (closing || !threadId) throw new Error('This Codex conversation is no longer connected');
+        await server.rpc.request('thread/name/set', { threadId, name });
       } };
   } catch (error) { closing = true; await server.close(); throw error; }
 }

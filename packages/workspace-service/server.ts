@@ -30,6 +30,8 @@ import type { MapLayer } from '../../src/graph/layers.ts';
 import { ServiceHealth } from './service-health.ts';
 import { CPU_PROFILE_RANGE_MS, recordCpuProfile } from './cpu-profile.ts';
 import { AgentRecaps } from './agent-recaps.ts';
+import { AgentNames, nativeNameIo } from './agent-names.ts';
+import type { NativeNameIo } from './agent-names.ts';
 import type { ResourcePluginRegistry } from '../../src/resource-plugins/registry.ts';
 import { SessionCoordinator } from './sessions.ts';
 import type { RuntimeOptions } from '../session-runtime/client.ts';
@@ -116,7 +118,7 @@ const mapLayer = (value: unknown): MapLayer | undefined => {
   throw new Error('Unknown map layer');
 };
 
-export async function startWorkspaceService(directory: string, registry?: ResourcePluginRegistry, runtimeOptions?: RuntimeOptions, providers?: { titleClient?: ActivitySummaryClient; connections?: ProviderConnections; host?(registry: ResourcePluginRegistry): ResourcePluginHost; assignments?: AssignmentAdapter[]; triage?: { adapters: TriageAdapter[]; connections?: () => ProviderConnection[] }; reviews?: Record<string, ReviewSource>; workflows?: Record<string, WorkflowSource>; reviewRuntime?: ReviewRuntime; inboxClient?(connection: ProviderConnection): GitHubClient; pluginTimeoutMs?: number; reminderClock?: ReminderClockOptions; todoClock?: () => number; updates?: Partial<UpdateCheckerOptions> }) {
+export async function startWorkspaceService(directory: string, registry?: ResourcePluginRegistry, runtimeOptions?: RuntimeOptions, providers?: { titleClient?: ActivitySummaryClient; nativeNames?: NativeNameIo; connections?: ProviderConnections; host?(registry: ResourcePluginRegistry): ResourcePluginHost; assignments?: AssignmentAdapter[]; triage?: { adapters: TriageAdapter[]; connections?: () => ProviderConnection[] }; reviews?: Record<string, ReviewSource>; workflows?: Record<string, WorkflowSource>; reviewRuntime?: ReviewRuntime; inboxClient?(connection: ProviderConnection): GitHubClient; pluginTimeoutMs?: number; reminderClock?: ReminderClockOptions; todoClock?: () => number; updates?: Partial<UpdateCheckerOptions> }) {
   const paths = prepareWorkspace(directory), instanceId = randomUUID();
   const store = new SqliteStore(paths.database);
   // Installed packages load before the registry is built so they register exactly like bundled ones.
@@ -213,6 +215,9 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   const standup = new StandupReports(store, control, { client: providers ? providers.titleClient ?? null : undefined, directory, enabled: STANDUP_ENABLED, allowed: () => !closing && lifecycle.allowsBackgroundWork,
     connections: () => store.readSettings().value.connections, github: providers ? providers.inboxClient : githubReader });
   const terminals = runtimeOptions ? new SessionCoordinator(store, control, runtimeOptions, broadcast) : undefined;
+  // An injected provider set never writes to the person's own Claude or Codex conversations.
+  const nativeNames = providers ? providers.nativeNames : nativeNameIo;
+  const names = terminals && nativeNames ? new AgentNames(control, terminals.runtime, broadcast, () => !closing && lifecycle.allowsBackgroundWork, nativeNames) : undefined;
   let logPolicySync = Promise.resolve();
   const configureLogs = () => {
     const policy = store.readSettings().value.diagnostics; publishLogPolicy(policy);
@@ -341,7 +346,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   if (agentTitles) { const titler = agentTitles; operation('agent.title', ({ nodeId }) => titler.request(nodeId)); }
   const pollers: [object, string, string][] = [[resources, 'poll', 'resources.poll'], [assignments, 'tick', 'assignments.tick'], [triage, 'tick', 'triage.tick'], [todoSweeper, 'sweep', 'todos.sweep'],
     [workflows, 'tick', 'workflows.tick'], [checkouts, 'tick', 'checkouts.tick'], [inbox, 'refresh', 'inbox.refresh'], [loops, 'reconcileOnce', 'review-loops.reconcile'],
-    [autoReviews, 'reconcileOnce', 'auto-reviews.reconcile'], [reportAdoption, 'reconcileOnce', 'workflow-reports.reconcile'], [recaps, 'tick', 'recaps.tick'], ...(summaries ? [[summaries, 'tick', 'summaries.tick'] as [object, string, string]] : [])];
+    [autoReviews, 'reconcileOnce', 'auto-reviews.reconcile'], [reportAdoption, 'reconcileOnce', 'workflow-reports.reconcile'], [recaps, 'tick', 'recaps.tick'], ...(names ? [[names, 'tick', 'names.tick'] as [object, string, string]] : []), ...(summaries ? [[summaries, 'tick', 'summaries.tick'] as [object, string, string]] : [])];
   for (const [target, method, name] of pollers) health.timed(target, method, name);
   const creators: Record<string, (request: ResourceCreate) => Promise<unknown>> = { 'resource.attach': request => resources.attach(request), ...(terminals ? {
     'terminal.create': request => terminals.create({ ...request, sessionId: request.requestId, cwd: request.data.cwd }),
@@ -455,8 +460,8 @@ export async function startWorkspaceService(directory: string, registry?: Resour
           case 'attention.history': { const input = z.object({ offset: z.number().int().min(0).max(99).default(0), limit: z.number().int().min(1).max(100).default(10) }).strict().parse(args ?? {}); result = store.attentionHistory(input.offset, input.limit); break; }
           case 'lifecycle.active': result = await lifecycle.active(); break;
           case 'lifecycle.preview': result = { sessions: await lifecycle.active(), pending: lifecycle.pendingCount }; break;
-          case 'lifecycle.close': inbox.stop(); await agents?.pause(); await reportAdoption.close(); await workflows.pause(); await servicePlugins.pause(); await findings?.close(); await loops.close(); await autoReviews.close(); await reviews?.close(); await architecture.close(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await recaps.pause(); await checkouts.pause(); await resources.pause(); await summaries?.pause(); await titles?.pause(); await agentTitles?.pause(); await attachTitles?.pause(); await standup.pause(); await updates.pause(); await plots.pause(); await projectSummaries.pause(); await reminders.pause(); result = await lifecycle.close(); break;
-          case 'lifecycle.recover': { const input = z.object({ retry: z.boolean().default(false), startupId: z.string().uuid().optional() }).parse(args); result = lifecycle.recover(input.retry, input.startupId); summaries?.start(); titles?.start(); agentTitles?.start(); attachTitles?.start(); standup.start(); updates.start(); plots.start(); projectSummaries.start(); reminders.start(); assignments.start(); triage.start(); todoSweeper.start(); recaps.start(); checkouts.start(); resources.start(); workflows.resume(); findings?.start(); loops.start(); autoReviews.start(); reportAdoption.start(); servicePlugins.start(); agents?.start(); break; }
+          case 'lifecycle.close': inbox.stop(); await agents?.pause(); await reportAdoption.close(); await workflows.pause(); await servicePlugins.pause(); await findings?.close(); await loops.close(); await autoReviews.close(); await reviews?.close(); await architecture.close(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await recaps.pause(); await names?.pause(); await checkouts.pause(); await resources.pause(); await summaries?.pause(); await titles?.pause(); await agentTitles?.pause(); await attachTitles?.pause(); await standup.pause(); await updates.pause(); await plots.pause(); await projectSummaries.pause(); await reminders.pause(); result = await lifecycle.close(); break;
+          case 'lifecycle.recover': { const input = z.object({ retry: z.boolean().default(false), startupId: z.string().uuid().optional() }).parse(args); result = lifecycle.recover(input.retry, input.startupId); summaries?.start(); titles?.start(); agentTitles?.start(); attachTitles?.start(); standup.start(); updates.start(); plots.start(); projectSummaries.start(); reminders.start(); assignments.start(); triage.start(); todoSweeper.start(); recaps.start(); names?.start(); checkouts.start(); resources.start(); workflows.resume(); findings?.start(); loops.start(); autoReviews.start(); reportAdoption.start(); servicePlugins.start(); agents?.start(); break; }
           case 'agent.hook': if (!agents) throw new Error('Native agents are not configured'); result = await agents.hook(args); break;
           case 'plugins.discover': {
             const input = pluginDiscoverySchema.parse(args);
@@ -540,7 +545,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
       health.stop();
       await reportAdoption.close();
       await workflows.pause();
-      await inbox.close(); await agents?.pause(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await recaps.pause(); await checkouts.pause(); await resources.pause();
+      await inbox.close(); await agents?.pause(); await assignments.pause(); await triage.pause(); await todoSweeper.pause(); await recaps.pause(); await names?.pause(); await checkouts.pause(); await resources.pause();
       await summaries?.close();
       await titles?.close();
       await agentTitles?.close();
@@ -609,7 +614,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
     plots.start();
     projectSummaries.start();
     reminders.start();
-    assignments.start(); triage.start(); todoSweeper.start(); recaps.start(); checkouts.start(); resources.start(); inbox.start(); loops.start(); reportAdoption.start(); servicePlugins.start(); agents?.start();
+    assignments.start(); triage.start(); todoSweeper.start(); recaps.start(); names?.start(); checkouts.start(); resources.start(); inbox.start(); loops.start(); reportAdoption.start(); servicePlugins.start(); agents?.start();
   })();
   try { await startup; } catch (error) { await close(); throw error; }
   return { close, store, control, resources, paths, instanceId };

@@ -16,13 +16,16 @@ async function main() {
   const published = artifact && { url: artifact.url, ...(title ? { title } : {}) };
   const client = await connectWorkspace(directory);
   try {
-    const result = await client.call<{ context?: Record<string, unknown> }>('agent.hook', { nodeId, processSessionId, nativeSessionId, observedAt, ...observed, ...(published ? { artifact: published } : {}) });
+    const result = await client.call<{ context?: Record<string, unknown>; sessionTitle?: string }>('agent.hook', { nodeId, processSessionId, nativeSessionId, observedAt, ...observed, ...(published ? { artifact: published } : {}) });
+    // Claude takes a session title only from UserPromptSubmit; it names the conversation as `/rename` would.
+    const sessionTitle = event.hook_event_name === 'UserPromptSubmit' && typeof result.sessionTitle === 'string' && result.sessionTitle ? result.sessionTitle : undefined;
+    let additionalContext: string | undefined;
     if (result.context) {
       const { guide, guideRequestId, guideRequested, ...reference } = result.context;
       const instructions = guideRequested && guide && typeof guide === 'object' && 'prompt' in guide ? String(guide.prompt) : '';
-      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event.hook_event_name,
-        additionalContext: [instructions, `Agentic Crafting Table context offer. Read ${guideRequested ? 'the workbench guide above and ' : ''}this reference material and acknowledge its deliveryId with workspace_run action agent.context.ack.\n${JSON.stringify(reference)}`].filter(Boolean).join('\n\n') } }));
+      additionalContext = [instructions, `Agentic Crafting Table context offer. Read ${guideRequested ? 'the workbench guide above and ' : ''}this reference material and acknowledge its deliveryId with workspace_run action agent.context.ack.\n${JSON.stringify(reference)}`].filter(Boolean).join('\n\n');
     }
+    if (additionalContext || sessionTitle) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event.hook_event_name, ...(additionalContext ? { additionalContext } : {}), ...(sessionTitle ? { sessionTitle } : {}) } }));
   } finally { client.close(); }
 }
 // Hooks never block native work if the local table is temporarily unavailable.

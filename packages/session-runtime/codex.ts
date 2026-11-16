@@ -57,3 +57,16 @@ export async function resolveCodexSession(id: string) {
   try { const thread = await metadata.session(id); return { nativeSessionId: thread.id, cwd: thread.cwd }; }
   finally { metadata.rpc.close(); }
 }
+/** Names threads through one dedicated metadata process; a running Codex reads the new name from disk. Returns the threads named. */
+export async function renameCodexThreads(names: { id: string; name: string }[]) {
+  if (!names.length) return [];
+  const installed = await probeCodex(), metadata = await openCodexMetadata(installed.executable, { env: { ...process.env, PATH: await sessionPath() } });
+  try {
+    const renamed: string[] = [];
+    for (const { id, name } of names) {
+      try { await metadata.rpc.request('thread/name/set', { threadId: id, name }); renamed.push(id); }
+      catch { /* An unknown or unloadable thread keeps its name; the next tick tries again. */ }
+    }
+    return renamed;
+  } finally { metadata.rpc.close(); }
+}
