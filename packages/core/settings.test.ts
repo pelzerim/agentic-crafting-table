@@ -132,6 +132,8 @@ test('open finding counts on review cards are off by default and only accept a b
 
 test('cracks on quiet sessions are off by default and only accept a boolean', () => {
   assert.equal(settingsSchema.parse({}).sessionCracks, false);
+  assert.equal(settingsSchema.parse({}).pullRequestCardLabels, false);
+  assert.equal(settingsSchema.parse({ pullRequestCardLabels: true }).pullRequestCardLabels, true);
   assert.equal(settingsSchema.parse({ sessionCracks: true }).sessionCracks, true);
   for (const value of ['yes', 1, null]) assert.equal(settingsSchema.safeParse({ sessionCracks: value }).success, false, String(value));
 });

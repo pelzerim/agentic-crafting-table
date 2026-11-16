@@ -158,6 +158,8 @@ test('background PR updates paint map indicators and approval enters Needs me un
     await tick(); await expect(list()).toContainText('Nothing needs me.');
     const names = ['backend', 'db-migration', 'webapp', 'webapp-test'], tags = page.locator('.card-tags');
     providers.pull = { ...providers.pull, labels: names.map((name, index) => ({ name, color: ['d73a4a', 'fbca04', '0e8a16', '1d76db'][index] })) as never[] }; await tick();
+    await expect(card().locator('[data-indicator="review-state"]')).toBeVisible(); await expect(tags).toHaveCount(0);
+    await page.evaluate(async () => { const settings = await window.craftingTable.settingsRead(); await window.craftingTable.settingsWrite({ expectedRevision: settings.revision, value: { ...settings.value, pullRequestCardLabels: true } }); });
     await expect(tags.locator('.card-tag')).toHaveText(names.slice(0, 3)); await expect(tags.locator('.card-tag-more')).toHaveText('+1');
     providers.pull = { ...providers.pull, merged: true, state: 'closed' }; await tick();
     await expect(card().locator('[data-indicator="review-state"]')).toHaveAttribute('aria-label', 'Merged');

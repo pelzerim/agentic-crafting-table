@@ -30,6 +30,7 @@ test('the double-click web setting belongs to the Map page', () => {
   assert.deepEqual(draftChanges(saved, { ...saved, groundRightClickRing: true }), ['Map']);
   assert.deepEqual(draftChanges(saved, { ...saved, offscreenAttention: true }), ['Map']);
   assert.deepEqual(draftChanges(saved, { ...saved, sessionCracks: true }), ['Map']);
+  assert.deepEqual(draftChanges(saved, { ...saved, pullRequestCardLabels: true }), ['github.pull-request']);
   assert.deepEqual(draftChanges(saved, { ...saved, mapCorner: 'atlas' }), ['Corners']);
 });
 

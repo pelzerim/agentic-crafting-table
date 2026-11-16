@@ -28,6 +28,7 @@ test('project skills launch native runs through UI and MCP, preserve retries and
     await page.getByLabel('Project summary', { exact: true }).fill('BILLING_BRIEF');
     await page.getByLabel('Project working directory', { exact: true }).fill(repo);
     await page.getByRole('button', { name: 'Create project', exact: true }).click();
+    await page.getByRole('region', { name: 'Get started' }).getByRole('button', { name: 'Hide', exact: true }).click();
     const read = async () => (await page.evaluate(() => window.craftingTable.workspaceRead())).state;
     const projectId = (await read()).nodes[0].id;
     await mcp.connect(new StdioClientTransport({ command: process.execPath, args: [resolve('dist/mcp-bridge.cjs')], env: { ...process.env as Record<string,string>, ACT_DATA_DIR: directory }, stderr: 'pipe' }));

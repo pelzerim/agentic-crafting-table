@@ -237,6 +237,8 @@ export interface ProjectMapProps {
   reviewOpenCounts?: boolean;
   /** Cracks on agent session cards quiet for a week or more (MAP-33, Settings → Map → Agent sessions); never below, where everything is old. */
   sessionCracks?: boolean;
+  /** Chips a type's map preset reads from its data, such as GitHub labels on pull requests (Settings → Items → Pull request); off shows none. */
+  cardTags?: boolean;
   /** Mute or unmute a project (MAP-25). Without it no project is drawn covered. */
   onMute?(projectId: string, muted: boolean): void;
   /** The Undermap's mirror layout (MAP-18): areas, month lines and far plates come from these computed boxes, the
@@ -719,7 +721,7 @@ function MapCanvas(props: ProjectMapProps) {
     const mapFields = fields.map(field => `${fields.length > 1 ? field!.label + ": " : ""}${String(field!.value).replace(/\s+/g, " ")}`).join(" · ").slice(0, 1000);
     const pipValue = mapSize?.pips && record ? dataAt(mapSize.pips, record.data) : undefined;
     const countValue = mapSize?.counts && record ? dataAt(mapSize.counts, record.data) : undefined;
-    const tags = mapSize?.tags && record ? cardTags(dataAt(mapSize.tags, record.data)) : [];
+    const tags = props.cardTags && mapSize?.tags && record ? cardTags(dataAt(mapSize.tags, record.data)) : [];
     const counts = Array.isArray(countValue) ? countValue.filter((entry): entry is MapCount => typeof entry?.tone === 'string' && Number.isInteger(entry?.count) && entry.count > 0).slice(0, 8) : undefined;
     const presented = mapSize?.presentationPips ? item.pips : undefined;
     const pips = Array.isArray(pipValue) ? pipValue.filter((pip): pip is MapPip => typeof pip?.tone === 'string' && typeof pip?.style === 'string').slice(0, 24) : presented?.pips;
@@ -743,7 +745,7 @@ function MapCanvas(props: ProjectMapProps) {
       if (!box || box.record !== record || box.presentation !== view) { box = measureBox(item); known.set(item, box); }
       return box;
     });
-  }, [layout, props.resources, props.registry, props.itemMapSizes, presentations]);
+  }, [layout, props.resources, props.registry, props.itemMapSizes, props.cardTags, presentations]);
   // A mirror layout mounts only the cards in the cells around the window; the key changes when the window crosses a cell.
   const mirror = props.undermap;
   const cullKey = mirror ? [Math.floor(-viewport.x / viewport.zoom / CULL_CELL) - 1, Math.floor(-viewport.y / viewport.zoom / CULL_CELL) - 1, Math.ceil((size.width - viewport.x) / viewport.zoom / CULL_CELL) + 1, Math.ceil((size.height - viewport.y) / viewport.zoom / CULL_CELL) + 1].join() : '';

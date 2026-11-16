@@ -160,6 +160,8 @@ export const settingsSchema = z.object({
   offscreenAttention: z.boolean().default(false),
   reviewOpenCounts: z.boolean().default(false),
   sessionCracks: z.boolean().default(false),
+  /** GitHub labels as chips on pull request cards on the map; the open view always lists them. */
+  pullRequestCardLabels: z.boolean().default(false),
   /** Agents may run, through MCP, the operations and item actions declared `actsForPerson`: merging, approving a
    * deployment, starting an auto deploy and the like. Off refuses them and names this setting. */
   agentsActForPerson: z.boolean().default(true),

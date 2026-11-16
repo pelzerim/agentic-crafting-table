@@ -3,7 +3,7 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
-## Unreleased
+## 0.23.0 — 2026-11-16
 
 ### Getting started
 - **A guided first session**: choose a project folder, save a local task and link it to a Claude or Codex session. The guide opens automatically on a new workspace, checks installed CLIs and keeps progress when you return. Hiding or finishing it keeps it closed; reopen it from the empty workspace or Settings → General → Get started. GitHub and Linear are optional. (#28, @ferrandiaz)
@@ -15,6 +15,13 @@ their pull request and author.
 ### Agents
 - **Ctrl+C no longer ends an agent**: every Ctrl+C still reaches Claude Code or Codex, so it stops a turn or a command as before. When the agent quits on one (both quit on a second Ctrl+C), the table resumes its conversation in the same item. `/exit` and Stop session still end it. (#31, @timohuovinen)
 - **Same name in Claude and Codex**: an agent's name on the table is now also its name in `claude --resume` and `codex resume`, instead of an AI title such as “Table context offer acknowledgment”. A running Claude session takes a new name with its next prompt; a stopped one, and Codex threads, take it within 30 seconds. A `/rename` in either CLI renames the item on the table too. (#32, @timohuovinen)
+- **Faster tool calls**: Claude no longer waits for the `PostToolUse` hook, which saves about 155 ms a tool call. (#29, @timohuovinen)
+
+### Map
+- **Marks use less CPU**: a working mark is redrawn only when its picture changes, in place of a style recalculation on every frame. On a dense map the renderer uses about 40% less CPU, and every mark keeps its pace. (#29, @timohuovinen)
+
+### Pull requests
+- **Labels on the card are a setting**: a pull request's GitHub labels now show on its map card only with Settings → Items → Pull request → **Labels on the card** on. It is off by default, so cards are as quiet as before 0.22.0. The open view lists the labels either way.
 
 ## 0.22.0 — 2026-11-13
 
@@ -46,11 +53,7 @@ their pull request and author.
 - **Agents may act for you**: an agent on the map can now do what before only you could in the app: merge a pull request, update its branch, change its state or its [show]/[ship] tag, approve a deployment, start or stop an auto deploy or a review loop, start validations and Explain architecture, send review findings to an agent, add linked pull requests and save a text file. Settings → General → Agents has the switch, on by default; turn it off and agents are told to ask you. An agent still cannot merge past a blocker, mute a project, hide items or change this switch.
 
 ### Map
-- **Marks use less CPU**: a working mark is redrawn only when its picture changes, in place of a style recalculation on every frame. On a dense map the renderer uses about 40% less CPU, and every mark keeps its pace. (#29, @timohuovinen)
 - **Cracks on quiet sessions**: an optional switch in Settings → Map → Agent sessions, off by default. An agent session card that has done nothing for a week gets a small crack in from its edge, more at two weeks and again at four, so you can see how old it is. The tooltip says how long the session has been quiet. The cracks go when the session works again, and nothing cracks in the Undermap, where everything is old anyway. (#27, @timohuovinen)
-
-### Agents
-- **Faster tool calls**: Claude no longer waits for the `PostToolUse` hook, which saves about 155 ms a tool call. (#29, @timohuovinen)
 
 ## 0.20.1 — 2026-11-12
 

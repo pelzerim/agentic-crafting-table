@@ -38,7 +38,7 @@ const remote = (name: string, url: string) => `${name}\t${url} (fetch)\n${name}\
 test('the update fetches from the remote that points at the app repository, whatever it is called', () => {
   const remotes = remote('fork', 'git@github.com:alice/agentic-crafting-table.git') + remote('github', 'https://github.com/pelzerim/agentic-crafting-table');
   assert.deepEqual(releaseRemote({ remotes }), { name: 'github', url: 'https://github.com/pelzerim/agentic-crafting-table' });
-  for (const url of ['git@github.com:pelzerim/agentic-crafting-table.git', 'ssh://git@github.com/Pelzerim/Agentic-Crafting-Table.git', 'https://alice@github.com/pelzerim/agentic-crafting-table.git/'])
+  for (const url of ['git@github.com:pelzerim/agentic-crafting-table.git', 'ssh://git@github.com/Pelzerim/Agentic-Crafting-Table.git', 'https://user@github.com/pelzerim/agentic-crafting-table.git/'])
     assert.equal(releaseRemote({ remotes: remote('upstream', url) }).name, 'upstream', url);
   const both = remote('mirror', 'git@github.com:pelzerim/agentic-crafting-table.git') + remote('origin', 'https://github.com/pelzerim/agentic-crafting-table.git');
   assert.equal(releaseRemote({ remotes: both }).name, 'origin', 'origin wins among several that point there');
