@@ -20,6 +20,7 @@ export const hostRuntimeOperations: readonly RuntimeOperationDeclaration[] = [
   { id: 'resource.read' }, { id: 'resource.actions' }, { id: 'resource.action' }, { id: 'resource.content' }, { id: 'resource.context' }, { id: 'resource.viewed' },
   { id: 'resource.opened', agentPolicy: 'humanOnly' },
   { id: 'plot', agentPolicy: 'humanOnly' },
+  { id: 'map.tidy', agentPolicy: 'humanOnly' },
 ];
 
 /** Host operations followed by every bundled package's declared operations. */

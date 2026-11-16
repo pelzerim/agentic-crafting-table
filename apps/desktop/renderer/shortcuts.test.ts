@@ -12,7 +12,18 @@ test('workspace shortcut matching respects modifiers, consumed keys, repeats and
   assert.equal(matchWorkspaceShortcut({ ...key, key: 'M' }), 'map.overview');
   assert.equal(matchWorkspaceShortcut({ ...key, key: 'x' }), undefined);
   for (const flag of ['ctrlKey', 'metaKey', 'altKey', 'shiftKey', 'repeat', 'isComposing', 'defaultPrevented']) assert.equal(matchWorkspaceShortcut({ ...key, [flag]: true }), undefined);
-  assert.equal(new Set(WORKSPACE_SHORTCUTS.map(binding => binding.id)).size, WORKSPACE_SHORTCUTS.length);
+  const shown = WORKSPACE_SHORTCUTS.filter(binding => !('hidden' in binding));
+  assert.equal(new Set(shown.map(binding => binding.id)).size, shown.length);
+});
+
+test('undo and redo take the platform key: ⌘ on macOS, Ctrl elsewhere, plus Ctrl+Y off macOS', () => {
+  const press = (value: string, flags: Partial<typeof key>, mac: boolean) => matchWorkspaceShortcut({ ...key, key: value, ...flags }, mac);
+  assert.equal(press('z', { metaKey: true }, true), 'map.undo'); assert.equal(press('Z', { metaKey: true, shiftKey: true }, true), 'map.redo');
+  assert.equal(press('z', { ctrlKey: true }, true), undefined); assert.equal(press('y', { ctrlKey: true }, true), undefined);
+  assert.equal(press('z', { ctrlKey: true }, false), 'map.undo'); assert.equal(press('Z', { ctrlKey: true, shiftKey: true }, false), 'map.redo');
+  assert.equal(press('y', { ctrlKey: true }, false), 'map.redo'); assert.equal(press('z', { metaKey: true }, false), undefined);
+  assert.equal(press('z', {}, true), undefined, 'plain Z stays free');
+  assert.deepEqual([shortcutKey('map.undo', true), shortcutKey('map.redo', true), shortcutKey('map.redo', false)], ['⌘Z', '⌘⇧Z', 'Ctrl+Shift+Z']);
 });
 
 test('the keyboard layer covers hotbar slots, Needs me, Undermap, Settings, zoom and the controls card', () => {
@@ -32,7 +43,7 @@ test('the keyboard layer covers hotbar slots, Needs me, Undermap, Settings, zoom
   assert.equal(shortcutKey('project.mute'), '⇧M');
   assert.equal(matchWorkspaceShortcut({ ...key, key: 'f', metaKey: true }), 'map.find', 'Cmd+F on the map finds an item; a focused terminal keeps its own find');
   // Views keys work while a view has focus, so a view may reuse a map gesture.
-  const keys = WORKSPACE_SHORTCUTS.flatMap(binding => [binding.key, ...('aliases' in binding ? binding.aliases : [])].map(value => `${binding.group === 'Views' ? 'view:' : ''}${'meta' in binding && binding.meta ? 'meta+' : ''}${'shift' in binding && binding.shift ? 'shift+' : ''}${value}`));
+  const keys = WORKSPACE_SHORTCUTS.flatMap(binding => [binding.key, ...('aliases' in binding ? binding.aliases : [])].map(value => `${binding.group === 'Views' ? 'view:' : ''}${'meta' in binding && binding.meta ? 'meta+' : ''}${'primary' in binding ? 'primary+' : ''}${'ctrl' in binding ? 'ctrl+' : ''}${'shift' in binding && binding.shift ? 'shift+' : ''}${value}`));
   assert.equal(new Set(keys).size, keys.length, 'one action per gesture');
 });
 
@@ -40,7 +51,7 @@ test('key labels and the controls card come from the registry', () => {
   assert.equal(shortcutKey('todos.toggle'), 'T'); assert.equal(shortcutKey('rail.inbox'), '4'); assert.equal(shortcutKey('sheet.close'), 'esc');
   const groups = shortcutGroups();
   assert.deepEqual(groups.map(group => group.group), ['Hotbar', 'Map', 'Views', 'App', 'Sheets']);
-  assert.equal(groups.flatMap(group => group.rows).length, WORKSPACE_SHORTCUTS.length);
+  assert.equal(groups.flatMap(group => group.rows).length, WORKSPACE_SHORTCUTS.filter(binding => !('hidden' in binding)).length);
   assert.deepEqual(groups[0].rows.slice(0, RAIL_SLOTS.length).map(row => [row.label, row.key]), [['Needs me', '1'], ['To-dos', '2'], ['Reminders', '3'], ['GitHub inbox', '4'], ['Undermap', '5'], ...(STANDUP_ENABLED ? [['Actions', '6']] : []), ['Settings', '7']]);
 });
 

@@ -454,3 +454,91 @@
   height: 22px;
 }
 
+
+/* Tidy (MAP-35): choices, then a ticked list of what changes. */
+.inline-editor.tidy-dialog {
+  width: min(420px, calc(100% - 32px));
+  max-height: calc(100% - 64px);
+  overflow: auto;
+}
+
+.tidy-choices {
+  display: grid;
+  gap: var(--act-sp-2);
+  margin: 0;
+  padding: 0 0 var(--act-sp-3);
+  border: 0;
+  border-bottom: 1px solid var(--act-line);
+}
+
+.tidy-choices legend,
+.tidy-preview h3 {
+  margin: var(--act-sp-2) 0;
+  color: var(--act-ink-faint);
+  font: var(--act-fs-caps)/1 var(--act-font-mono);
+  text-transform: uppercase;
+}
+
+.inline-editor .tidy-choice {
+  display: flex;
+  flex-direction: row;
+  align-items: start;
+  gap: var(--act-sp-2);
+  color: var(--act-ink);
+  font-size: var(--act-fs-body);
+}
+
+.tidy-choice span {
+  display: grid;
+  gap: 2px;
+}
+
+.tidy-choice b {
+  font-weight: var(--act-fw-medium);
+}
+
+.tidy-choice small,
+.tidy-summary,
+.tidy-asking {
+  color: var(--act-ink-dim);
+  font-size: var(--act-fs-meta);
+}
+
+.tidy-choice[data-disabled] {
+  color: var(--act-ink-faint);
+}
+
+.tidy-preview ul {
+  display: grid;
+  gap: var(--act-sp-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inline-editor .tidy-preview label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--act-sp-2);
+  color: var(--act-ink);
+  font-size: var(--act-fs-body);
+}
+
+.tidy-problem {
+  color: var(--act-danger-text);
+  font-size: var(--act-fs-meta);
+}
+
+.tidy-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--act-sp-2);
+  padding-top: var(--act-sp-3);
+}
+
+.inline-editor.tidy-dialog input[type="checkbox"] {
+  flex: none;
+  width: auto;
+  margin: 2px 0 0;
+}

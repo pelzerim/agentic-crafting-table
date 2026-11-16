@@ -22,6 +22,8 @@ import { fieldDefaults } from '../../src/resource-plugins/define.ts';
 import { ATTENTION_NOTE_LENGTH, attentionNote } from '../../src/graph/attention.ts';
 import { humanOnlyMessage } from '../../src/resource-plugins/host.ts';
 import { mapBadges } from '../../src/graph/badges.ts';
+import { buildUndoStep, commandSubjects } from './map-undo.ts';
+import type { Receipt } from './map-undo.ts';
 const projectColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
 const id = z.string().trim().min(1).max(200);
@@ -53,6 +55,8 @@ const node = z.object({
   completedAt: z.iso.datetime().optional(),
   todoLabel: z.object({ title: z.string().min(1).max(48), sourceTitle: title }).optional(),
   generatedTitle: title.optional(),
+  /** The person named this item or project on the map; Tidy never renames it. */
+  titleChosen: z.literal(true).optional(),
   inTodoList: z.boolean().optional(), todoOrder: z.number().int().nonnegative().optional(),
   todoContext: todoContextText.optional(), todoContextBy: contextWriter.optional(), todoContextAt: z.iso.datetime().optional(),
   todoHorizon: z.enum(['next', 'later']).optional(), todoTouchedAt: z.iso.datetime().optional(), todoDoneAt: z.iso.datetime().optional(), todoTicketId: id.optional(),
@@ -283,6 +287,8 @@ export function itemLinkReport(state: WorkspaceState, commands: readonly Workspa
       }) }];
   });
 }
+/** The actor the desktop app stamps on the person's own map changes. */
+export const PERSON_ACTOR = 'desktop';
 /** Commands only a person may issue. Muting hides a project's questions from the user, so an agent must not decide it. */
 const HUMAN_ONLY_COMMANDS: ReadonlySet<string> = new Set<WorkspaceCommand['type']>(['project.mute', 'project.merge', 'node.hide', 'node.show']);
 /** Why an agent may not apply this command; every agent transport and the reducer share it. */
@@ -298,7 +304,8 @@ export const envelopeSchema = z.object({
 });
 export type CommandEnvelope = z.infer<typeof envelopeSchema>;
 /** `alreadyOnMap` is present when an agent's item command resolved to a node its project already showed. */
-export interface CommandResult { state: WorkspaceState; replayed: boolean; alreadyOnMap?: ExistingItem[] }
+/** `receipt` is what a person's own commit changed, for their map undo (MAP-34). */
+export interface CommandResult { state: WorkspaceState; replayed: boolean; alreadyOnMap?: ExistingItem[]; receipt?: Receipt }
 export type ViewState = z.infer<typeof viewSchema>;
 export type ProjectsPanelState = NonNullable<ViewState['projectsPanel']>;
 export class RevisionConflict extends Error {
@@ -383,12 +390,20 @@ export class WorkspaceControl {
     const command = commandSchema.parse(input);
     return this.store.update(state => reduceCommands(state, [command], expectedRevision, this.registry, this.store.readMapLayout?.()));
   }
+  /** The state `envelope` produces from `state`, without saving it. */
+  reduce(state: WorkspaceState, envelope: CommandEnvelope) {
+    return reduceCommands(state, this.filtered(state, envelope.commands), envelope.expectedRevision, this.registry, this.store.readMapLayout?.(), envelope.actor);
+  }
   async dispatch(input: unknown): Promise<CommandResult> {
     const envelope = envelopeSchema.parse(input);
     if (!this.store.commit) throw new Error('This legacy store does not support durable command envelopes');
-    const result = await this.store.commit(envelope, state => reduceCommands(state, this.filtered(state, envelope.commands), envelope.expectedRevision, this.registry, this.store.readMapLayout?.(), envelope.actor));
+    let landed: WorkspaceState | undefined;
+    const result = await this.store.commit(envelope, state => { landed = state; return this.reduce(state, envelope); });
     const alreadyOnMap = itemsAlreadyOnMap(result.state, envelope, this.registry);
-    return alreadyOnMap.length ? { ...result, alreadyOnMap } : result;
+    const step = landed && !result.replayed && envelope.actor.kind === 'user' && envelope.actor.id === PERSON_ACTOR
+      ? buildUndoStep('', landed, result.state, { registry: this.registry, sizes: this.store.readMapLayout?.().sizes }, undefined, commandSubjects(envelope.commands)) : undefined;
+    const receipt = step && { items: step.items, links: step.links, plots: step.plots };
+    return { ...result, ...alreadyOnMap.length ? { alreadyOnMap } : {}, ...receipt ? { receipt } : {} };
   }
 }
 
@@ -550,7 +565,8 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
       switch (command.type) {
         case 'project.create': {
           createId(command.id);
-          const created = node.parse({ id: command.id, title: command.title, summary: command.summary, ...(command.workingDirectory !== undefined ? { workingDirectory: command.workingDirectory } : {}), ...(command.color ? { color: command.color.toLowerCase() } : {}), position: command.position ?? { x: 0, y: 0 } });
+          const created = node.parse({ id: command.id, title: command.title, summary: command.summary, ...(command.workingDirectory !== undefined ? { workingDirectory: command.workingDirectory } : {}), ...(command.color ? { color: command.color.toLowerCase() } : {}), position: command.position ?? { x: 0, y: 0 },
+            ...(actor?.kind === 'user' && actor.id === PERSON_ACTOR ? { titleChosen: true } : {}) });
           const anchors = anchorsOf(command.near);
           place(created, anchors ? projectPlacement(state.nodes, footprint, anchors, footprint(created), command.position) : command.position, command.position);
           break;
@@ -676,6 +692,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           }
           if ((['activity', 'attention', 'indicators'] as const).some(key => command[key] !== undefined && JSON.stringify(command[key]) !== JSON.stringify(target[key]))) target.activityAt = new Date().toISOString();
           if (command.title !== undefined && command.title !== target.title) touchNode(target);
+          if (command.title !== undefined && command.title !== target.title && actor?.kind === 'user' && actor.id === PERSON_ACTOR) target.titleChosen = true;
           for (const key of ['title', 'summary', 'workingDirectory', 'activity', 'attention', 'indicators'] as const) {
             if (command[key] !== undefined) Object.assign(target, { [key]: command[key] });
           }
@@ -883,7 +900,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           const target = find(command.id), resource = state.resources.find(r => r.id === target.resourceId);
           const plugin = resource && registry.get(resource.pluginId);
           if (!plugin || !(plugin.activityTitle || plugin.attachTitle) || target.title !== command.sourceTitle) throw new Error('Title changed before the generated title was ready');
-          target.title = resource.title = target.generatedTitle = command.title; break;
+          target.title = resource.title = target.generatedTitle = command.title; delete target.titleChosen; break;
         }
         case 'node.todo': {
           const target = find(command.id), resource = state.resources.find(r => r.id === target.resourceId);

@@ -149,6 +149,8 @@ export interface ProjectMapProps {
   onRevealed?(reveal: NonNullable<ProjectMapProps['reveal']>): void;
   /** Transient external inspection; never changes selection, layout or read state. */
   highlightedNodes?: readonly string[];
+  /** Where a Tidy preview would put items (MAP-35), drawn as outlines; nothing moves until Apply. */
+  ghosts?: readonly { id: string; position: { x: number; y: number } }[];
   /** Connections to emphasize alongside highlighted nodes; the rest are muted. */
   highlightedLinks?: readonly string[];
   /** The items or link whose menu is open; hover links at them stay drawn meanwhile. */
@@ -1652,6 +1654,12 @@ function MapCanvas(props: ProjectMapProps) {
       const w = node.width! * viewport.zoom + 12, h = node.height! * viewport.zoom + 12, corner = Math.min(14, w / 3, h / 3);
       return <path key={node.id} data-map-highlight={node.id} d={`M${x},${y + corner}v-${corner}h${corner} M${x + w - corner},${y}h${corner}v${corner} M${x + w},${y + h - corner}v${corner}h-${corner} M${x + corner},${y + h}h-${corner}v-${corner}`} />;
     })}</svg>
+    {props.ghosts && props.ghosts.length > 0 && <svg className="map-tidy-ghosts" aria-label={`Tidy preview: ${props.ghosts.length} ${props.ghosts.length === 1 ? 'item moves' : 'items move'}`} role="img">{props.ghosts.map(ghost => {
+      const node = nodes.find(candidate => candidate.id === ghost.id);
+      if (!node || node.hidden) return null;
+      const w = node.width! * viewport.zoom, h = node.height! * viewport.zoom, x = (ghost.position.x - node.width! / 2) * viewport.zoom + viewport.x, y = (ghost.position.y - node.height! / 2) * viewport.zoom + viewport.y;
+      return <g key={ghost.id} data-tidy-ghost={ghost.id}><line x1={node.position.x * viewport.zoom + viewport.x} y1={node.position.y * viewport.zoom + viewport.y} x2={x + w / 2} y2={y + h / 2} /><rect x={x} y={y} width={w} height={h} /></g>;
+    })}</svg>}
     {itemViews.map(view => <div key={view.id} className="item-view" data-item-view={view.id} data-returning={view.id !== focus && !view.hidden || undefined} data-dragging={viewInteracting && viewGesture.current?.mode === 'move' && view.id === focus} data-resizing={viewInteracting && viewGesture.current?.mode === 'resize' && view.id === focus} hidden={view.hidden}
       style={{ left: view.position.x, top: view.position.y, width: view.data.width * view.data.scale, height: view.data.height * view.data.scale }}>
       <Card data={view.data} />
