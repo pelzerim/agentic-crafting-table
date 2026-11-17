@@ -9,6 +9,9 @@ their pull request and author.
 - **Undo and redo on the map**: ⌘Z undoes the last move, resize, archive, removed connection, plot colour or name, Clear overlaps or Tidy in this window, and ⌘⇧Z redoes it (Ctrl+Z and Ctrl+Shift+Z or Ctrl+Y elsewhere). Neighbours a drop pushed aside go back too. Anything an agent or another window changed since stays where it is, and the notice says how many. (#34, @shiini2)
 - **Tidy…**: the ground's menu tidies the board, a project's menu tidies that project. Line up items inside plots, space the plots out and give each plot its own colour, with a preview on the map before anything moves. Archiving finished work and AI renames and regrouping are optional. Apply is one step you can undo. (#34, @shiini2)
 
+### Items
+- **Videos**: paste or drop a video file (.mp4, .mov, .m4v or .webm) or a YouTube link on the map and it becomes a Video item that plays inside its view, with seeking. The app only plays files a Video item on the map points to. YouTube videos play through YouTube's privacy-enhanced embed. YouTube links already on the map become Video items too. (@shiini2)
+
 ## 0.23.0 — 2026-11-16
 
 ### Getting started

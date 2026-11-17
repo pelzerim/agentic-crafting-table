@@ -171,13 +171,16 @@ export class ResourcePluginRegistry {
   }
 
   /** The item types that take the input as the path of a file: their match fills a field of kind `file`.
+   * Specific file types win over a generic one (`creation.fileFallback`), as URL types win over web links.
    * Syntax only; whether a file is there is for the caller to check. */
   matchFile(input: string): { candidate: AttachmentCandidate; path: string }[] {
-    return this.matchInput(input).flatMap(candidate => {
+    const matches = this.matchInput(input).flatMap(candidate => {
       const fields = this.plugins.get(candidate.pluginId)?.fields ?? {};
       const path = Object.keys(fields).filter(name => fields[name].kind === 'file').map(name => candidate.data[name]).find(value => typeof value === 'string');
       return typeof path === 'string' ? [{ candidate, path }] : [];
     });
+    const specific = matches.filter(({ candidate }) => !this.plugins.get(candidate.pluginId)?.creation?.fileFallback);
+    return specific.length ? specific : matches;
   }
 
   /** The saved URL of a generic link item (`creation.urlFallback`); undefined for every other type. */
