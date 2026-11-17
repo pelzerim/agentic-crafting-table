@@ -24,6 +24,14 @@ test('the working spark is a tilted four-point star: it survives a quarter turn 
   assert.ok(working.every((_, x) => working.some(row => row[x] === '.')));
 });
 
+test('the video glyph is a 12×12 screen with a play mark, symmetric top to bottom', () => {
+  const video: readonly string[] = (PIXEL_GLYPHS[12] as Record<string, readonly string[]>).video;
+  assert.equal(video.length, 12);
+  assert.ok(video.every(row => row.length === 12 && /^[.X]+$/.test(row)));
+  assert.deepEqual([...video].reverse(), video);
+  for (const [name, rows] of Object.entries(PIXEL_GLYPHS[12])) if (name !== 'video') assert.notDeepEqual(rows, video, `video differs from ${name}`);
+});
+
 test('the reminders bell is a 12×12 glyph of its own, symmetric like a bell', () => {
   const bell: readonly string[] = (PIXEL_GLYPHS[12] as Record<string, readonly string[]>).bell;
   assert.ok(bell, 'PIXEL_GLYPHS[12].bell exists');

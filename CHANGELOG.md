@@ -16,6 +16,9 @@ their pull request and author.
 ### Map
 - **Badge notes no longer block a move**: a note shown as a badge on an item kept an invisible place on the map. With solid collisions an item stopped at it and snapped back; otherwise it was pushed aside unseen. It now takes no space while it is a badge.
 
+### Items
+- **Videos**: paste or drop a video file (.mp4, .mov, .m4v or .webm) or a YouTube link on the map and it becomes a Video item that plays inside its view, with seeking. The app only plays files a Video item on the map points to. YouTube videos play through YouTube's privacy-enhanced embed. YouTube links already on the map become Video items too. (@shiini2)
+
 ## 0.23.0 — 2026-11-16
 
 ### Getting started

@@ -73,7 +73,10 @@ into this entry while retaining existing data/edit/MCP contracts, as Bookmark do
 A type whose `matchInput` fills a field of kind `file` is a file type. `plugins.discover`
 lists those matches as `fileCandidates`, only while the path is a regular file on this
 computer. The map opens the type's form for a pasted path or a dropped file from that
-list; the type needs nothing beyond its `file` field and `matchInput`.
+list; the type needs nothing beyond its `file` field and `matchInput`. A specific file
+type wins over one with `creation.fileFallback: true` (used by Text file), so a video
+path opens as a Video. A file type whose creation mode is `url` is attached at once
+from the path instead of opening a form.
 
 A new URL type also takes over existing Web links it matches (spec RES-10).
 `registry.conversions(resource)` lists the specific types for a saved

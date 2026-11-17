@@ -15,7 +15,7 @@ export const textFile = defineResourcePlugin({
     large: { width: 320, height: 240, summaryLines: 0, nodeView: true, description: 'File name and the start of the file.' },
   } },
   appearance: { tone: 'stone', shape: 'document', size: 'small', width: 180, showFullTitle: true },
-  creation: { label: 'Add text file', titleFromPath: 'path' },
+  creation: { label: 'Add text file', titleFromPath: 'path', fileFallback: true },
   context: { fields: ['path', 'language'] },
   fields: {
     path: { label: 'File', kind: 'file', required: true, pattern: FILE_PATH, placeholder: '/path/to/file.md',

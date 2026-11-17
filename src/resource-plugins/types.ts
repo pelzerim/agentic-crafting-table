@@ -189,7 +189,7 @@ export interface ResourcePluginDefinition {
   /** Omit for provider-created outputs that should not appear in Add item. */
   /** `hotkey` picks the type with one letter while the creation ring is open. */
   /** `titleFromPath` names a data field holding a path: a new item whose name is left empty is called after that path's last part. */
-  creation?: { label: string; shortLabel?: string; hotkey?: string; labelByField?: { field: string; labels: Readonly<Record<string, string>> }; titleLabel?: string; mode?: 'fields' | 'url'; urlFallback?: boolean; group?: 'url'; urlPlaceholder?: string; requires?: 'runtime'; action?: string; fields?: ResourceFields; resume?: boolean; titleFromPath?: string };
+  creation?: { label: string; shortLabel?: string; hotkey?: string; labelByField?: { field: string; labels: Readonly<Record<string, string>> }; titleLabel?: string; mode?: 'fields' | 'url'; urlFallback?: boolean; fileFallback?: boolean; group?: 'url'; urlPlaceholder?: string; requires?: 'runtime'; action?: string; fields?: ResourceFields; resume?: boolean; titleFromPath?: string };
   matchInput?: (input: string) => ResourceDraft | undefined;
   /** Stable provider identity within one connection. Runs only in the trusted
    * backend registry; omitted from the serialized renderer/MCP description. */

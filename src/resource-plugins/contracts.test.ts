@@ -20,6 +20,8 @@ import { resourcePluginContract } from './testing.ts';
 import type { JsonObject } from './types.ts';
 import { textFile } from './items/text-file/definition.ts';
 import { textFileConnector } from './items/text-file/connector.ts';
+import { video } from './items/video/definition.ts';
+import { videoConnector } from './items/video/connector.ts';
 
 const textFileDirectory = mkdtempSync(join(tmpdir(), 'act-contract-text-file-'));
 after(() => rmSync(textFileDirectory, { recursive: true, force: true }));
@@ -38,6 +40,7 @@ const data: Record<string, JsonObject> = {
   'web.bookmark': { url: 'https://example.com' },
   'web.link': { url: 'https://example.com' }, 'workspace.todo': { notes: 'Fixture notes' }, 'workspace.note': { text: 'First line\nSecond line' },
   'workspace.text': { path: join(textFileDirectory, 'notes.md') },
+  'workspace.video': { source: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
 };
 test('every shipped item definition supplies an explicit shared-contract fixture', () => {
   assert.deepEqual(Object.keys(data).sort(), itemDefinitions.map(plugin => plugin.id).sort());
@@ -78,6 +81,7 @@ const connectors = [
   { plugin: notionPage, connector: () => notionPageConnector(async () => notionFixture().client), actions: {} },
   { plugin: bookmark, connector: () => bookmarkConnector, actions: { reference: {} } },
   { plugin: todoItem, connector: () => todoConnector, actions: {} },
+  { plugin: video, connector: () => videoConnector, actions: {} },
   { plugin: textFile, connector: () => textFileConnector, actions: { read: {}, excerpt: {}, stat: {}, write: { text: 'Fixture text', path: join(textFileDirectory, 'notes.md') } } },
   { plugin: webLink, connector: () => createWebLinkConnector(async () => 'Fixture page'), actions: { reference: {} } },
   { plugin: claudeArtifact, connector: () => claudeArtifactConnector, actions: { reference: {} } },

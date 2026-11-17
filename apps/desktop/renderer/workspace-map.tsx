@@ -642,6 +642,12 @@ export function WorkspaceMap() {
   const offerFileItem = async (path: string, anchor: Anchor) => {
     const [candidate, ...others] = path && path.length <= 4096 && !/[\r\n]/.test(path) ? await window.craftingTable.resourceMatchFile(path) : [];
     if (!candidate || others.length) return false;
+    // A type that attaches from its input (a video file) needs no form.
+    if (registry.get(candidate.pluginId)?.creation?.mode === 'url') {
+      await window.craftingTable.resourceCreate({ requestId: crypto.randomUUID(), nodeId: crypto.randomUUID(), resourceId: crypto.randomUUID(), pluginId: candidate.pluginId, title: candidate.title, data: { url: path }, projectId: anchor.projectId, position: anchor.position })
+        .catch(error => setError(error.message));
+      return true;
+    }
     setEditor({ ...anchor, mode: 'create', initialType: candidate.pluginId, initialData: candidate.data });
     return true;
   };
