@@ -1948,6 +1948,29 @@ environment until restarted. Clipboard regression tests preserve existing conten
 Hide the minimap and map zoom controls while an item fills the screen; keep the
 breadcrumb and Back action for orientation.
 
+**AGENT-01b — More agent CLIs.** Besides Claude and Codex, an agent session can run the
+installed OpenCode (`opencode`), Pi (`pi`), Gemini (`gemini`) or Grok Build (`grok`) CLI in
+the same real terminal. **Settings → Items → <name> → Enabled**
+(setting `agentProviders`) lists a provider in the start form; the bottom of that page, under **Not available**, lists what the CLI lacks next to Claude and Codex; Claude and Codex are
+on by default and the four others are off. A start of a provider that is off, from the form,
+MCP or another first-party service, is refused with the name of that setting; items already
+on the map keep working and resuming. A provider without a logo shows its name in the start
+form. The model choice is **CLI default**: no `--model` flag, so the CLI's own configuration
+picks it; an MCP start may name a model, which is passed as `--model`. These CLIs have no
+status channel: their items show no working, idle or input state, no Continue list of saved
+conversations, no skills and no Ctrl+C resume (AGENT-01). The table tools reach a CLI only
+through a private per-launch file that leaves user configuration unchanged: OpenCode gets
+the MCP server and the guide (as an instruction file) from `OPENCODE_CONFIG`, merged over the
+user's files; Gemini gets the MCP server from `GEMINI_CLI_SYSTEM_DEFAULTS_PATH`, the lowest
+settings layer, and reads the guide at the start of its first prompt, since its only system
+prompt variable replaces the built-in one. Pi has no MCP client and Grok Build reads MCP
+servers only from its own and the project's config files, so both are told that the session
+has no table tools (`--append-system-prompt`, `--rules`). Pi and Gemini save the conversation
+under the table's id (`--session-id`), so Resume reopens it (`--session-id`, `--resume`);
+OpenCode and Grok Build choose their own ids, so their items cannot be resumed. Grok Build
+takes no first prompt, so a start with a task or skill is refused. Missing CLIs and versions
+without the flags above fail with an install or update message.
+
 **AGENT-02 — Launch context.** New general-purpose agents receive a short project
 brief (roughly 100–150 words) and current connected-item context automatically:
 project first, then items and their linked subitems (for example PR → review →

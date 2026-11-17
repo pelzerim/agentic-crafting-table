@@ -408,6 +408,7 @@
 
 .inline-editor .field-brands {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -421,6 +422,14 @@
   border: 1px solid var(--act-line-control);
   cursor: pointer;
   opacity: .6;
+}
+
+/* A provider without a logo shows its name. */
+.inline-editor .field-brands label[data-named] {
+  width: auto;
+  min-width: 40px;
+  padding: 0 8px;
+  font-size: 11px;
 }
 
 .inline-editor .field-brands label:hover,

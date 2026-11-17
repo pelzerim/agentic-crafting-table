@@ -12,6 +12,7 @@ import { canonical } from '../core/control.ts';
 import { readAgentPlan } from '../session-runtime/agent-plan.ts';
 import type { HostedLaunch } from '../session-runtime/agent-plan.ts';
 import { agentProvider } from './agent-providers.ts';
+import { enabledAgentProviders } from '../core/settings.ts';
 import { codexGuide } from '../session-runtime/codex-launch.ts';
 import type { SessionCoordinator } from './sessions.ts';
 import type { AgentContextCoordinator } from './agent-context.ts';
@@ -79,7 +80,11 @@ export class AgentCoordinator {
     sessions.onCtrlCQuit = (nodeId, sessionId) => {
       if (this.quitOnCtrlC.has(sessionId)) return;
       this.quitOnCtrlC.add(sessionId);
-      void this.resume(nodeId, randomUUID()).catch(() => {});
+      // Only Claude Code and Codex quit on a second Ctrl+C; another CLI that exits then was asked to.
+      void (async () => {
+        const state = await this.control.read(), provider = findById(state.resources, findById(state.nodes, nodeId)?.resourceId)?.data.provider;
+        if (provider === 'claude' || provider === 'codex') await this.resume(nodeId, randomUUID());
+      })().catch(() => {});
     };
   }
   start() { this.quietTimer ??= setInterval(() => { this.settling ??= this.settleQuiet().catch(() => {}).finally(() => { this.settling = undefined; }); }, 5_000); this.quietTimer.unref?.(); }
@@ -187,6 +192,21 @@ export class AgentCoordinator {
       }, this.observations.readSettings().value));
     })().finally(() => this.skillRuns.delete(args.requestId));
     this.skillRuns.set(args.requestId, { source, promise }); return promise;
+  }
+  /** A start from the form, MCP or another first-party service: a provider turned off in Settings is refused (AGENT-01b).
+   * Resuming an item already on the table is not a start, and a conversation the CLI moved to follows it (AGENT-04a). */
+  async startAgent(request: ResourceCreate) {
+    const id = typeof request.data.provider === 'string' ? request.data.provider : 'claude';
+    if (typeof request.data.resumeNodeId !== 'string' || !request.data.resumeNodeId) {
+      const enabled = this.observations.readSettings().value.agentProviders as Record<string, boolean>, name = agentProvider(id).name;
+      if (enabled[id] === false) throw new Error(`${name} is turned off. Turn it on in Settings → Items → ${name} → Start form.`);
+    }
+    return this.create(request);
+  }
+  /** The providers the start form offers, in its order. */
+  providers() {
+    const options = enabledAgentProviders(this.observations.readSettings().value);
+    return { options, default: options[0] ?? '', labels: Object.fromEntries(options.map(id => [id, agentProvider(id).name])) };
   }
   async create(request: ResourceCreate, blank = false) {
     if (typeof request.data.resumeNativeSessionId === 'string') {

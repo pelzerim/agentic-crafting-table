@@ -904,10 +904,13 @@ test('an agent that quit on a Ctrl+C resumes its conversation in its item, once 
     const coordinator = new AgentCoordinator(directory, {} as any, control, sessions as any, {} as any, async () => {}, store);
     const resumed: string[] = [];
     coordinator.resume = (async (nodeId: string) => { resumed.push(nodeId); throw new Error('No saved native conversation for this item'); }) as any;
+    await control.apply({ type: 'item.add', id: 'agent', resourceId: 'conversation', pluginId: 'agent.session', title: 'Claude', position: { x: 0, y: 0 }, data: { provider: 'claude', sessionId: 'first' } }, 0);
+    await control.apply({ type: 'item.add', id: 'pi', resourceId: 'pi-conversation', pluginId: 'agent.session', title: 'Pi', position: { x: 400, y: 0 }, data: { provider: 'pi', sessionId: 'third' } }, 1);
     sessions.onCtrlCQuit!('agent', 'first'); sessions.onCtrlCQuit!('agent', 'first');
     sessions.onCtrlCQuit!('agent', 'second');
-    await new Promise(resolve => setTimeout(resolve));
-    assert.deepEqual(resumed, ['agent', 'agent'], 'every reconcile pass reports the exit; each process resumes once, and a failed resume stays quiet');
+    sessions.onCtrlCQuit!('pi', 'third');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.deepEqual(resumed, ['agent', 'agent'], 'every reconcile pass reports the exit; each process resumes once, a failed resume stays quiet, and a CLI that does not quit on a second Ctrl+C is not restarted');
   } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
@@ -929,5 +932,20 @@ test('the prompt hook names a running Claude conversation after its item once, a
     const started = await coordinator.hook({ nodeId: 'agent', processSessionId, nativeSessionId, observedAt: ++at, event: 'SessionStart' }) as { sessionTitle?: string };
     assert.equal(started.sessionTitle, undefined, 'Claude takes a title only from UserPromptSubmit');
     assert.equal(await synced(), 'Fix login', 'SessionStart keeps the agreed name');
+  } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('the start form offers the providers turned on in Settings, and a start of one turned off is refused', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-agent-providers-'));
+  const store = new SqliteStore(join(directory, 'workspace.sqlite')), control = new WorkspaceControl(store);
+  try {
+    const coordinator = new AgentCoordinator(directory, {} as any, control, {} as any, { prepare: async () => ({}) } as any, async () => {}, store);
+    assert.deepEqual(coordinator.providers(), { options: ['claude', 'codex'], default: 'claude', labels: { claude: 'Claude', codex: 'Codex' } });
+    const request = { requestId: randomUUID(), nodeId: randomUUID(), resourceId: randomUUID(), pluginId: 'agent.session', title: 'Pi session', position: { x: 0, y: 0 }, data: { provider: 'pi', cwd: directory } };
+    await assert.rejects(coordinator.startAgent(request), /Pi is turned off\. Turn it on in Settings → Items → Pi → Start form/);
+    const saved = store.readSettings();
+    store.writeSettings({ expectedRevision: saved.revision, value: { ...saved.value, agentProviders: { ...saved.value.agentProviders, claude: false, pi: true } } });
+    assert.deepEqual(coordinator.providers(), { options: ['codex', 'pi'], default: 'codex', labels: { codex: 'Codex', pi: 'Pi' } });
+    await assert.rejects(coordinator.startAgent({ ...request, data: { cwd: directory } }), /Claude is turned off/, 'a start without a provider is a Claude start');
   } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
 });
