@@ -1954,8 +1954,8 @@ the same real terminal. **Settings → Items → <name> → Enabled**
 (setting `agentProviders`) lists a provider in the start form; the bottom of that page, under **Not available**, lists what the CLI lacks next to Claude and Codex; Claude and Codex are
 on by default and the four others are off. A start of a provider that is off, from the form,
 MCP or another first-party service, is refused with the name of that setting; items already
-on the map keep working and resuming. A provider without a logo shows its name in the start
-form. The model choice is **CLI default**: no `--model` flag, so the CLI's own configuration
+on the map keep working and resuming. Each provider shows its logo in the start form and on
+its items; a provider without a logo shows its name in the start form. The model choice is **CLI default**: no `--model` flag, so the CLI's own configuration
 picks it; an MCP start may name a model, which is passed as `--model`. These CLIs have no
 status channel: their items show no working, idle or input state, no Continue list of saved
 conversations, no skills and no Ctrl+C resume (AGENT-01). The table tools reach a CLI only

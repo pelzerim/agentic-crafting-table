@@ -7,6 +7,7 @@ their pull request and author.
 
 ### Agents
 - **OpenCode, Pi, Gemini and Grok**: an agent session can run these CLIs in a real terminal too. They are off by default; turn each on in Settings → Items → <name> → Enabled, where Claude and Codex can be turned off as well. OpenCode and Gemini get the table tools through a private per-launch config; Pi and Gemini can be resumed. These items show no working state, Continue list or skills. (#35, @timohuovinen)
+- **Agent logos**: OpenCode, Pi, Gemini and Grok show their logos on the map and in the start form, like Claude and Codex. (#37, @timohuovinen)
 
 ### Changes
 - **Corners setting moved**: Settings → Corners is now a Corners section in Settings → Map. (#36, @timohuovinen)

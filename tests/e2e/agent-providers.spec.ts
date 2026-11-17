@@ -40,10 +40,12 @@ test('AGENT-01b: an agent CLI turned on in Settings is offered in the start form
     await startForm();
     await expect(providers.getByRole('radio')).toHaveCount(3);
     await providers.getByRole('radio', { name: 'Pi', exact: true }).check();
+    await expect(providers.locator('label').filter({ has: page.getByRole('radio', { name: 'Pi', exact: true }) }).locator('svg.brand-pi')).toBeVisible();
     await expect(page.getByLabel('Model', { exact: true })).toHaveValue('default');
     await page.screenshot({ path: 'test-results/pr/agent-providers-start-form.png' });
     await page.getByLabel('Title', { exact: true }).fill('Pi helper');
     await page.getByRole('button', { name: 'Start Pi', exact: true }).click();
+    await expect(page.getByRole('article', { name: 'Pi helper', exact: true }).locator('.item-glyph.brand-pi')).toBeVisible();
     await page.getByRole('article', { name: 'Pi helper', exact: true }).click();
     await expect(page.locator('.xterm-accessibility')).toContainText('PI_FIXTURE_ARGS: --session-id');
     await expect(page.locator('.xterm-accessibility')).toContainText('no crafting table tools');

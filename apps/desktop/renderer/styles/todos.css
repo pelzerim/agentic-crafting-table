@@ -317,6 +317,22 @@
   color: var(--act-agent-codex);
 }
 
+.todo-links .brand-opencode {
+  color: var(--act-agent-opencode);
+}
+
+.todo-links .brand-pi {
+  color: var(--act-agent-pi);
+}
+
+.todo-links .brand-gemini {
+  color: var(--act-agent-gemini);
+}
+
+.todo-links .brand-grok {
+  color: var(--act-agent-grok);
+}
+
 .todo-links .brand-linear {
   color: var(--act-brand-linear);
 }
