@@ -8,7 +8,7 @@ export const agentSession = defineResourcePlugin({
   schemaVersion: 1,
   name: 'Agent session',
   icon: 'robot',
-  providerBrands: { claude: 'claude', codex: 'codex' },
+  providerBrands: { claude: 'claude', codex: 'codex', opencode: 'opencode', pi: 'pi', gemini: 'gemini', grok: 'grok' },
   mapSizes: { defaultSize: 'large', sizes: {
     small: { width: 180, height: 48, summaryLines: 0, description: "Title and activity indicators." },
     medium: { width: 220, height: 84, summaryLines: 1, description: "Title and one activity-summary line." },
@@ -24,7 +24,7 @@ export const agentSession = defineResourcePlugin({
     provider: { label: 'Provider', kind: 'text', required: true },
   },
   creation: { label: 'Start agent', shortLabel: 'Agent', labelByField: { field: 'provider', labels: { claude: 'Start Claude', codex: 'Start Codex', opencode: 'Start OpenCode', pi: 'Start Pi', gemini: 'Start Gemini', grok: 'Start Grok' } }, requires: 'runtime', action: 'agent.create', resume: true, fields: {
-    provider: { label: 'Provider', kind: 'select', options: ['claude', 'codex', 'opencode', 'pi', 'gemini', 'grok'], optionsSource: 'agent.providers', optionLabels: providerLabels, optionBrands: { claude: 'claude', codex: 'codex' }, default: 'claude', required: true },
+    provider: { label: 'Provider', kind: 'select', options: ['claude', 'codex', 'opencode', 'pi', 'gemini', 'grok'], optionsSource: 'agent.providers', optionLabels: providerLabels, optionBrands: { claude: 'claude', codex: 'codex', opencode: 'opencode', pi: 'pi', gemini: 'gemini', grok: 'grok' }, default: 'claude', required: true },
     cwd: { label: 'Working directory', kind: 'directory', fromProject: 'workingDirectory', description: 'Defaults to the project, global default or most recent folder.' },
     model: { label: 'Model', kind: 'select', options: ['opus', 'fable', 'sonnet', 'haiku'], optionsSource: 'agent.models', optionLabels: modelLabels, dependsOn: 'provider', default: 'opus', required: true },
   } },

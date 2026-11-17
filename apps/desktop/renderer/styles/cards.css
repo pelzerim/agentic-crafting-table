@@ -165,6 +165,22 @@
   color: var(--act-agent-codex);
 }
 
+.brand-opencode {
+  color: var(--act-agent-opencode);
+}
+
+.brand-pi {
+  color: var(--act-agent-pi);
+}
+
+.brand-gemini {
+  color: var(--act-agent-gemini);
+}
+
+.brand-grok {
+  color: var(--act-agent-grok);
+}
+
 .brand-linear {
   color: var(--act-brand-linear);
 }
@@ -234,6 +250,22 @@
 
 .map-card .item-glyph.brand-codex {
   color: var(--act-agent-codex);
+}
+
+.map-card .item-glyph.brand-opencode {
+  color: var(--act-agent-opencode);
+}
+
+.map-card .item-glyph.brand-pi {
+  color: var(--act-agent-pi);
+}
+
+.map-card .item-glyph.brand-gemini {
+  color: var(--act-agent-gemini);
+}
+
+.map-card .item-glyph.brand-grok {
+  color: var(--act-agent-grok);
 }
 
 .map-card .item-glyph.brand-linear {
