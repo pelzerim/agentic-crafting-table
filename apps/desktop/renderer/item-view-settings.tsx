@@ -15,7 +15,7 @@ function DefaultSize({ value, choices, change }: { value: string; choices: strin
   return <select {...useRowControl()} value={value} onChange={event => change(event.target.value)}>{choices.map(size => <option key={size} value={size}>{title(size)}</option>)}</select>;
 }
 
-export function ItemViewSettings({ plugins, sizes, change, mapSizes, changeMap, claude, codex, agentProvider, pullRequest, pluginSettings, changePluginSettings, disconnected, selected, advanced, toggleAdvanced }: { plugins: PluginDescription[]; /** A provider's name while it has no connected account. */ disconnected(providerId?: string): string | undefined; sizes: ItemViewSizes; change(value: ItemViewSizes): void; mapSizes: ItemMapSizes; changeMap(value: ItemMapSizes): void; claude: ReactNode; codex: ReactNode; /** The start-form switch of one agent provider, by its id. */ agentProvider(id: string): ReactNode; pullRequest: ReactNode; pluginSettings: Readonly<Record<string, JsonObject>>; changePluginSettings(owner: string, value: JsonObject): void; selected: string; advanced: Set<string>; toggleAdvanced(id: string): void }) {
+export function ItemViewSettings({ plugins, sizes, change, mapSizes, changeMap, claude, codex, agentProvider, agentLimits, pullRequest, pluginSettings, changePluginSettings, disconnected, selected, advanced, toggleAdvanced }: { plugins: PluginDescription[]; /** A provider's name while it has no connected account. */ disconnected(providerId?: string): string | undefined; sizes: ItemViewSizes; change(value: ItemViewSizes): void; mapSizes: ItemMapSizes; changeMap(value: ItemMapSizes): void; claude: ReactNode; codex: ReactNode; /** The start-form switch of one agent provider, by its id. */ agentProvider(id: string): ReactNode; agentLimits(id: string): ReactNode; pullRequest: ReactNode; pluginSettings: Readonly<Record<string, JsonObject>>; changePluginSettings(owner: string, value: JsonObject): void; selected: string; advanced: Set<string>; toggleAdvanced(id: string): void }) {
   const profiles = plugins.flatMap(plugin => itemViewProfiles(plugin).map(profile => ({ ...profile, plugin }))).sort((a, b) => a.name.localeCompare(b.name));
   return <>{profiles.map(profile => {
     const value = sizes[profile.key] ?? profile, expands = profile.mode !== 'inline' && profile.mode !== 'browser';
@@ -57,6 +57,7 @@ export function ItemViewSettings({ plugins, sizes, change, mapSizes, changeMap, 
             })}
           </SettingsSection>
         </AdvancedDisclosure>
+        {profile.key.startsWith('agent.session:') && agentLimits(profile.key.slice('agent.session:'.length))}
       </div>
     </SettingsPage>;
   })}</>;

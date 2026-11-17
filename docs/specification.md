@@ -1950,8 +1950,8 @@ breadcrumb and Back action for orientation.
 
 **AGENT-01b — More agent CLIs.** Besides Claude and Codex, an agent session can run the
 installed OpenCode (`opencode`), Pi (`pi`), Gemini (`gemini`) or Grok Build (`grok`) CLI in
-the same real terminal. **Settings → Items → <name> → Start form → Enabled**
-(setting `agentProviders`) lists a provider in the start form; Claude and Codex are
+the same real terminal. **Settings → Items → <name> → Enabled**
+(setting `agentProviders`) lists a provider in the start form; the bottom of that page, under **Not available**, lists what the CLI lacks next to Claude and Codex; Claude and Codex are
 on by default and the four others are off. A start of a provider that is off, from the form,
 MCP or another first-party service, is refused with the name of that setting; items already
 on the map keep working and resuming. A provider without a logo shows its name in the start

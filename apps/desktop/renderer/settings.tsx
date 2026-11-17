@@ -64,6 +64,13 @@ const percent = (value: number) => `${Math.round(value * 100)}%`, pixels = (valu
 /** The page Settings last showed; reopening returns there until the app restarts. */
 let lastSection = 'Connections';
 
+/** What each terminal-only agent CLI lacks next to Claude and Codex (AGENT-01b). */
+const AGENT_PROVIDER_LIMITS: Record<string, string[]> = {
+  opencode: ['Working, idle and input state', 'Continue list', 'Skills', 'Resume'],
+  pi: ['Crafting Table tools', 'Working, idle and input state', 'Continue list', 'Skills'],
+  gemini: ['Working, idle and input state', 'Continue list', 'Skills'],
+  grok: ['Crafting Table tools', 'Working, idle and input state', 'Continue list', 'Skills', 'Resume', 'Starting with a task'],
+};
 export function Settings({ startGuide, close, providers, plugins, openArchive, clearOverlaps, nodeTitles, initialSessionView, sessionRequestId, installRequest, initialSection, updates: updatesProp }: { startGuide?(): void; nodeTitles: Map<string, string>; initialSessionView?: 'active' | 'archived'; sessionRequestId?: number; installRequest?: PluginInstallRequest; initialSection?: string; updates?: { status?: UpdateStatus; check(): Promise<unknown> }; close(): void; providers: ProviderDescription[]; plugins: PluginDescription[]; openArchive(): void; clearOverlaps(): Promise<void> }) {
   const [saved, setSaved] = useState<SettingsSnapshot>(), [remote, setRemote] = useState(true), [awake, setAwake] = useState(false), [workAwake, setWorkAwake] = useState(false);
   const [notifications, setNotifications] = useState(notificationSettingsSchema.parse({}));
@@ -215,12 +222,13 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
             <LaunchArguments value={argumentsText} change={setArgumentsText} />
           </SettingRow>
         </SettingsSection>}
-        agentProvider={id => (AGENT_PROVIDER_IDS as readonly string[]).includes(id) && <SettingsSection label="Start form">
-          <SettingRow label="Enabled" description={id === 'claude' || id === 'codex' ? `Lists ${providerLabels[id]} when you start an agent. Items already on the map keep working when this is off.`
-            : `Lists ${providerLabels[id]} when you start an agent. The table runs the installed CLI in a terminal; it shows no working state, and Continue is not available.`}
-            meta={DEFAULT_AGENT_PROVIDERS[id as AgentProviderId] ? 'On by default' : 'Off by default'}>
+        agentProvider={id => (AGENT_PROVIDER_IDS as readonly string[]).includes(id) && <SettingsSection label="Availability">
+          <SettingRow label="Enabled" meta={DEFAULT_AGENT_PROVIDERS[id as AgentProviderId] ? 'On by default' : 'Off by default'}>
             <Switch checked={agentProviders[id as AgentProviderId]} change={checked => setAgentProviders({ ...agentProviders, [id]: checked })} />
           </SettingRow>
+        </SettingsSection>}
+        agentLimits={id => AGENT_PROVIDER_LIMITS[id] && <SettingsSection label="Not available" description={`${providerLabels[id as AgentProviderId]} runs as its own CLI in a terminal, so these are missing compared with Claude and Codex.`}>
+          <ul className="settings-limits">{AGENT_PROVIDER_LIMITS[id].map(limit => <li key={limit}>{limit}</li>)}</ul>
         </SettingsSection>}
         codex={<SettingsSection label="Session launch"><SettingRow label="Model" description="Chosen when you start or continue a Codex session." /></SettingsSection>} />
       <SettingsPage id="Map" title="Map" description="How projects look and behave on the map. Item positions stay fixed." hidden={section !== 'Map'}>
