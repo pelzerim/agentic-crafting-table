@@ -514,7 +514,7 @@ nags and nothing carries over. Nothing fires for a reminder disabled at its time
 
 **MAP-22 — Project column, Atlas and map overview.** The bottom-right corner shows
 the **project column** by default; `mapCorner: 'projects' | 'atlas'` (Settings value, default
-`projects`, chosen in Settings → Corners as SETTINGS-MAP-CORNER) switches it to the Atlas described below, which behaves as before.
+`projects`, chosen in Settings → Map → Corners as SETTINGS-MAP-CORNER) switches it to the Atlas described below, which behaves as before.
 The folded column (44 px wide, pixel panel, growing upward) has one 32 × 32 icon per project on the
 Map that is not muted (MAP-25), in the project's colour with its **tag**: the initials of a name of two
 or more words (first letters, at most three) or the first three letters of a one-word name, upper case;
@@ -2714,8 +2714,8 @@ small card the title keeps one line so the counts have the second. The numbers c
 the roll-up's `open` list (`findings.open`), which a type declares for a map size with
 `counts`; when off, the card is unchanged.
 
-**SETTINGS-MAP-CORNER — Bottom-right corner (MAP-22).** Settings → **Corners**, its own
-page after Map, section **Bottom-right**, has the choice **Bottom-right corner**: **Project overview** (default) or
+**SETTINGS-MAP-CORNER — Bottom-right corner (MAP-22).** Settings → **Map**, section **Corners**,
+has the choice **Bottom-right corner**: **Project overview** (default) or
 **Minimap**, stored as `mapCorner` `projects` or `atlas`. Project overview is the project
 column; Minimap is the Atlas and its map overview. Saving switches the corner at once; M
 unfolds whichever is shown.
