@@ -79,7 +79,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
   const updateRow = appUpdateRow({ app: updates?.app, checkout: Boolean(appInfo?.updateRestart), packaged: Boolean(appInfo?.packaged), failure: restartError ? { at: Infinity, message: restartError } : appInfo?.updateFailure });
   const updateAndRestart = () => { setRestartError(undefined); window.craftingTable.updatesRestart().catch(error => setRestartError(error.message)); };
   useEffect(() => { let mounted = true; window.craftingTable.appInfo().then(info => { if (mounted) setAppInfo(info); }).catch(error => { if (mounted) setInfoError(String(error)); }); return () => { mounted = false; }; }, []);
-  const sections = ['Connections', 'Items', 'Map', 'Corners', 'Notifications', 'AI features', 'General', 'Plugins', 'Data & diagnostics'] as const;
+  const sections = ['Connections', 'Items', 'Map', 'Notifications', 'AI features', 'General', 'Plugins', 'Data & diagnostics'] as const;
   const [section, setSection] = useState<string>(() => installRequest ? 'Plugins' : initialSessionView ? 'Data & diagnostics' : initialSection
     ?? (([...sections] as string[]).includes(lastSection) || plugins.flatMap(itemViewProfiles).some(profile => profile.key === lastSection) ? lastSection : 'Connections'));
   useEffect(() => { lastSection = section; }, [section]);
@@ -322,6 +322,14 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
             </SettingRow>
           </SettingsSection>
         </AdvancedDisclosure>
+        <SettingsSection label="Corners">
+          <SettingRow label="Bottom-right corner" description="What the corner of the map shows. M unfolds it either way." meta="Default Project overview">
+            <Segmented label="Bottom-right corner" value={mapCorner} change={corner => setMapCorner(corner)} options={[
+              { value: 'projects', label: 'Project overview', help: 'One icon per project with what waits there; unfolded, a row per project.' },
+              { value: 'atlas', label: 'Minimap', help: 'The whole map in miniature with the view outlined; unfolded, a larger overview.' },
+            ]} />
+          </SettingRow>
+        </SettingsSection>
         <SettingsSection label="Map tools">
           <SettingRow label="Archive" description="Browse archived items and projects. Your unsaved changes are kept."><button type="button" onClick={openArchive}>Open archive</button></SettingRow>
           <SettingRow label="Clear overlaps" immediate description="Moves overlapping items apart across the whole map. Items that don’t overlap stay put." status={mapStatus}>
@@ -331,16 +339,6 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
             setRepairing(true); setMapStatus(undefined);
             try { await clearOverlaps(); setMapStatus({ tone: 'ok', text: 'Overlaps cleared.' }); } catch (error) { setMapStatus({ tone: 'error', text: (error as Error).message }); } finally { setRepairing(false); setConfirmRepair(false); }
           }} />}
-        </SettingsSection>
-      </SettingsPage>
-      <SettingsPage id="Corners" title="Corners" description="What the corners of the map show." hidden={section !== 'Corners'}>
-        <SettingsSection label="Bottom-right">
-          <SettingRow label="Bottom-right corner" description="What the corner of the map shows. M unfolds it either way." meta="Default Project overview">
-            <Segmented label="Bottom-right corner" value={mapCorner} change={corner => setMapCorner(corner)} options={[
-              { value: 'projects', label: 'Project overview', help: 'One icon per project with what waits there; unfolded, a row per project.' },
-              { value: 'atlas', label: 'Minimap', help: 'The whole map in miniature with the view outlined; unfolded, a larger overview.' },
-            ]} />
-          </SettingRow>
         </SettingsSection>
       </SettingsPage>
       <NotificationSettings value={notifications} change={setNotifications} plugins={plugins} hidden={section !== 'Notifications'} />

@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Changes
+- **Corners setting moved**: Settings → Corners is now a Corners section in Settings → Map. (#PR, @timohuovinen)
+
 ## 0.23.0 — 2026-11-16
 
 ### Getting started
