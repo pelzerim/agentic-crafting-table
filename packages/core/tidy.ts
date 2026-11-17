@@ -271,7 +271,8 @@ export function tidyFingerprint(input: TidyInput, plan: TidyPlan): string {
   const { nodes, resources } = input.state;
   const scope = new Set(nodes.filter(node => !node.resourceId && !node.projectId && isDrawn(node, nodes) && (input.projectId === undefined || node.id === input.projectId)).map(node => node.id));
   const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id);
-  const items = nodes.filter(node => node.resourceId && node.projectId && scope.has(node.projectId)).sort(byId).map(node => {
+  // Only items on the map: a window holds just its layer, without most Undermap items.
+  const items = nodes.filter(node => node.resourceId && node.projectId && scope.has(node.projectId) && isDrawn(node, nodes)).sort(byId).map(node => {
     const box = itemFootprint(node, resources, input.registry, input.sizes ?? {});
     return [node.id, box.x, box.y, box.width, box.height, node.projectId, Boolean(node.archivedAt), Boolean(node.belowAt), node.title, node.generatedTitle ?? null, Boolean(node.titleChosen)];
   });

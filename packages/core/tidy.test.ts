@@ -6,7 +6,7 @@ import type { PlotView } from '../../src/graph/plots.ts';
 import { itemFootprint } from '../../src/graph/footprints.ts';
 import { ITEM_GAP, layoutFootprints } from '../../src/graph/movement.ts';
 import { overlaps } from '../../src/graph/spatial.ts';
-import { finishedItems, planTidy, readingOrder, tidyDrift } from './tidy.ts';
+import { finishedItems, planTidy, readingOrder, tidyDrift, tidyFingerprint } from './tidy.ts';
 import type { TidyInput, TidyOptions, TidyPlan } from './tidy.ts';
 import type { WorkspaceState } from './control.ts';
 
@@ -121,4 +121,12 @@ test('the drift check catches a layout that would move an item into another plot
   assert.deepEqual(tidyDrift(input(state, plots), options, plan, applied(state, plan)), { membership: [], unsettled: [] });
   const pulled = { ...plan, moves: [...plan.moves.filter(move => move.id !== 'a4'), { id: 'a4', from: { x: 480, y: 150 }, to: { x: 1170, y: 120 } }] };
   assert.ok(tidyDrift(input(state, plots), options, pulled, applied(state, pulled)).membership.includes('a4'));
+});
+
+test('the preview fingerprint ignores Undermap items, which a window on the map layer does not hold', () => {
+  const { state, plots } = board();
+  const below = { ...state, nodes: [...state.nodes, item('u1', 5000, 5000, 'acme', { belowAt: '2026-01-01T00:00:00Z' })], resources: [...state.resources, resource('u1')] };
+  const print = (value: TidyInput['state']) => { const entry = input(value, plots, { projectId: 'acme' }); return tidyFingerprint(entry, planTidy(entry, ALL)); };
+  assert.equal(print(below), print(state));
+  assert.notEqual(print({ ...state, nodes: state.nodes.map(node => node.id === 'a1' ? { ...node, belowAt: '2026-01-01T00:00:00Z' } : node) }), print(state));
 });
