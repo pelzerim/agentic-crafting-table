@@ -942,7 +942,7 @@ test('the start form offers the providers turned on in Settings, and a start of 
     const coordinator = new AgentCoordinator(directory, {} as any, control, {} as any, { prepare: async () => ({}) } as any, async () => {}, store);
     assert.deepEqual(coordinator.providers(), { options: ['claude', 'codex'], default: 'claude', labels: { claude: 'Claude', codex: 'Codex' } });
     const request = { requestId: randomUUID(), nodeId: randomUUID(), resourceId: randomUUID(), pluginId: 'agent.session', title: 'Pi session', position: { x: 0, y: 0 }, data: { provider: 'pi', cwd: directory } };
-    await assert.rejects(coordinator.startAgent(request), /Pi is turned off\. Turn it on in Settings → Items → Pi → Start form/);
+    await assert.rejects(coordinator.startAgent(request), /Pi is turned off\. Turn it on in Settings → Agents → Pi → Enabled/);
     const saved = store.readSettings();
     store.writeSettings({ expectedRevision: saved.revision, value: { ...saved.value, agentProviders: { ...saved.value.agentProviders, claude: false, pi: true } } });
     assert.deepEqual(coordinator.providers(), { options: ['codex', 'pi'], default: 'codex', labels: { codex: 'Codex', pi: 'Pi' } });

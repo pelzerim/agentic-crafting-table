@@ -19,7 +19,7 @@ test('per-type settings keep independent drafts and sizes across save, cancel, r
     await page.getByRole('treeitem', { name, exact: true }).click(); await showAdvanced(page);
     return page.getByRole('group', { name: `${name} settings` });
   };
-  await settings(); await page.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
+  await settings(); await page.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click(); await page.getByRole('treeitem', { name: 'Agents', exact: true }).locator(':scope > .settings-tree-row').click();
   const claude = await select('Claude'); await expect(claude.getByLabel('Remote Control', { exact: true })).toBeVisible();
   await claude.getByLabel('Width', { exact: true }).fill('1000'); await claude.getByLabel('Height', { exact: true }).fill('580');
   const codex = await select('Codex'); await expect(codex.getByLabel('Remote Control')).toHaveCount(0);
@@ -29,14 +29,14 @@ test('per-type settings keep independent drafts and sizes across save, cancel, r
   await capture(page, 'settings-item-note.png');
   await page.getByRole('button', { name: 'Save settings' }).click(); await page.reload();
   await expect.poll(async () => (await page.evaluate(() => window.craftingTable.settingsRead())).value.itemViews).toEqual({ 'agent.session:claude': { width: 1000, height: 580 }, 'agent.session:codex': { width: 900, height: 500 } });
-  await settings(); await page.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
+  await settings(); await page.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click(); await page.getByRole('treeitem', { name: 'Agents', exact: true }).locator(':scope > .settings-tree-row').click();
   await (await select('Codex')).getByLabel('Width', { exact: true }).fill('700');
   await page.getByRole('button', { name: 'Discard', exact: true }).click();
   await page.getByRole('article', { name: 'Claude · implementation', exact: true }).click();
   const agent = page.locator('[data-expanded-item-id="agent"].expanded'); await expect(agent).toBeVisible();
   expect((await agent.boundingBox())!.width).toBeCloseTo(1000, 0); expect((await agent.boundingBox())!.height).toBeCloseTo(580, 0);
   await page.getByRole('button', { name: 'Back to project', exact: true }).click();
-  await settings(); await page.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
+  await settings(); await page.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click(); await page.getByRole('treeitem', { name: 'Agents', exact: true }).locator(':scope > .settings-tree-row').click();
   const restored = await select('Codex'); await expect(restored.getByLabel('Width', { exact: true })).toHaveValue('900');
   await restored.getByRole('button', { name: 'Reset view size' }).click(); await expect(restored.getByLabel('Width', { exact: true })).not.toHaveValue('900');
   await page.getByRole('button', { name: 'Save settings' }).click();

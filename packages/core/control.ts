@@ -757,7 +757,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           break;
         }
         case 'node.move': {
-          state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: command.id, position: snapPosition(command.position, snap) }], sizes, snap, collisions);
+          state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: command.id, position: snapPosition(command.position, snap) }], sizes, snap, collisions, mapBadges(state.nodes, state.resources, state.links).attached);
           break;
         }
         case 'node.attach': {
@@ -768,7 +768,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           break;
         }
         case 'nodes.move': {
-          state.nodes = moveItems(state.nodes, state.resources, registry, command.positions, sizes, snap, collisions);
+          state.nodes = moveItems(state.nodes, state.resources, registry, command.positions, sizes, snap, collisions, mapBadges(state.nodes, state.resources, state.links).attached);
           break;
         }
         case 'layout.repair': {

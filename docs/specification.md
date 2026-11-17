@@ -92,7 +92,9 @@ window session and is not saved.
 shown as a **badge** on that item instead of as paper. A note connected to several items
 is a badge on each; projects and other notes are never labelled. The note and its links
 are not drawn on the map (the connection is the attachment), it is no plot member, and a
-badge note connected to nothing stays paper. `data.display` overrides the rule per note
+badge note connected to nothing stays paper. A note shown as a badge takes no space on the
+map: a moved item neither stops at it nor pushes it aside, and it keeps its stored place
+for when it is paper again. `data.display` overrides the rule per note
 (the note's menu, **Show as ▸ Note / Badge**, the shown one checked; not in its form):
 `"badge"` makes any one line of up to 24 characters a badge, `"note"` keeps it paper,
 `"auto"` or none applies the rule. A badge is drawn in its note's paper (mint when the
@@ -1950,7 +1952,7 @@ breadcrumb and Back action for orientation.
 
 **AGENT-01b — More agent CLIs.** Besides Claude and Codex, an agent session can run the
 installed OpenCode (`opencode`), Pi (`pi`), Gemini (`gemini`) or Grok Build (`grok`) CLI in
-the same real terminal. **Settings → Items → <name> → Enabled**
+the same real terminal. **Settings → Agents → <name> → Enabled**
 (setting `agentProviders`) lists a provider in the start form; the bottom of that page, under **Not available**, lists what the CLI lacks next to Claude and Codex; Claude and Codex are
 on by default and the four others are off. A start of a provider that is off, from the form,
 MCP or another first-party service, is refused with the name of that setting; items already
@@ -2373,7 +2375,7 @@ in the terminal. General-purpose agent creation still has no task requirement.
 
 **AGENT-09 — Launch settings.** Settings exposes provider-specific native launch
 arguments supported by its adapter, with Claude Remote Control and **Auto mode**
-enabled by default. Auto mode lives under Settings → Items → Claude and selects
+enabled by default. Auto mode lives under Settings → Agents → Claude and selects
 native `--permission-mode auto`; turning it off explicitly selects `default`
 (manual approval), rather than inheriting a possible native auto default. Existing
 explicit permission-mode arguments keep precedence; the toggle shows the effective
@@ -3032,14 +3034,14 @@ its purpose and how to create/open/use it, including Claude and Codex variants.
 
 **SETTINGS-08 — Sidebar tree.** Replace the horizontal settings tabs with a
 persistent left navigation tree and a settings pane on the right. Top-level
-entries are Connections, Items, Map, Notifications, AI features, General and
+entries are Connections, Items, Agents, Map, Notifications, AI features, General and
 Data & diagnostics. Leaves carry no bullet; only branches show a chevron at the
 row's end. In forced-colours mode pixel border images fall back to a plain
 system border so controls keep their edges. Items expands
-to one child per registered item profile, including separate Claude and Codex
-entries. Selecting a child opens its controls directly; omit the duplicate item
+to one child per registered item profile, and Agents to one child per agent CLI
+(Claude, Codex and the others of AGENT-01b), which are not listed under Items. Selecting a child opens its controls directly; omit the duplicate item
 accordions in the content pane. Show the current page distinctly and its parent
-in the item-page heading. Collapsing Items hides its navigation children without
+in the item-page heading. Collapsing Items or Agents hides its navigation children without
 losing the current page or drafts. Support pointer disclosure, Up/Down, Left/Right,
 Home/End, type-ahead and Enter/Space, with one keyboard tab stop in the tree.
 Keep drafts across pages and keep the save bar visible at the bottom. Validation

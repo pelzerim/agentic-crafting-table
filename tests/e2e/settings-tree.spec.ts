@@ -21,6 +21,7 @@ test('settings tree selects nested item pages, supports keyboard navigation and 
   await item('Connections').focus(); await page.keyboard.press('ArrowDown');
   await expect(item('Items')).toBeFocused(); await page.keyboard.press('ArrowRight');
   await expect(item('Items')).toHaveAttribute('aria-expanded', 'true');
+  await item('Agents').focus(); await page.keyboard.press('ArrowRight'); await expect(item('Agents')).toHaveAttribute('aria-expanded', 'true');
   await page.keyboard.press('c'); await expect(item('Claude')).toBeFocused(); await page.keyboard.press('Enter');
   const claude = dialog.getByRole('group', { name: 'Claude settings' });
   await expect(item('Claude')).toHaveAttribute('aria-selected', 'true'); await showAdvanced(page);
@@ -29,7 +30,7 @@ test('settings tree selects nested item pages, supports keyboard navigation and 
   await claude.getByLabel('Width', { exact: true }).fill('960');
   await capture(page, 'settings-tree-claude.png');
   await item('Claude').focus(); await page.keyboard.press('ArrowDown');
-  await expect(item('Claude artifact')).toBeFocused(); // Visible alphabetical siblings.
+  await expect(item('Codex')).toBeFocused(); // Visible alphabetical siblings.
   await page.keyboard.press('End'); await expect(item('Data & diagnostics')).toBeFocused();
   await page.keyboard.press('Home'); await expect(item('Connections')).toBeFocused();
   await item('Linear ticket').click(); const note = dialog.getByRole('group', { name: 'Linear ticket settings' }); await showAdvanced(page);
@@ -66,6 +67,7 @@ test('advanced details stay behind a per-page disclosure, item explanations rema
   await expect(dialog.getByLabel('Advanced Settings', { exact: true })).toHaveCount(0);
   await dialog.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
   await expect(dialog.getByText('New item shortcuts', { exact: true })).toBeVisible();
+  await dialog.getByRole('treeitem', { name: 'Agents', exact: true }).locator(':scope > .settings-tree-row').click();
   await dialog.getByRole('treeitem', { name: 'Claude', exact: true }).click();
   await expect(dialog.locator('.item-purpose:visible')).toContainText('Run Claude in a real terminal');
   await expect(dialog.getByLabel('Remote Control', { exact: true })).toBeVisible();
@@ -90,7 +92,7 @@ test('advanced details stay behind a per-page disclosure, item explanations rema
   await expect(dialog.getByRole('button', { name: 'Clear overlaps…', exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await dialog.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
+  await dialog.getByRole('treeitem', { name: 'Agents', exact: true }).locator(':scope > .settings-tree-row').click();
   await dialog.getByRole('treeitem', { name: 'Claude', exact: true }).click();
   await expect(advanced).toHaveAttribute('aria-expanded', 'false'); await advanced.click();
   await expect(width).toHaveValue('1000');
@@ -170,8 +172,8 @@ test('at the narrowest window the tree narrows, leaving Items collapses it and r
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Settings' }), item = (name: string) => dialog.getByRole('treeitem', { name, exact: true });
   expect((await dialog.locator('.settings-sidebar').boundingBox())!.width).toBeLessThanOrEqual(153);
-  await item('Items').click(); await item('Claude').click(); await expect(item('Items')).toHaveAttribute('aria-expanded', 'true');
-  await item('Map').click(); await expect(item('Items')).toHaveAttribute('aria-expanded', 'false');
+  await item('Agents').click(); await item('Claude').click(); await expect(item('Agents')).toHaveAttribute('aria-expanded', 'true');
+  await item('Map').click(); await expect(item('Agents')).toHaveAttribute('aria-expanded', 'false');
   const row = dialog.locator('.setting-row', { has: page.getByLabel('Neighborhood padding') });
   const label = (await row.locator('.setting-row-label').boundingBox())!, field = (await row.locator('.settings-field').boundingBox())!;
   expect(field.y).toBeGreaterThan(label.y + label.height);

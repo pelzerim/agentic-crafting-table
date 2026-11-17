@@ -1,5 +1,5 @@
 import { NotificationSettings } from './notification-settings.tsx';
-import { AdvancedDisclosure, DefaultMeta, InlineConfirm, NumberField, SettingRow, SettingsPage, SettingsSection, SliderField, Switch, TextField, useRowControl } from './settings-ui.tsx';
+import { AdvancedDisclosure, DefaultMeta, InlineConfirm, NumberField, SettingRow, SettingsPage, SettingsSection, SliderField, Switch, TextField, useRowControl, profileSection } from './settings-ui.tsx';
 import { DirectoryField, useDirectoryChoices } from './ui/directory-field.tsx';
 import type { RowStatus } from './settings-ui.tsx';
 import { AGENT_PROVIDER_IDS, DEFAULT_AGENT_PROVIDERS } from '../../../packages/core/settings.ts';
@@ -89,21 +89,22 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
   const updateRow = appUpdateRow({ app: updates?.app, checkout: Boolean(appInfo?.updateRestart), packaged: Boolean(appInfo?.packaged), failure: restartError ? { at: Infinity, message: restartError } : appInfo?.updateFailure });
   const updateAndRestart = () => { setRestartError(undefined); window.craftingTable.updatesRestart().catch(error => setRestartError(error.message)); };
   useEffect(() => { let mounted = true; window.craftingTable.appInfo().then(info => { if (mounted) setAppInfo(info); }).catch(error => { if (mounted) setInfoError(String(error)); }); return () => { mounted = false; }; }, []);
-  const sections = ['Connections', 'Items', 'Map', 'Notifications', 'AI features', 'General', 'Plugins', 'Data & diagnostics'] as const;
+  const sections = ['Connections', 'Items', 'Agents', 'Map', 'Notifications', 'AI features', 'General', 'Plugins', 'Data & diagnostics'] as const;
   const [section, setSection] = useState<string>(() => installRequest ? 'Plugins' : initialSessionView ? 'Data & diagnostics' : initialSection
     ?? (([...sections] as string[]).includes(lastSection) || plugins.flatMap(itemViewProfiles).some(profile => profile.key === lastSection) ? lastSection : 'Connections'));
   useEffect(() => { lastSection = section; }, [section]);
   useEffect(() => { if (initialSessionView) setSection('Data & diagnostics'); }, [initialSessionView, sessionRequestId]);
   useEffect(() => { if (installRequest) setSection('Plugins'); }, [installRequest?.id]);
-  const [expanded, setExpanded] = useState(() => new Set<string>(section === 'Items' || !([...sections] as string[]).includes(section) ? ['Items'] : []));
+  const [expanded, setExpanded] = useState(() => new Set<string>(([...sections] as string[]).includes(section) ? section === 'Items' || section === 'Agents' ? [section] : [] : [profileSection(section)]));
   const content = useRef<HTMLDivElement>(null);
   const invalidField = useRef<HTMLInputElement | undefined>(undefined);
   const profiles = useMemo(() => plugins.flatMap(itemViewProfiles).sort((a, b) => a.name.localeCompare(b.name)), [plugins]);
-  const entries = useMemo(() => sections.map(name => ({ id: name, label: name, ...(name === 'Items' ? { children: profiles.map(profile => ({ id: profile.key, label: profile.name })) } : {}) })), [profiles]);
+  const entries = useMemo(() => sections.map(name => ({ id: name, label: name, ...(name === 'Items' || name === 'Agents' ? { children: profiles.filter(profile => profileSection(profile.key) === name).map(profile => ({ id: profile.key, label: profile.name })) } : {}) })), [profiles]);
   const selectSection = (id: string) => {
     setSection(id); setDiscarding(false);
-    if (matchMedia('(max-width: 860px)').matches && id !== 'Items' && !profiles.some(profile => profile.key === id)) setExpanded(old => { const next = new Set(old); next.delete('Items'); return next; });
-    if (id === 'Items' || profiles.some(profile => profile.key === id)) setExpanded(old => new Set([...old, 'Items']));
+    const branch = id === 'Items' || id === 'Agents' ? id : profiles.some(profile => profile.key === id) ? profileSection(id) : undefined;
+    if (matchMedia('(max-width: 860px)').matches) setExpanded(old => new Set([...old].filter(open => open === branch)));
+    if (branch) setExpanded(old => new Set([...old, branch]));
   };
   const toggleSection = (id: string) => {
     setExpanded(old => { const next = new Set(old); if (next.has(id)) next.delete(id); else next.add(id); return next; });
@@ -200,6 +201,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
           </SettingRow>
         </SettingsSection>
       </SettingsPage>
+      <SettingsPage id="Agents" title="Agents" description="The agent CLIs a session can run. Select one in the sidebar to turn it on or off and to configure its sizes and options." hidden={section !== 'Agents'} />
       <ItemViewSettings advanced={advanced} toggleAdvanced={toggleAdvanced} mapSizes={itemMapSizes} changeMap={setItemMapSizes} selected={section} plugins={plugins} sizes={itemViews} change={setItemViews}
         disconnected={providerId => providerId && !saved.value.connections.some(connection => connection.providerId === providerId && connection.enabled) ? providers.find(provider => provider.id === providerId)?.name : undefined}
         pluginSettings={pluginSettings} changePluginSettings={(owner, value) => setPluginSettings(current => ({ ...current, [owner]: value }))}

@@ -68,7 +68,7 @@ Resuming a conversation keeps its existing work rather than repeating this openi
 See [native Claude support](native-claude.md) and [native Codex support](native-codex.md).
 
 Claude **Auto mode** and Remote Control default on. Change them in **Settings →
-Items → Claude** for the next new or resumed session. Turning Auto mode off selects
+Agents → Claude** for the next new or resumed session. Turning Auto mode off selects
 manual approval; read-only PR review sessions keep their separate restrictions.
 
 Double-click empty space inside a project → **Run skill** in the radial picker

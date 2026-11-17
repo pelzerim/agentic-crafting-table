@@ -5,7 +5,7 @@ import type { PluginDescription } from '../../../src/resource-plugins/describe.c
 import { configuredMapProfile, mapSizeLimits } from '../../../packages/core/item-map-sizes.ts';
 import type { ItemMapSizes } from '../../../packages/core/item-map-sizes.ts';
 import { ITEM_SIZES } from '../../../src/graph/graph.ts';
-import { AdvancedDisclosure, NumberField, SettingRow, SettingsPage, SettingsSection, useRowControl } from './settings-ui.tsx';
+import { AdvancedDisclosure, NumberField, SettingRow, SettingsPage, SettingsSection, profileSection, useRowControl } from './settings-ui.tsx';
 import { PluginSettings } from './plugin-settings.tsx';
 import type { JsonObject } from '../../../src/resource-plugins/types.ts';
 
@@ -23,7 +23,7 @@ export function ItemViewSettings({ plugins, sizes, change, mapSizes, changeMap, 
     const choices = ITEM_SIZES.filter(size => map.sizes[size]);
     const saved = mapSizes[profile.key] ?? { sizes: {} };
     const view = (axis: 'width' | 'height', input: number) => change({ ...sizes, [profile.key]: { width: value.width, height: value.height, [axis]: input } });
-    return <SettingsPage key={profile.key} id={profile.key} crumb="Items" title={profile.name} hidden={selected !== profile.key}
+    return <SettingsPage key={profile.key} id={profile.key} crumb={profileSection(profile.key)} title={profile.name} hidden={selected !== profile.key}
       description={<span className="item-purpose">{profile.plugin.settingsHelp?.replaceAll('{name}', profile.name) ?? `Use ${profile.name} to keep related work on the map. Open the item to view its content and connect it to other items for context.`}</span>}>
       <div role="group" aria-label={`${profile.name} settings`}>
         {profile.key === 'github.pull-request' && pullRequest}

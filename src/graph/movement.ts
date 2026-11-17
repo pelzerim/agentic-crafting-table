@@ -47,7 +47,7 @@ export function repairLayout<T extends GraphNode>(nodes: readonly T[], resources
  * footprints settle at clear edges. Project moves preserve all member offsets,
  * including archived members, and commit as one operation. No camera inputs.
  * With a grid pitch, the footprints that settle aside land on grid points. */
-export function moveItems<T extends GraphNode>(nodes: readonly T[], resources: readonly ResourceRecord[], registry: ResourcePluginRegistry, intents: readonly MoveIntent[], sizes: ItemMapSizes = {}, pitch?: number, collisions: MapCollisions = 'shove'): T[] {
+export function moveItems<T extends GraphNode>(nodes: readonly T[], resources: readonly ResourceRecord[], registry: ResourcePluginRegistry, intents: readonly MoveIntent[], sizes: ItemMapSizes = {}, pitch?: number, collisions: MapCollisions = 'shove', withoutFootprint: ReadonlySet<string> = new Set()): T[] {
   const byId = new Map(nodes.map(node => [node.id, node]));
   const positions = new Map<string, GraphNode['position']>();
   const explicit = new Set<string>();
@@ -70,9 +70,9 @@ export function moveItems<T extends GraphNode>(nodes: readonly T[], resources: r
     }
   }
   const moved = nodes.map(node => positions.has(node.id) ? { ...node, position: positions.get(node.id)! } : node);
-  const footprints = layoutFootprints(moved, resources, registry, sizes);
+  const footprints = layoutFootprints(moved, resources, registry, sizes).filter(box => !withoutFootprint.has(box.id));
   const pinned = footprints.filter(box => positions.has(box.id));
-  const before = new Map(layoutFootprints(nodes, resources, registry, sizes).map(box => [box.id, box]));
+  const before = new Map(layoutFootprints(nodes, resources, registry, sizes).filter(box => !withoutFootprint.has(box.id)).map(box => [box.id, box]));
   for (let i = 0; i < pinned.length; i++) for (let j = i + 1; j < pinned.length; j++) {
     const a = pinned[i], b = pinned[j];
     if (!overlaps(a, b, ITEM_GAP)) continue;

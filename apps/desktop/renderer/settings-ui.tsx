@@ -11,6 +11,8 @@ const RowContext = createContext<{ id: string; describedBy: string; report(field
 /** Wires any native control to its row label and description. */
 export const useRowControl = () => { const row = useContext(RowContext); return row ? { id: row.id, 'aria-describedby': row.describedBy } : {}; };
 
+/** The sidebar branch an item type's page sits under: agent CLIs under Agents, every other type under Items. */
+export const profileSection = (key: string) => key.startsWith('agent.session:') ? 'Agents' : 'Items';
 export function SettingsPage({ id, title, crumb, description, meta, note, hidden, children }: { id: string; title: string; crumb?: string; description?: ReactNode; meta?: ReactNode; note?: ReactNode; hidden: boolean; children?: ReactNode }) {
   return <section className="settings-page" role="region" id={settingsPageId(id)} aria-labelledby={settingsEntryId(id)} data-settings-section={id} hidden={hidden}>
     <header className="settings-page-header"><div>{crumb && <small>{crumb}</small>}<h3>{title}</h3>{description && <p className="settings-page-description">{description}</p>}</div>{meta && <span className="settings-page-meta">{meta}</span>}</header>

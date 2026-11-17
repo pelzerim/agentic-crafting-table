@@ -154,3 +154,25 @@ test('with solid collisions, a moved item stops at the item in its way and leave
   await control.apply({ type: 'nodes.move', positions: [{ id: 'agent', position: { x: 10, y: 10 } }] }, 1);
   assert.deepEqual(await at('pr'), { x: 0, y: 0 });
 });
+
+test('a note shown as a badge on an item takes no space on the map: a move lands where it is stored, in either collision mode', async () => {
+  for (const collisions of ['solid', 'shove'] as const) {
+    class LayoutStore extends MemoryStore { readMapLayout() { return { sizes: {}, collisions }; } }
+    const initial = stateSchema.parse({ version: 1, revision: 0, view: {}, todos: [], nodes: [
+      { id: 'agent', title: 'Agent', resourceId: 'agent-r', position: { x: -800, y: 600 } },
+      { id: 'pr', title: 'PR', resourceId: 'pr-r', position: { x: 0, y: 0 } },
+      { id: 'tag', title: 's4', resourceId: 'tag-r', position: { x: -300, y: 0 } },
+    ], resources: [
+      { id: 'agent-r', pluginId: 'agent.session', schemaVersion: 1, title: 'Agent', data: { sessionId: 'native-session', provider: 'claude' } },
+      { id: 'pr-r', pluginId: 'github.pull-request', schemaVersion: 1, title: 'PR', data: { owner: 'fixture', repo: 'test', number: 1 } },
+      { id: 'tag-r', pluginId: 'workspace.note', schemaVersion: 2, title: 's4', data: { text: 's4' } },
+    ], links: [{ id: 'tag-agent', sourceId: 'tag', targetId: 'agent', kind: 'reference', label: '' }] });
+    const control = new WorkspaceControl(new LayoutStore(initial)), at = async (id: string) => (await control.read()).nodes.find(node => node.id === id)!.position;
+    await control.apply({ type: 'node.move', id: 'pr', position: { x: -300, y: 0 } }, 0);
+    assert.deepEqual(await at('pr'), { x: -300, y: 0 }, collisions);
+    assert.deepEqual(await at('tag'), { x: -300, y: 0 }, collisions);
+    await control.apply({ type: 'nodes.move', positions: [{ id: 'pr', position: { x: -340, y: 10 } }] }, 1);
+    assert.deepEqual(await at('pr'), { x: -340, y: 10 }, collisions);
+    assert.deepEqual(await at('tag'), { x: -300, y: 0 }, collisions);
+  }
+});

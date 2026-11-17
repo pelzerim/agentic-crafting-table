@@ -199,7 +199,7 @@ export class AgentCoordinator {
     const id = typeof request.data.provider === 'string' ? request.data.provider : 'claude';
     if (typeof request.data.resumeNodeId !== 'string' || !request.data.resumeNodeId) {
       const enabled = this.observations.readSettings().value.agentProviders as Record<string, boolean>, name = agentProvider(id).name;
-      if (enabled[id] === false) throw new Error(`${name} is turned off. Turn it on in Settings → Items → ${name} → Start form.`);
+      if (enabled[id] === false) throw new Error(`${name} is turned off. Turn it on in Settings → Agents → ${name} → Enabled.`);
     }
     return this.create(request);
   }

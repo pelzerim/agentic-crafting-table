@@ -97,7 +97,7 @@ export function prepareClaude(input: ClaudePreparation): PreparedSession {
   const launchSettings = input.settings ?? settingsSchema.parse({}).claude;
   if (launchSettings.remoteControl && capability.remoteControl === false) throw new Error('This Claude Code version does not support Remote Control. Update Claude or turn it off in Settings.');
   const permission = claudePermissionSettings(launchSettings);
-  if (permission.mode === 'auto' && capability.autoMode === false) throw new Error('This Claude Code version does not support Auto mode. Update Claude or turn off Auto mode in Settings → Items → Claude.');
+  if (permission.mode === 'auto' && capability.autoMode === false) throw new Error('This Claude Code version does not support Auto mode. Update Claude or turn off Auto mode in Settings → Agents → Claude.');
   const args = [resumed || input.native ? '--resume' : '--session-id', nativeSessionId, ...(fields.model === 'native' ? [] : ['--model', fields.model]), '--append-system-prompt', context.systemPrompt,
     '--system-prompt-snapshot', 'off', '--mcp-config', mcpConfig, '--plugin-dir', join(launchDirectory, 'plugin'), '--allowedTools', 'mcp__crafting_table', ...permission.arguments, '--permission-mode', permission.mode, ...(launchSettings.remoteControl ? ['--remote-control'] : ['--settings', JSON.stringify({ disableRemoteControl: true })])];
   if (!resumed && !input.native && !input.blank) args.push('--', input.skill?.prompt ?? input.hosted?.prompt ?? launchContext.initialPrompt);

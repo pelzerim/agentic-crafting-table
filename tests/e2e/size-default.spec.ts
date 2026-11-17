@@ -61,7 +61,7 @@ test('Use size as default saves a hand-resized item as its type default, new ite
   await page.reload();
   await expect(fresh).toHaveCSS('width', '365px'); await expect(second).toHaveCSS('width', '240px');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
+  await page.getByRole('treeitem', { name: 'Agents', exact: true }).locator(':scope > .settings-tree-row').click();
   await page.getByRole('treeitem', { name: 'Claude', exact: true }).click(); await showAdvanced(page);
   const group = page.getByRole('group', { name: 'Claude map sizes' });
   await expect(group.getByLabel('Default map size')).toHaveValue('large');

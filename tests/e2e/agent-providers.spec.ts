@@ -22,7 +22,7 @@ test('AGENT-01b: an agent CLI turned on in Settings is offered in the start form
     const providers = page.getByRole('radiogroup', { name: 'Provider' });
 
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await page.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
+    await page.getByRole('treeitem', { name: 'Agents', exact: true }).locator(':scope > .settings-tree-row').click();
     await page.getByRole('treeitem', { name: 'Pi', exact: true }).click();
     const offer = page.getByRole('group', { name: 'Pi settings' }).getByLabel('Enabled', { exact: true }).first();
     await expect(offer).not.toBeChecked(); await offer.check();
