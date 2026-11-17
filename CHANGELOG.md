@@ -6,7 +6,7 @@ their pull request and author.
 ## Unreleased
 
 ### Changes
-- **Corners setting moved**: Settings → Corners is now a Corners section in Settings → Map. (#PR, @timohuovinen)
+- **Corners setting moved**: Settings → Corners is now a Corners section in Settings → Map. (#36, @timohuovinen)
 
 ## 0.23.0 — 2026-11-16
 
