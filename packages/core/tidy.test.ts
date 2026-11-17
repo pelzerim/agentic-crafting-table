@@ -6,7 +6,8 @@ import type { PlotView } from '../../src/graph/plots.ts';
 import { itemFootprint } from '../../src/graph/footprints.ts';
 import { ITEM_GAP, layoutFootprints } from '../../src/graph/movement.ts';
 import { overlaps } from '../../src/graph/spatial.ts';
-import { finishedItems, planTidy, readingOrder, tidyDrift, tidyFingerprint } from './tidy.ts';
+import { straightConnection } from '../../src/graph/straight-connection.ts';
+import { TIDY_GAP, finishedItems, planTidy, readingOrder, tidyDrift, tidyFingerprint } from './tidy.ts';
 import type { TidyInput, TidyOptions, TidyPlan } from './tidy.ts';
 import type { WorkspaceState } from './control.ts';
 
@@ -129,4 +130,44 @@ test('the preview fingerprint ignores Undermap items, which a window on the map 
   const print = (value: TidyInput['state']) => { const entry = input(value, plots, { projectId: 'acme' }); return tidyFingerprint(entry, planTidy(entry, ALL)); };
   assert.equal(print(below), print(state));
   assert.notEqual(print({ ...state, nodes: state.nodes.map(node => node.id === 'a1' ? { ...node, belowAt: '2026-01-01T00:00:00Z' } : node) }), print(state));
+});
+
+test('a linked plot lines up as a tree whose link lines cross no card', () => {
+  // A PR linking a session and two reviews; the session links three artifacts.
+  const ids = ['codex', 'session', 'pr', 'claude', 'mockups', 'tour', 'card', 'loose1'];
+  const nodes: Node[] = [{ id: 'acme', title: 'Acme', position: { x: 0, y: 0 } } as Node,
+    ...ids.map((id, i) => item(id, 200 + (i % 3) * 300, 40 + Math.floor(i / 3) * 130))];
+  const link = (sourceId: string, targetId: string) => ({ id: `${sourceId}-${targetId}`, sourceId, targetId, kind: 'reference', label: '' });
+  const links = [link('session', 'mockups'), link('session', 'tour'), link('session', 'card'), link('pr', 'session'), link('pr', 'claude'), link('pr', 'codex')];
+  const state = { nodes, resources: nodes.flatMap(node => node.resourceId ? [resource(node.id)] : []), links } as unknown as TidyInput['state'];
+  const plots = [plot('p', ids)], options = { ...ALL, spacePlots: false, colors: false };
+  const plan = planTidy(input(state, plots), options), after = applied(state, plan);
+  const box = (id: string) => itemFootprint(after.nodes.find(node => node.id === id)!, state.resources, registry);
+  const left = (id: string) => box(id).x - box(id).width / 2, right = (id: string) => box(id).x + box(id).width / 2;
+  // The session links most, so it is the root; each item's links share the column to its right.
+  for (const [parent, kids] of [['session', ['pr', 'mockups', 'tour', 'card']], ['pr', ['codex', 'claude']]] as const)
+    for (const kid of kids) { assert.ok(left(kid) >= right(parent) + TIDY_GAP, `${kid} sits right of ${parent}`); assert.equal(left(kid), left(kids[0])); }
+  for (const { sourceId, targetId } of links) {
+    const line = straightConnection(box(sourceId), box(targetId))!;
+    for (const id of ids.filter(id => id !== sourceId && id !== targetId)) {
+      const other = box(id), steps = 50;
+      const hit = Array.from({ length: steps + 1 }, (_, i) => ({ x: line.source.x + (line.target.x - line.source.x) * i / steps, y: line.source.y + (line.target.y - line.source.y) * i / steps }))
+        .some(point => Math.abs(point.x - other.x) < other.width / 2 && Math.abs(point.y - other.y) < other.height / 2);
+      assert.equal(hit, false, `${sourceId}→${targetId} crosses ${id}`);
+    }
+  }
+  assert.ok(box('loose1').y - box('loose1').height / 2 >= Math.max(...ids.slice(0, 7).map(id => box(id).y + box(id).height / 2)) + TIDY_GAP, 'unlinked members go underneath');
+  assert.deepEqual(planTidy(input(after, plots), options).moves, []);
+});
+
+test('siblings linked to each other line up next to each other', () => {
+  const ids = ['a', 'b', 'c', 'd'];
+  const nodes: Node[] = [{ id: 'acme', title: 'Acme', position: { x: 0, y: 0 } } as Node, ...ids.map((id, i) => item(id, 200 + i * 300, 40))];
+  const links = [['a', 'b'], ['a', 'c'], ['a', 'd'], ['b', 'd']].map(([sourceId, targetId]) => ({ id: sourceId + targetId, sourceId, targetId, kind: 'context', label: '' }));
+  const state = { nodes, resources: nodes.flatMap(node => node.resourceId ? [resource(node.id)] : []), links } as unknown as TidyInput['state'];
+  const plots = [plot('p', ids)], options = { ...ALL, spacePlots: false, colors: false };
+  const after = applied(state, planTidy(input(state, plots), options));
+  const y = (id: string) => after.nodes.find(node => node.id === id)!.position.y;
+  assert.ok(y('b') < y('d') && y('d') < y('c'), 'c no longer sits between b and d');
+  assert.deepEqual(planTidy(input(after, plots), options).moves, []);
 });

@@ -1,4 +1,5 @@
 import type { WorkspaceState } from './control.ts';
+import type { GraphLink } from '../../src/graph/graph.ts';
 import type { ItemMapSizes } from './item-map-sizes.ts';
 import type { ResourcePluginRegistry } from '../../src/resource-plugins/registry.ts';
 import { isDrawn } from '../../src/graph/archive.ts';
@@ -10,6 +11,7 @@ import { PLOT_COLORS, PLOT_JOIN, PLOT_LEAVE, detectPlots, plotColor } from '../.
 import type { PlotBox, PlotColor, PlotView } from '../../src/graph/plots.ts';
 import { plotMapOrder } from '../../src/graph/project-column.ts';
 import { overlaps } from '../../src/graph/spatial.ts';
+import { straightConnection } from '../../src/graph/straight-connection.ts';
 import type { SpatialBox } from '../../src/graph/spatial.ts';
 
 /** Inside a plot: MAP-13 clearance with room to spare, well under PLOT_JOIN. */
@@ -74,11 +76,78 @@ function bounds(boxes: readonly SpatialBox[]) {
   return { x0, y0, width: x1 - x0, height: y1 - y0 };
 }
 
-/** A plot's members as an even grid in reading order, anchored at its current top-left. */
-export function lineUp<T extends SpatialBox>(boxes: readonly T[]): T[] {
+/** Whether the segment a→b passes through `box` (Liang–Barsky clip). */
+function segmentHits(a: Position, b: Position, box: SpatialBox): boolean {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  let t0 = 0, t1 = 1;
+  for (const [p, q] of [[-dx, a.x - left(box)], [dx, box.x + box.width / 2 - a.x], [-dy, a.y - top(box)], [dy, box.y + box.height / 2 - a.y]]) {
+    if (p === 0) { if (q < 0) return false; continue; }
+    const t = q / p;
+    if (p < 0) t0 = Math.max(t0, t); else t1 = Math.min(t1, t);
+    if (t0 >= t1) return false;
+  }
+  return true;
+}
+
+const MAX_COLUMN_GAP = 480, LINE_CLEARANCE = 12;
+
+/** A plot's members anchored at its current top-left: linked members as trees growing right, each item's links in one
+ * column beside it, centred on them, with columns spread until no link line crosses another card; unlinked members in a grid underneath. */
+export function lineUp<T extends SpatialBox>(boxes: readonly T[], links: readonly GraphLink[] = []): T[] {
   if (!boxes.length) return [];
-  const order = readingOrder(boxes), { x0, y0 } = bounds(boxes), corners = grid(order, { x: x0, y: y0 }, TIDY_GAP);
-  return order.map((box, i) => ({ ...box, x: corners[i].x + box.width / 2, y: corners[i].y + box.height / 2 }));
+  const order = readingOrder(boxes), { x0, y0 } = bounds(boxes), rank = new Map(order.map((box, i) => [box.id, i]));
+  const near = new Map(order.map(box => [box.id, new Set<string>()]));
+  for (const link of links) if (!link.reveal && link.sourceId !== link.targetId && rank.has(link.sourceId) && rank.has(link.targetId)) {
+    near.get(link.sourceId)!.add(link.targetId); near.get(link.targetId)!.add(link.sourceId);
+  }
+  const byRank = (a: string, b: string) => rank.get(a)! - rank.get(b)!, byId = new Map(order.map(box => [box.id, box]));
+  const corners = new Map<string, Position>(), seen = new Set<string>();
+  let y = y0;
+  for (const start of order) {
+    if (seen.has(start.id) || !near.get(start.id)!.size) continue;
+    const members = [start.id];
+    for (let i = 0, found = new Set(members); i < members.length; i++) for (const id of near.get(members[i])!) if (!found.has(id)) { found.add(id); members.push(id); }
+    // The most linked item is the root, ties by id since a centred parent moves in reading order; breadth-first, so each item sits one column right of its nearest link to the root.
+    const root = members.reduce((best, id) => near.get(id)!.size > near.get(best)!.size || (near.get(id)!.size === near.get(best)!.size && id < best) ? id : best);
+    const children = new Map<string, string[]>(), depth = new Map([[root, 0]]), queue = [root];
+    seen.add(root);
+    for (let i = 0; i < queue.length; i++) {
+      // Siblings linked to each other stack next to each other, so their line crosses no sibling between them.
+      const kids: string[] = [], pool = [...near.get(queue[i])!].filter(id => !seen.has(id)).sort(byRank);
+      while (pool.length) kids.push(...pool.splice(Math.max(0, pool.findIndex(id => kids.length && near.get(kids.at(-1)!)!.has(id))), 1));
+      for (const id of kids) { seen.add(id); depth.set(id, depth.get(queue[i])! + 1); queue.push(id); }
+      children.set(queue[i], kids);
+    }
+    const tops = new Map<string, number>();
+    const place = (id: string, top: number): number => {
+      const height = byId.get(id)!.height, kids = children.get(id)!;
+      let below = top;
+      for (const kid of kids) below = place(kid, below) + TIDY_GAP;
+      const centre = (kid: string) => tops.get(kid)! + byId.get(kid)!.height / 2;
+      tops.set(id, kids.length ? Math.max(top, (centre(kids[0]) + centre(kids.at(-1)!)) / 2 - height / 2) : top);
+      return Math.max(tops.get(id)! + height, below - TIDY_GAP);
+    };
+    y = place(root, y) + TIDY_GAP;
+    const widths: number[] = [], columns: number[] = [x0];
+    for (const id of queue) widths[depth.get(id)!] = Math.max(widths[depth.get(id)!] ?? 0, byId.get(id)!.width);
+    const at = (id: string): SpatialBox => ({ ...byId.get(id)!, x: columns[depth.get(id)!] + byId.get(id)!.width / 2, y: tops.get(id)! + byId.get(id)!.height / 2 });
+    for (let d = 1; d < widths.length; d++) {
+      const edges = queue.filter(id => depth.get(id) === d - 1).flatMap(id => children.get(id)!.map(kid => [id, kid] as const));
+      const placed = queue.filter(id => depth.get(id)! <= d);
+      for (let gap = TIDY_GAP; ; gap += TIDY_GAP) {
+        columns[d] = columns[d - 1] + widths[d - 1] + gap;
+        const crossed = edges.some(([from, to]) => {
+          const line = straightConnection(at(from), at(to));
+          return line && placed.some(id => id !== from && id !== to && segmentHits(line.source, line.target, { ...at(id), width: at(id).width + LINE_CLEARANCE * 2, height: at(id).height + LINE_CLEARANCE * 2 }));
+        });
+        if (!crossed || gap >= MAX_COLUMN_GAP) break;
+      }
+    }
+    for (const id of queue) corners.set(id, { x: columns[depth.get(id)!], y: tops.get(id)! });
+  }
+  const loose = order.filter(box => !corners.has(box.id));
+  grid(loose, { x: x0, y }, TIDY_GAP).forEach((corner, i) => corners.set(loose[i].id, corner));
+  return order.map(box => ({ ...box, x: corners.get(box.id)!.x + box.width / 2, y: corners.get(box.id)!.y + box.height / 2 }));
 }
 
 /** The spot nearest `box` that clears every obstacle; straight down when the nearest edges are all taken. */
@@ -187,7 +256,7 @@ function prepare(input: TidyInput) {
 /** The whole Tidy plan: deterministic, and empty for a board Tidy just tidied. Plot membership never changes except by
  * `regroup`; where detection could still split or merge a plot, its membership is pinned in the same batch. */
 export function planTidy(input: TidyInput, options: TidyOptions): TidyPlan {
-  const { nodes, resources, sizes, registry, projects, plots, onGround, footprint, groupOf, lockedIds, regrouped, archived } = prepare(input);
+  const { nodes, resources, links, sizes, registry, projects, plots, onGround, footprint, groupOf, lockedIds, regrouped, archived } = prepare(input);
   const planned = new Map<string, Position>();
   if (options.lineUp || options.spacePlots) {
     const world = layoutFootprints(nodes, resources, registry, sizes);
@@ -196,7 +265,7 @@ export function planTidy(input: TidyInput, options: TidyOptions): TidyPlan {
       const free = boxes.filter(box => !lockedIds.has(box.id)), freeIds = new Set(free.map(box => box.id));
       const groups = new Map<string, SpatialBox[]>();
       for (const box of free) { const key = groupOf.get(box.id) ?? `item:${box.id}`; groups.set(key, [...groups.get(key) ?? [], box]); }
-      const blocks = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([key, members]) => ({ key, boxes: options.lineUp && !key.startsWith('item:') ? lineUp(members) : members }));
+      const blocks = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([key, members]) => ({ key, boxes: options.lineUp && !key.startsWith('item:') ? lineUp(members, links) : members }));
       const obstacles = world.filter(box => !freeIds.has(box.id) && !archived.has(box.id)).map(box => planned.has(box.id) ? { ...box, ...planned.get(box.id)! } : box);
       for (const box of arrange(blocks, obstacles, options.spacePlots, free)) planned.set(box.id, { x: box.x, y: box.y });
     }
