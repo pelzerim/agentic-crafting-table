@@ -20,9 +20,13 @@ export interface HistoryHost {
 export function createMapHistory(host: () => HistoryHost) {
   const history = new UndoHistory();
   let busy = false, failing: UndoStep | undefined;
-  const track = async (label: string, work: () => Promise<{ receipt?: Receipt } | void>): Promise<void> => {
+  /** Runs `work` and records its receipt; resolves to the step it recorded, if any. */
+  const record = async (label: string, work: () => Promise<{ receipt?: Receipt } | void>): Promise<UndoStep | undefined> => {
     const active = host().active(), result = await work();
-    if (active && result?.receipt) history.record({ label, ...result.receipt });
+    if (!active || !result?.receipt) return undefined;
+    const recorded = { label, ...result.receipt };
+    history.record(recorded);
+    return recorded;
   };
   const step = async (direction: 'undo' | 'redo') => {
     const { active, revert, refresh, notify, fail } = host(), next = history.peek(direction);
@@ -43,7 +47,8 @@ export function createMapHistory(host: () => HistoryHost) {
       try { await refresh(); notify(reversalNotice(next, result, direction)); } catch (error) { fail((error as Error).message); }
     } finally { busy = false; }
   };
-  return { track, undo: () => step('undo'), redo: () => step('redo') };
+  const track = async (label: string, work: () => Promise<{ receipt?: Receipt } | void>): Promise<void> => { await record(label, work); };
+  return { track, record, undo: () => step('undo'), redo: () => step('redo'), latest: () => history.peek('undo') };
 }
 
 export function useMapHistory(host: HistoryHost) {

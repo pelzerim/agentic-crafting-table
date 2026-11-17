@@ -316,6 +316,7 @@ export function WorkspaceMap() {
   const [todoUndo, setTodoUndo] = useState<TodoUndo>(), todoUndoNotice = useNotice(todoUndo, true);
   const [copiedUrls, setCopiedUrls] = useState<{ count: number }>(), copyNotice = useNotice(copiedUrls, true);
   const [undoNotice, setUndoNotice] = useState<{ text: string }>(), undoShown = useNotice(undoNotice, true);
+  const [tidyUndo, setTidyUndo] = useState<{ step: object; moved: number }>(), tidyUndoNotice = useNotice(tidyUndo, true);
   const [tidy, setTidy] = useState<{ projectId?: string; title: string; at: { x: number; y: number } }>(), [tidyGhosts, setTidyGhosts] = useState<{ id: string; position: { x: number; y: number } }[]>();
   const [tidied, setTidied] = useState<string[]>();
   useEffect(() => { if (!tidied) return; const timer = setTimeout(() => setTidied(undefined), 4000); return () => clearTimeout(timer); }, [tidied]);
@@ -898,12 +899,18 @@ export function WorkspaceMap() {
     'map.redo': () => { if (!snapshot || travelling || tidy || document.querySelector('.item-view:not([hidden])')) return false; void history.redo(); },
   });
   /** One Apply: the service refuses a stale preview and writes everything in one transaction; the step undoes as one. */
-  const applyTidy = (request: TidyApply) => history.track('Tidy', async () => {
-    const result = await window.craftingTable.runtimeRun({ action: 'map.tidy', nodeId: request.projectId ?? 'board', arguments: { operation: 'apply', ...request } as never }) as { receipt?: Receipt; moved: string[] };
-    accept(await window.craftingTable.workspaceRead());
-    setTidied(result.moved.length ? result.moved : undefined);
-    return result;
-  });
+  const applyTidy = async (request: TidyApply) => {
+    let moved = 0;
+    const step = await history.record('Tidy', async () => {
+      const result = await window.craftingTable.runtimeRun({ action: 'map.tidy', nodeId: request.projectId ?? 'board', arguments: { operation: 'apply', ...request } as never }) as { receipt?: Receipt; moved: string[] };
+      accept(await window.craftingTable.workspaceRead());
+      setTidied(result.moved.length ? result.moved : undefined);
+      moved = result.moved.length;
+      return result;
+    });
+    // Only this run's own step: a run that wrote nothing records none, and never offers an earlier Tidy.
+    setTidyUndo(step ? { step, moved } : undefined);
+  };
   /** Plot colour and name changes are undo steps too, recorded from the receipt the service returns for the write. */
   const plotChange = (projectId: string, request: JsonObject) => {
     const run = () => window.craftingTable.runtimeRun({ action: 'plot', nodeId: projectId, arguments: request }) as Promise<{ receipt?: Receipt }>;
@@ -1018,6 +1025,12 @@ export function WorkspaceMap() {
     {unmuted && unmuteNotice.visible && <Toast tone="undo" title={`${unmuted.title} unmuted`} detail={unmuted.needs ? `${NEEDS_ME}: ${unmuted.needs}` : undefined}
       action={{ label: 'Undo', run: () => { const { id } = unmuted; setUnmuted(undefined); void apply([{ type: 'project.mute', id, muted: true }]).catch(error => setError(error.message)); } }}
       dismiss={() => setUnmuted(undefined)} dismissLabel="Dismiss undo" />}
+    {tidyUndo && tidyUndoNotice.visible && <Toast tone="undo" title={!tidyUndo.moved ? 'Tidy applied' : tidyUndo.moved === 1 ? 'Tidied 1 item' : `Tidied ${tidyUndo.moved} items`} detail="⌘Z also undoes it"
+      action={{ label: 'Undo', run: () => {
+        const { step } = tidyUndo; setTidyUndo(undefined);
+        // Only while Tidy is still the latest step: a newer edit is undone first with ⌘Z.
+        if (history.latest() === step) void history.undo(); else setError('A newer change came after Tidy. Press ⌘Z to step back through it.');
+      } }} dismiss={() => setTidyUndo(undefined)} dismissLabel="Dismiss undo" />}
     {undoNotice && undoShown.visible && <Toast tone="done" title={undoNotice.text} dismiss={() => setUndoNotice(undefined)} />}
     {copiedUrls && copyNotice.visible && <Toast tone="done" title={copiedUrls.count === 1 ? 'URL copied' : `${copiedUrls.count} URLs copied`} dismiss={() => setCopiedUrls(undefined)} />}
     {shownError && snapshot && <Toast tone="error" title={shownError.message} details={shownError.details} dismiss={() => setError('')} dismissLabel="Dismiss error" />}

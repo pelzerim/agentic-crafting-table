@@ -55,3 +55,10 @@ test('an undo that landed is filed for redo even when reading the map back fails
   await history.redo();
   assert.deepEqual([sent, failed], [['undo:Move', 'redo:Move'], ['Read failed', 'Read failed']]);
 });
+
+test('record hands back only the step it recorded, never an earlier one', async () => {
+  const history = createMapHistory(() => ({ active: () => true, notify() {}, fail() {}, refresh: async () => {}, revert: async step => ({ applied: step, reverted: 1, skipped: 0 }) }));
+  const first = await history.record('Tidy', async () => ({ receipt: { items: [{ id: 'a', before: snap(0), after: snap(300) }], links: [], plots: [] } }));
+  assert.equal(history.latest(), first);
+  assert.equal(await history.record('Tidy', async () => ({})), undefined, 'a run that wrote nothing offers no undo');
+});

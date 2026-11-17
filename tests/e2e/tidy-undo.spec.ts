@@ -49,7 +49,8 @@ test('Tidy previews on the map, applies as one step, and ⌘Z puts every item ba
   await expect(page.locator('.map-item-highlights')).toBeVisible();
   await shot(page, 'tidy-after');
 
-  await page.keyboard.press('ControlOrMeta+z');
+  // The notice's Undo is the same step as ⌘Z.
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(page.getByText('Undid tidy', { exact: true })).toBeVisible();
   await expect.poll(() => positions(page)).toEqual(moved);
   await shot(page, 'tidy-undo-notice');
