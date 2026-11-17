@@ -24,7 +24,7 @@ test('AGENT-01b: an agent CLI turned on in Settings is offered in the start form
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
     await page.getByRole('treeitem', { name: 'Pi', exact: true }).click();
-    const offer = page.getByLabel('Enabled', { exact: true });
+    const offer = page.getByRole('group', { name: 'Pi settings' }).getByLabel('Enabled', { exact: true }).first();
     await expect(offer).not.toBeChecked(); await offer.check();
     await page.screenshot({ path: 'test-results/pr/agent-providers-settings.png' });
     await page.getByRole('button', { name: 'Save settings' }).click();
