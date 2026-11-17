@@ -216,7 +216,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
           </SettingRow>
         </SettingsSection>}
         agentProvider={id => (AGENT_PROVIDER_IDS as readonly string[]).includes(id) && <SettingsSection label="Start form">
-          <SettingRow label={`Offer ${providerLabels[id]}`} description={id === 'claude' || id === 'codex' ? `Lists ${providerLabels[id]} when you start an agent. Items already on the map keep working when this is off.`
+          <SettingRow label="Enabled" description={id === 'claude' || id === 'codex' ? `Lists ${providerLabels[id]} when you start an agent. Items already on the map keep working when this is off.`
             : `Lists ${providerLabels[id]} when you start an agent. The table runs the installed CLI in a terminal; it shows no working state, and Continue is not available.`}
             meta={DEFAULT_AGENT_PROVIDERS[id as AgentProviderId] ? 'On by default' : 'Off by default'}>
             <Switch checked={agentProviders[id as AgentProviderId]} change={checked => setAgentProviders({ ...agentProviders, [id]: checked })} />
