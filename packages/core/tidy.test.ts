@@ -7,7 +7,7 @@ import { itemFootprint } from '../../src/graph/footprints.ts';
 import { ITEM_GAP, layoutFootprints } from '../../src/graph/movement.ts';
 import { overlaps } from '../../src/graph/spatial.ts';
 import { straightConnection } from '../../src/graph/straight-connection.ts';
-import { TIDY_GAP, finishedItems, planTidy, readingOrder, tidyDrift, tidyFingerprint } from './tidy.ts';
+import { TIDY_GAP, finishedItems, lineUp, planTidy, readingOrder, tidyDrift, tidyFingerprint } from './tidy.ts';
 import type { TidyInput, TidyOptions, TidyPlan } from './tidy.ts';
 import type { WorkspaceState } from './control.ts';
 
@@ -170,4 +170,18 @@ test('siblings linked to each other line up next to each other', () => {
   const y = (id: string) => after.nodes.find(node => node.id === id)!.position.y;
   assert.ok(y('b') < y('d') && y('d') < y('c'), 'c no longer sits between b and d');
   assert.deepEqual(planTidy(input(after, plots), options).moves, []);
+});
+
+test('a dozen links from one item still cross no card', () => {
+  const boxes = [{ id: 'hub', x: 0, y: 0, width: 220, height: 64 }, ...Array.from({ length: 12 }, (_, i) => ({ id: `k${String(i).padStart(2, '0')}`, x: 300 * i, y: 0, width: 200, height: 56 }))];
+  const links = boxes.slice(1).map(box => ({ id: box.id, sourceId: 'hub', targetId: box.id, kind: 'reference' as const, label: '' }));
+  const out = lineUp(boxes, links), at = new Map(out.map(box => [box.id, box]));
+  for (const { targetId } of links) {
+    const line = straightConnection(at.get('hub')!, at.get(targetId)!)!;
+    for (const other of out.filter(box => box.id !== 'hub' && box.id !== targetId))
+      for (let i = 0; i <= 80; i++) {
+        const x = line.source.x + (line.target.x - line.source.x) * i / 80, y = line.source.y + (line.target.y - line.source.y) * i / 80;
+        assert.ok(Math.abs(x - other.x) >= other.width / 2 || Math.abs(y - other.y) >= other.height / 2, `hub→${targetId} crosses ${other.id}`);
+      }
+  }
 });

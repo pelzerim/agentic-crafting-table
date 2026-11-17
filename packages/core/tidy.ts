@@ -89,7 +89,8 @@ function segmentHits(a: Position, b: Position, box: SpatialBox): boolean {
   return true;
 }
 
-const MAX_COLUMN_GAP = 480, LINE_CLEARANCE = 12;
+// Only a backstop: a wide enough column always clears, a dozen links need about 1000.
+const MAX_COLUMN_GAP = 8000, LINE_CLEARANCE = 12;
 
 /** A plot's members anchored at its current top-left: linked members as trees growing right, each item's links in one
  * column beside it, centred on them, with columns spread until no link line crosses another card; unlinked members in a grid underneath. */
