@@ -28,10 +28,10 @@ test('settings persist, reject managed flags and release the real display assert
     await page.getByRole('treeitem', { name: 'Map', exact: true }).click();
     await page.getByLabel('Neighborhood padding', { exact: true }).fill('360');
     await expect(page.getByRole('status').filter({ hasText: '1 unsaved change · Map' })).toBeVisible();
-    await page.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click(); await page.getByRole('treeitem', { name: 'Claude', exact: true }).click(); await remote.uncheck();
+    await page.getByRole('treeitem', { name: 'Agents', exact: true }).locator(':scope > .settings-tree-row').click(); await page.getByRole('treeitem', { name: 'Claude', exact: true }).click(); await remote.uncheck();
     await autoMode.uncheck();
     await page.getByRole('treeitem', { name: 'General', exact: true }).click(); await awake.check(); await workAwake.check();
-    await page.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click(); await page.getByRole('treeitem', { name: 'Claude', exact: true }).click();
+    await page.getByRole('treeitem', { name: 'Agents', exact: true }).locator(':scope > .settings-tree-row').click(); await page.getByRole('treeitem', { name: 'Claude', exact: true }).click();
     await page.getByLabel('Additional launch arguments').fill('--resume\nother-session');
     await page.getByRole('button', { name: 'Save settings' }).click();
     await expect(page.getByRole('alert')).toContainText('managed by the app');
@@ -58,7 +58,7 @@ test('settings persist, reject managed flags and release the real display assert
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(page.getByLabel('Additional launch arguments')).toHaveValue('--effort\nhigh\n--verbose');
     await expect(page.getByLabel('Auto mode', { exact: true })).not.toBeChecked();
-    await page.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click(); await page.getByRole('treeitem', { name: 'Claude', exact: true }).click();
+    await page.getByRole('treeitem', { name: 'Agents', exact: true }).locator(':scope > .settings-tree-row').click(); await page.getByRole('treeitem', { name: 'Claude', exact: true }).click();
     await page.getByLabel('Additional launch arguments').fill('--effort\nhigh\n--permission-mode=plan');
     await expect(page.getByText('Custom permission mode: plan.', { exact: false })).toBeVisible();
     await page.getByLabel('Auto mode', { exact: true }).check();

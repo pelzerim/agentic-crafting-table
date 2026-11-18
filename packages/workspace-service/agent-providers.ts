@@ -11,6 +11,8 @@ import type { AppSettings } from '../core/settings.ts';
 import type { SavedSessionPage } from '../../src/resource-plugins/types.ts';
 import type { ProjectSkill, ProjectSkillCatalog } from '../core/skills.ts';
 import { discoverClaudeSkills, discoverCodexSkills } from '../session-runtime/skills.ts';
+import { CLI_DEFAULT_MODEL, TERMINAL_AGENT_IDS, prepareTerminalAgent, probeTerminalAgent, terminalAgentSpecs } from '../session-runtime/terminal-agents.ts';
+import type { TerminalAgentId } from '../session-runtime/terminal-agents.ts';
 
 export interface AgentProvider {
   name: string;
@@ -48,8 +50,20 @@ export const agentProviders: Readonly<Record<string, AgentProvider>> = {
     skills: discoverClaudeSkills, skillPrompt: (skill, text) => '/' + skill.name + (text ? ' ' + text : '') },
   codex: { name: 'Codex', probe: probeCodex, prepare: input => prepareCodex(input), discover: (state, query, _offset, cursor) => discoverCodexSessions(state, query, cursor), resolve: resolveCodexSession,
     models: codexModelChoice, skills: discoverCodexSkills, skillPrompt: (skill, text) => '$' + skill.name + (text ? ' ' + text : '') },
+  ...Object.fromEntries(TERMINAL_AGENT_IDS.map(id => [id, terminalAgentProvider(id)])),
 };
 export function agentProvider(id: unknown = 'claude') {
   const provider = typeof id === 'string' && Object.hasOwn(agentProviders, id) ? agentProviders[id] : undefined;
   if (!provider) throw new Error('Unsupported agent provider'); return provider;
+}
+/** A CLI the table runs in a plain terminal: no saved-conversation list, skills catalog or status channel. */
+function terminalAgentProvider(id: TerminalAgentId): AgentProvider {
+  const name = terminalAgentSpecs[id].name;
+  return { name, probe: () => probeTerminalAgent(id), prepare: input => prepareTerminalAgent(id, input),
+    async discover() { throw new Error(`Continue is not available for ${name}. Start a new session.`); },
+    async resolve() { throw new Error(`Continue is not available for ${name}. Start a new session.`); },
+    // The CLI's own configuration picks the model; another can be chosen inside the CLI.
+    async models() { return { options: [CLI_DEFAULT_MODEL], default: CLI_DEFAULT_MODEL }; },
+    async skills(cwd) { return { cwd, skills: [], warnings: [`The table does not list ${name} skills.`] }; },
+    skillPrompt: (skill, text) => '/' + skill.name + (text ? ' ' + text : '') };
 }

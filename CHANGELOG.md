@@ -12,6 +12,19 @@ their pull request and author.
 ### Items
 - **Videos**: paste or drop a video file (.mp4, .mov, .m4v or .webm) or a YouTube link on the map and it becomes a Video item that plays inside its view, with seeking. The app only plays files a Video item on the map points to. YouTube videos play through YouTube's privacy-enhanced embed. YouTube links already on the map become Video items too. (#34, @shiini2)
 
+## 0.24.0 — 2026-11-17
+
+### Agents
+- **OpenCode, Pi, Gemini and Grok**: an agent session can run these CLIs in a real terminal too. They are off by default; turn each on in Settings → Agents → <name> → Enabled, where Claude and Codex can be turned off as well. OpenCode and Gemini get the table tools through a private per-launch config; Pi and Gemini can be resumed. These items show no working state, Continue list or skills. (#35, @timohuovinen)
+- **Agent logos**: OpenCode, Pi, Gemini and Grok show their logos on the map and in the start form, like Claude and Codex. (#37, @timohuovinen)
+
+### Settings
+- **Corners setting moved**: Settings → Corners is now a Corners section in Settings → Map. (#36, @timohuovinen)
+- **Agents have their own entry**: the pages of Claude, Codex and the other agent CLIs moved from Settings → Items to a new top-level **Agents** entry in the Settings sidebar. Every other item type stays under Items.
+
+### Map
+- **Badge notes no longer block a move**: a note shown as a badge on an item kept an invisible place on the map. With solid collisions an item stopped at it and snapped back; otherwise it was pushed aside unseen. It now takes no space while it is a badge.
+
 ## 0.23.0 — 2026-11-16
 
 ### Getting started

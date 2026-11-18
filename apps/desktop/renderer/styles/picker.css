@@ -225,6 +225,22 @@
   color: var(--act-agent-codex);
 }
 
+.picker-choice .brand-opencode {
+  color: var(--act-agent-opencode);
+}
+
+.picker-choice .brand-pi {
+  color: var(--act-agent-pi);
+}
+
+.picker-choice .brand-gemini {
+  color: var(--act-agent-gemini);
+}
+
+.picker-choice .brand-grok {
+  color: var(--act-agent-grok);
+}
+
 .picker-choice.tone-violet {
   --tone: var(--act-brand-linear);
 }
@@ -332,6 +348,22 @@
 
 .picker-preview-content .brand-codex {
   color: var(--act-agent-codex);
+}
+
+.picker-preview-content .brand-opencode {
+  color: var(--act-agent-opencode);
+}
+
+.picker-preview-content .brand-pi {
+  color: var(--act-agent-pi);
+}
+
+.picker-preview-content .brand-gemini {
+  color: var(--act-agent-gemini);
+}
+
+.picker-preview-content .brand-grok {
+  color: var(--act-agent-grok);
 }
 
 .picker-preview-content span {

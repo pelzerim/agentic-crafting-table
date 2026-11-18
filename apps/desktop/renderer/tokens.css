@@ -146,6 +146,10 @@
   /* Agents, brands and copper (agent work) */
   --act-agent-claude: #e39a79;
   --act-agent-codex: #9fb7ff;
+  --act-agent-opencode: #d6d6d6;
+  --act-agent-pi: #d6d6d6;
+  --act-agent-gemini: #b9a3e3;
+  --act-agent-grok: #d6d6d6;
   --act-brand-linear: #b3adff;
   --act-brand-github: #d8d3ef;
   --act-copper: #dca57c;
@@ -526,6 +530,10 @@
 
   --act-agent-claude: #bc613d;
   --act-agent-codex: #4264c2;
+  --act-agent-opencode: #3d3d3d;
+  --act-agent-pi: #3d3d3d;
+  --act-agent-gemini: #7457a8;
+  --act-agent-grok: #3d3d3d;
   --act-brand-linear: #5a51cc;
   --act-brand-github: #393450;
   --act-copper: #a45f2c;

@@ -58,7 +58,7 @@ rewriting user/project settings. `--system-prompt-snapshot off` lets an updated
 host guide take effect on resume. The adapter retains normal native permission
 behavior and never enables permission bypass.
 
-**Settings → Items → Claude → Auto mode** defaults on and launches with
+**Settings → Agents → Claude → Auto mode** defaults on and launches with
 `--permission-mode auto`. Off explicitly uses manual approval (`default`). Claude's
 own checks and account/organization policy still apply. An older CLI without auto
 support shows an update-or-disable error. Existing custom permission-mode arguments

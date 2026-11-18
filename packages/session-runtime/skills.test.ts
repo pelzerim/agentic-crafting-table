@@ -31,7 +31,8 @@ test('native skill launches inherit context, preserve exact invocation on retry 
   try {
     await control.apply({ type: 'project.create', id: 'project', title: 'Billing', summary: 'PROJECT_REFERENCE', workingDirectory: directory, position: { x: 0, y: 0 } }, 0);
     await control.apply({ type: 'item.add', id: 'todo', resourceId: 'todo-r', pluginId: 'workspace.todo', title: 'Inspect the plan', data: {}, projectId: 'project', position: { x: 100, y: 300 } }, 1);
-    for (const [id, provider] of Object.entries(agentProviders)) {
+    // Terminal agents list no skills, so no skill runs on them.
+    for (const [id, provider] of Object.entries(agentProviders).filter(([id]) => id === 'claude' || id === 'codex')) {
       provider.probe = async () => ({ executable: '/native/' + id, version: 'fixture', remoteControl: true });
       provider.skills = async cwd => { catalogs++; return { cwd, skills: [{ id: 'skill', name: 'inspect', description: 'Inspect project' }, { id: 'off', name: 'off', description: '', unavailable: 'Disabled' }], warnings: [] }; };
       const input = { requestId: randomUUID(), nodeId: randomUUID(), resourceId: randomUUID(), expectedRevision: (await control.read()).revision,

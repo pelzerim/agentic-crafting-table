@@ -460,12 +460,14 @@ test('an open item names its project and plot above its title; the plot closes t
   }, { state: plotProject, prepare: store => store.writeView('desktop', { camera: { x: 80, y: 70, zoom: .8 } }) });
 });
 
-test('Settings → Corners chooses the corner: the project overview by default, or the minimap', async () => {
+test('Settings → Map → Corners chooses the corner: the project overview by default, or the minimap', async () => {
   await launch(async page => {
     await expect(page.locator('.map-locator.project-column')).toBeVisible();
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await page.getByRole('treeitem', { name: 'Corners', exact: true }).click();
+    await page.getByRole('treeitem', { name: 'Map', exact: true }).click();
     const corner = page.getByRole('radiogroup', { name: 'Bottom-right corner' });
+    await corner.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: 'test-results/pr/settings-map-corners.png' });
     await expect(corner.getByRole('radio', { name: 'Project overview' })).toHaveAttribute('aria-checked', 'true');
     await corner.getByRole('radio', { name: 'Minimap' }).click();
     await page.getByRole('button', { name: 'Save settings', exact: true }).click();

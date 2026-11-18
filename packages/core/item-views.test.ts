@@ -9,7 +9,7 @@ import { registryFromDescriptions } from '../../src/resource-plugins/describe.cl
 const registry = registryFromDescriptions(createResourcePluginRegistry().describe());
 test('item expansion and provider subgroups survive plugin discovery without map branches', () => {
   const agent = registry.get('agent.session')!;
-  assert.deepEqual(itemViewProfiles(agent).map(p => [p.key, p.name]), [['agent.session:claude', 'Claude'], ['agent.session:codex', 'Codex']]);
+  assert.deepEqual(itemViewProfiles(agent).map(p => [p.key, p.name]), [['agent.session:claude', 'Claude'], ['agent.session:codex', 'Codex'], ['agent.session:opencode', 'OpenCode'], ['agent.session:pi', 'Pi'], ['agent.session:gemini', 'Gemini'], ['agent.session:grok', 'Grok']]);
   assert.equal(itemViewProfile(agent, { id: 'a', pluginId: agent.id, schemaVersion: 1, title: 'Agent', data: { provider: 'codex' } }).key, 'agent.session:codex');
   assert.equal(itemViewProfiles(registry.get('workspace.todo')!)[0].mode, 'inline');
   assert.equal(itemViewProfiles(registry.get('workspace.note')!)[0].mode, 'inline', 'notes are written on the map and have no full view');

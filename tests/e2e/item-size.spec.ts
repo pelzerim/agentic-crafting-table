@@ -18,7 +18,7 @@ test('type presets have independent settings, saved defaults, cancel/reset and r
   const before = await read(page), agent = page.locator('[data-item-id="agent"]');
   const settings = async () => {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await page.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
+    await page.getByRole('treeitem', { name: 'Agents', exact: true }).locator(':scope > .settings-tree-row').click();
     await page.getByRole('treeitem', { name: 'Claude', exact: true }).click(); await showAdvanced(page);
     return page.getByRole('group', { name: 'Claude map sizes' });
   };
@@ -31,6 +31,7 @@ test('type presets have independent settings, saved defaults, cancel/reset and r
   const codex = page.getByRole('group', { name: 'Codex map sizes' });
   await expect(codex.getByLabel('Default map size')).toHaveValue('large');
   await expect(codex.getByLabel('Small width')).toHaveValue('180');
+  await page.getByRole('treeitem', { name: 'Items', exact: true }).locator(':scope > .settings-tree-row').click();
   await page.getByRole('treeitem', { name: 'To-do', exact: true }).click(); await showAdvanced(page);
   const todo = page.getByRole('group', { name: 'To-do map sizes' });
   await expect(todo.getByRole('spinbutton')).toHaveCount(2);

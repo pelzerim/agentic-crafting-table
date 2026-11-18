@@ -92,7 +92,9 @@ window session and is not saved.
 shown as a **badge** on that item instead of as paper. A note connected to several items
 is a badge on each; projects and other notes are never labelled. The note and its links
 are not drawn on the map (the connection is the attachment), it is no plot member, and a
-badge note connected to nothing stays paper. `data.display` overrides the rule per note
+badge note connected to nothing stays paper. A note shown as a badge takes no space on the
+map: a moved item neither stops at it nor pushes it aside, and it keeps its stored place
+for when it is paper again. `data.display` overrides the rule per note
 (the note's menu, **Show as ▸ Note / Badge**, the shown one checked; not in its form):
 `"badge"` makes any one line of up to 24 characters a badge, `"note"` keeps it paper,
 `"auto"` or none applies the rule. A badge is drawn in its note's paper (mint when the
@@ -514,7 +516,7 @@ nags and nothing carries over. Nothing fires for a reminder disabled at its time
 
 **MAP-22 — Project column, Atlas and map overview.** The bottom-right corner shows
 the **project column** by default; `mapCorner: 'projects' | 'atlas'` (Settings value, default
-`projects`, chosen in Settings → Corners as SETTINGS-MAP-CORNER) switches it to the Atlas described below, which behaves as before.
+`projects`, chosen in Settings → Map → Corners as SETTINGS-MAP-CORNER) switches it to the Atlas described below, which behaves as before.
 The folded column (44 px wide, pixel panel, growing upward) has one 32 × 32 icon per project on the
 Map that is not muted (MAP-25), in the project's colour with its **tag**: the initials of a name of two
 or more words (first letters, at most three) or the first three letters of a one-word name, upper case;
@@ -2011,6 +2013,29 @@ environment until restarted. Clipboard regression tests preserve existing conten
 Hide the minimap and map zoom controls while an item fills the screen; keep the
 breadcrumb and Back action for orientation.
 
+**AGENT-01b — More agent CLIs.** Besides Claude and Codex, an agent session can run the
+installed OpenCode (`opencode`), Pi (`pi`), Gemini (`gemini`) or Grok Build (`grok`) CLI in
+the same real terminal. **Settings → Agents → <name> → Enabled**
+(setting `agentProviders`) lists a provider in the start form; the bottom of that page, under **Not available**, lists what the CLI lacks next to Claude and Codex; Claude and Codex are
+on by default and the four others are off. A start of a provider that is off, from the form,
+MCP or another first-party service, is refused with the name of that setting; items already
+on the map keep working and resuming. Each provider shows its logo in the start form and on
+its items; a provider without a logo shows its name in the start form. The model choice is **CLI default**: no `--model` flag, so the CLI's own configuration
+picks it; an MCP start may name a model, which is passed as `--model`. These CLIs have no
+status channel: their items show no working, idle or input state, no Continue list of saved
+conversations, no skills and no Ctrl+C resume (AGENT-01). The table tools reach a CLI only
+through a private per-launch file that leaves user configuration unchanged: OpenCode gets
+the MCP server and the guide (as an instruction file) from `OPENCODE_CONFIG`, merged over the
+user's files; Gemini gets the MCP server from `GEMINI_CLI_SYSTEM_DEFAULTS_PATH`, the lowest
+settings layer, and reads the guide at the start of its first prompt, since its only system
+prompt variable replaces the built-in one. Pi has no MCP client and Grok Build reads MCP
+servers only from its own and the project's config files, so both are told that the session
+has no table tools (`--append-system-prompt`, `--rules`). Pi and Gemini save the conversation
+under the table's id (`--session-id`), so Resume reopens it (`--session-id`, `--resume`);
+OpenCode and Grok Build choose their own ids, so their items cannot be resumed. Grok Build
+takes no first prompt, so a start with a task or skill is refused. Missing CLIs and versions
+without the flags above fail with an install or update message.
+
 **AGENT-02 — Launch context.** New general-purpose agents receive a short project
 brief (roughly 100–150 words) and current connected-item context automatically:
 project first, then items and their linked subitems (for example PR → review →
@@ -2413,7 +2438,7 @@ in the terminal. General-purpose agent creation still has no task requirement.
 
 **AGENT-09 — Launch settings.** Settings exposes provider-specific native launch
 arguments supported by its adapter, with Claude Remote Control and **Auto mode**
-enabled by default. Auto mode lives under Settings → Items → Claude and selects
+enabled by default. Auto mode lives under Settings → Agents → Claude and selects
 native `--permission-mode auto`; turning it off explicitly selects `default`
 (manual approval), rather than inheriting a possible native auto default. Existing
 explicit permission-mode arguments keep precedence; the toggle shows the effective
@@ -2754,8 +2779,8 @@ small card the title keeps one line so the counts have the second. The numbers c
 the roll-up's `open` list (`findings.open`), which a type declares for a map size with
 `counts`; when off, the card is unchanged.
 
-**SETTINGS-MAP-CORNER — Bottom-right corner (MAP-22).** Settings → **Corners**, its own
-page after Map, section **Bottom-right**, has the choice **Bottom-right corner**: **Project overview** (default) or
+**SETTINGS-MAP-CORNER — Bottom-right corner (MAP-22).** Settings → **Map**, section **Corners**,
+has the choice **Bottom-right corner**: **Project overview** (default) or
 **Minimap**, stored as `mapCorner` `projects` or `atlas`. Project overview is the project
 column; Minimap is the Atlas and its map overview. Saving switches the corner at once; M
 unfolds whichever is shown.
@@ -3072,14 +3097,14 @@ its purpose and how to create/open/use it, including Claude and Codex variants.
 
 **SETTINGS-08 — Sidebar tree.** Replace the horizontal settings tabs with a
 persistent left navigation tree and a settings pane on the right. Top-level
-entries are Connections, Items, Map, Notifications, AI features, General and
+entries are Connections, Items, Agents, Map, Notifications, AI features, General and
 Data & diagnostics. Leaves carry no bullet; only branches show a chevron at the
 row's end. In forced-colours mode pixel border images fall back to a plain
 system border so controls keep their edges. Items expands
-to one child per registered item profile, including separate Claude and Codex
-entries. Selecting a child opens its controls directly; omit the duplicate item
+to one child per registered item profile, and Agents to one child per agent CLI
+(Claude, Codex and the others of AGENT-01b), which are not listed under Items. Selecting a child opens its controls directly; omit the duplicate item
 accordions in the content pane. Show the current page distinctly and its parent
-in the item-page heading. Collapsing Items hides its navigation children without
+in the item-page heading. Collapsing Items or Agents hides its navigation children without
 losing the current page or drafts. Support pointer disclosure, Up/Down, Left/Right,
 Home/End, type-ahead and Enter/Space, with one keyboard tab stop in the tree.
 Keep drafts across pages and keep the save bar visible at the bottom. Validation

@@ -20,6 +20,7 @@
 .settings-editor .settings-section-description{clear:both;font-size:var(--act-fs-ui);line-height:1.45;color:var(--act-ink-dim);margin:-2px 0 8px;max-width:64ch}
 .settings-editor .settings-card{clear:both;background:var(--settings-card);border:1px solid var(--act-line);clip-path:var(--pixel-control-shape);display:flex;flex-direction:column}
 .settings-editor .settings-card>*+*{border-top:1px solid var(--act-hover)}
+.settings-editor .settings-limits{margin:0;padding:10px 14px 10px 30px;font-size:var(--act-fs-ui);line-height:1.5;color:var(--act-ink-dim)}
 
 .settings-editor .setting-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 22px;align-items:center;padding:11px 14px;min-height:52px}
 .settings-editor .setting-row-label{display:flex;flex-direction:row;align-items:center;flex-wrap:wrap;gap:8px;font-size:var(--act-fs-body);font-weight:500;color:var(--act-ink)}

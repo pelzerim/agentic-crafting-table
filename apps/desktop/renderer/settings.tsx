@@ -1,7 +1,10 @@
 import { NotificationSettings } from './notification-settings.tsx';
-import { AdvancedDisclosure, DefaultMeta, InlineConfirm, NumberField, SettingRow, SettingsPage, SettingsSection, SliderField, Switch, TextField, useRowControl } from './settings-ui.tsx';
+import { AdvancedDisclosure, DefaultMeta, InlineConfirm, NumberField, SettingRow, SettingsPage, SettingsSection, SliderField, Switch, TextField, useRowControl, profileSection } from './settings-ui.tsx';
 import { DirectoryField, useDirectoryChoices } from './ui/directory-field.tsx';
 import type { RowStatus } from './settings-ui.tsx';
+import { AGENT_PROVIDER_IDS, DEFAULT_AGENT_PROVIDERS } from '../../../packages/core/settings.ts';
+import type { AgentProviderId } from '../../../packages/core/settings.ts';
+import { providerLabels } from '../../../src/agents/display-names.ts';
 import { DEFAULT_BELOW_ANIMATION, DEFAULT_TERMINAL_SCROLLBACK, TERMINAL_SCROLLBACK_CHOICES, RIGHT_CLICK_CLOSES, notificationSettingsSchema, settingsSchema } from '../../../packages/core/settings.ts';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { AppInfo } from '../bridge.ts';
@@ -61,6 +64,13 @@ const percent = (value: number) => `${Math.round(value * 100)}%`, pixels = (valu
 /** The page Settings last showed; reopening returns there until the app restarts. */
 let lastSection = 'Connections';
 
+/** What each terminal-only agent CLI lacks next to Claude and Codex (AGENT-01b). */
+const AGENT_PROVIDER_LIMITS: Record<string, string[]> = {
+  opencode: ['Working, idle and input state', 'Continue list', 'Skills', 'Resume'],
+  pi: ['Crafting Table tools', 'Working, idle and input state', 'Continue list', 'Skills'],
+  gemini: ['Working, idle and input state', 'Continue list', 'Skills'],
+  grok: ['Crafting Table tools', 'Working, idle and input state', 'Continue list', 'Skills', 'Resume', 'Starting with a task'],
+};
 export function Settings({ startGuide, close, providers, plugins, openArchive, clearOverlaps, nodeTitles, initialSessionView, sessionRequestId, installRequest, initialSection, updates: updatesProp }: { startGuide?(): void; nodeTitles: Map<string, string>; initialSessionView?: 'active' | 'archived'; sessionRequestId?: number; installRequest?: PluginInstallRequest; initialSection?: string; updates?: { status?: UpdateStatus; check(): Promise<unknown> }; close(): void; providers: ProviderDescription[]; plugins: PluginDescription[]; openArchive(): void; clearOverlaps(): Promise<void> }) {
   const [saved, setSaved] = useState<SettingsSnapshot>(), [remote, setRemote] = useState(true), [awake, setAwake] = useState(false), [workAwake, setWorkAwake] = useState(false);
   const [notifications, setNotifications] = useState(notificationSettingsSchema.parse({}));
@@ -79,21 +89,22 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
   const updateRow = appUpdateRow({ app: updates?.app, checkout: Boolean(appInfo?.updateRestart), packaged: Boolean(appInfo?.packaged), failure: restartError ? { at: Infinity, message: restartError } : appInfo?.updateFailure });
   const updateAndRestart = () => { setRestartError(undefined); window.craftingTable.updatesRestart().catch(error => setRestartError(error.message)); };
   useEffect(() => { let mounted = true; window.craftingTable.appInfo().then(info => { if (mounted) setAppInfo(info); }).catch(error => { if (mounted) setInfoError(String(error)); }); return () => { mounted = false; }; }, []);
-  const sections = ['Connections', 'Items', 'Map', 'Corners', 'Notifications', 'AI features', 'General', 'Plugins', 'Data & diagnostics'] as const;
+  const sections = ['Connections', 'Items', 'Agents', 'Map', 'Notifications', 'AI features', 'General', 'Plugins', 'Data & diagnostics'] as const;
   const [section, setSection] = useState<string>(() => installRequest ? 'Plugins' : initialSessionView ? 'Data & diagnostics' : initialSection
     ?? (([...sections] as string[]).includes(lastSection) || plugins.flatMap(itemViewProfiles).some(profile => profile.key === lastSection) ? lastSection : 'Connections'));
   useEffect(() => { lastSection = section; }, [section]);
   useEffect(() => { if (initialSessionView) setSection('Data & diagnostics'); }, [initialSessionView, sessionRequestId]);
   useEffect(() => { if (installRequest) setSection('Plugins'); }, [installRequest?.id]);
-  const [expanded, setExpanded] = useState(() => new Set<string>(section === 'Items' || !([...sections] as string[]).includes(section) ? ['Items'] : []));
+  const [expanded, setExpanded] = useState(() => new Set<string>(([...sections] as string[]).includes(section) ? section === 'Items' || section === 'Agents' ? [section] : [] : [profileSection(section)]));
   const content = useRef<HTMLDivElement>(null);
   const invalidField = useRef<HTMLInputElement | undefined>(undefined);
   const profiles = useMemo(() => plugins.flatMap(itemViewProfiles).sort((a, b) => a.name.localeCompare(b.name)), [plugins]);
-  const entries = useMemo(() => sections.map(name => ({ id: name, label: name, ...(name === 'Items' ? { children: profiles.map(profile => ({ id: profile.key, label: profile.name })) } : {}) })), [profiles]);
+  const entries = useMemo(() => sections.map(name => ({ id: name, label: name, ...(name === 'Items' || name === 'Agents' ? { children: profiles.filter(profile => profileSection(profile.key) === name).map(profile => ({ id: profile.key, label: profile.name })) } : {}) })), [profiles]);
   const selectSection = (id: string) => {
     setSection(id); setDiscarding(false);
-    if (matchMedia('(max-width: 860px)').matches && id !== 'Items' && !profiles.some(profile => profile.key === id)) setExpanded(old => { const next = new Set(old); next.delete('Items'); return next; });
-    if (id === 'Items' || profiles.some(profile => profile.key === id)) setExpanded(old => new Set([...old, 'Items']));
+    const branch = id === 'Items' || id === 'Agents' ? id : profiles.some(profile => profile.key === id) ? profileSection(id) : undefined;
+    if (matchMedia('(max-width: 860px)').matches) setExpanded(old => new Set([...old].filter(open => open === branch)));
+    if (branch) setExpanded(old => new Set([...old, branch]));
   };
   const toggleSection = (id: string) => {
     setExpanded(old => { const next = new Set(old); if (next.has(id)) next.delete(id); else next.add(id); return next; });
@@ -115,6 +126,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
   }, [section, advanced]);
   const [itemMapSizes, setItemMapSizes] = useState<AppSettings['itemMapSizes']>({});
   const [conversation, setConversation] = useState<AppSettings['pullRequestConversation']>({ comments: true, threads: true, reviewBodies: true, bots: false, activity: false }), [cardLabels, setCardLabels] = useState(false);
+  const [agentProviders, setAgentProviders] = useState<AppSettings['agentProviders']>({ ...DEFAULT_AGENT_PROVIDERS });
   const [warnBeforeClosing, setWarnBeforeClosing] = useState(true), [agentsActForPerson, setAgentsActForPerson] = useState(true), [doubleClickOpensWeb, setDoubleClickOpensWeb] = useState(false), [snapToGrid, setSnapToGrid] = useState(false), [groundRightClickRing, setGroundRightClickRing] = useState(false), [offscreenAttention, setOffscreenAttention] = useState(false), [reviewOpenCounts, setReviewOpenCounts] = useState(false), [sessionCracks, setSessionCracks] = useState(false), [mapCorner, setMapCorner] = useState<AppSettings['mapCorner']>('projects'), [mapCollisions, setMapCollisions] = useState<AppSettings['mapCollisions']>('shove'), [appearance, setAppearance] = useState<AppSettings['appearance']>('system'), [itemDelete, setItemDelete] = useState(false), [autoReview, setAutoReview] = useState<AppSettings['autoReview']>({ enabled: false, agents: ['claude'] }), [mapPlots, setMapPlots] = useState(true), [hideImpliedLinks, setHideImpliedLinks] = useState(true);
   const [itemViews, setItemViews] = useState<AppSettings['itemViews']>({});
   const [pluginSettings, setPluginSettings] = useState<AppSettings['plugins']>({}), pluginPages = useMemo(() => pluginSettingsPages(plugins), [plugins]);
@@ -133,7 +145,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
       if (!mounted) return;
       setWarnBeforeClosing(snapshot.value.warnBeforeClosing); setAgentsActForPerson(snapshot.value.agentsActForPerson); setConversation(snapshot.value.pullRequestConversation); setCardLabels(snapshot.value.pullRequestCardLabels); setDiagnostics(snapshot.value.diagnostics); setItemViews(snapshot.value.itemViews); setItemMapSizes(snapshot.value.itemMapSizes); setPluginSettings(snapshot.value.plugins);
       setNeighborhood(snapshot.value.neighborhoodAppearance); setBelowAnimation(snapshot.value.belowAnimation); setUndermapLayout(snapshot.value.undermapLayout); setWorkingMark(snapshot.value.workingMark); setMapDashboards(snapshot.value.mapDashboards); setMapPlots(snapshot.value.mapPlots); setHideImpliedLinks(snapshot.value.hideImpliedLinks); setDoubleClickOpensWeb(snapshot.value.doubleClickOpensWeb); setSnapToGrid(snapshot.value.snapToGrid); setGroundRightClickRing(snapshot.value.groundRightClickRing); setOffscreenAttention(snapshot.value.offscreenAttention); setReviewOpenCounts(snapshot.value.reviewOpenCounts); setSessionCracks(snapshot.value.sessionCracks); setMapCorner(snapshot.value.mapCorner); setMapCollisions(snapshot.value.mapCollisions); setAppearance(snapshot.value.appearance); setItemDelete(snapshot.value.itemDelete); setAutoReview(snapshot.value.autoReview); setTerminal(snapshot.value.terminal);
-      setAutoMode(snapshot.value.claude.autoMode); setNotifications(snapshot.value.notifications);
+      setAgentProviders(snapshot.value.agentProviders); setAutoMode(snapshot.value.claude.autoMode); setNotifications(snapshot.value.notifications);
       setQuickIds(snapshot.value.quickItemTypes); setMenus(snapshot.value.menus); setDefaultDirectory(snapshot.value.defaultWorkingDirectory); setSummaries(snapshot.value.summaries); setPadding(String(snapshot.value.neighborhoodPadding)); setSaved(snapshot); setRemote(snapshot.value.claude.remoteControl); setAwake(snapshot.value.keepAwake); setWorkAwake(snapshot.value.keepAwakeWhileWorking); setUpdateCheck(snapshot.value.updates.check); setArgumentsText(snapshot.value.claude.arguments.join('\n'));
     }).catch(error => { if (mounted) setError(error.message); });
     return () => { mounted = false; };
@@ -141,7 +153,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
   const limited = Boolean(summaries && (summaries.enabled || summaries.agentTitles || summaries.attachTitles || summaries.plotNames || summaries.projectSummaries || (STANDUP_ENABLED && summaries.standupDigests)));
   const claude = { remoteControl: remote, autoMode, arguments: argumentsText.split(/\r?\n/).map(value => value.trim()).filter(Boolean) };
   const permission = claudePermissionSettings(claude);
-  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, agentsActForPerson, pullRequestConversation: conversation, pullRequestCardLabels: cardLabels, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, groundRightClickRing, offscreenAttention, reviewOpenCounts, sessionCracks, mapCorner, mapCollisions, appearance, itemDelete, autoReview, terminal, keepAwake: awake, keepAwakeWhileWorking: workAwake, claude, updates: { check: updateCheck } };
+  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, agentsActForPerson, pullRequestConversation: conversation, pullRequestCardLabels: cardLabels, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, groundRightClickRing, offscreenAttention, reviewOpenCounts, sessionCracks, mapCorner, mapCollisions, appearance, itemDelete, autoReview, terminal, keepAwake: awake, keepAwakeWhileWorking: workAwake, claude, agentProviders, updates: { check: updateCheck } };
   const changes = useMemo(() => saved ? draftChanges(saved.value, draft!, pluginPages) : [], [saved, JSON.stringify(draft)]);
   const dirty = changes.length > 0, [discarding, setDiscarding] = useState(false);
   const requestClose = () => { if (dirty) setDiscarding(true); else close(); };
@@ -189,6 +201,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
           </SettingRow>
         </SettingsSection>
       </SettingsPage>
+      <SettingsPage id="Agents" title="Agents" description="The agent CLIs a session can run. Select one in the sidebar to turn it on or off and to configure its sizes and options." hidden={section !== 'Agents'} />
       <ItemViewSettings advanced={advanced} toggleAdvanced={toggleAdvanced} mapSizes={itemMapSizes} changeMap={setItemMapSizes} selected={section} plugins={plugins} sizes={itemViews} change={setItemViews}
         disconnected={providerId => providerId && !saved.value.connections.some(connection => connection.providerId === providerId && connection.enabled) ? providers.find(provider => provider.id === providerId)?.name : undefined}
         pluginSettings={pluginSettings} changePluginSettings={(owner, value) => setPluginSettings(current => ({ ...current, [owner]: value }))}
@@ -210,6 +223,14 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
           <SettingRow stack label="Additional launch arguments" description="One argument per line. Session identity and table synchronization are managed automatically.">
             <LaunchArguments value={argumentsText} change={setArgumentsText} />
           </SettingRow>
+        </SettingsSection>}
+        agentProvider={id => (AGENT_PROVIDER_IDS as readonly string[]).includes(id) && <SettingsSection label="Availability">
+          <SettingRow label="Enabled" meta={DEFAULT_AGENT_PROVIDERS[id as AgentProviderId] ? 'On by default' : 'Off by default'}>
+            <Switch checked={agentProviders[id as AgentProviderId]} change={checked => setAgentProviders({ ...agentProviders, [id]: checked })} />
+          </SettingRow>
+        </SettingsSection>}
+        agentLimits={id => AGENT_PROVIDER_LIMITS[id] && <SettingsSection label="Not available" description={`${providerLabels[id as AgentProviderId]} runs as its own CLI in a terminal, so these are missing compared with Claude and Codex.`}>
+          <ul className="settings-limits">{AGENT_PROVIDER_LIMITS[id].map(limit => <li key={limit}>{limit}</li>)}</ul>
         </SettingsSection>}
         codex={<SettingsSection label="Session launch"><SettingRow label="Model" description="Chosen when you start or continue a Codex session." /></SettingsSection>} />
       <SettingsPage id="Map" title="Map" description="How projects look and behave on the map. Item positions stay fixed." hidden={section !== 'Map'}>
@@ -322,6 +343,14 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
             </SettingRow>
           </SettingsSection>
         </AdvancedDisclosure>
+        <SettingsSection label="Corners">
+          <SettingRow label="Bottom-right corner" description="What the corner of the map shows. M unfolds it either way." meta="Default Project overview">
+            <Segmented label="Bottom-right corner" value={mapCorner} change={corner => setMapCorner(corner)} options={[
+              { value: 'projects', label: 'Project overview', help: 'One icon per project with what waits there; unfolded, a row per project.' },
+              { value: 'atlas', label: 'Minimap', help: 'The whole map in miniature with the view outlined; unfolded, a larger overview.' },
+            ]} />
+          </SettingRow>
+        </SettingsSection>
         <SettingsSection label="Map tools">
           <SettingRow label="Archive" description="Browse archived items and projects. Your unsaved changes are kept."><button type="button" onClick={openArchive}>Open archive</button></SettingRow>
           <SettingRow label="Clear overlaps" immediate description="Moves overlapping items apart across the whole map. Items that don’t overlap stay put." status={mapStatus}>
@@ -331,16 +360,6 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
             setRepairing(true); setMapStatus(undefined);
             try { await clearOverlaps(); setMapStatus({ tone: 'ok', text: 'Overlaps cleared.' }); } catch (error) { setMapStatus({ tone: 'error', text: (error as Error).message }); } finally { setRepairing(false); setConfirmRepair(false); }
           }} />}
-        </SettingsSection>
-      </SettingsPage>
-      <SettingsPage id="Corners" title="Corners" description="What the corners of the map show." hidden={section !== 'Corners'}>
-        <SettingsSection label="Bottom-right">
-          <SettingRow label="Bottom-right corner" description="What the corner of the map shows. M unfolds it either way." meta="Default Project overview">
-            <Segmented label="Bottom-right corner" value={mapCorner} change={corner => setMapCorner(corner)} options={[
-              { value: 'projects', label: 'Project overview', help: 'One icon per project with what waits there; unfolded, a row per project.' },
-              { value: 'atlas', label: 'Minimap', help: 'The whole map in miniature with the view outlined; unfolded, a larger overview.' },
-            ]} />
-          </SettingRow>
         </SettingsSection>
       </SettingsPage>
       <NotificationSettings value={notifications} change={setNotifications} plugins={plugins} hidden={section !== 'Notifications'} />

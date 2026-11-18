@@ -237,7 +237,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   const reviews = terminals && Object.keys(reviewSources).length ? new ReviewCoordinator(directory, store, control, terminals, reviewSources, broadcast, providers?.reviewRuntime) : undefined;
   const checkouts = new ComparisonPruner(directory, store, terminals, () => !closing && lifecycle.allowsBackgroundWork);
   const findings = reviews ? new ReviewFindingsCoordinator(store, control, nodeId => reviews.result(nodeId), terminals, broadcast, () => !closing && lifecycle.allowsBackgroundWork,
-    agents ? { create: request => agents.create(request), model: async provider => (await agentProvider(provider).models()).default } : undefined) : undefined;
+    agents ? { create: request => agents.startAgent(request), model: async provider => (await agentProvider(provider).models()).default } : undefined) : undefined;
   // Review loops drive the host's direct reviews and findings; their records live in the code.review package's storage.
   const loops = new ReviewLoops({ storage: store.pluginStorage('code.review'), store, control, resources, sessions: terminals, changed: broadcast, allowed: () => !closing && lifecycle.allowsBackgroundWork,
     ...(reviews && findings ? { reviews: { start: (prNodeId, provider, input) => reviews.start(prNodeId, provider, input, work => lifecycle.execute(work)), status: (prNodeId, requestId) => reviews.status(prNodeId, requestId), options: () => reviews.options() },
@@ -353,7 +353,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   for (const [target, method, name] of pollers) health.timed(target, method, name);
   const creators: Record<string, (request: ResourceCreate) => Promise<unknown>> = { 'resource.attach': request => resources.attach(request), ...(terminals ? {
     'terminal.create': request => terminals.create({ ...request, sessionId: request.requestId, cwd: request.data.cwd }),
-    'agent.create': request => agents!.create(request),
+    'agent.create': request => agents!.startAgent(request),
   } : {}) };
   const server = createServer(socket => {
     sockets.add(socket); socket.setEncoding('utf8'); socket.setTimeout(5000, () => socket.destroy());
@@ -484,7 +484,7 @@ export async function startWorkspaceService(directory: string, registry?: Resour
           }
           case 'creation.options': {
             const input = creationOptionsSchema.parse(args), definition = control.registry.get(input.pluginId), field = (definition?.creation?.fields ?? definition?.fields)?.[input.field];
-            const readers: Record<string, () => Promise<unknown>> = agents ? { 'agent.models': () => agents.models(input.values.provider) } : {};
+            const readers: Record<string, () => Promise<unknown>> = agents ? { 'agent.models': () => agents.models(input.values.provider), 'agent.providers': async () => agents.providers() } : {};
             if (field?.optionsSource === 'resource.options') { result = await resources.options(input.pluginId, input.field, input.values); break; }
             if (!field?.optionsSource || !readers[field.optionsSource]) throw new Error('Options are unavailable for this field');
             result = await readers[field.optionsSource](); break;
