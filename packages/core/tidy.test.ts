@@ -7,7 +7,7 @@ import { itemFootprint } from '../../src/graph/footprints.ts';
 import { ITEM_GAP, layoutFootprints } from '../../src/graph/movement.ts';
 import { overlaps } from '../../src/graph/spatial.ts';
 import { straightConnection } from '../../src/graph/straight-connection.ts';
-import { TIDY_GAP, finishedItems, lineUp, planTidy, readingOrder, tidyDrift, tidyFingerprint } from './tidy.ts';
+import { TIDY_GAP, finishedItems, lineUp, planTidy, tidyTier, readingOrder, tidyDrift, tidyFingerprint } from './tidy.ts';
 import type { TidyInput, TidyOptions, TidyPlan } from './tidy.ts';
 import type { WorkspaceState } from './control.ts';
 
@@ -183,5 +183,33 @@ test('a dozen links from one item still cross no card', () => {
         const x = line.source.x + (line.target.x - line.source.x) * i / 80, y = line.source.y + (line.target.y - line.source.y) * i / 80;
         assert.ok(Math.abs(x - other.x) >= other.width / 2 || Math.abs(y - other.y) >= other.height / 2, `hub→${targetId} crosses ${other.id}`);
       }
+  }
+});
+
+test('a ticket roots its tree: agents beside it, their PRs beside them, however many links an agent has', () => {
+  // The second agent links most, as on a real board; it still sits under the ticket, one gap away.
+  const kinds: Record<string, string> = { ticket: 'linear.ticket', agent1: 'agent.session', agent2: 'agent.session', pr1: 'github.pull-request', pr2: 'github.pull-request', pr3: 'github.pull-request', pr4: 'github.pull-request', pr5: 'github.pull-request', pr6: 'github.pull-request' };
+  const boxes = Object.keys(kinds).map((id, i) => ({ id, x: 300 * (i % 3), y: 120 * Math.floor(i / 3), width: 240, height: 64 }));
+  const links = [['ticket', 'agent1'], ['pr1', 'agent1'], ['pr1', 'ticket'], ['pr2', 'agent1'], ['pr1', 'pr2'], ['pr3', 'agent1'], ['pr3', 'pr1'], ['ticket', 'agent2'], ['pr1', 'agent2'],
+    ['agent1', 'agent2'], ['pr4', 'agent2'], ['pr5', 'agent2'], ['pr4', 'pr5'], ['pr1', 'pr5'], ['pr6', 'agent2']].map(([sourceId, targetId], i) => ({ id: String(i), sourceId, targetId, kind: 'reference' as const, label: '' }));
+  const tier = (id: string) => tidyTier(kinds[id]), out = lineUp(boxes, links, tier), at = new Map(out.map(box => [box.id, box]));
+  const left = (id: string) => at.get(id)!.x - at.get(id)!.width / 2, right = (id: string) => at.get(id)!.x + at.get(id)!.width / 2, y = (id: string) => at.get(id)!.y;
+  assert.equal(left('agent1'), right('ticket') + TIDY_GAP, 'agents one gap right of the ticket');
+  assert.equal(left('agent2'), left('agent1'));
+  for (const pr of ['pr1', 'pr2', 'pr3', 'pr4', 'pr5', 'pr6']) assert.equal(left(pr), right('agent1') + TIDY_GAP, `${pr} one gap right of the agents`);
+  // A PR linked to both agents stays with the one it was linked to first.
+  assert.ok(Math.max(...['pr1', 'pr2', 'pr3'].map(y)) < Math.min(...['pr4', 'pr5', 'pr6'].map(y)), 'each agent keeps its own PRs together');
+  assert.ok(y('agent1') < y('agent2'));
+  const byId = (boxes: typeof out) => [...boxes].sort((a, b) => a.id.localeCompare(b.id));
+  assert.deepEqual(byId(lineUp(out, links, tier)), byId(out), 'a second run moves nothing');
+});
+
+test('a linked loop through a note settles in one Tidy, wherever its cards start', () => {
+  const kinds: Record<string, string> = { ticket: 'linear.ticket', note: 'workspace.note', agent: 'agent.session', pr: 'github.pull-request' };
+  const links = [['ticket', 'note'], ['note', 'agent'], ['agent', 'pr'], ['pr', 'ticket']].map(([sourceId, targetId], i) => ({ id: String(i), sourceId, targetId, kind: 'reference' as const, label: '' }));
+  const tier = (id: string) => tidyTier(kinds[id]), byId = (boxes: { id: string }[]) => [...boxes].sort((a, b) => a.id.localeCompare(b.id));
+  for (const order of [['ticket', 'note', 'pr', 'agent'], ['ticket', 'pr', 'note', 'agent'], ['agent', 'pr', 'note', 'ticket']]) {
+    const out = lineUp(order.map((id, i) => ({ id, x: 0, y: 100 * i, width: 240, height: 64 })), links, tier);
+    assert.deepEqual(byId(lineUp(out, links, tier)), byId(out), `settled from ${order.join(', ')}`);
   }
 });
