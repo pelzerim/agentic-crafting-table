@@ -35,20 +35,25 @@ test('notes on a video start hidden, keep what was typed across closing the item
   await expect(page.getByRole('button', { name: '[00:00]' })).toBeVisible();
   await expect.poll(saved).toBe('The intro drags\n[00:00] ');
 
-  // A send whose answer never came reuses its request after the item reopens, so the agent never gets the notes twice.
+  // Quitting right after typing waits for the save the debounce would have made later.
+  await notes.press('End'); await notes.pressSequentially('!');
+  const agreed = await app.evaluate(({ ipcMain, BrowserWindow }) => new Promise<unknown>(resolve => {
+    const listener = (_event: unknown, message: { id?: number; answer?: unknown }) => { if (message?.id === 4242 && typeof message.answer === 'boolean') { ipcMain.off('app:before-quit-answer', listener); resolve(message.answer); } };
+    ipcMain.on('app:before-quit-answer', listener);
+    BrowserWindow.getAllWindows()[0].webContents.send('app:before-quit', { id: 4242 });
+  }));
+  expect(agreed).toBe(true);
+  expect(await saved()).toBe('The intro drags\n[00:00] !');
+
+  // The service accepts the panel's fingerprint of the draft; this agent has no live session, so nothing is pending.
   await apply(page, [
     { type: 'item.create', id: 'listener', projectId: 'billing', position: { x: 900, y: 620 }, resource: { id: 'listener-r', pluginId: 'agent.session', schemaVersion: 1, title: 'Listener', data: { sessionId: 'no-such-session', provider: 'claude' } } },
     { type: 'node.update', id: 'listener', activity: 'idle' },
     { type: 'link.save', link: { id: 'clip-listener', sourceId: 'clip', targetId: 'listener', kind: 'context' } },
   ]);
-  const send = page.getByRole('button', { name: 'Send to agent ▸', exact: true });
-  const pending = () => page.evaluate(async () => ((await window.craftingTable.workspaceRead()).state.resources.find(resource => resource.id === 'clip-r')?.data.notesPending as { requestId?: string } | undefined)?.requestId);
-  await send.click();
-  await expect.poll(pending).toMatch(/^[0-9a-f-]{36}$/);
-  const first = await pending();
-  await expect(send).toBeEnabled();
-  await back(); await open();
-  await send.click();
-  await expect(page.locator('.video-notes .pr-comment-feedback')).not.toHaveText(/Sending/);
-  expect(await pending()).toBe(first);
+  const feedback = page.locator('.video-notes .pr-comment-feedback');
+  await page.getByRole('button', { name: 'Send to agent ▸', exact: true }).click();
+  await expect(feedback).not.toHaveText(/^(Sending…)?$/);
+  await expect(feedback).not.toHaveText(/notes changed/);
+  expect(await page.evaluate(async () => (await window.craftingTable.workspaceRead()).state.resources.find(resource => resource.id === 'clip-r')?.data.notesPending)).toBeUndefined();
 });

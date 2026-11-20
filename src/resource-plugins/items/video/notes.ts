@@ -10,9 +10,6 @@ export interface VideoClock { time(): Promise<number | undefined>; seek(seconds:
 
 type Sent = { to: string; at: string };
 const sentOf = (value: unknown): Sent | undefined => value && typeof value === 'object' && typeof (value as Sent).to === 'string' && typeof (value as Sent).at === 'string' ? value as Sent : undefined;
-/** A send started but not confirmed; the same draft to the same agent reuses its request, so the service never delivers it twice. */
-type Pending = { requestId: string; targetNodeId: string; sessionId: string; fingerprint: string };
-const pendingOf = (value: unknown): Pending | undefined => value && typeof value === 'object' && ['requestId', 'targetNodeId', 'sessionId', 'fingerprint'].every(key => typeof (value as JsonObject)[key] === 'string') ? value as Pending : undefined;
 const fingerprint = async (text: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))).map(byte => byte.toString(16).padStart(2, '0')).join('');
 
 /** The Notes panel beside the player: a draft saved into the item, `[mm:ss]` stamps that seek, and Send to agent. */
@@ -32,16 +29,16 @@ export function mountVideoNotes(document: Document, resource: ResourceRecord, se
 
   let saved: string | undefined = text.value, sent = sentOf(resource.data.notesSent), sending = false, timer: ReturnType<typeof setTimeout> | undefined;
   let related: RelatedResourceItem[] = [], offRelated: (() => void) | undefined;
-  let pending = pendingOf(resource.data.notesPending);
   // One save at a time: each reads the item's latest revision before it writes.
   let chain: Promise<boolean> = Promise.resolve(true);
   const save = (patch: JsonObject) => chain = chain.then(async () => {
     try { await services.saveData?.(patch); return true; }
     catch { feedback.textContent = 'Notes could not be saved.'; return false; }
   });
-  const flush = () => {
+  // Resolves true once the draft on screen is saved.
+  const flush = (): Promise<boolean> => {
     clearTimeout(timer); timer = undefined;
-    if (text.value === saved) return chain;
+    if (text.value === saved) return chain.then(() => text.value === saved);
     const value = saved = text.value;
     return save({ notes: value || null }).then(ok => { if (!ok && saved === value) saved = undefined; return ok; });
   };
@@ -88,25 +85,20 @@ export function mountVideoNotes(document: Document, resource: ResourceRecord, se
     sending = true; text.readOnly = true; updateAgents(); feedback.textContent = 'Sending…';
     try {
       if (!await flush()) return;
-      const draft = await fingerprint(text.value);
-      if (pending?.targetNodeId !== target.nodeId || pending.sessionId !== sessionId || pending.fingerprint !== draft) {
-        const next = { requestId: crypto.randomUUID(), targetNodeId: target.nodeId, sessionId, fingerprint: draft };
-        if (!await save({ notesPending: next })) return;
-        pending = next;
-      }
-      await services.runAction('video.notes', { sourceResourceId: resource.id, targetNodeId: target.nodeId, sessionId, requestId: pending.requestId });
-      sent = { to: target.title, at: new Date().toISOString() }; pending = undefined; showSent();
+      // The service sends only this draft and reuses the request of an unconfirmed send of it.
+      await services.runAction('video.notes', { sourceResourceId: resource.id, targetNodeId: target.nodeId, sessionId, requestId: crypto.randomUUID(), fingerprint: await fingerprint(text.value) });
+      sent = { to: target.title, at: new Date().toISOString() }; showSent();
       await save({ notesSent: sent, notesPending: null });
     } catch (error) { feedback.textContent = (error as Error).message; }
     finally { sending = false; text.readOnly = false; updateAgents(); }
   };
   clear.onclick = () => {
-    clearTimeout(timer); timer = undefined; text.value = saved = ''; sent = pending = undefined; feedback.textContent = '';
+    clearTimeout(timer); timer = undefined; text.value = saved = ''; sent = undefined; feedback.textContent = '';
     void save({ notes: null, notesSent: null, notesPending: null }); showSent(); renderStamps(); updateAgents(); text.focus();
   };
   showSent(); renderStamps(); updateAgents();
   return {
-    element: panel, text,
+    element: panel, text, flush,
     setActive(active: boolean) {
       offRelated?.(); offRelated = undefined;
       if (active) offRelated = services.observeRelated?.(items => { related = items; updateAgents(); });

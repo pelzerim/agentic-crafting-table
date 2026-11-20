@@ -21,7 +21,8 @@ export interface ItemSnap { position: Position; projectId: string | null; size?:
 export interface PlotSnap { id: string; projectId: string; name?: string; generated: boolean; color: string; chosenColor?: string; pinnedMemberIds: string[]; locked: boolean; lockPinnedIds?: string[] }
 export interface UndoStep {
   label: string;
-  items: { id: string; before: ItemSnap; after: ItemSnap }[];
+  /** `members`: a project's items while archived, at most UNDO_MEMBER_CAP; archiving it again needs the same ones. */
+  items: { id: string; before: ItemSnap; after: ItemSnap; members?: string[] }[];
   links: { before?: Link; after?: Link }[];
   /** `before` is absent for a plot the step created, `after` for one it removed. */
   plots: { id: string; before?: PlotSnap; after?: PlotSnap }[];
@@ -30,7 +31,7 @@ export interface UndoStep {
   /** [moved item, item it overlapped before the step]; a moved item with no pair here is never placed onto another. */
   pairs?: [string, string][];
 }
-export const UNDO_ANCHOR_CAP = 500, UNDO_PAIR_CAP = 1000;
+export const UNDO_ANCHOR_CAP = 500, UNDO_PAIR_CAP = 1000, UNDO_MEMBER_CAP = 2000;
 /** Only the plot fields a step changed; `null` clears one, `create` brings back a plot the step made. */
 export interface PlotPatch { id: string; projectId: string; create?: true; name?: string | null; generated?: boolean; color?: string; chosenColor?: string | null; pinnedMemberIds?: string[]; locked?: boolean; lockPinnedIds?: string[] | null }
 export interface Reversal {
@@ -84,7 +85,9 @@ export function buildUndoStep(label: string, before: Pick<WorkspaceState, 'nodes
     if (!old) return [];
     const from = itemSnap(old, before, context), to = itemSnap(node, after, context);
     if (named && !named.has(node.id) && same(from.projectId, to.projectId)) return same(from.position, to.position) ? [] : [{ id: node.id, before: { ...to, position: from.position }, after: to }];
-    return ITEM_FIELDS.some(field => !same(from[field], to[field])) ? [{ id: node.id, before: from, after: to }] : [];
+    if (!ITEM_FIELDS.some(field => !same(from[field], to[field]))) return [];
+    const members = !node.resourceId && from.archived !== to.archived ? (to.archived ? after : before).nodes.filter(member => member.projectId === node.id).map(member => member.id).sort() : undefined;
+    return [{ id: node.id, before: from, after: to, ...members && members.length <= UNDO_MEMBER_CAP ? { members } : {} }];
   });
   const linksBefore = new Map(before.links.map(link => [link.id, link])), linksAfter = new Map(after.links.map(link => [link.id, link]));
   const links = [...new Set([...linksBefore.keys(), ...linksAfter.keys()])].flatMap(id => same(linksBefore.get(id), linksAfter.get(id)) ? [] : [{ before: linksBefore.get(id), after: linksAfter.get(id) }]);
@@ -159,6 +162,12 @@ export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'node
   for (const [id, groups] of [...eligible]) {
     const projectId = toOf.get(id)!.projectId, project = projectId ? nodes.get(projectId) : undefined;
     if (groups.has('projectId') && projectId && (!project || (restoring.has(projectId) ? Boolean(project.belowAt) : isOffMap(project, current.nodes)))) drop(id);
+  }
+  // Archiving a project again hides its items, so it runs only while they are the ones the step archived.
+  for (const [id, groups] of [...eligible]) {
+    if (!groups.has('archived') || !toOf.get(id)!.archived || nodes.get(id)?.resourceId) continue;
+    const members = step.items.find(change => change.id === id)!.members;
+    if (!members || !same(members, current.nodes.filter(node => node.projectId === id).map(node => node.id).sort())) drop(id, ['archived']);
   }
   // Items placed exactly, before any simulation: nodes.move refuses a request whose positions overlap.
   const exact = new Set<string>();
@@ -259,7 +268,7 @@ export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'node
     const groups = eligible.get(change.id);
     if (!groups) return [];
     const fields = [...groups].flatMap(group => GROUPS[group]);
-    return [{ id: change.id, before: { ...change.after, ...Object.fromEntries(fields.map(field => [field, change.before[field]])) } as ItemSnap, after: change.after }];
+    return [{ id: change.id, before: { ...change.after, ...Object.fromEntries(fields.map(field => [field, change.before[field]])) } as ItemSnap, after: change.after, ...change.members ? { members: change.members } : {} }];
   });
   const reverted = appliedItems.length + appliedLinks.length + appliedPlots.length;
   const unsize = [...eligible].filter(([id, groups]) => groups.has('size') && !toOf.get(id)!.mapSize && !toOf.get(id)!.mapDimensions).map(([id]) => id);

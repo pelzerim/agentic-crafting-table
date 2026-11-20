@@ -1237,7 +1237,9 @@ function MapCanvas(props: ProjectMapProps) {
     // Pin only where nearness cannot join; a plot hidden from the map still holds its members.
     const plotted = props.plotMemberIds ?? new Set(restingPlots.current.flatMap(({ plot }) => plot.memberIds));
     const landed = dragged.flatMap(member => { const node = base.find(entry => entry.id === member); return node ? [many ? node : { ...node, projectId: projectId ?? node.projectId }] : []; });
-    const ids = into ? plotJoinIds(into, landed, plotted) : [], join = into && ids.length ? { ids, plotId: into.id, projectId: into.projectId } : undefined;
+    const inPlotProject = (node: { resourceId?: string; projectId?: string; archivedAt?: string; belowAt?: string }) => Boolean(node.resourceId) && node.projectId === into?.projectId && !node.archivedAt && !node.belowAt;
+    const projectItems = base.filter(node => !dragged.includes(node.id) && inPlotProject(node)).length + landed.filter(inPlotProject).length;
+    const ids = into ? plotJoinIds(into, landed, plotted, projectItems) : [], join = into && ids.length ? { ids, plotId: into.id, projectId: into.projectId } : undefined;
     const save = async () => {
       if (many) await props.onMoveMany?.(many, join);
       else if (await props.onItemDrop?.(id, screen)) return;

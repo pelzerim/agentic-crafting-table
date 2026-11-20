@@ -219,3 +219,13 @@ test('a step over the anchor caps records none for the items past them, so its r
   const undone = revert(step);
   assert.ok(undone.skipped > 0, 'items whose overlaps were not recorded stay where they are');
 }));
+
+test('redo of a project archive never hides an item added to the project after the undo', () => fixture(async ({ control, revert, person }) => {
+  const archived = (await person({ type: 'node.archive', id: 'acme' }))!;
+  const undone = revert(archived);
+  await person(noteIn('acme', 'later', 6000, 0));
+  const redone = revert(undone.applied!, 'redo'), acme = (await control.read()).nodes.find(node => node.id === 'acme')!;
+  assert.deepEqual([acme.archivedAt, redone.reverted, redone.skipped], [undefined, 0, 1]);
+  const again = revert(revert((await person({ type: 'node.archive', id: 'acme' }))!).applied!, 'redo');
+  assert.deepEqual([Boolean((await control.read()).nodes.find(node => node.id === 'acme')!.archivedAt), again.reverted], [true, 1], 'with the same items it redoes');
+}));

@@ -69,6 +69,12 @@ export const videoViews: ResourcePluginViews = {
     return {
       update() {},
       setActive: show,
+      // A failed save keeps the view open with the panel showing why.
+      async confirmClose() {
+        if (await notes.flush()) return true;
+        if (!notesOpen) { notesOpen = true; showNotes(); }
+        return false;
+      },
       dispose() { notes.dispose(); holder.stop(); player?.removeAttribute('src'); player?.load(); header.dispose(); root.remove(); },
     };
   },
