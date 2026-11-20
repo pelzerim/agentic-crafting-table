@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { codexInput, codexStatus, codexSwitch } from './codex-status.ts';
+import { codexInput, codexStatus, codexSwitch, threadRunsOn } from './codex-status.ts';
 test('Codex status uses native state, preserves input needs and ignores other conversations', () => {
   const event = (type: string, activeFlags: string[] = [], threadId = 'mine') => ({ method: 'thread/status/changed', params: { threadId, status: { type, activeFlags } } });
   assert.equal(codexStatus(event('active'), 'mine'), 'working');
@@ -36,4 +36,11 @@ test('Codex terminal commands read as switches, and a subagent thread never does
   assert.equal(started({ id: spawned, parentThreadId: null, source: 'cli', threadSource: 'subagent' }), undefined, 'marked a sub-agent by its source class only');
   assert.equal(status(spawned), undefined);
   assert.equal(codexSwitch({ method: 'thread/goal/cleared', params: { threadId: other } }, current, subagents), undefined);
+});
+
+test('a read thread says the model and effort it runs on, and nothing that is not a plain value', () => {
+  assert.deepEqual(threadRunsOn({ thread: { id: randomUUID(), model: 'gpt-6.2-sol', reasoningEffort: 'medium', preview: 'secret prompt' } }), { model: 'gpt-6.2-sol', effort: 'medium' });
+  assert.deepEqual(threadRunsOn({ thread: { model: 'gpt-6.2-sol', reasoningEffort: null } }), { model: 'gpt-6.2-sol' });
+  assert.deepEqual(threadRunsOn({ thread: { model: 'x'.repeat(101), reasoningEffort: 'High!' } }), {});
+  assert.equal(threadRunsOn({ nothing: true }), undefined);
 });

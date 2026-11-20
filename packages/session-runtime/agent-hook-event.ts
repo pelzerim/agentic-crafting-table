@@ -2,6 +2,7 @@ import { closeSync, mkdirSync, openSync, readFileSync, readSync, statSync, write
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { findClaudeArtifactUrls, parseClaudeArtifactUrl } from '../../src/resource-plugins/items/claude-artifact/url.ts';
 import { extractPageTitle } from '../../src/resource-plugins/items/web-link/metadata.ts';
+import { EFFORT } from './protocol.ts';
 import type { ConversationSwitch } from './protocol.ts';
 
 type Input = Record<string, unknown>;
@@ -71,7 +72,7 @@ export function followedConversation(directory: string, processSessionId: string
 /** How Claude Code names the start of a conversation it moved to while running. Compaction keeps its session id. */
 const SWITCH_SOURCES: Partial<Record<string, ConversationSwitch['kind']>> = { clear: 'new', fork: 'fork', resume: 'resume' };
 
-type HookFields = { event: string | undefined; switched?: ConversationSwitch; endReason?: string; lastMessage?: string; notificationType?: string; toolName?: string; recipient?: string; agentId?: string; teammate?: string; taskId?: string; model?: string; previousModel?: string; interrupt?: true; worktree?: true;
+type HookFields = { event: string | undefined; switched?: ConversationSwitch; endReason?: string; lastMessage?: string; notificationType?: string; toolName?: string; recipient?: string; agentId?: string; teammate?: string; taskId?: string; model?: string; previousModel?: string; effort?: string; interrupt?: true; worktree?: true;
   backgroundTasks?: { id: string; type: string; status?: string; name?: string }[]; launched?: { id: string; kind: 'subagent' }; artifact?: ReturnType<typeof publishedArtifact> };
 
 /** Fields of a Claude Code hook payload that the table uses. Turns inside a
@@ -81,7 +82,7 @@ type HookFields = { event: string | undefined; switched?: ConversationSwitch; en
  * than held at a prompt. A teammate is reported as running whether it works or
  * waits, so its tool starting and TeammateIdle are what tell the two apart. These
  * are forwarded without any of their content. So are the signals the item's sheep reads (AGENT-07e): a subagent starting,
- * compaction, a failed or denied tool, a task, a model switch. Only the tool's name, a task or model id, the teammate a
+ * compaction, a failed or denied tool, a task, a model switch. Only the tool's name, a task or model id, an effort level, the teammate a
  * message goes to and two flags leave the session: no other input, error text, reason, subject or path. The one
  * text that does is the assistant's last message on Stop, bounded, for the line its Needs me row shows. */
 export function hookFields(event: Input, nativeSessionId: string): HookFields | undefined {
@@ -108,10 +109,12 @@ export function hookFields(event: Input, nativeSessionId: string): HookFields | 
   const taskId = name === 'TaskCreated' || name === 'TaskCompleted' ? limited(event.task_id) : undefined;
   const model = name === 'SessionStart' ? limited(event.model) : name === 'PostModelSwitch' ? limited(event.to_model) : undefined, previousModel = name === 'PostModelSwitch' ? limited(event.from_model) : undefined;
   const lastMessage = name === 'Stop' ? text(event.last_assistant_message)?.slice(0, 2000) : undefined;
+  // Claude Code reports the effort level on Stop (2.1.329): no hook follows `/effort` itself (AGENT-04b).
+  const level = event.effort && typeof event.effort === 'object' ? text((event.effort as Input).level) : undefined, effort = !agentId && level && EFFORT.test(level) ? level : undefined;
   return {
     event: name, ...(name === 'SessionEnd' && limited(event.reason) ? { endReason: limited(event.reason) } : {}), ...(lastMessage ? { lastMessage } : {}), ...(text(event.notification_type) ? { notificationType: text(event.notification_type) } : {}), ...(text(event.tool_name) ? { toolName: text(event.tool_name) } : {}), ...(recipient ? { recipient } : {}),
     ...(name === 'SubagentStop' && agentId ? { agentId } : {}), ...(backgroundTasks ? { backgroundTasks } : {}), ...(launched ? { launched: { id: launched, kind: 'subagent' as const } } : {}),
-    ...(artifact ? { artifact } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(previousModel ? { previousModel } : {}),
+    ...(artifact ? { artifact } : {}), ...(taskId ? { taskId } : {}), ...(model ? { model } : {}), ...(previousModel ? { previousModel } : {}), ...(effort ? { effort } : {}),
     ...(name === 'PostToolUseFailure' && event.is_interrupt === true ? { interrupt: true as const } : {}), ...(WORKTREE.test(text(event.cwd) ?? '') ? { worktree: true as const } : {}),
   };
 }

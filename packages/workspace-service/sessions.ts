@@ -192,7 +192,8 @@ export class SessionCoordinator {
     if (session.native) {
       const native = session.native;
       // The switch may give the item another conversation; this process no longer speaks for its identity.
-      const data = native.switched ? resource.data : { ...resource.data, nativeSessionId: native.nativeSessionId, ...(native.readyAt ? { nativeStartedAt: native.readyAt } : {}) };
+      const data = native.switched ? resource.data : { ...resource.data, nativeSessionId: native.nativeSessionId, ...(native.readyAt ? { nativeStartedAt: native.readyAt } : {}),
+        ...(native.model ? { currentModel: native.model } : {}), ...(native.effort ? { currentEffort: native.effort } : {}) };
       if (canonical(data) !== canonical(resource.data)) commands.push({ type: 'item.update', id: node.id, data });
       if (session.state === 'running') {
         const activity = native.status === 'working' ? 'working' : native.status === 'unknown' ? 'unknown' : 'idle';

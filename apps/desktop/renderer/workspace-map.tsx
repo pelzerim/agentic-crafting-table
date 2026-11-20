@@ -147,6 +147,18 @@ function PluginDetail({ resource, registry, active, nodeId, onOpen, onShow, onEd
         void window.craftingTable.workspaceRead().then(receive).catch(() => {});
         return () => { disposed = true; off(); };
       },
+      observeData: listener => {
+        let disposed = false, cursor = -1, last = '';
+        const receive = (snapshot: WorkspaceSnapshot) => {
+          if (disposed || snapshot.cursor < cursor) return; cursor = snapshot.cursor;
+          const node = snapshot.state.nodes.find(node => node.id === nodeId), data = node && snapshot.state.resources.find(resource => resource.id === node.resourceId)?.data;
+          const key = data ? JSON.stringify(data) : '';
+          if (data && key !== last) { last = key; listener(JSON.parse(key)); }
+        };
+        const off = window.craftingTable.onWorkspace(receive);
+        void window.craftingTable.workspaceRead().then(receive).catch(() => {});
+        return () => { disposed = true; off(); };
+      },
       clearRework: async () => {
         const { state } = await window.craftingTable.workspaceRead();
         await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: state.revision, actor: { kind: 'user', id: 'desktop' }, commands: [{ type: 'node.rework', id: nodeId, note: null }] });

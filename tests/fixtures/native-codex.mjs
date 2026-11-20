@@ -68,6 +68,8 @@ if (args.includes('app-server')) {
           others.set(other.id, other); notify('thread/status/changed', { threadId: other.id, status: { type: 'active', activeFlags: [] } });
           socket.send(JSON.stringify({ method: 'fixture/output', params: { text: 'OTHER_THREAD:' + other.id } }));
         }
+        // What the real TUI's `/model` does: the thread runs on the new model and effort, and no notice reaches other connections.
+        if (params.data.startsWith('model-command:')) { const [, model, effort] = params.data.split(':'); Object.assign(thread, { model, effort, reasoningEffort: effort }); save(); }
         if (params.data === 'new-command') { notify('thread/started', { thread: { id: randomUUID(), forkedFromId: null, source: 'vscode' } }); notify('thread/status/changed', { threadId: thread.id, status: { type: 'notLoaded' } }); }
         break;
     }
