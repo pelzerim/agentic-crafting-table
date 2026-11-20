@@ -6,7 +6,6 @@ import type { PlotView } from '../../src/graph/plots.ts';
 import { itemFootprint } from '../../src/graph/footprints.ts';
 import { ITEM_GAP, layoutFootprints } from '../../src/graph/movement.ts';
 import { overlaps } from '../../src/graph/spatial.ts';
-import { straightConnection } from '../../src/graph/straight-connection.ts';
 import { TIDY_GAP, finishedItems, lineUp, planTidy, tidyTier, readingOrder, tidyDrift, tidyFingerprint } from './tidy.ts';
 import type { TidyInput, TidyOptions, TidyPlan } from './tidy.ts';
 import type { WorkspaceState } from './control.ts';
@@ -132,7 +131,7 @@ test('the preview fingerprint ignores Undermap items, which a window on the map 
   assert.notEqual(print({ ...state, nodes: state.nodes.map(node => node.id === 'a1' ? { ...node, belowAt: '2026-01-01T00:00:00Z' } : node) }), print(state));
 });
 
-test('a linked plot lines up as a tree whose link lines cross no card', () => {
+test('a linked plot lines up as a tree, each column one gap from the last', () => {
   // A PR linking a session and two reviews; the session links three artifacts.
   const ids = ['codex', 'session', 'pr', 'claude', 'mockups', 'tour', 'card', 'loose1'];
   const nodes: Node[] = [{ id: 'acme', title: 'Acme', position: { x: 0, y: 0 } } as Node,
@@ -146,16 +145,7 @@ test('a linked plot lines up as a tree whose link lines cross no card', () => {
   const left = (id: string) => box(id).x - box(id).width / 2, right = (id: string) => box(id).x + box(id).width / 2;
   // The session links most, so it is the root; each item's links share the column to its right.
   for (const [parent, kids] of [['session', ['pr', 'mockups', 'tour', 'card']], ['pr', ['codex', 'claude']]] as const)
-    for (const kid of kids) { assert.ok(left(kid) >= right(parent) + TIDY_GAP, `${kid} sits right of ${parent}`); assert.equal(left(kid), left(kids[0])); }
-  for (const { sourceId, targetId } of links) {
-    const line = straightConnection(box(sourceId), box(targetId))!;
-    for (const id of ids.filter(id => id !== sourceId && id !== targetId)) {
-      const other = box(id), steps = 50;
-      const hit = Array.from({ length: steps + 1 }, (_, i) => ({ x: line.source.x + (line.target.x - line.source.x) * i / steps, y: line.source.y + (line.target.y - line.source.y) * i / steps }))
-        .some(point => Math.abs(point.x - other.x) < other.width / 2 && Math.abs(point.y - other.y) < other.height / 2);
-      assert.equal(hit, false, `${sourceId}→${targetId} crosses ${id}`);
-    }
-  }
+    for (const kid of kids) assert.equal(left(kid), right(parent) + TIDY_GAP, `${kid} sits one gap right of ${parent}`);
   assert.ok(box('loose1').y - box('loose1').height / 2 >= Math.max(...ids.slice(0, 7).map(id => box(id).y + box(id).height / 2)) + TIDY_GAP, 'unlinked members go underneath');
   assert.deepEqual(planTidy(input(after, plots), options).moves, []);
 });
@@ -172,18 +162,35 @@ test('siblings linked to each other line up next to each other', () => {
   assert.deepEqual(planTidy(input(after, plots), options).moves, []);
 });
 
-test('a dozen links from one item still cross no card', () => {
-  const boxes = [{ id: 'hub', x: 0, y: 0, width: 220, height: 64 }, ...Array.from({ length: 12 }, (_, i) => ({ id: `k${String(i).padStart(2, '0')}`, x: 300 * i, y: 0, width: 200, height: 56 }))];
+test('a fan with a big card stays one gap from its parent', () => {
+  const boxes = [{ id: 'hub', x: 0, y: 0, width: 360, height: 115 }, { id: 'note', x: 900, y: 0, width: 640, height: 413 },
+    ...Array.from({ length: 4 }, (_, i) => ({ id: `k${i}`, x: 300 * i, y: 600, width: 420, height: 80 }))];
   const links = boxes.slice(1).map(box => ({ id: box.id, sourceId: 'hub', targetId: box.id, kind: 'reference' as const, label: '' }));
   const out = lineUp(boxes, links), at = new Map(out.map(box => [box.id, box]));
-  for (const { targetId } of links) {
-    const line = straightConnection(at.get('hub')!, at.get(targetId)!)!;
-    for (const other of out.filter(box => box.id !== 'hub' && box.id !== targetId))
-      for (let i = 0; i <= 80; i++) {
-        const x = line.source.x + (line.target.x - line.source.x) * i / 80, y = line.source.y + (line.target.y - line.source.y) * i / 80;
-        assert.ok(Math.abs(x - other.x) >= other.width / 2 || Math.abs(y - other.y) >= other.height / 2, `hub→${targetId} crosses ${other.id}`);
-      }
-  }
+  for (const { targetId } of links) assert.equal(at.get(targetId)!.x - at.get(targetId)!.width / 2, at.get('hub')!.x + 180 + TIDY_GAP);
+});
+
+test('plots linked to each other pack side by side, ahead of reading order', () => {
+  const acme = { id: 'acme', title: 'Acme', position: { x: 0, y: 0 } } as Node;
+  const nodes = [acme, item('a1', 0, 0), item('b1', 600, 0), item('c1', 0, 600), item('d1', 600, 600)];
+  const link = { id: 'ad', sourceId: 'a1', targetId: 'd1', kind: 'reference', label: '' };
+  const state = { nodes, resources: nodes.flatMap(node => node.resourceId ? [resource(node.id)] : []), links: [link] } as unknown as TidyInput['state'];
+  const plots = ['a', 'b', 'c', 'd'].map(id => plot(`p${id}`, [`${id}1`], { color: (['sky', 'rose', 'citron', 'mint'] as const)[id.charCodeAt(0) - 97] as PlotView['color'] }));
+  const options = { ...ALL, colors: false }, after = applied(state, planTidy(input(state, plots), options));
+  const at = (id: string) => after.nodes.find(node => node.id === id)!.position;
+  assert.equal(at('d1').y, at('a1').y, 'd packs right after a, in its row');
+  assert.ok(at('b1').y > at('a1').y, 'b moves to the next row');
+  assert.deepEqual(planTidy(input(after, plots), options).moves, []);
+});
+
+test('a chain through a plot that sits beside a locked one plans nothing on a second run', () => {
+  const acme = { id: 'acme', title: 'Acme', position: { x: 0, y: 0 } } as Node;
+  const nodes = [acme, item('a1', 0, 0), item('b1', 600, 600), item('c1', 0, 600), item('d1', 600, 0)];
+  const links = [['a1', 'b1'], ['b1', 'c1']].map(([sourceId, targetId], i) => ({ id: String(i), sourceId, targetId, kind: 'reference', label: '' }));
+  const state = { nodes, resources: nodes.flatMap(node => node.resourceId ? [resource(node.id)] : []), links } as unknown as TidyInput['state'];
+  const plots = ['a', 'b', 'c', 'd'].map(id => plot(`p${id}`, [`${id}1`], { ...id === 'a' ? { locked: true } : {}, color: (['sky', 'rose', 'citron', 'mint'] as const)[id.charCodeAt(0) - 97] as PlotView['color'] }));
+  const options = { ...ALL, colors: false }, after = applied(state, planTidy(input(state, plots), options));
+  assert.deepEqual(planTidy(input(after, plots), options).moves, []);
 });
 
 test('a ticket roots its tree: agents beside it, their PRs beside them, however many links an agent has', () => {
