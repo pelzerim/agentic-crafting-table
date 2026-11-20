@@ -9,6 +9,7 @@ import type { RecoveryState } from '../../packages/workspace-service/lifecycle.t
 import { isOffMap } from '../../src/graph/archive.ts';
 import { browserUrl, clipboardUrls } from './browser-url.ts';
 import { filePathToReveal } from './reveal-file.ts';
+import { videoFilePath, videoResponse } from './video-file.ts';
 import { EMBEDDED_SITES, GUEST_PREFERENCES, attachEmbeddedPage, browserUserAgent, embeddedDownload, embeddedNavigation, embeddedPermissionAllowed } from './embedded-sites.ts';
 import { savePastedImage } from './pasted-images.ts';
 import { pluginDiscoverySchema } from '../../src/resource-plugins/url-input.ts';
@@ -56,7 +57,7 @@ import { RotatingLog } from '../../packages/diagnostics/rotating-log.ts';
 import { INSTALL_LINK_SCHEME, installLinkArgument, parseInstallLink } from './install-link.ts';
 import type { InstallLinkRequest } from './install-link.ts';
 
-protocol.registerSchemesAsPrivileged([{ scheme: 'craft', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+protocol.registerSchemesAsPrivileged([{ scheme: 'craft', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 const origin = 'craft://app';
 app.setName('Agentic Crafting Table');
 const testDirectory = process.env.ACT_TEST_DATA_DIR;
@@ -98,6 +99,7 @@ async function main() {
   protocol.handle('craft', async request => {
     const url = new URL(request.url);
     if (url.host === 'app' && url.pathname.startsWith('/plugins/')) return pluginFile(url.pathname);
+    if (url.host === 'app' && url.pathname.startsWith('/video/')) return videoFile(url.pathname.slice('/video/'.length), request.headers.get('range'));
     const path = resolve(root, `.${decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname)}`);
     if (url.host !== 'app' || !path.startsWith(root + sep)) return new Response('Not found', { status: 404 });
     return net.fetch(pathToFileURL(path).href);
@@ -124,6 +126,13 @@ async function main() {
       return new Response(body, { headers: { 'content-type': type, 'cache-control': 'no-store' } });
     } catch { return missing; }
   };
+  /** craft://app/video/<resource id>: the file that video item on the map names, never a path the page sends. */
+  const videoFile = async (id: string, range: string | null) => {
+    try {
+      const path = videoFilePath((await workspace.read()).state, decodeURIComponent(id), app.getPath('home'));
+      return path ? await videoResponse(path, range) : new Response('Not found', { status: 404 });
+    } catch { return new Response('Not found', { status: 404 }); }
+  };
   // The app's own pages may put text on the clipboard; nothing may read it.
   const clipboardWrite = (permission: string, url: string | undefined) => permission === 'clipboard-sanitized-write' && Boolean(url?.startsWith(origin + '/'));
   session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => callback(clipboardWrite(permission, details.requestingUrl ?? contents.getURL())));
@@ -140,6 +149,10 @@ async function main() {
     pages.setPermissionRequestHandler((contents, permission, callback) => callback(embeddedPermissionAllowed(site, permission, contents.getURL())));
     pages.setPermissionCheckHandler((contents, permission) => embeddedPermissionAllowed(site, permission, contents?.getURL()));
     pages.on('will-download', (event, item) => { if (embeddedDownload(item.getURL()) === 'browser') { event.preventDefault(); openOutside(item.getURL()); } });
+    const referrer = site.referrer;
+    if (referrer) pages.webRequest.onBeforeSendHeaders((details, callback) => callback({
+      requestHeaders: details.resourceType === 'mainFrame' && site.allows(details.url) && !details.requestHeaders.Referer ? { ...details.requestHeaders, Referer: referrer } : details.requestHeaders,
+    }));
   }
   // Any page in a site's session (the item's page and its sign-in windows): sign-in popups open in a small window in
   // that session, other popups go to the browser, top-level pages stay https, and it never hosts a webview.

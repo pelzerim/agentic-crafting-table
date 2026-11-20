@@ -25,7 +25,7 @@ for (const panel of panels) test(`a right click on the map only closes ${panel.n
   await page.mouse.click(EMPTY_MAP.x, EMPTY_MAP.y, { button: 'right' });
   await expect(panel.shown(page)).toHaveCount(0); await expect(menu).toHaveCount(0);
   await page.mouse.click(EMPTY_MAP.x, EMPTY_MAP.y, { button: 'right' });
-  await expect(page.getByRole('menuitem')).toHaveText(['New item', 'New project', 'Open archive']);
+  await expect(page.getByRole('menuitem')).toHaveText(['New item', 'New project', 'Tidy…', 'Open archive']);
   await page.keyboard.press('Escape'); await expect(menu).toHaveCount(0);
 
   await panel.open(page); await expect(panel.shown(page)).toBeVisible();

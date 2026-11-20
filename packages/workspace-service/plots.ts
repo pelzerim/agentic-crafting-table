@@ -4,6 +4,8 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import * as z from 'zod/v4';
 import { canonical } from '../core/control.ts';
+import { plotSnap } from '../core/map-undo.ts';
+import type { PlotSnap } from '../core/map-undo.ts';
 import { nativeSummaryClient, summaryEvidence } from '../session-runtime/activity-summary.ts';
 import type { ActivitySummaryClient } from '../../src/agents/activity-summary.ts';
 import { AGENT_TITLE_MODEL } from '../../src/agents/agent-title.ts';
@@ -44,7 +46,7 @@ export class Plots {
   private store: SqliteStore;
   private control: WorkspaceControl;
   private clock: () => number;
-  private client: ActivitySummaryClient;
+  readonly client: ActivitySummaryClient;
   private changed: () => Promise<void>;
   private allowed: () => boolean;
   private timeoutMs: number;
@@ -83,6 +85,7 @@ export class Plots {
   invalidate() { this.version++; }
   async run(projectId: string, input: unknown) {
     const request = plotRequestSchema.parse(input);
+    const seen = request.operation === 'rename' || request.operation === 'color' || request.operation === 'pin' ? await this.control.read() : undefined;
     if (request.operation === 'pin' || request.operation === 'create') {
       const nodes = new Map((await this.control.read()).nodes.map(node => [node.id, node]));
       if (!request.memberIds.every(id => nodes.get(id)?.resourceId && nodes.get(id)!.projectId === projectId)) throw new Error('Some of these items are not in this project.');
@@ -106,16 +109,29 @@ export class Plots {
       // A detected plot pinned into for the first time keeps the members it shows; `current` is everyone it shows.
       const shown = (plot: typeof record) => [...plot.active && !plot.pinnedMemberIds.length ? plot.memberIds : [], ...plot.pinnedMemberIds];
       const current = (plot: typeof record) => [...plot.active ? plot.memberIds : [], ...plot.pinnedMemberIds];
-      if (request.operation === 'pin') this.store.pinPlotMembers(record.id, [...shown(record), ...request.memberIds]);
+      if (request.operation === 'pin') {
+        // Pinning takes the items from any other plot, so the receipt covers every plot it changed.
+        const before = new Map(this.snaps(seen!).map(snap => [snap.id, snap]));
+        this.store.pinPlotMembers(record.id, [...shown(record), ...request.memberIds]); this.invalidate();
+        const plots = this.snaps(seen!).flatMap(after => { const was = before.get(after.id); return was && canonical(was) !== canonical(after) ? [{ id: after.id, before: was, after }] : []; });
+        return { ok: true, ...plots.length ? { receipt: { items: [], links: [], plots } } : {} };
+      }
       else if (request.operation === 'lock') this.store.lockPlot(record.id, request.locked, current(record));
       else if (request.operation === 'merge') {
         const into = this.store.plotRecords().find(other => other.id === request.into && other.id !== record.id);
         if (!into || into.projectId !== projectId) throw new Error('This plot is not in this project any more.');
         this.store.mergePlot(record.id, into.id, [...shown(into), ...current(record)]);
       }
-      else if (request.operation === 'rename') this.store.renamePlot(record.id, request.name || undefined, false);
+      else if (request.operation === 'rename' || request.operation === 'color') {
+        // The receipt is read around the write itself, so undo puts back what this write replaced.
+        const snap = () => { const view = this.observe(seen!).list.find(plot => plot.id === record.id); return view && plotSnap(view); }, before = snap();
+        if (request.operation === 'rename') this.store.renamePlot(record.id, request.name || undefined, false);
+        else this.store.choosePlotColor(record.id, request.color ?? undefined);
+        this.invalidate();
+        const after = snap();
+        return { ok: true, ...before && after && canonical(before) !== canonical(after) ? { receipt: { items: [], links: [], plots: [{ id: record.id, before, after }] } } : {} };
+      }
       else if (request.operation === 'hide') this.store.hidePlot(record.id, request.hidden);
-      else if (request.operation === 'color') this.store.choosePlotColor(record.id, request.color ?? undefined);
       else {
         if (!this.store.readSettings().value.summaries.plotNames) throw new Error('Turn on Name plots in Settings → AI features first.');
         this.store.renamePlot(record.id, undefined, false); this.requested.add(record.id); this.seen.set(record.id, this.clock());
@@ -161,6 +177,15 @@ export class Plots {
       return;
     }
   }
+  /** Every stored plot with its stored pins, as undo compares them: archived members and plots no longer drawn included. */
+  snaps(state: WorkspaceState): PlotSnap[] {
+    const records = new Map(this.store.plotRecords().map(record => [record.id, record]));
+    // Stored pins, so an archived member keeps its pin through undo.
+    const shown = this.observe(state).list.map(plot => { const snap = plotSnap(plot), record = records.get(plot.id); return record ? { ...snap, pinnedMemberIds: [...record.pinnedMemberIds].sort() } : snap; }), ids = new Set(shown.map(plot => plot.id));
+    return [...shown, ...[...records.values()].filter(record => !ids.has(record.id)).map(record => ({ id: record.id, projectId: record.projectId, ...record.name !== undefined ? { name: record.name } : {},
+      generated: record.name !== undefined && record.generated, color: record.color ?? '', ...record.chosenColor ? { chosenColor: record.chosenColor } : {}, pinnedMemberIds: [...record.pinnedMemberIds].sort(), locked: record.locked }))];
+  }
+
   observe(state: WorkspaceState): PlotSnapshot {
     const settings = this.store.readSettings(), key = `${state.revision}:${settings.revision}:${this.version}`;
     if (this.last?.key === key) return this.last.value;

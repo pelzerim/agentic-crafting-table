@@ -102,3 +102,51 @@ test('Move to plot: a new plot of two far-apart items gets a patch per part and 
     await expect(plotMenu(page).getByRole('menuitem', { name: 'Items in one project only' })).toBeDisabled();
   });
 });
+
+test('an item dropped on a plot patch joins it, even a locked plot that never gains items by nearness', async () => {
+  await launch(async page => {
+    await expect(page.locator('[data-plot-sign]')).toHaveCount(3);
+    const billing = await page.evaluate(async () => {
+      const snapshot = await window.craftingTable.workspaceRead() as unknown as { plots: { list: { id: string; memberIds: string[] }[] } };
+      const id = snapshot.plots.list.find(plot => plot.memberIds.includes('billing-pr'))!.id;
+      await window.craftingTable.runtimeRun({ action: 'plot', nodeId: 'photos', arguments: { operation: 'lock', plotId: id, locked: true } });
+      return id;
+    });
+    await settle(page);
+    const position = (id: string) => page.evaluate(async id => (await window.craftingTable.workspaceRead()).state.nodes.find(node => node.id === id)!.position, id), start = await position('ideas');
+    const from = (await card(page, 'ideas').boundingBox())!, pr = (await card(page, 'billing-pr').boundingBox())!, agent = (await card(page, 'billing-agent').boundingBox())!;
+    const target = { x: (pr.x + pr.width + agent.x) / 2, y: pr.y + pr.height / 2 };
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2); await page.mouse.down();
+    await page.mouse.move(target.x, target.y, { steps: 12 }); await page.mouse.up();
+    const holds = (id: string) => page.evaluate(async ([plotId, id]) => {
+      const snapshot = await window.craftingTable.workspaceRead() as unknown as { plots: { list: { id: string; memberIds: string[] }[] } };
+      return snapshot.plots.list.find(plot => plot.id === plotId)?.memberIds.includes(id);
+    }, [billing, id]);
+    const drop = async (id: string) => {
+      const from = (await card(page, id).boundingBox())!;
+      await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2); await page.mouse.down();
+      await page.mouse.move(target.x, target.y, { steps: 12 }); await page.mouse.up();
+    };
+    await expect.poll(() => holds('ideas')).toBe(true);
+    // The move and the join are one undo step.
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect.poll(() => holds('ideas')).toBe(false);
+    await expect.poll(() => position('ideas')).toEqual(start);
+    // A member of another plot moves over: its own patch, following the drag, never wins the drop.
+    await drop('thumb-ticket');
+    await expect.poll(() => holds('thumb-ticket')).toBe(true);
+    // And the other way, whichever plot is listed first.
+    const thumb = (await card(page, 'thumb-agent').boundingBox())!, tpr = (await card(page, 'thumb-pr').boundingBox())!;
+    target.x = (thumb.x + thumb.width + tpr.x) / 2; target.y = thumb.y + thumb.height / 2;
+    await drop('billing-rollout');
+    const thumbnail = () => page.evaluate(async () => {
+      const snapshot = await window.craftingTable.workspaceRead() as unknown as { plots: { list: { memberIds: string[]; pinnedMemberIds: string[] }[] } };
+      return snapshot.plots.list.find(plot => plot.memberIds.includes('thumb-agent'));
+    });
+    await expect.poll(async () => (await thumbnail())?.memberIds.includes('billing-rollout')).toBe(true);
+    // A free item on an open plot joins by nearness, unpinned, so dragging it out again takes it out.
+    await drop('ideas');
+    await expect.poll(async () => (await thumbnail())?.memberIds.includes('ideas')).toBe(true);
+    expect((await thumbnail())!.pinnedMemberIds).not.toContain('ideas');
+  });
+});

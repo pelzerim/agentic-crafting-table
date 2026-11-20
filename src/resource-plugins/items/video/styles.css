@@ -1,0 +1,6 @@
+/* Video view: the player or the embedded page fills the item. */
+.resource-detail:has(.video-view){padding:0;overflow:hidden}
+.video-view{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--act-surface);color:var(--act-ink)}
+.video-stage{display:flex;flex:1 1 auto;min-height:0}
+.video-player{width:100%;height:100%;min-height:0;object-fit:contain}
+.video-keep[aria-pressed=true]{color:var(--act-accent);background:var(--act-accent-bg)}
