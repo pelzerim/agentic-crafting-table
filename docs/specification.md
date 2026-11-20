@@ -4502,6 +4502,26 @@ person's action. The resulting artifact is attached by CLAUDE-ARTIFACT, never by
 parsing terminal or PR text, and never by labelling a local file as an artifact.
 The first real publication is a supervised acceptance gate.
 
+**VIDEO-EXPLAIN — Explain in video.** Settings → Agents → Explain in video holds one
+video skill: an agent provider and one of its installed skills, listed from the
+default working directory. A provider that is turned off stays chosen. Neither entry
+below shows while the skill is empty or its provider is turned off, and both refuse
+while it is off. A PR's context menu then offers **Explain in video**, which starts a
+new session beside the PR, connected from it, running the skill of the same name in
+the PR project's folder through `skill.run` with the PR URL and a line asking for the
+finished MP4 as a Video item linked to the PR. The launch's ids come from the request,
+so a retry returns the first launch. A launch whose start is uncertain is replayed as
+the same launch by the next click, and a click while that video session still works or
+asks answers with it ("Already running") instead of a second launch. An agent
+session's context menu offers **Explain what you built in video**, which types the
+skill invocation of that session's own provider, found by name in the session's
+folder, into the idle session ("Asked the agent"); readiness is checked again after
+the skill lookup. A prompt holds the session until the agent ends a turn after it, so
+a lost reply never prompts twice. A missing skill is refused by name.
+Both run the `video.explain` runtime action, which acts for the person and keeps its
+requests in the job journal. The app never
+makes or renders the video itself; the agent adds the MP4 as a RES-13 Video item.
+
 **CLAUDE-ARTIFACT — Claude artifacts on the map.** A `claude.artifact` item holds a
 private claude.ai page: `https://claude.ai/code/artifact/<uuid>` or
 `https://claude.ai/artifact/<id>` (exact host, https only, validated id; anything else

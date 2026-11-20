@@ -1,4 +1,5 @@
 import type { ResourcePluginViews, ResourceViewServices } from '../../types.ts';
+import { runVideoExplainAction } from '../video/explain.ts';
 
 const pause = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
   const abort = () => { clearTimeout(timer); reject(signal.reason); };
@@ -37,6 +38,7 @@ export async function runArchitectureAction(services: Pick<ResourceViewServices,
 export const runReviewContextAction: NonNullable<ResourcePluginViews['runContextAction']> = async (actionId, resource, services, signal) => {
   signal.throwIfAborted();
   if (actionId === 'architecture.explain') return runArchitectureAction(services, signal);
+  if (actionId === 'video.explain') return runVideoExplainAction(services, signal);
   if (!['review.claude', 'review.codex', 'review.workflow'].includes(actionId)) throw new Error('Unknown review action');
   const workflow = actionId === 'review.workflow', requestId = crypto.randomUUID();
   const action = workflow ? 'pr.review.workflow' : `pr.${actionId}`;

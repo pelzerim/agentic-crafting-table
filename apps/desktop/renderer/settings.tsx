@@ -27,6 +27,7 @@ import { ServiceHealthDiagnostics } from './service-health.tsx';
 import type { ProviderDescription } from '../../../packages/core/connections.ts';
 import { ItemPickerSettings } from './item-picker-settings.tsx';
 import { MenuOrderSettings } from './menu-order-settings.tsx';
+import { VideoSkillSettings } from './video-skill-settings.tsx';
 import type { PluginDescription } from '../../../src/resource-plugins/describe.client.ts';
 import { ProviderSettings } from './provider-settings.tsx';
 import { itemViewProfiles } from '../../../packages/core/item-views.ts';
@@ -127,6 +128,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
   const [itemMapSizes, setItemMapSizes] = useState<AppSettings['itemMapSizes']>({});
   const [conversation, setConversation] = useState<AppSettings['pullRequestConversation']>({ comments: true, threads: true, reviewBodies: true, bots: false, activity: false }), [cardLabels, setCardLabels] = useState(false);
   const [agentProviders, setAgentProviders] = useState<AppSettings['agentProviders']>({ ...DEFAULT_AGENT_PROVIDERS });
+  const [videoSkill, setVideoSkill] = useState<AppSettings['videoSkill']>({ provider: 'claude', skillId: '', name: '' });
   const [warnBeforeClosing, setWarnBeforeClosing] = useState(true), [agentsActForPerson, setAgentsActForPerson] = useState(true), [doubleClickOpensWeb, setDoubleClickOpensWeb] = useState(false), [snapToGrid, setSnapToGrid] = useState(false), [groundRightClickRing, setGroundRightClickRing] = useState(false), [offscreenAttention, setOffscreenAttention] = useState(false), [reviewOpenCounts, setReviewOpenCounts] = useState(false), [sessionCracks, setSessionCracks] = useState(false), [mapCorner, setMapCorner] = useState<AppSettings['mapCorner']>('projects'), [mapCollisions, setMapCollisions] = useState<AppSettings['mapCollisions']>('shove'), [appearance, setAppearance] = useState<AppSettings['appearance']>('system'), [itemDelete, setItemDelete] = useState(false), [autoReview, setAutoReview] = useState<AppSettings['autoReview']>({ enabled: false, agents: ['claude'] }), [mapPlots, setMapPlots] = useState(true), [hideImpliedLinks, setHideImpliedLinks] = useState(true);
   const [itemViews, setItemViews] = useState<AppSettings['itemViews']>({});
   const [pluginSettings, setPluginSettings] = useState<AppSettings['plugins']>({}), pluginPages = useMemo(() => pluginSettingsPages(plugins), [plugins]);
@@ -145,7 +147,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
       if (!mounted) return;
       setWarnBeforeClosing(snapshot.value.warnBeforeClosing); setAgentsActForPerson(snapshot.value.agentsActForPerson); setConversation(snapshot.value.pullRequestConversation); setCardLabels(snapshot.value.pullRequestCardLabels); setDiagnostics(snapshot.value.diagnostics); setItemViews(snapshot.value.itemViews); setItemMapSizes(snapshot.value.itemMapSizes); setPluginSettings(snapshot.value.plugins);
       setNeighborhood(snapshot.value.neighborhoodAppearance); setBelowAnimation(snapshot.value.belowAnimation); setUndermapLayout(snapshot.value.undermapLayout); setWorkingMark(snapshot.value.workingMark); setMapDashboards(snapshot.value.mapDashboards); setMapPlots(snapshot.value.mapPlots); setHideImpliedLinks(snapshot.value.hideImpliedLinks); setDoubleClickOpensWeb(snapshot.value.doubleClickOpensWeb); setSnapToGrid(snapshot.value.snapToGrid); setGroundRightClickRing(snapshot.value.groundRightClickRing); setOffscreenAttention(snapshot.value.offscreenAttention); setReviewOpenCounts(snapshot.value.reviewOpenCounts); setSessionCracks(snapshot.value.sessionCracks); setMapCorner(snapshot.value.mapCorner); setMapCollisions(snapshot.value.mapCollisions); setAppearance(snapshot.value.appearance); setItemDelete(snapshot.value.itemDelete); setAutoReview(snapshot.value.autoReview); setTerminal(snapshot.value.terminal);
-      setAgentProviders(snapshot.value.agentProviders); setAutoMode(snapshot.value.claude.autoMode); setNotifications(snapshot.value.notifications);
+      setAgentProviders(snapshot.value.agentProviders); setVideoSkill(snapshot.value.videoSkill); setAutoMode(snapshot.value.claude.autoMode); setNotifications(snapshot.value.notifications);
       setQuickIds(snapshot.value.quickItemTypes); setMenus(snapshot.value.menus); setDefaultDirectory(snapshot.value.defaultWorkingDirectory); setSummaries(snapshot.value.summaries); setPadding(String(snapshot.value.neighborhoodPadding)); setSaved(snapshot); setRemote(snapshot.value.claude.remoteControl); setAwake(snapshot.value.keepAwake); setWorkAwake(snapshot.value.keepAwakeWhileWorking); setUpdateCheck(snapshot.value.updates.check); setArgumentsText(snapshot.value.claude.arguments.join('\n'));
     }).catch(error => { if (mounted) setError(error.message); });
     return () => { mounted = false; };
@@ -153,7 +155,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
   const limited = Boolean(summaries && (summaries.enabled || summaries.agentTitles || summaries.attachTitles || summaries.plotNames || summaries.projectSummaries || (STANDUP_ENABLED && summaries.standupDigests)));
   const claude = { remoteControl: remote, autoMode, arguments: argumentsText.split(/\r?\n/).map(value => value.trim()).filter(Boolean) };
   const permission = claudePermissionSettings(claude);
-  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, agentsActForPerson, pullRequestConversation: conversation, pullRequestCardLabels: cardLabels, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, groundRightClickRing, offscreenAttention, reviewOpenCounts, sessionCracks, mapCorner, mapCollisions, appearance, itemDelete, autoReview, terminal, keepAwake: awake, keepAwakeWhileWorking: workAwake, claude, agentProviders, updates: { check: updateCheck } };
+  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, agentsActForPerson, pullRequestConversation: conversation, pullRequestCardLabels: cardLabels, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, groundRightClickRing, offscreenAttention, reviewOpenCounts, sessionCracks, mapCorner, mapCollisions, appearance, itemDelete, autoReview, terminal, keepAwake: awake, keepAwakeWhileWorking: workAwake, claude, agentProviders, videoSkill, updates: { check: updateCheck } };
   const changes = useMemo(() => saved ? draftChanges(saved.value, draft!, pluginPages) : [], [saved, JSON.stringify(draft)]);
   const dirty = changes.length > 0, [discarding, setDiscarding] = useState(false);
   const requestClose = () => { if (dirty) setDiscarding(true); else close(); };
@@ -201,7 +203,9 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
           </SettingRow>
         </SettingsSection>
       </SettingsPage>
-      <SettingsPage id="Agents" title="Agents" description="The agent CLIs a session can run. Select one in the sidebar to turn it on or off and to configure its sizes and options." hidden={section !== 'Agents'} />
+      <SettingsPage id="Agents" title="Agents" description="The agent CLIs a session can run. Select one in the sidebar to turn it on or off and to configure its sizes and options." hidden={section !== 'Agents'}>
+        <VideoSkillSettings value={videoSkill} enabled={agentProviders} cwd={defaultDirectory.trim()} visible={section === 'Agents'} change={setVideoSkill} />
+      </SettingsPage>
       <ItemViewSettings advanced={advanced} toggleAdvanced={toggleAdvanced} mapSizes={itemMapSizes} changeMap={setItemMapSizes} selected={section} plugins={plugins} sizes={itemViews} change={setItemViews}
         disconnected={providerId => providerId && !saved.value.connections.some(connection => connection.providerId === providerId && connection.enabled) ? providers.find(provider => provider.id === providerId)?.name : undefined}
         pluginSettings={pluginSettings} changePluginSettings={(owner, value) => setPluginSettings(current => ({ ...current, [owner]: value }))}
@@ -431,7 +435,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
           </SettingRow>
         </SettingsSection>
         <SettingsSection label="Agents">
-          <SettingRow label="Agents may act for you" description="Agents on the map can merge a pull request, update its branch, change its state or title tag, approve a deployment, start or stop an auto deploy or a review loop, start validations and Explain architecture, send review findings to an agent, add linked pull requests and save a text file. When this is off they can read the same items and are told to ask you." meta="On by default"><Switch checked={agentsActForPerson} change={setAgentsActForPerson} /></SettingRow>
+          <SettingRow label="Agents may act for you" description="Agents on the map can merge a pull request, update its branch, change its state or title tag, approve a deployment, start or stop an auto deploy or a review loop, start validations, Explain architecture and Explain in video, send review findings to an agent, add linked pull requests and save a text file. When this is off they can read the same items and are told to ask you." meta="On by default"><Switch checked={agentsActForPerson} change={setAgentsActForPerson} /></SettingRow>
         </SettingsSection>
         <SettingsSection label="Closing the app">
           <SettingRow label="Warn before closing with active sessions" description="Closing the window keeps sessions running in the background; reopen it from the Dock. Quit stops them: when this is off, Quit saves and stops running sessions right away. Startup recovery still applies." meta="Off by default"><Switch checked={warnBeforeClosing} change={setWarnBeforeClosing} /></SettingRow>

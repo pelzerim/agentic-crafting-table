@@ -158,10 +158,10 @@ export class AgentCoordinator {
     await this.sessions.runtime.call('sessions.inject', { sessionId: args.sessionId, instructions: guide.systemPrompt, context: guide.referenceContext });
     return { state: 'acknowledged' as const, message: 'Added to the conversation. Codex reads it with your next prompt.' };
   }
-  private async skillDirectory(projectId: string, requested?: string) {
-    const state = await this.control.read(), project = state.nodes.find(node => node.id === projectId && !node.resourceId && !node.projectId);
-    if (!project || isArchived(project, state.nodes)) throw new Error('Choose an available project for this skill');
-    const cwd = requested || project.workingDirectory || this.sessions.fallbackDirectory();
+  private async skillDirectory(projectId: string | undefined, requested?: string) {
+    const state = await this.control.read(), project = projectId === undefined ? undefined : state.nodes.find(node => node.id === projectId && !node.resourceId && !node.projectId);
+    if (projectId !== undefined && (!project || isArchived(project, state.nodes))) throw new Error('Choose an available project for this skill');
+    const cwd = requested || project?.workingDirectory || this.sessions.fallbackDirectory();
     try { if (cwd && isAbsolute(cwd) && statSync(cwd).isDirectory()) return realpathSync(cwd); } catch { /* Present a useful directory error below. */ }
     throw new Error('Select an existing working directory for this skill or its project');
   }

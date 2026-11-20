@@ -401,7 +401,7 @@ export interface ResourcePreview { byline?: string; updatedAt?: string; facts: {
 export interface ResourcePluginViews {
   /** Reads only saved local state (cached snapshots, receipts), never the provider. */
   preview?(resource: ResourceRecord, services: Pick<ResourceViewServices, 'runAction'>, signal: AbortSignal): Promise<ResourcePreview>;
-  runContextAction?(actionId: string, resource: ResourceRecord, services: Pick<ResourceViewServices, 'runAction'>, signal: AbortSignal): Promise<{ nodeId?: string }>;
+  runContextAction?(actionId: string, resource: ResourceRecord, services: Pick<ResourceViewServices, 'runAction'>, signal: AbortSignal): Promise<{ nodeId?: string; detail?: string }>;
   /** Changes outside this identity update the outer card without remounting a live view. */
   identity?(resource: ResourceRecord): string;
   mountDetail(
@@ -418,6 +418,8 @@ export interface ResourcePluginViews {
   ): MountedResourceView;
 }
 
+/** App settings a menu group may depend on: `videoSkill` is chosen once it names a skill. */
+export type MenuAppSetting = 'videoSkill';
 export interface ResourceMenuGroup {
   id: string; label: string;
   /** `runs` makes an entry start the named children of this group together, each as if it had been picked. */
@@ -429,8 +431,9 @@ export interface ResourceMenuGroup {
   /** With `runtime`, load/apply are operations of that workspace runtime action
    * instead of provider resource actions. */
   choices?: ChoiceSource;
-  /** Shown only while the boolean `settings.plugins[plugin][setting]` (or its declared default) is true. */
-  when?: { plugin: string; setting: string };
+  /** Shown only while the boolean `settings.plugins[plugin][setting]` (or its declared default) is true, or while the
+   * named app setting is chosen. */
+  when?: { plugin: string; setting: string } | { app: MenuAppSetting };
 }
 
 /** `irreversible` lists Cancel first with focus and asks again before applying a picked option.
