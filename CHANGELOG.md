@@ -5,8 +5,12 @@ their pull request and author.
 
 ## Unreleased
 
+### Map
+- **Undo and redo on the map**: ⌘Z undoes the last move, resize, archive, removed connection, plot colour or name, or Clear overlaps in this window, and ⌘⇧Z redoes it (Ctrl+Z and Ctrl+Shift+Z or Ctrl+Y elsewhere). Neighbours a drop pushed aside go back too. Anything an agent or another window changed since stays where it is, and the notice says how many. (@shiini2)
+
 ### Items
 - **Videos**: paste or drop a video file (.mp4, .mov, .m4v or .webm) or a YouTube link on the map and it becomes a Video item that plays inside its view, with seeking. The app only plays files a Video item on the map points to. YouTube videos play through YouTube's privacy-enhanced embed. YouTube links already on the map become Video items too. **Play in background** in a video's header keeps it playing after the item closes; only one video plays in the background at a time. (#34, @shiini2)
+- **Drop an item on a plot to add it**: dropping an item on a plot's coloured area adds it to that plot, a locked plot too. Before, a locked plot only took items through Move to plot. (@shiini2)
 
 ## 0.24.0 — 2026-11-17
 
@@ -20,9 +24,6 @@ their pull request and author.
 
 ### Map
 - **Badge notes no longer block a move**: a note shown as a badge on an item kept an invisible place on the map. With solid collisions an item stopped at it and snapped back; otherwise it was pushed aside unseen. It now takes no space while it is a badge.
-
-### Items
-- **Videos**: paste or drop a video file (.mp4, .mov, .m4v or .webm) or a YouTube link on the map and it becomes a Video item that plays inside its view, with seeking. The app only plays files a Video item on the map points to. YouTube videos play through YouTube's privacy-enhanced embed. YouTube links already on the map become Video items too. (#34, @shiini2)
 
 ## 0.23.0 — 2026-11-16
 

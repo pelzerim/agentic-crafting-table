@@ -62,6 +62,7 @@ import { ActivitySummaries } from './activity-summaries.ts';
 import { AgentTitles } from './agent-titles.ts';
 import { AttachTitles } from './attach-titles.ts';
 import { Plots } from './plots.ts';
+import { MapUndo } from './map-undo.ts';
 import { ProjectSummaries } from './project-summaries.ts';
 import { Reminders } from './reminders.ts';
 import type { ReminderClockOptions } from './reminders.ts';
@@ -269,6 +270,8 @@ export async function startWorkspaceService(directory: string, registry?: Resour
     if (!state.nodes.some(node => node.id === context.nodeId && !node.resourceId)) throw new Error('Project not found');
     const result = await plots.run(context.nodeId, context.arguments); await broadcast(); return result;
   }, { requiresNode: false });
+  const mapUndo = new MapUndo(store, control, plots);
+  operation('map.undo', async context => { const result = mapUndo.run(context.arguments); await broadcast(); return result; }, { requiresNode: false });
   operation('pr.comments', context => lifecycle.execute(() => prComments(control, store, resources, terminals, context.nodeId, context.arguments)));
   operation('pr.review.options', async () => reviews ? await reviews.options() : []);
   operation('pr.architecture', async context => {

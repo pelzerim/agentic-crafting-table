@@ -50,8 +50,8 @@ test('item settings keep provider titles authoritative and move membership only 
   await form.getByLabel('Project membership').selectOption('');
   expect((await page.evaluate(() => window.craftingTable.workspaceRead())).state).toEqual(before);
   await form.getByRole('button', { name: 'Save changes' }).click();
+  await expect.poll(async () => (await page.evaluate(() => window.craftingTable.workspaceRead())).state.nodes.find(node => node.id === 'pr')?.projectId).toBeUndefined();
   const after = (await page.evaluate(() => window.craftingTable.workspaceRead())).state;
-  expect(after.nodes.find(node => node.id === 'pr')?.projectId).toBeUndefined();
   expect(after.resources).toEqual(before.resources); expect(after.links).toEqual(before.links);
   await page.getByRole('article', { name: 'Plan switcher', exact: true }).click({ button: 'right' });
   expect(await page.getByRole('menuitem').allTextContents()).toEqual(['Open', 'Connect to…', 'Trigger review', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', 'Open on GitHub', 'Copy URL', 'Settings', 'Move to project', 'Move to plot', 'Mark done', 'Send to Undermap']);

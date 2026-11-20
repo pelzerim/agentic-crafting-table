@@ -153,6 +153,8 @@ export interface ProjectSummaryRecord { projectId: string; fingerprint: string; 
  * `color` is assigned once, `chosenColor` is a person's override. `pinnedMemberIds` are the items a person pinned in it;
  * a `locked` plot takes no other items. */
 export interface PlotRecord { id: string; projectId: string; memberIds: string[]; active: boolean; name?: string; generated: boolean; hidden: boolean; changedAt: number; fingerprint?: string; attemptedAt?: number; color?: string; chosenColor?: string; pinnedMemberIds: string[]; locked: boolean; lockPinnedIds: string[] }
+/** The plot fields an undo or redo puts back; `null` clears a name or chosen colour. */
+export interface PlotPatch { id: string; projectId: string; create?: true; name?: string | null; generated?: boolean; color?: string; chosenColor?: string | null; pinnedMemberIds?: readonly string[]; locked?: boolean; lockPinnedIds?: readonly string[] | null }
 /** The latest hook a Claude process sent, and when its hook process saw it. */
 export interface AgentObservation { event: string; observedAt: number }
 export type RolloutValidationPatch = Partial<Pick<Validation, 'state' | 'verdict' | 'sequence' | 'reports' | 'report' | 'scope' | 'startedAt' | 'finishedAt'>> & { idleSince?: number | null };
@@ -612,9 +614,10 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     });
   }
   /** An item is pinned in one plot at most: these members leave every plot's pins. A plot left with none is unlocked. */
-  private unpinEverywhere(memberIds: readonly string[]) {
+  private unpinEverywhere(memberIds: readonly string[], except?: string) {
     const leaving = new Set(memberIds), update = this.db.prepare('UPDATE plots SET pinned_member_ids = ?, locked = locked AND ?, lock_pinned_ids = ? WHERE id = ?');
     for (const record of this.plotRecords()) {
+      if (record.id === except) continue;
       const kept = record.pinnedMemberIds.filter(id => !leaving.has(id)), lockKept = record.lockPinnedIds.filter(id => !leaving.has(id));
       if (kept.length !== record.pinnedMemberIds.length) update.run(kept.length ? JSON.stringify(kept) : null, Number(kept.length > 0), kept.length && lockKept.length ? JSON.stringify(lockKept) : null, record.id);
     }
@@ -671,6 +674,35 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       if (name === undefined) this.db.prepare('UPDATE plots SET name = NULL, generated = 0, fingerprint = NULL, attempted_at = NULL WHERE id = ?').run(id);
       else this.db.prepare('UPDATE plots SET name = ?, generated = ? WHERE id = ?').run(name, Number(generated), id);
       return true;
+    });
+  }
+  /** Puts back the plot fields an undo or redo names; `create` recreates a plot a redo brings back, `remove` drops plots an undo takes away. */
+  restorePlots(patches: readonly PlotPatch[], remove: readonly string[], now: number) {
+    this.transaction(() => {
+      for (const id of remove) this.db.prepare('DELETE FROM plots WHERE id = ?').run(id);
+      for (const patch of patches) {
+        const record = this.plotRecords().find(entry => entry.id === patch.id), pinned = patch.pinnedMemberIds && [...new Set(patch.pinnedMemberIds)].sort();
+        if (!record) {
+          if (!patch.create || !pinned?.length) continue;
+          this.unpinEverywhere(pinned);
+          this.db.prepare('INSERT INTO plots(id, project_id, member_ids, active, changed_at, pinned_member_ids, name, generated, color, chosen_color) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?)')
+            .run(patch.id, patch.projectId, JSON.stringify(pinned), now, JSON.stringify(pinned), patch.name ?? null, Number(Boolean(patch.name) && Boolean(patch.generated)), patch.color ?? null, patch.chosenColor ?? null);
+          continue;
+        }
+        if (patch.projectId !== record.projectId) this.movePlots([patch.id], patch.projectId);
+        if (pinned) {
+          // Other plots give these members up; this plot keeps its lock and which pins the lock added.
+          this.unpinEverywhere(pinned, patch.id);
+          const locked = (patch.locked ?? record.locked) && pinned.length > 0, lockPinned = (patch.lockPinnedIds === undefined ? record.lockPinnedIds : patch.lockPinnedIds ?? []).filter(id => pinned.includes(id));
+          this.db.prepare('UPDATE plots SET pinned_member_ids = ?, locked = ?, lock_pinned_ids = ? WHERE id = ?').run(pinned.length ? JSON.stringify(pinned) : null, Number(locked), locked && lockPinned.length ? JSON.stringify(lockPinned) : null, patch.id);
+        }
+        if (patch.name !== undefined || patch.generated !== undefined) {
+          const name = patch.name === undefined ? record.name ?? null : patch.name, generated = patch.generated ?? record.generated;
+          this.db.prepare('UPDATE plots SET name = ?, generated = ? WHERE id = ?').run(name, Number(name !== null && generated), patch.id);
+        }
+        if (patch.color !== undefined) this.db.prepare('UPDATE plots SET color = ? WHERE id = ?').run(patch.color, patch.id);
+        if (patch.chosenColor !== undefined) this.db.prepare('UPDATE plots SET chosen_color = ? WHERE id = ?').run(patch.chosenColor, patch.id);
+      }
     });
   }
   colorPlots(colors: ReadonlyMap<string, string>) {
@@ -987,12 +1019,15 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
   }
 
   /** Never await or call external services inside these synchronous transactions. */
+  /** Whether a transaction is open; a nested one joins it and commits or rolls back with it. */
+  private open = false;
   private transaction<T>(change: () => T, readOnly = false): T {
+    if (this.open) return change();
     this.db.exec(readOnly ? 'BEGIN' : 'BEGIN IMMEDIATE');
-    this.keptJobs = false;
+    this.keptJobs = false; this.open = true;
     let result: T;
-    try { result = change(); this.db.exec('COMMIT'); }
-    catch (error) { this.changedRollouts.clear(); this.decoded = undefined; if (this.keptJobs) this.jobs = undefined; this.db.exec('ROLLBACK'); throw error; }
+    try { result = change(); this.open = false; this.db.exec('COMMIT'); }
+    catch (error) { this.open = false; this.changedRollouts.clear(); this.decoded = undefined; if (this.keptJobs) this.jobs = undefined; this.db.exec('ROLLBACK'); throw error; }
     if (this.changedRollouts.size) {
       const changed = [...this.changedRollouts]; this.changedRollouts.clear();
       for (const id of changed) for (const listener of this.rolloutListeners) try { listener(id); } catch { /* A committed change stands whatever a listener does. */ }
@@ -1086,6 +1121,10 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       this.appendEvent('workspace.changed', next.revision, randomUUID());
       return next;
     });
+  }
+  /** Runs `work` in one transaction against the current workspace; what it commits and writes lands together or not at all. */
+  atomic<T>(work: (state: WorkspaceState, commit: (envelope: CommandEnvelope, change: (state: WorkspaceState) => WorkspaceState) => CommandResult) => T): T {
+    return this.transaction(() => work(this.readState(), (envelope, change) => this.commitDraft(envelope, change)));
   }
   async commit(envelope: CommandEnvelope, change: (state: WorkspaceState) => WorkspaceState): Promise<CommandResult> {
     try { return this.transaction(() => this.commitDraft(envelope, change)); }
