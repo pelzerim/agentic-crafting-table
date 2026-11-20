@@ -144,3 +144,12 @@ test('undo never puts an item back into a project archived since', async () => {
   const undone = await revert(sent, 'undo');
   assert.deepEqual([undone.state.nodes.find(node => node.id === 'a')!.projectId, undone.skipped], ['beta', 1]);
 });
+
+test('undo never puts an item back into a project sent to Undermap since', async () => {
+  const { send, edit, revert } = await board();
+  await send([{ type: 'project.create', id: 'beta', title: 'Beta', workingDirectory: '/Users/example/beta', position: { x: 4000, y: 0 } }]);
+  const sent = await edit([{ type: 'nodes.send', ids: ['a'], projectId: 'beta' }]);
+  await send([{ type: 'node.below', id: 'acme' }]);
+  const undone = await revert(sent, 'undo');
+  assert.deepEqual([undone.state.nodes.find(node => node.id === 'a')!.projectId, undone.skipped], ['beta', 1]);
+});

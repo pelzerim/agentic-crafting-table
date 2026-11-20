@@ -229,7 +229,14 @@ function mountEmbeddedPage(container: HTMLElement, { site, url }: { site: string
   };
   page.addEventListener('did-navigate', navigated); page.addEventListener('did-navigate-in-page', navigated);
   frame.append(address, page); container.append(frame);
-  return { dispose() { frame.remove(); } };
+  const run = (script: string) => (page as unknown as { executeJavaScript(code: string): Promise<unknown> }).executeJavaScript(script);
+  return {
+    dispose() { frame.remove(); },
+    media: {
+      time: async () => { const value = await run("document.querySelector('video')?.currentTime ?? null"); return typeof value === 'number' && Number.isFinite(value) ? value : undefined; },
+      seek: async (seconds: number) => { await run(`(video => { if (video) video.currentTime = ${Math.max(0, Number(seconds) || 0)}; })(document.querySelector('video'))`); },
+    },
+  };
 }
 
 const PINNED_NEIGHBORHOOD_STYLE = pinnedNeighborhoodStyle(location.search);
@@ -446,6 +453,7 @@ export function WorkspaceMap() {
     const value = snapshot?.plots;
     return layer !== 'map' || !value || settings?.value.mapPlots === false ? undefined : value.list.filter(plot => !plot.hidden && !value.hiddenProjects.includes(plot.projectId));
   }, [snapshot?.plots, layer, settings?.value.mapPlots]);
+  const plotMemberIds = useMemo(() => new Set(snapshot?.plots?.list.flatMap(plot => plot.memberIds) ?? []), [snapshot?.plots]);
   const summaryKey = JSON.stringify(snapshot?.projectSummaries?.list ?? []);
   const projectSummaries = useMemo(() => new Map((JSON.parse(summaryKey) as { projectId: string; next?: string; status?: string }[]).map(entry => [entry.projectId, { next: entry.next, status: entry.status }])), [summaryKey]);
   const layerResources = useMemo(() => {
@@ -663,7 +671,7 @@ export function WorkspaceMap() {
     setEditor({ ...anchor, mode: 'create', initialType: candidate.pluginId, initialData: candidate.data });
     return true;
   };
-  const dropFile = ({ file, ...anchor }: Anchor & { file: File }) => { void offerFileItem(window.craftingTable.pathForFile(file), anchor).catch(error => setError(error.message)); };
+  const dropFile = ({ file, ...anchor }: Anchor & { file: File }) => offerFileItem(window.craftingTable.pathForFile(file), anchor).catch(error => { setError(error.message); return true; });
   const pasteText = async ({ text, ...anchor }: Anchor & { text: string }) => {
     if (await offerFileItem(text.trim(), anchor).catch(() => false) || !paperPlugin) return;
     const field = registry.get(paperPlugin)?.appearance?.paper?.textField ?? 'text';
@@ -914,7 +922,7 @@ export function WorkspaceMap() {
       mapCorner={settings.value.mapCorner} projectSummaries={projectSummaries} overview={overviewOpen} onOverview={open => { setOverviewOpen(open); if (open && atlasCorner) { rail.unpin('attention'); rail.close('attention'); } }}
       projectsPanel={view.projectsPanel} onProjectsPanel={patch => { const pruned = pruneOrder(patch), next = pruned && viewSchema.shape.projectsPanel.safeParse({ ...viewRef.current?.projectsPanel, ...pruned }); if (next?.success) saveView({ projectsPanel: next.data }); return Boolean(next?.success); }} undermapCount={layerGraph.belowCount} onTravel={to => { rail.clear(); void travel(to); }}
       highlightedNodes={menuHighlight?.nodes ?? (below && foundBelow ? foundNodes : highlightedNodes)} highlightedLinks={menuHighlight?.links} menuFor={editor?.mode === 'menu' ? menuTargets : undefined} undermap={below ? undermapView : undefined}
-      attentionCounting={counting} offscreenAttention={settings.value.offscreenAttention} reviewOpenCounts={settings.value.reviewOpenCounts} sessionCracks={settings.value.sessionCracks} cardTags={settings.value.pullRequestCardLabels} itemMapSizes={settings.value.itemMapSizes} itemViews={settings.value.itemViews} viewBounds={view.itemViewBounds} onViewBounds={saveViewBounds} neighborhoodPadding={settings.value.neighborhoodPadding} neighborhoodAppearance={neighborhoodAppearance} dashboards={settings.value.mapDashboards} workingMark={settings.value.workingMark} plots={plots} onPlot={(projectId, request) => plotChange(projectId, request).then(() => undefined, error => { if (request.operation !== 'seen') setError(error.message); })} plotNaming={settings.value.summaries.plotNames} plotTargets={ids => snapshot ? moveTargets(snapshot.state, ids) : []} onMoveItems={moveToProject} onSendBelow={ids => moveLayer(ids, 'below')} hideImpliedLinks={settings.value.hideImpliedLinks} snap={settings.value.snapToGrid ? SNAP_PITCH : undefined} collisions={settings.value.mapCollisions} initialViewport={view.camera} onViewport={camera => { zoomRef.current = camera.zoom; saveView({ camera }); }} reveal={reveal} onRevealed={revealed => setReveal(current => current === revealed ? undefined : current)}
+      attentionCounting={counting} offscreenAttention={settings.value.offscreenAttention} reviewOpenCounts={settings.value.reviewOpenCounts} sessionCracks={settings.value.sessionCracks} cardTags={settings.value.pullRequestCardLabels} itemMapSizes={settings.value.itemMapSizes} itemViews={settings.value.itemViews} viewBounds={view.itemViewBounds} onViewBounds={saveViewBounds} neighborhoodPadding={settings.value.neighborhoodPadding} neighborhoodAppearance={neighborhoodAppearance} dashboards={settings.value.mapDashboards} workingMark={settings.value.workingMark} plots={plots} plotMemberIds={plotMemberIds} onPlot={(projectId, request) => plotChange(projectId, request).then(() => undefined, error => { if (request.operation !== 'seen') setError(error.message); })} plotNaming={settings.value.summaries.plotNames} plotTargets={ids => snapshot ? moveTargets(snapshot.state, ids) : []} onMoveItems={moveToProject} onSendBelow={ids => moveLayer(ids, 'below')} hideImpliedLinks={settings.value.hideImpliedLinks} snap={settings.value.snapToGrid ? SNAP_PITCH : undefined} collisions={settings.value.mapCollisions} initialViewport={view.camera} onViewport={camera => { zoomRef.current = camera.zoom; saveView({ camera }); }} reveal={reveal} onRevealed={revealed => setReveal(current => current === revealed ? undefined : current)}
       onItemDrag={below ? undefined : (id, point) => todoOverlay.current?.drag(id, point)} onItemDrop={below ? undefined : (id, point) => todoOverlay.current?.drop(id, point) ?? false}
       onLink={below ? undefined : anchor => {
         setEditor(undefined); setConnectionDraft(undefined);

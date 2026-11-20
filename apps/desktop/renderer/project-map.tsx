@@ -88,6 +88,7 @@ import { plotFill } from '../../../src/graph/plot-fill.ts';
 import { placePlotSigns, plotSignPosition, plotSignSize, PLOT_NAME_LENGTH } from '../../../src/graph/plot-signs.ts';
 import { PLOT_MIN_LINKED, plotColor, plotPatches } from '../../../src/graph/plots.ts';
 import { plotStyle } from './plot-style.ts';
+import { plotJoinIds } from './plot-join.ts';
 import { paperPaint } from './paper-color.ts';
 import type { PlotView } from '../../../src/graph/plots.ts';
 import { mutedProjectIds } from '../../../src/graph/mute.ts';
@@ -181,7 +182,8 @@ export interface ProjectMapProps {
   onPreviewDetail?(id: string, signal: AbortSignal): Promise<ResourcePreview | undefined>;
   onUrlDrop?(target: { url: string; screen: { x: number; y: number }; position: { x: number; y: number }; projectId?: string }): void;
   /** A file dragged from another program onto the map. */
-  onFileDrop?(target: { file: File; screen: { x: number; y: number }; position: { x: number; y: number }; projectId?: string }): void;
+  /** Resolves false when no item type takes the file. */
+  onFileDrop?(target: { file: File; screen: { x: number; y: number }; position: { x: number; y: number }; projectId?: string }): Promise<boolean>;
   /** ⌘V of plain text over the map, at the pointer. A pasted URL goes to `onUrlDrop`. */
   onPasteText?(target: { text: string; screen: { x: number; y: number }; position: { x: number; y: number }; projectId?: string }): void;
   renderDetail?(node: MapItem, active: boolean): ReactNode;
@@ -211,6 +213,8 @@ export interface ProjectMapProps {
   workingMark?: WorkingMarkSettings;
   /** Plots to draw (MAP-24); the host leaves out hidden ones. */
   plots?: readonly PlotView[];
+  /** Every item some plot holds, hidden plots included. */
+  plotMemberIds?: ReadonlySet<string>;
   /** A person's plot change: rename, hide or name automatically; also reports which plots were on screen. */
   onPlot?(projectId: string, request: JsonObject): Promise<void>;
   /** Note badges on items (MAP-BADGES), by item id; the host leaves the badge notes themselves out of `nodes`. */
@@ -1230,9 +1234,10 @@ function MapCanvas(props: ProjectMapProps) {
     const many = held && held.selected.length > 1 ? selectionMoves(base, held.selected, id, position) : undefined, projectId = !many && item ? dropProject(item, position) : undefined;
     moving.current = false; setDrag({ id, ...position }); saving.pending++;
     const dragged = many ? held!.selected : [id], into = plotAt(screenToFlowPosition(screen), projectId ?? item?.projectId, dragged);
-    // Pin only where nearness cannot join: a free item dropped on an open plot stays unpinned.
-    const inPlot = (member: string) => restingPlots.current.some(({ plot }) => plot.memberIds.includes(member));
-    const join = into && { ids: dragged.filter(member => !into.memberIds.includes(member) && (into.locked || inPlot(member))), plotId: into.id, projectId: into.projectId };
+    // Pin only where nearness cannot join; a plot hidden from the map still holds its members.
+    const plotted = props.plotMemberIds ?? new Set(restingPlots.current.flatMap(({ plot }) => plot.memberIds));
+    const landed = dragged.flatMap(member => { const node = base.find(entry => entry.id === member); return node ? [many ? node : { ...node, projectId: projectId ?? node.projectId }] : []; });
+    const ids = into ? plotJoinIds(into, landed, plotted) : [], join = into && ids.length ? { ids, plotId: into.id, projectId: into.projectId } : undefined;
     const save = async () => {
       if (many) await props.onMoveMany?.(many, join);
       else if (await props.onItemDrop?.(id, screen)) return;
@@ -1506,18 +1511,20 @@ function MapCanvas(props: ProjectMapProps) {
   useEffect(() => {
     const paste = (event: ClipboardEvent) => {
       const target = event.target instanceof Element ? event.target : null;
-      if (focus || (!props.onPasteText && !props.onUrlDrop) || target?.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),.terminal-host,.xterm')) return;
+      if (focus || (!props.onPasteText && !props.onUrlDrop && !props.onFileDrop) || target?.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),.terminal-host,.xterm')) return;
       if (document.querySelector('.inline-editor,.canvas-menu,[role="dialog"],.session-manager')) return;
-      const text = event.clipboardData?.getData('text/plain') ?? '';
-      if (!text.trim()) return;
+      // A file copied in the file manager goes the way a dropped one does.
+      const text = event.clipboardData?.getData('text/plain') ?? '', file = props.onFileDrop ? event.clipboardData?.files[0] : undefined;
+      if (!text.trim() && !file) return;
       const rect = container.current!.getBoundingClientRect(), pointer = pointerPosition.current;
       const inside = pointer && pointer.x >= rect.left && pointer.x <= rect.right && pointer.y >= rect.top && pointer.y <= rect.bottom;
       const screen = inside ? pointer : { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, position = screenToFlowPosition(screen), projectId = containingProject(position, projects);
       const url = /^https?:\/\/\S+$/.test(text.trim()) ? text.trim() : undefined;
       event.preventDefault();
       const anchor = { screen: { x: screen.x - rect.left, y: screen.y - rect.top }, position, projectId };
-      if (url) props.onUrlDrop?.({ url, ...anchor });
-      else props.onPasteText?.({ text, ...anchor });
+      const asText = () => { if (url) props.onUrlDrop?.({ url, ...anchor }); else if (text.trim()) props.onPasteText?.({ text, ...anchor }); };
+      if (file) void props.onFileDrop!({ file, ...anchor }).then(taken => { if (!taken) asText(); });
+      else asText();
     };
     window.addEventListener('paste', paste);
     return () => window.removeEventListener('paste', paste);
@@ -1560,7 +1567,7 @@ function MapCanvas(props: ProjectMapProps) {
       clearInspection();
       const rect = container.current!.getBoundingClientRect(), position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
       const anchor = { screen: { x: event.clientX - rect.left, y: event.clientY - rect.top }, position, projectId: containingProject(position, projects) };
-      if (file) props.onFileDrop!({ file, ...anchor }); else props.onUrlDrop!({ url: url!, ...anchor });
+      if (file) void props.onFileDrop!({ file, ...anchor }); else props.onUrlDrop!({ url: url!, ...anchor });
     }} onDoubleClick={event => {
     const press = titlePress.current; titlePress.current = undefined;
     if (focus && press?.id === focus && event.timeStamp - press.at < 500) { event.preventDefault(); event.stopPropagation(); toggleFilled(focus); return; }

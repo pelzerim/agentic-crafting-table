@@ -5,6 +5,7 @@ import type { ResourcePluginRegistry } from '../../src/resource-plugins/registry
 import type { PlotView } from '../../src/graph/plots.ts';
 import { ITEM_GAP, layoutFootprints } from '../../src/graph/movement.ts';
 import { overlaps } from '../../src/graph/spatial.ts';
+import { isOffMap } from '../../src/graph/archive.ts';
 import type { SpatialBox } from '../../src/graph/spatial.ts';
 
 /** Map undo (MAP-34): steps live per window, in memory, and are gone on restart. */
@@ -153,11 +154,11 @@ export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'node
     skipped.add(id);
     if (!own.size) eligible.delete(id);
   };
-  // Putting an item back into a project archived or gone since would hide it in the archive, so it stays where it is.
+  // Putting an item back into a project archived, sent to Undermap or gone since would take it off the map, so it stays where it is.
   const restoring = new Set([...eligible].filter(([id, groups]) => groups.has('archived') && !toOf.get(id)!.archived).map(([id]) => id));
   for (const [id, groups] of [...eligible]) {
     const projectId = toOf.get(id)!.projectId, project = projectId ? nodes.get(projectId) : undefined;
-    if (groups.has('projectId') && projectId && !restoring.has(projectId) && (!project || project.archivedAt)) drop(id);
+    if (groups.has('projectId') && projectId && (!project || (restoring.has(projectId) ? Boolean(project.belowAt) : isOffMap(project, current.nodes)))) drop(id);
   }
   // Items placed exactly, before any simulation: nodes.move refuses a request whose positions overlap.
   const exact = new Set<string>();
@@ -178,7 +179,9 @@ export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'node
   const anchored = new Set((step.anchors ?? []).filter(anchor => near(nodes.get(anchor.id)?.position, anchor.position)).map(anchor => anchor.id));
   const partners = new Map<string, Set<string>>();
   for (const [id, other] of back ? step.pairs ?? [] : []) partners.set(id, (partners.get(id) ?? new Set()).add(other));
-  const only = (id: string) => eligible.get(id)?.size === 1 && eligible.get(id)!.has('position') && Boolean(nodes.get(id)?.resourceId);
+  // A project with no members at all is a footprint of its own, so it can be placed exactly too.
+  const standalone = (id: string) => Boolean(nodes.get(id)?.resourceId) || (nodes.has(id) && !current.nodes.some(node => node.projectId === id));
+  const only = (id: string) => eligible.get(id)?.size === 1 && eligible.get(id)!.has('position') && standalone(id);
   for (const id of partners.keys()) if (only(id)) exact.add(id);
   const placed = (id: string) => exact.has(id) && Boolean(eligible.get(id)?.has('position'));
   const paired = (a: string, b: string) => Boolean(partners.get(a)?.has(b) || partners.get(b)?.has(a));
@@ -227,10 +230,10 @@ export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'node
   }
   const chosen: { change: UndoStep['plots'][number]; from?: PlotSnap; to?: PlotSnap; now?: PlotSnap; fields: (typeof PLOT_FIELDS)[number][] }[] = [], shown = new Map(currentPlots.map(plot => [plot.id, plot]));
   const final = new Map(runs([...items, ...links])?.nodes.map(node => [node.id, node]));
-  // A plot goes back to a project only with its members, and never into one archived since.
+  // A plot goes back to a project only with its members, and never into one archived since; an archived pin stays dormant wherever it is.
   const strands = (from: PlotSnap | undefined, to: PlotSnap) => {
-    const project = final.get(to.projectId), followers = step.items.filter(change => (back ? change.before : change.after).projectId === to.projectId && (back ? change.after : change.before).projectId === from?.projectId).map(change => change.id);
-    return !project || Boolean(project.archivedAt) || [...to.pinnedMemberIds, ...followers].some(id => final.has(id) && final.get(id)!.projectId !== to.projectId);
+    const project = final.get(to.projectId), followers = new Set(step.items.filter(change => (back ? change.before : change.after).projectId === to.projectId && (back ? change.after : change.before).projectId === from?.projectId).map(change => change.id));
+    return !project || Boolean(project.archivedAt) || [...to.pinnedMemberIds, ...followers].some(id => final.has(id) && final.get(id)!.projectId !== to.projectId && (followers.has(id) || !final.get(id)!.archivedAt));
   };
   for (const change of step.plots) {
     const from = back ? change.after : change.before, to = back ? change.before : change.after, now = shown.get(change.id);
@@ -279,7 +282,9 @@ export function reversalNotice(step: UndoStep, reversal: Pick<Reversal, 'reverte
 export class UndoHistory {
   private done: UndoStep[] = [];
   private undone: UndoStep[] = [];
-  record(step: UndoStep | undefined) { if (!step) return; this.done.push(step); if (this.done.length > UNDO_LIMIT) this.done.shift(); this.undone = []; }
+  /** Counts recorded changes, so an undo that lands after one knows its redo is stale. */
+  recorded = 0;
+  record(step: UndoStep | undefined) { if (!step) return; this.done.push(step); if (this.done.length > UNDO_LIMIT) this.done.shift(); this.undone = []; this.recorded++; }
   peek(direction: 'undo' | 'redo') { return (direction === 'undo' ? this.done : this.undone).at(-1); }
   /** Takes `step` off its list, wherever a change made meanwhile left it, and files what was put back on the other. */
   settle(direction: 'undo' | 'redo', step: UndoStep, applied?: UndoStep) {

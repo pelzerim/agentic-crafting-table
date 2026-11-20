@@ -1,6 +1,9 @@
 import { test } from './visual-fixture.ts';
 import { expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const apply = (page: Page, commands: unknown[]) => page.evaluate(async commands => {
   const { state } = await window.craftingTable.workspaceRead();
@@ -30,4 +33,21 @@ test('a video plays on after its item closes only when asked, and only one video
   await page.getByRole('button', { name: 'Play in background', exact: true }).click();
   await back();
   await expect.poll(shown).toEqual(['bbbbbbbbbbb']);
+});
+
+test('a video file copied in the file manager pastes as a Video, as a dropped one does', async ({ visual: { page } }) => {
+  const directory = mkdtempSync(join(tmpdir(), 'act-video-paste-')), path = join(directory, 'clip.mp4');
+  writeFileSync(path, '');
+  try {
+    await page.evaluate(() => { const input = document.createElement('input'); input.type = 'file'; input.id = 'copied-file-fixture'; input.hidden = true; document.body.append(input); });
+    await page.locator('#copied-file-fixture').setInputFiles(path);
+    await page.evaluate(() => {
+      const clipboardData = new DataTransfer();
+      clipboardData.items.add((document.querySelector('#copied-file-fixture') as HTMLInputElement).files![0]);
+      clipboardData.setData('text/plain', 'clip.mp4');
+      document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+    });
+    await expect.poll(() => page.evaluate(async () => (await window.craftingTable.workspaceRead()).state.resources.filter(resource => resource.pluginId === 'workspace.video').map(resource => String(resource.data.source))))
+      .toEqual([expect.stringMatching(/\/clip\.mp4$/)]);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });

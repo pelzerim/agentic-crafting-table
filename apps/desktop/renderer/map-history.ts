@@ -30,6 +30,7 @@ export function createMapHistory(host: () => HistoryHost) {
     if (busy || !active()) return;
     if (!next) { notify(`Nothing to ${direction}`); return; }
     busy = true;
+    const recorded = history.recorded;
     try {
       let result: Awaited<ReturnType<HistoryHost['revert']>>;
       try { result = await revert(next, direction); }
@@ -40,7 +41,8 @@ export function createMapHistory(host: () => HistoryHost) {
         return;
       }
       failing = undefined;
-      history.settle(direction, next, result.applied);
+      // A change recorded while the undo ran cleared redo; the undo must not refill it.
+      history.settle(direction, next, direction === 'undo' && history.recorded !== recorded ? undefined : result.applied);
       try { await refresh(); notify(reversalNotice(next, result, direction)); } catch (error) { fail((error as Error).message); }
     } finally { busy = false; }
   };

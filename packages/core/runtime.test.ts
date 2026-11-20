@@ -5,7 +5,7 @@ import { agentActionRefusal, agentBlockerOverrideMessage, agentsMayNotActMessage
 import { settingsSchema } from './settings.ts';
 import { createPluginPackageRegistry } from '../../src/resource-plugins/builtins.ts';
 
-const previouslyExposed = ['linear.ticket.pulls', 'github.issue.pulls', 'agent.start', 'agent.resume', 'agent.reply', 'agent.context', 'agent.context.ack', 'agent.context.inject', 'agent.title', 'terminal.start', 'terminal.startup', 'terminal.input', 'session.read', 'skill.run', 'pr.comments', 'pr.review.options', 'pr.review.status', 'review.result', 'review.retry', 'review.findings', 'rollout.validation', 'pr.review.codex', 'pr.review.claude', 'pr.review.workflow', 'pr.architecture', 'resource.read', 'resource.actions', 'resource.action', 'resource.content', 'resource.context', 'resource.viewed', 'resource.opened', 'notion.page.comments', 'plot', 'map.undo', 'github.rollout.autoDeploy', 'review.loop'];
+const previouslyExposed = ['linear.ticket.pulls', 'github.issue.pulls', 'agent.start', 'agent.resume', 'agent.reply', 'agent.context', 'agent.context.ack', 'agent.context.inject', 'agent.title', 'terminal.start', 'terminal.startup', 'terminal.input', 'session.read', 'skill.run', 'pr.comments', 'pr.review.options', 'pr.review.status', 'review.result', 'review.retry', 'review.findings', 'rollout.validation', 'pr.review.codex', 'pr.review.claude', 'pr.review.workflow', 'pr.architecture', 'resource.read', 'resource.actions', 'resource.action', 'resource.content', 'resource.context', 'resource.viewed', 'resource.opened', 'notion.page.comments', 'plot', 'map.undo', 'video.notes', 'github.rollout.autoDeploy', 'review.loop'];
 
 test('the runtime vocabulary keeps every operation id agents and the renderer already use', () => {
   const ids = runtimeOperationDeclarations().map(declaration => declaration.id);
@@ -46,6 +46,7 @@ test('an operation that acts for the person runs for an agent while the setting 
     assert.equal(agentRuntimeRefusal({ action: 'agent.title', arguments: {} }, undefined, allowed), humanOnlyMessage);
     assert.equal(agentRuntimeRefusal({ action: 'plot', arguments: { operation: 'rename' } }, undefined, allowed), humanOnlyMessage);
     assert.equal(agentRuntimeRefusal({ action: 'resource.opened', arguments: {} }, undefined, allowed), humanOnlyMessage);
+    assert.equal(agentRuntimeRefusal({ action: 'video.notes', arguments: {} }, undefined, allowed), humanOnlyMessage, 'an agent never sends the person\'s video notes');
     assert.equal(agentRuntimeRefusal({ action: 'review.loop', arguments: { operation: 'status' } }, undefined, allowed), undefined);
     for (const operation of ['show', 'hide']) assert.equal(agentRuntimeRefusal({ action: 'rollout.validation', arguments: { operation } }, undefined, allowed), humanOnlyMessage, `an agent never shows or hides a validation agent (${operation})`);
     assert.equal(agentRuntimeRefusal({ action: 'review.findings', arguments: { operation: 'mark' } }, undefined, allowed), humanOnlyMessage, 'only the person overrides whether a finding is fixed');

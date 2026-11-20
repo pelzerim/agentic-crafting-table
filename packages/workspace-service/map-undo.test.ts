@@ -124,6 +124,20 @@ test('undo leaves a moved plot where its items stay when the project they came f
   assert.deepEqual([store.plotRecords().find(entry => entry.id === plot.id)!.projectId, kept?.name, kept?.memberIds, undone.reverted], ['beta', 'Mine', ['a1', 'a2', 'a3'], 0]);
 }));
 
+test('a locked plot moved without a pinned member archived before keeps that pin and redoes to the new project', () => fixture(async ({ control, plots, revert, store, person }) => {
+  await person({ type: 'project.create', id: 'beta', title: 'Beta', summary: '', position: { x: 9000, y: 9000 } });
+  const plot = plots.observe(await control.read()).list.find(entry => entry.memberIds.includes('a1'))!;
+  await plots.run('acme', { operation: 'rename', plotId: plot.id, name: 'Mine' }); await plots.run('acme', { operation: 'lock', plotId: plot.id, locked: true });
+  await person({ type: 'node.archive', id: 'a2' });
+  const moved = (await person({ type: 'nodes.send', ids: ['a1', 'a3'], projectId: 'beta' }))!;
+  const followed = await plots.run('acme', { operation: 'move', plotId: plot.id, projectId: 'beta' }) as Pinned;
+  const record = () => { const found = store.plotRecords().find(entry => entry.id === plot.id)!; return [found.projectId, found.name, found.locked, found.pinnedMemberIds]; }, after = record();
+  const undone = revert({ ...moved, plots: [...moved.plots, ...followed.receipt!.plots] });
+  assert.deepEqual([record()[0], undone.skipped], ['acme', 0]);
+  const redone = revert(undone.applied!, 'redo');
+  assert.deepEqual([record(), redone.skipped], [after, 0]);
+}));
+
 test('a partial undo between locked plots leaves a redo that still applies', () => fixture(async ({ control, plots, revert, store, person, agent }) => {
   const list = plots.observe(await control.read()).list, from = list.find(plot => plot.memberIds.includes('a1'))!.id, to = list.find(plot => plot.memberIds.includes('b1'))!.id;
   await plots.run('acme', { operation: 'lock', plotId: from, locked: true }); await plots.run('acme', { operation: 'lock', plotId: to, locked: true });
@@ -165,6 +179,17 @@ test('Clear overlaps on a pile of three undoes to the exact pile and redoes', ()
   setPositions(store, { o1: { x: 6000, y: 0 }, o2: { x: 6020, y: 10 }, o3: { x: 6040, y: 20 } });
   const pile = positions(await control.read()), step = (await person({ type: 'layout.repair' }))!, cleared = positions(await control.read());
   assert.ok(step.items.length >= 2, 'repair moved at least two of the pile');
+  const undone = revert(step);
+  assert.deepEqual([positions(await control.read()), undone.skipped], [pile, 0]);
+  const redone = revert(undone.applied!, 'redo');
+  assert.deepEqual([positions(await control.read()), redone.skipped], [cleared, 0]);
+}));
+
+test('Clear overlaps on two empty projects undoes to the exact overlap and redoes', () => fixture(async ({ control, store, revert, person }) => {
+  await person({ type: 'project.create', id: 'e1', title: 'Empty one', summary: '', position: { x: 6000, y: 4000 } }, { type: 'project.create', id: 'e2', title: 'Empty two', summary: '', position: { x: 7000, y: 4000 } });
+  setPositions(store, { e2: { x: 6030, y: 4010 } });
+  const pile = positions(await control.read()), step = (await person({ type: 'layout.repair' }))!, cleared = positions(await control.read());
+  assert.notDeepEqual(cleared, pile, 'repair separated the two projects');
   const undone = revert(step);
   assert.deepEqual([positions(await control.read()), undone.skipped], [pile, 0]);
   const redone = revert(undone.applied!, 'redo');

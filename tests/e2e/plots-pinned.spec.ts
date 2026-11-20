@@ -153,5 +153,11 @@ test('an item dropped on a plot patch joins it, even a locked plot that never ga
     // A member of an open plot, linked there, joins a pinned plot only through a pin.
     await drop('upload-terminal');
     await expect.poll(async () => (await thumbnail())?.pinnedMemberIds.includes('upload-terminal')).toBe(true);
+    // A plot hidden from the map still holds its members, so one of them joins an open plot through a pin.
+    await page.evaluate(async plotId => { await window.craftingTable.runtimeRun({ action: 'plot', nodeId: 'photos', arguments: { operation: 'hide', plotId, hidden: true } }); }, billing);
+    await settle(page);
+    await aim('thumb-agent', 'thumb-pr');
+    await drop('billing-terminal');
+    await expect.poll(async () => (await thumbnail())?.pinnedMemberIds.includes('billing-terminal')).toBe(true);
   });
 });

@@ -6,9 +6,9 @@ import type { UndoStep } from '../../../packages/core/map-undo.ts';
 const snap = (x: number) => ({ position: { x, y: 0 }, projectId: 'acme', archived: false });
 
 test('a step is the commit receipt, and an undo files the step it undid while a new change lands', async () => {
-  const sent: UndoStep[] = [];
+  const sent: UndoStep[] = [], notices: string[] = [];
   let finish!: (value: { applied?: UndoStep; reverted: number; skipped: number }) => void;
-  const history = createMapHistory(() => ({ active: () => true, notify() {}, fail(message) { throw new Error(message); }, refresh: async () => {},
+  const history = createMapHistory(() => ({ active: () => true, notify(text) { notices.push(text); }, fail(message) { throw new Error(message); }, refresh: async () => {},
     revert: async step => { sent.push(step); return new Promise(resolve => { finish = resolve; }); } }));
   const move = { items: [{ id: 'a', before: snap(0), after: snap(300) }], links: [], plots: [] };
   await history.track('Move', async () => ({ receipt: move }));
@@ -17,6 +17,9 @@ test('a step is the commit receipt, and an undo files the step it undid while a 
   assert.deepEqual(sent, [{ label: 'Move', ...move }], 'only what the commit returned, never another write on the map');
   finish({ applied: sent[0], reverted: 1, skipped: 0 });
   await undoing;
+  const redoing = history.redo();
+  assert.deepEqual([sent.length, notices.at(-1)], [1, 'Nothing to redo'], 'the drag made during the undo cleared redo, and the undo never refills it');
+  await redoing;
   void history.undo();
   assert.equal(sent[1].label, 'Drag', 'the drag stays undoable');
   finish({ reverted: 1, skipped: 0 });

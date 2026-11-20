@@ -1,11 +1,12 @@
 import { lastPathPart } from '../../generated-title.ts';
 
 export const VIDEO_TYPE = 'workspace.video';
+export const VIDEO_NOTES_LIMIT = 10_000;
 
-export type VideoSource = { kind: 'file'; path: string } | { kind: 'youtube'; id: string; url: string; embedUrl: string };
+export type VideoSource = { kind: 'file'; path: string } | { kind: 'youtube'; id: string; start?: number; url: string; embedUrl: string };
 
-/** An absolute or `~/` path on one line that ends in a video extension. */
-const VIDEO_PATH = /^(?:~\/|\/(?![/*]))[^\x00-\x1f\x7f]*\.(?:mp4|mov|m4v|webm)$/i;
+/** An absolute, drive-qualified (`C:\`) or `~/` path on one line that ends in a video extension. */
+const VIDEO_PATH = /^(?:~\/|\/(?![/*])|[A-Za-z]:[\\/])[^\x00-\x1f\x7f]*\.(?:mp4|mov|m4v|webm)$/i;
 const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
 
 /** Seconds from a `t` or `start` value such as `754`, `754s` or `12m34s`. */
@@ -34,7 +35,7 @@ export function parseVideoSource(input: unknown): VideoSource | undefined {
   const video = youTubeVideo(value);
   if (!video) return undefined;
   const { id, start } = video;
-  return { kind: 'youtube', id, url: `https://www.youtube.com/watch?v=${id}${start ? `&t=${start}s` : ''}`, embedUrl: `https://www.youtube-nocookie.com/embed/${id}${start ? `?start=${start}` : ''}` };
+  return { kind: 'youtube', id, ...start ? { start } : {}, url: `https://www.youtube.com/watch?v=${id}${start ? `&t=${start}s` : ''}`, embedUrl: `https://www.youtube-nocookie.com/embed/${id}${start ? `?start=${start}` : ''}` };
 }
 
 export const videoTitle = (source: VideoSource) => source.kind === 'file' ? lastPathPart(source.path) ?? 'Video' : 'YouTube video';

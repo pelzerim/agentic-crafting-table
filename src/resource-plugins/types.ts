@@ -354,6 +354,9 @@ export interface RelatedResourceItem {
   resource?: ResourceRecord; parentResourceId?: string;
 }
 
+/** A page `mountWebPage` shows. `media` reads and moves the first video the page plays; it rejects before the page has loaded. */
+export interface EmbeddedWebPage { dispose(): void; media?: { time(): Promise<number | undefined>; seek(seconds: number): Promise<void> } }
+
 export interface ResourceViewServices {
   observePreferences?(listener: (preferences: JsonObject) => void): () => void;
   copyUrl?(url: string): Promise<unknown>;
@@ -385,7 +388,7 @@ export interface ResourceViewServices {
   openUrl?(url: string): void;
   /** Shows a page of a site the host embeds (such as `claude`) inside `container`, in that site's own signed-in
    * session; new windows open in the browser. Undefined for a site the host does not embed; absent where it embeds none. */
-  mountWebPage?(container: HTMLElement, options: { site: string; url: string }): { dispose(): void } | undefined;
+  mountWebPage?(container: HTMLElement, options: { site: string; url: string }): EmbeddedWebPage | undefined;
   /** The host owns session lifetime; disposing the view only detaches its UI. */
   attachTerminal(sessionId: string, container: HTMLElement, options?: NativeTerminalOptions): { dispose(): void; setActive?(active: boolean): void };
   /** Controls other packages add to this type's views (RendererHost.contributeViews). */
