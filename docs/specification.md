@@ -976,7 +976,7 @@ naming.
 
 **MAP-34 — Undo and redo on the map.** ⌘Z (Ctrl+Z off macOS) undoes the last map change made in
 this window; ⌘⇧Z (Ctrl+Shift+Z, or Ctrl+Y off macOS) redoes it. A step is a move (drag, keys or
-several items at once, including a drop into a project), a resize, a plot's colour or name, an archive
+several items at once, including a drop into a project), a resize, a plot's colour, name or lock, an archive
 (undone by restoring), a removed connection or **Clear overlaps** (MAP-13). A
 step is the service's receipt for the person's own commit: every item it changed, so neighbours a drop
 displaced go back too (for those, only their position; an item whose project changed, such as a to-do's
@@ -984,7 +984,7 @@ attached note, counts in full). Permanent delete, text edits, settings and chang
 made by agents or MCP are not steps. The service checks each field of each item, link or plot against the
 latest map in the same transaction that reverts it, and puts it back only while it still holds what the
 step left; items outside the step are never pushed, so one that would land on them, or stop short of its
-old place, stays too. A plot locked since the step is left alone, and a member another plot has pinned
+old place, stays too. A plot locked or unlocked since the step is left alone, and a member another plot has pinned
 since stays there. A part that can no longer be put back (its project archived, a link's endpoint gone) is
 skipped, and an item is never put back into a project archived since. Archiving a project again (redo of its archive, undo of its restore) runs only while it holds the same items as when it was archived, so it never hides an item added since. Undoing **Clear overlaps** puts an
 item back exactly onto the items it overlapped while every one of them is still where the step found it

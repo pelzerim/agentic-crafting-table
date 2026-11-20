@@ -911,10 +911,11 @@ export function WorkspaceMap() {
     'map.undo': () => { if (!snapshot || travelling || document.querySelector('.item-view:not([hidden])')) return false; void history.undo(); },
     'map.redo': () => { if (!snapshot || travelling || document.querySelector('.item-view:not([hidden])')) return false; void history.redo(); },
   });
-  /** Plot colour and name changes are undo steps too, recorded from the receipt the service returns for the write. */
+  /** Plot colour, name and lock changes are undo steps too, recorded from the receipt the service returns for the write. */
   const plotChange = (projectId: string, request: JsonObject) => {
     const run = () => window.craftingTable.runtimeRun({ action: 'plot', nodeId: projectId, arguments: request }) as Promise<{ receipt?: Receipt }>;
-    return request.operation === 'color' || request.operation === 'rename' ? history.track(request.operation === 'color' ? 'Plot colour' : 'Plot rename', run) : run();
+    const label = request.operation === 'color' ? 'Plot colour' : request.operation === 'rename' ? 'Plot rename' : request.operation === 'lock' ? request.locked ? 'Plot lock' : 'Plot unlock' : undefined;
+    return label ? history.track(label, run) : run();
   };
   return <RailContext.Provider value={rail}><section ref={workspace} className="live-workspace" aria-label={below ? 'Undermap' : 'Project map'} data-layer={layer} data-travelling={travelling || undefined} data-chrome-docked={chromeDocked || undefined}>
     {snapshot && plugins && view && settings && <ProjectMap key={layer} layer={layer} neighborhoodColor={below ? undermapColor : undefined} registry={registry} nodes={badged.nodes} resources={layerResources} links={badged.links} badges={badged.onItems} onBadge={(noteId, anchor, menu) => { setConnectionDraft(undefined); setEditor({ ...anchor, nodeId: noteId, mode: menu ? 'menu' : 'edit' }); }}

@@ -695,6 +695,9 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
           this.unpinEverywhere(pinned, patch.id);
           const locked = (patch.locked ?? record.locked) && pinned.length > 0, lockPinned = (patch.lockPinnedIds === undefined ? record.lockPinnedIds : patch.lockPinnedIds ?? []).filter(id => pinned.includes(id));
           this.db.prepare('UPDATE plots SET pinned_member_ids = ?, locked = ?, lock_pinned_ids = ? WHERE id = ?').run(pinned.length ? JSON.stringify(pinned) : null, Number(locked), locked && lockPinned.length ? JSON.stringify(lockPinned) : null, patch.id);
+        } else if (patch.locked !== undefined || patch.lockPinnedIds !== undefined) {
+          const locked = (patch.locked ?? record.locked) && record.pinnedMemberIds.length > 0, lockPinned = (patch.lockPinnedIds === undefined ? record.lockPinnedIds : patch.lockPinnedIds ?? []).filter(id => record.pinnedMemberIds.includes(id));
+          this.db.prepare('UPDATE plots SET locked = ?, lock_pinned_ids = ? WHERE id = ?').run(Number(locked), locked && lockPinned.length ? JSON.stringify(lockPinned) : null, patch.id);
         }
         if (patch.name !== undefined || patch.generated !== undefined) {
           const name = patch.name === undefined ? record.name ?? null : patch.name, generated = patch.generated ?? record.generated;

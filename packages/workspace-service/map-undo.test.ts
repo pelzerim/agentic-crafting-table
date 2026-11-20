@@ -67,6 +67,26 @@ test('undo of a plot rename puts back the name the service replaced, not the one
   assert.equal(plots.observe(await control.read()).list[0].name, 'Other');
 }));
 
+test('undo of a plot lock unlocks it with the pins it had, and redo locks it again', () => fixture(async ({ control, plots, revert, store }) => {
+  const plot = plots.observe(await control.read()).list[0], pins = () => store.plotRecords().find(record => record.id === plot.id);
+  const locked = await plots.run('acme', { operation: 'lock', plotId: plot.id, locked: true }) as Pinned, step = { label: 'Plot lock', ...locked.receipt! };
+  assert.equal(pins()?.locked, true);
+  const undone = revert(step);
+  assert.deepEqual([pins()?.locked ?? false, pins()?.pinnedMemberIds ?? []], [false, []]);
+  revert(undone.applied!, 'redo');
+  assert.equal(pins()?.locked, true);
+}));
+
+test('undo of a lock on a plot whose items were all pinned already changes only the lock', () => fixture(async ({ control, plots, revert, store }) => {
+  const plot = plots.observe(await control.read()).list[0], record = () => store.plotRecords().find(entry => entry.id === plot.id)!;
+  store.pinPlotMembers(plot.id, plot.memberIds); plots.invalidate();
+  const locked = await plots.run('acme', { operation: 'lock', plotId: plot.id, locked: true }) as Pinned;
+  const undone = revert({ label: 'Plot lock', ...locked.receipt! });
+  assert.deepEqual([record().locked, record().pinnedMemberIds], [false, [...plot.memberIds].sort()]);
+  revert(undone.applied!, 'redo');
+  assert.equal(record().locked, true);
+}));
+
 test('undoing a pin brings back a named singleton plot it emptied, with its id, name and pin', () => fixture(async ({ control, plots, revert, store }) => {
   store.createPinnedPlot('P', 'acme', ['loose'], NOW); store.renamePlot('P', 'Mine', false); plots.invalidate();
   const target = plots.observe(await control.read()).list.find(plot => plot.memberIds.includes('a1'))!;

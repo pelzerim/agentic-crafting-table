@@ -86,7 +86,7 @@ export class Plots {
   invalidate() { this.version++; }
   async run(projectId: string, input: unknown) {
     const request = plotRequestSchema.parse(input);
-    const seen = request.operation === 'rename' || request.operation === 'color' || request.operation === 'pin' ? await this.control.read() : undefined;
+    const seen = request.operation === 'rename' || request.operation === 'color' || request.operation === 'lock' || request.operation === 'pin' ? await this.control.read() : undefined;
     if (request.operation === 'pin' || request.operation === 'create') {
       const nodes = new Map((await this.control.read()).nodes.map(node => [node.id, node]));
       if (!request.memberIds.every(id => nodes.get(id)?.resourceId && nodes.get(id)!.projectId === projectId)) throw new Error('Some of these items are not in this project.');
@@ -120,16 +120,16 @@ export class Plots {
         const plots = this.snaps(seen!).flatMap(after => { const was = before.get(after.id); return was && canonical(was) !== canonical(after) ? [{ id: after.id, before: was, after }] : []; });
         return { ok: true, ...plots.length ? { receipt: { items: [], links: [], plots } } : {} };
       }
-      else if (request.operation === 'lock') this.store.lockPlot(record.id, request.locked, current(record));
       else if (request.operation === 'merge') {
         const into = this.store.plotRecords().find(other => other.id === request.into && other.id !== record.id);
         if (!into || into.projectId !== projectId) throw new Error('This plot is not in this project any more.');
         this.store.mergePlot(record.id, into.id, [...shown(into), ...current(record)]);
       }
-      else if (request.operation === 'rename' || request.operation === 'color') {
+      else if (request.operation === 'rename' || request.operation === 'color' || request.operation === 'lock') {
         // The receipt is read around the write itself, so undo puts back what this write replaced.
         const snap = () => this.snaps(seen!).find(plot => plot.id === record.id), before = snap();
         if (request.operation === 'rename') this.store.renamePlot(record.id, request.name || undefined, false);
+        else if (request.operation === 'lock') this.store.lockPlot(record.id, request.locked, current(record));
         else this.store.choosePlotColor(record.id, request.color ?? undefined);
         this.invalidate();
         const after = snap();
