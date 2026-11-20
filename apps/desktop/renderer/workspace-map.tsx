@@ -46,7 +46,7 @@ import type { ResourcePluginRegistry } from '../../../src/resource-plugins/regis
 import { ProjectMap } from './project-map.tsx';
 import { pinNeighborhoodStyle, pinnedNeighborhoodStyle } from '../neighborhood-style-pin.ts';
 import { embeddedSite } from '../embedded-sites.ts';
-import type { ProjectMapProps } from './project-map.tsx';
+import type { PlotJoin, ProjectMapProps } from './project-map.tsx';
 import { InlineEditor } from './inline-editor.tsx';
 import { useUrlCandidates } from './use-url-candidates.ts';
 import { mountNativeTerminal } from './native-terminal.tsx';
@@ -762,10 +762,19 @@ export function WorkspaceMap() {
     return history.track('Move to project', () => commit([{ type: 'nodes.send', ids, projectId }])).then(() => { setReveal({ nodeId: ids[0], nonce: Date.now(), mode: 'map', select: ids }); return true; }, error => { setError(error.message); return false; });
   };
   /** Pins the items in a plot of their project, in a new plot, or unpins them. */
-  const plotItems = (ids: string[], id: MenuActionId) => {
+  /** A drop on a plot's patch pins the items there; the move and the pin are one undo step. */
+  const moveAndJoin = (commands: WorkspaceCommand[], join?: PlotJoin) => history.track('Move', async () => {
+    const moved = await commit(commands);
+    if (!join?.ids.length) return moved;
+    const pinned = await (window.craftingTable.runtimeRun({ action: 'plot', nodeId: join.projectId, arguments: { operation: 'pin', plotId: join.plotId, memberIds: join.ids } }) as Promise<{ receipt?: Receipt }>)
+      .catch(error => { setError(error.message); return undefined; });
+    const plots = pinned?.receipt?.plots ?? [];
+    return moved?.receipt || plots.length ? { receipt: { items: [], links: [], ...moved?.receipt, plots: [...moved?.receipt?.plots ?? [], ...plots] } } : undefined;
+  }).catch(error => setError(error.message));
+  const plotItems = (ids: string[], id: MenuActionId, into?: string) => {
     setEditor(undefined);
     const plots = snapshotRef.current?.plots?.list ?? [], node = snapshotRef.current?.state.nodes.find(node => node.id === ids[0]);
-    const projectId = id === 'plot-unpin' ? plots.find(plot => plot.pinnedMemberIds.includes(ids[0]))?.projectId : node?.projectId;
+    const projectId = into ?? (id === 'plot-unpin' ? plots.find(plot => plot.pinnedMemberIds.includes(ids[0]))?.projectId : node?.projectId);
     if (!projectId) return;
     const request: Record<string, string | string[]> = id === 'plot-new' ? { operation: 'create', memberIds: ids } : id === 'plot-unpin' ? { operation: 'unpin', memberIds: ids } : { operation: 'pin', plotId: id.slice('plot-pin:'.length), memberIds: ids };
     void window.craftingTable.runtimeRun({ action: 'plot', nodeId: projectId, arguments: request }).catch(error => setError(error.message));
@@ -950,8 +959,8 @@ export function WorkspaceMap() {
         setEditor({ ...anchor, mode: 'create', initialType: FROM_URL, initialUrl: url });
       } : undefined}
       onFileDrop={!below && (!editor || editor.mode === 'menu') && !settingsOpen && !archiveOpen && !connectionDraft ? dropFile : undefined}
-      onMove={(id, position, projectId) => history.track('Move', () => commit([...(projectId ? [{ type: 'node.attach' as const, id, projectId }] : []), { type: 'node.move', id, position }])).catch(error => setError(error.message))}
-      onMoveMany={positions => history.track('Move', () => commit([{ type: 'nodes.move', positions }])).catch(error => setError(error.message))}
+      onMove={(id, position, projectId, join) => moveAndJoin([...(projectId ? [{ type: 'node.attach' as const, id, projectId }] : []), { type: 'node.move', id, position }], join)}
+      onMoveMany={(positions, join) => moveAndJoin([{ type: 'nodes.move', positions }], join)}
       onResize={below && mirrorBelow ? undefined : resizeOnMap}
       onRename={(id, title) => apply([{ type: 'node.update', id, title }])}
       onComplete={(id, completed) => apply([{ type: completed ? 'node.complete' : 'node.reopen', id }]).catch(error => { setError(error.message); throw error; })}

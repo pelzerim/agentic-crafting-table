@@ -78,13 +78,7 @@ export class Tidy {
     return commit(envelope, current => { const next = placeExactly(this.control.reduce(current, envelope), place); return next.revision === current.revision ? { ...next, revision: current.revision + 1 } : next; }).state;
   }
   /** Every plot record as undo sees it: shown plots, plus dormant ones kept for their identity, name and pins. */
-  private plotSnaps(state: WorkspaceState): PlotSnap[] {
-    const records = new Map(this.store.plotRecords().map(record => [record.id, record]));
-    // Stored pins, so an archived member keeps its pin through undo.
-    const shown = this.list(state).map(plot => { const snap = plotSnap(plot), record = records.get(plot.id); return record ? { ...snap, pinnedMemberIds: [...record.pinnedMemberIds].sort() } : snap; }), ids = new Set(shown.map(plot => plot.id));
-    return [...shown, ...[...records.values()].filter(record => !ids.has(record.id)).map(record => ({ id: record.id, projectId: record.projectId, ...record.name !== undefined ? { name: record.name } : {},
-      generated: record.name !== undefined && record.generated, color: record.color ?? '', ...record.chosenColor ? { chosenColor: record.chosenColor } : {}, pinnedMemberIds: [...record.pinnedMemberIds].sort(), locked: record.locked }))];
-  }
+  private plotSnaps(state: WorkspaceState): PlotSnap[] { return this.plots.snaps(state); }
 
   private list(state: WorkspaceState) { return this.plots.observe(state).list; }
   private plotsIn(state: WorkspaceState, projectId?: string) { return this.list(state).filter(plot => projectId === undefined || plot.projectId === projectId); }

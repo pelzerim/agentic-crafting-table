@@ -105,14 +105,16 @@ import { ViewCloseGate } from './view-close-gate.ts';
 
 const registry = createResourcePluginRegistry();
 type MapItem = GraphNode & { activity?: string; attention?: string; summary?: string; lastLine?: string; recap?: { text: string; at: string } };
+/** Items a drop puts into a plot, saved in the same undo step as the move. */
+export interface PlotJoin { ids: string[]; plotId: string; projectId: string }
 export interface ProjectMapProps {
   registry?: ResourcePluginRegistry;
   nodes: MapItem[];
   resources: ResourceRecord[];
   links: GraphLink[];
   onLink?(anchor: { sourceId: string; targetId?: string; projectId?: string; position: { x: number; y: number }; screen: { x: number; y: number } }): void;
-  onMove(id: string, position: { x: number; y: number }, projectId?: string): void | Promise<void>;
-  onMoveMany?(positions: { id: string; position: { x: number; y: number } }[]): void | Promise<void>;
+  onMove(id: string, position: { x: number; y: number }, projectId?: string, join?: PlotJoin): void | Promise<void>;
+  onMoveMany?(positions: { id: string; position: { x: number; y: number } }[], join?: PlotJoin): void | Promise<void>;
   onResize?(id: string, dimensions: { width: number; height: number }, position: { x: number; y: number }): Promise<void>;
   onRename?(id: string, title: string): Promise<void>;
   /** Saves a paper tile's data patch; with `base`, only while its saved text still equals it. */
@@ -140,6 +142,7 @@ export interface ProjectMapProps {
   onChromeCover?(covered: boolean): void;
   onItemDrag?(id: string | undefined, screen?: { x: number; y: number }): void;
   onItemDrop?(id: string, screen: { x: number; y: number }): boolean | Promise<boolean>;
+  /** Items dropped on a plot's patch that are not in it yet; a locked plot takes them too. */
   /** `origin: 'program'` marks a reveal the app made on its own rather than a person's choice. */
   /** `select` names the items a map reveal leaves selected. */
   /** `map` centres the item without opening it; `centred` centres it at the current zoom, then opens it. */
@@ -465,10 +468,19 @@ function ProjectHeader({ header }: { header?: HeaderData }) {
   return <small className="project-counts" data-needs-me={header.asking + header.turn > 0}><TierCounts counts={header} working={header.working} words /></small>;
 }
 /** `bounds` and `center` are the largest part's, where the sign stands. */
-type PlotShape = { plot: PlotView; parts: number; paths: string[]; bounds: { left: number; top: number; right: number; bottom: number }; center: Point };
+type PlotShape = { plot: PlotView; parts: number; paths: string[]; outlines: Point[][]; bounds: { left: number; top: number; right: number; bottom: number }; center: Point };
 type PlotSign = PlotShape & { x: number; y: number; spot: number };
 /** One cell of patch around the members' footprints, on the field's 24 px grid. */
 const PLOT_PADDING = 24, PLOT_CELL = 24, PLOT_SEEN_BATCH = 60;
+/** Even-odd test of `point` against a closed outline. */
+const insideOutline = (point: Point, outline: readonly Point[]) => {
+  let inside = false;
+  for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
+    const a = outline[i], b = outline[j];
+    if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+};
 const plotLabel = (name: string) => name.length > PLOT_NAME_LENGTH ? `${name.slice(0, PLOT_NAME_LENGTH - 1).trimEnd()}…` : name;
 type PlotStats = { tiers: AttentionCounts; working: number };
 interface PlotSignActions {
@@ -811,13 +823,16 @@ function MapCanvas(props: ProjectMapProps) {
       for (const outline of outlines) plotFill(outline, field, PLOT_CELL).paths.forEach((path, shade) => { paths[shade] += path; });
       const xs = outlines[0].map(point => point.x), ys = outlines[0].map(point => point.y);
       const bounds = { left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) };
-      const shape = { plot, parts: parts.length, paths, bounds, center: { x: (bounds.left + bounds.right) / 2, y: (bounds.top + bounds.bottom) / 2 } };
+      const shape = { plot, parts: parts.length, paths, outlines, bounds, center: { x: (bounds.left + bounds.right) / 2, y: (bounds.top + bounds.bottom) / 2 } };
       next.set(plot.id, { key, field, shape }); return [shape];
     });
     plotCache.current = next;
     if (computed) performanceMetrics.record('map.plots', performance.now() - started);
     return shapes;
   }, [props.plots, boxes, projects, mutedProjects]);
+  // Patches as they stood before the drag: a live patch follows the dragged cards and would catch their own drop.
+  const restingPlots = useRef(plotShapes);
+  if (!drag && !settling) restingPlots.current = plotShapes;
   // Placement follows committed layout and the zoom band; a drag keeps each sign's spot.
   const placementZoom = Math.round(viewport.zoom * 20) / 20, signSpots = useRef(new Map<string, number>());
   const placing = Boolean(drag || itemResize.preview);
@@ -1217,10 +1232,14 @@ function MapCanvas(props: ProjectMapProps) {
       : snapPosition(props.collisions === 'solid' ? stop : dropped, props.snap);
     const many = held && held.selected.length > 1 ? selectionMoves(base, held.selected, id, position) : undefined, projectId = !many && item ? dropProject(item, position) : undefined;
     moving.current = false; setDrag({ id, ...position }); saving.pending++;
+    const dragged = many ? held!.selected : [id], into = plotAt(screenToFlowPosition(screen), projectId ?? item?.projectId, dragged);
+    // Only where nearness cannot join them: a pin holds, so a free item dropped on an open plot can still be dragged out.
+    const pinned = (member: string) => restingPlots.current.some(({ plot }) => plot.pinnedMemberIds.includes(member) || plot.locked && plot.memberIds.includes(member));
+    const join = into && { ids: dragged.filter(member => !into.memberIds.includes(member) && (into.locked || pinned(member))), plotId: into.id, projectId: into.projectId };
     const save = async () => {
-      if (many) { await props.onMoveMany?.(many); return; }
-      if (await props.onItemDrop?.(id, screen)) return;
-      await props.onMove(id, position, projectId);
+      if (many) await props.onMoveMany?.(many, join);
+      else if (await props.onItemDrop?.(id, screen)) return;
+      else await props.onMove(id, position, projectId, join);
     };
     saving.queue = saving.queue.then(save).finally(() => {
       if (--saving.pending) return;
@@ -1229,6 +1248,9 @@ function MapCanvas(props: ProjectMapProps) {
       props.onItemDrag?.(undefined); if (dragStart.current === held) dragStart.current = undefined; setDrag(undefined);
     }).catch(error => { console.error(error); });
   };
+  /** The plot of `projectId` whose resting patch holds `point`, skipping one that already holds every dragged item. */
+  const plotAt = (point: Point, projectId: string | undefined, dragged: string[]) => projectId === undefined ? undefined
+    : restingPlots.current.find(shape => shape.plot.projectId === projectId && dragged.some(id => !shape.plot.memberIds.includes(id)) && shape.outlines.some(outline => insideOutline(point, outline)))?.plot;
   /** A drag that starts while a move is saving builds on the map that move leaves. */
   const startMoving = () => { moving.current = true; if (saves.current.pending) setSettling(old => old ?? layout); };
   /** A press on a dashboard stays a click until it travels past the threshold; then it drags the project like its label does. */
