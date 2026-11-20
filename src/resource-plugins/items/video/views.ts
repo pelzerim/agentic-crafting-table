@@ -2,6 +2,9 @@ import type { ResourcePluginViews } from '../../types.ts';
 import { emptyState, mountViewHeader } from '../../view-header.ts';
 import { parseVideoSource } from './source.ts';
 
+/** The one video that plays on while its view is closed; another one taking its place stops it, so at most one hidden player holds memory. */
+let behind: { stop(): void } | undefined;
+
 /** A file plays in a `<video>` from the app's `/video/<item>` route, which serves only the file a video item on the
  * map names. A YouTube video plays in the host's embedded `youtube` site. */
 export const videoViews: ResourcePluginViews = {
@@ -24,19 +27,34 @@ export const videoViews: ResourcePluginViews = {
       stage.append(player);
     } else if (!youtube) stage.append(emptyState(document, 'No video file or YouTube link'));
 
-    // The host keeps a closed view mounted but hidden: a file pauses, a YouTube page is held only while open.
-    let page: { dispose(): void } | undefined;
+    // The host keeps a closed view mounted but hidden: a file pauses and a YouTube page is let go, unless it plays in the background.
+    let page: { dispose(): void } | undefined, keep = false;
+    const release = () => { player?.pause(); page?.dispose(); page = undefined; };
+    const holder = { stop() { if (behind === holder) behind = undefined; release(); } };
     const show = (shown: boolean) => {
-      if (!shown) player?.pause();
-      if (!youtube || shown === Boolean(page)) return;
-      if (!shown) { page!.dispose(); page = undefined; return; }
-      page = services.mountWebPage?.(stage, { site: 'youtube', url: youtube.embedUrl });
-      if (!page) stage.replaceChildren(emptyState(document, 'YouTube videos cannot play here'));
+      if (shown) {
+        if (behind === holder) behind = undefined;
+        if (youtube && !page) {
+          page = services.mountWebPage?.(stage, { site: 'youtube', url: youtube.embedUrl });
+          if (!page) stage.replaceChildren(emptyState(document, 'YouTube videos cannot play here'));
+        }
+        return;
+      }
+      if (!keep || (player && player.paused)) { release(); return; }
+      if (behind !== holder) behind?.stop();
+      behind = holder;
     };
+    if (player || youtube) {
+      const toggle = document.createElement('button');
+      toggle.type = 'button'; toggle.className = 'video-keep'; toggle.textContent = 'Play in background'; toggle.setAttribute('aria-pressed', 'false');
+      toggle.title = 'Keep playing after the item closes. Only one video plays in the background at a time.';
+      toggle.onclick = () => { keep = !keep; toggle.setAttribute('aria-pressed', String(keep)); };
+      header.actions.append(toggle);
+    }
     return {
       update() {},
       setActive: show,
-      dispose() { show(false); player?.removeAttribute('src'); player?.load(); header.dispose(); root.remove(); },
+      dispose() { holder.stop(); player?.removeAttribute('src'); player?.load(); header.dispose(); root.remove(); },
     };
   },
 };

@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Items
+- **Videos**: paste or drop a video file (.mp4, .mov, .m4v or .webm) or a YouTube link on the map and it becomes a Video item that plays inside its view, with seeking. The app only plays files a Video item on the map points to. YouTube videos play through YouTube's privacy-enhanced embed. YouTube links already on the map become Video items too. **Play in background** in a video's header keeps it playing after the item closes; only one video plays in the background at a time. (#34, @shiini2)
+
 ## 0.24.0 — 2026-11-17
 
 ### Agents
