@@ -2043,6 +2043,18 @@ A failure shows as an error on the item.
 Codex refuses to open a conversation that is live in another process and asks to close it
 there, so `/resume` of a Codex item that is still running changes nothing until that item stops.
 
+**AGENT-04b — The model it runs on now.** The expanded agent view's menu bar names the provider, then the model
+and effort level the session runs on now, such as `claude · opus 5.5 high` or `codex · gpt-6.2-sol medium`, and
+follows `/model` and `/effort` typed in its terminal. A Claude model ID reads as its family and version
+(`claude-opus-5-5` → `opus 5.5`); other IDs show as the CLI names them. The item keeps them as `currentModel` and
+`currentEffort`; `model` stays the launch choice, which a resume uses. Until the CLI reports a model, the launch
+model stands in, and a conversation resumed with its own model (`native`) names none. Claude reports its model
+on SessionStart and PostModelSwitch, so `/model` shows at once; it reports the effort level only on Stop, so
+`/effort` shows when the next turn ends, and a new process shows the last known level until then. Codex's terminal
+tells the table's app-server connection nothing when `/model` changes the model or effort, so the table reads the
+thread on each status change and every 2 seconds while the session runs. Only a plain model ID and level leave
+the CLI.
+
 **AGENT-05 — Guide/context updates.** Queue newly connected context and outdated
 guide updates for the next supported input/turn boundary, deduplicated by identity
 and revision. Never type into an arbitrary permission prompt. Removing a link

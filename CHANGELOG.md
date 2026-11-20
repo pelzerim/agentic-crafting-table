@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Agents
+- **Current model and effort in the agent view**: the menu bar of an open Claude or Codex session names the model and effort level it runs on now, such as `claude · opus 5.5 high`, instead of the model chosen at launch. It follows `/model` at once. Claude reports `/effort` when the next turn ends; Codex's `/model` shows within 2 seconds. (#38, @timohuovinen)
+
 ## 0.24.0 — 2026-11-17
 
 ### Agents

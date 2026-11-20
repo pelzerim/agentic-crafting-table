@@ -1,8 +1,12 @@
 import type { LaunchRequest, NativeAgentState } from './protocol.ts';
 import { openCodexTerminalServer } from './codex-transport.ts';
-import { codexInput, codexStatus, codexSwitch, codexThreadStatus, isHelperThread, nativeInput, nativeStatus, readThread } from './codex-status.ts';
+import { codexInput, codexStatus, codexSwitch, codexThreadStatus, isHelperThread, nativeInput, nativeStatus, readThread, threadRunsOn } from './codex-status.ts';
+import { EFFORT } from './protocol.ts';
 import * as z from 'zod/v4';
 import { randomUUID } from 'node:crypto';
+
+/** How often the thread is read for a model or effort its terminal changed. Codex's `/model` sends this connection no notice. */
+export const CODEX_SETTINGS_READ_MS = 2_000;
 
 export interface NativeDriver { args: string[]; close(): Promise<void>; /** Appends a guide to the conversation the terminal shows now, without a model turn. */ inject(instructions: string, context: string): Promise<void>;
   /** Names the conversation the terminal shows now; its own `thread/name/updated` reports it back. */ rename(name: string): Promise<void> }
@@ -11,13 +15,27 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
   if (!request.native) return;
   const native = request.native;
   const server = await openCodexTerminalServer(request.executable, { cwd: request.cwd, env, arguments: native.serverArguments, owner, signal });
-  let closing = false;
+  let closing = false, settingsTimer: ReturnType<typeof setInterval> | undefined;
   try {
     let state: NativeAgentState | undefined;
     const notified: { method: string; params?: any }[] = [], ignored = new Set<string>(), checking = new Set<string>();
     const deliverContext = (threadId: string, instructions = native.instructions, context = native.context) => server.rpc.request('thread/inject_items', { threadId, items: [{ type: 'message', role: 'developer', content: [{ type: 'input_text', text: instructions }] }, { type: 'message', role: 'user', content: [{ type: 'input_text', text: context }] }] });
     // A launch with a prompt or an earlier conversation has one already; otherwise the first turn shows it.
     let talked = Boolean(native.nativeSessionId || native.initialPrompt);
+    // The terminal's `/model` changes the thread without telling this connection (Codex 0.167.1); reading the thread
+    // shows the model and effort it runs on now (AGENT-04b). Reads never overlap, and a failed read waits for the next.
+    let reading = false;
+    const readSettings = async () => {
+      const threadId = state && !state.switched ? state.nativeSessionId : undefined;
+      if (reading || closing || signal?.aborted || !threadId) return;
+      reading = true;
+      try {
+        const runs = threadRunsOn(await server.rpc.request('thread/read', { threadId, includeTurns: false }));
+        if (!runs || closing || signal?.aborted || !state || state.switched || state.nativeSessionId !== threadId) return;
+        if ((runs.model ?? state.model) === state.model && (runs.effort ?? state.effort) === state.effort) return;
+        state = { ...state, ...runs, observedAt: new Date().toISOString() }; observe(state);
+      } catch { /* The thread is unreadable for now; the next read asks again. */ } finally { reading = false; }
+    };
     const apply = (event: { method: string; params?: any }, current: NativeAgentState) => {
       const switched = current.switched ? undefined : codexSwitch(event, current.nativeSessionId, ignored);
       // `/new` with nothing said yet changes nothing for a person: the item stays on this process and follows the thread (AGENT-04a).
@@ -49,6 +67,7 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
       }
       const status = codexStatus(event, current.nativeSessionId);
       if (status === 'working' || status === 'input') talked = true;
+      if (status !== undefined) void readSettings(); // A turn that starts or ends may run on a model picked since the last read.
       const started = event.method === 'thread/started' && event.params?.thread?.id === current.nativeSessionId;
       if (status === undefined && !started) return;
       const input = status === 'input' ? codexInput(event, current.nativeSessionId) : undefined;
@@ -63,14 +82,15 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
       if (state) apply(event, state); else notified.push(event);
     });
     const method = native.nativeSessionId ? 'thread/resume' : 'thread/start';
-    const response = z.object({ thread: z.object({ id: z.string().uuid(), status: codexThreadStatus.optional(), name: z.string().nullish().catch(undefined) }), model: z.string().min(1).max(100).optional().catch(undefined), reasoningEffort: z.string().regex(/^[a-z]{1,20}$/).nullish().catch(undefined) }).parse(await server.rpc.request(method, {
+    const response = z.object({ thread: z.object({ id: z.string().uuid(), status: codexThreadStatus.optional(), name: z.string().nullish().catch(undefined) }), model: z.string().min(1).max(100).optional().catch(undefined), reasoningEffort: z.string().regex(EFFORT).nullish().catch(undefined) }).parse(await server.rpc.request(method, {
       ...(native.nativeSessionId ? { threadId: native.nativeSessionId, excludeTurns: true } : { ephemeral: false }),
       cwd: request.cwd, model: native.model, config: native.config,
     }));
     signal?.throwIfAborted();
     if (native.nativeSessionId && response.thread.id !== native.nativeSessionId) throw new Error('Codex resumed a different native conversation');
     const observedAt = new Date().toISOString(), status = response.thread.status ? nativeStatus(response.thread.status) : 'unknown', input = response.thread.status && status === 'input' ? nativeInput(response.thread.status) : undefined;
-    const seeded: NativeAgentState = { provider: 'codex', nativeSessionId: response.thread.id, status, ...(input ? { input } : {}), ...(response.thread.name?.trim() ? { name: response.thread.name.trim() } : {}), ...(status !== 'unknown' ? { readyAt: observedAt } : {}), observedAt };
+    const seeded: NativeAgentState = { provider: 'codex', nativeSessionId: response.thread.id, status, ...(input ? { input } : {}), ...(response.thread.name?.trim() ? { name: response.thread.name.trim() } : {}), ...(status !== 'unknown' ? { readyAt: observedAt } : {}),
+      ...(response.model ? { model: response.model } : {}), ...(response.reasoningEffort ? { effort: response.reasoningEffort } : {}), observedAt };
     state = seeded; observe(seeded); // Journal the returned identity before any subsequent external action.
     for (const event of notified.splice(0)) apply(event, state);
     // This persists an otherwise empty conversation without submitting a task or model turn.
@@ -80,11 +100,12 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
     await server.rpc.request('thread/unsubscribe', { threadId: seeded.nativeSessionId });
     signal?.throwIfAborted();
     server.rpc.once('closed', (error: Error) => { if (!closing && !signal?.aborted) disconnected(error); });
+    settingsTimer = setInterval(() => { void readSettings(); }, CODEX_SETTINGS_READ_MS); settingsTimer.unref?.();
     Object.assign(env, server.terminal.environment);
     // The terminal resumes with its own configured model and effort unless told otherwise, which would switch
     // a conversation away from the model chosen at launch or recorded in it, with a startup warning.
     const kept = [...(response.model ? ['--model', response.model] : []), ...(response.reasoningEffort ? ['-c', `model_reasoning_effort=${JSON.stringify(response.reasoningEffort)}`] : [])];
-    return { args: [...request.args, '--remote', server.endpoint, ...server.terminal.arguments, ...kept, 'resume', seeded.nativeSessionId, ...(native.initialPrompt ? ['--', native.initialPrompt] : [])], async close() { closing = true; await server.close(); },
+    return { args: [...request.args, '--remote', server.endpoint, ...server.terminal.arguments, ...kept, 'resume', seeded.nativeSessionId, ...(native.initialPrompt ? ['--', native.initialPrompt] : [])], async close() { closing = true; clearInterval(settingsTimer); await server.close(); },
       async inject(instructions, context) {
         // After `/resume` or `/fork` the terminal shows another conversation; the item follows it on its next launch.
         const threadId = state?.switched?.nativeSessionId ?? state?.nativeSessionId;
@@ -96,5 +117,5 @@ export async function prepareNativeDriver(request: LaunchRequest, env: NodeJS.Pr
         if (closing || !threadId) throw new Error('This Codex conversation is no longer connected');
         await server.rpc.request('thread/name/set', { threadId, name });
       } };
-  } catch (error) { closing = true; await server.close(); throw error; }
+  } catch (error) { closing = true; clearInterval(settingsTimer); await server.close(); throw error; }
 }

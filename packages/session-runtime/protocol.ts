@@ -1,5 +1,7 @@
 import { MAX_SESSION_INPUT } from './input-chunks.ts';
 import * as z from 'zod/v4';
+/** An effort level as the CLIs name it: `low`, `high`, `xhigh`, `max`. */
+export const EFFORT = /^[a-z]{1,20}$/;
 const id = z.string().min(1).max(200);
 export const launchSchema = z.object({
   sessionId: id, requestId: id, nodeId: id, workspaceId: id,
@@ -28,7 +30,9 @@ export type LaunchRequest = z.infer<typeof launchSchema>;
 export interface ConversationSwitch { kind: 'new' | 'fork' | 'resume'; nativeSessionId: string }
 export interface NativeAgentState { provider: 'codex'; nativeSessionId: string; status: 'idle' | 'working' | 'input' | 'error' | 'unknown'; input?: 'approval' | 'question'; observedAt: string; readyAt?: string; completionId?: string; switched?: ConversationSwitch;
   /** The thread's name as this process knows it: from its resume and from a `/rename` in its terminal. */
-  name?: string }
+  name?: string;
+  /** The model and effort the thread runs on now: from its resume and from reading it after a `/model` (AGENT-04b). */
+  model?: string; effort?: string }
 export interface SessionRecord {
   id: string; requestId: string; nodeId: string; workspaceId: string; cwd: string;
   state: 'starting' | 'running' | 'exited' | 'failed' | 'lost';

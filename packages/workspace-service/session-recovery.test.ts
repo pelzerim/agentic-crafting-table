@@ -81,6 +81,21 @@ test('a status an agent set on its item stands until the native status changes',
   } finally { await f.close(); }
 });
 
+test('the model and effort a Codex thread runs on now reach its item, and a switched process speaks for neither (AGENT-04b)', async () => {
+  const f = await fixture(1), coordinator = f.coordinator(), update = (session: unknown) => (coordinator as unknown as { updateSession(session: unknown): Promise<boolean> }).updateSession(session);
+  try {
+    await f.control.apply({ type: 'item.add', id: 'agent', resourceId: 'agent-resource', pluginId: 'agent.session', title: 'Codex', position: { x: 900, y: 0 }, data: { provider: 'codex', model: 'gpt-6-astra', sessionId: 'agent-session' } }, (await f.control.read()).revision);
+    const session = { id: 'agent-session', nodeId: 'agent', state: 'running', native: { provider: 'codex', nativeSessionId: randomUUID(), status: 'idle', observedAt: '2026-10-30', model: 'gpt-6-astra', effort: 'high' } };
+    const data = async () => (await f.control.read()).resources.find(resource => resource.id === 'agent-resource')!.data;
+    await update(session);
+    assert.deepEqual([(await data()).currentModel, (await data()).currentEffort], ['gpt-6-astra', 'high']);
+    await update({ ...session, native: { ...session.native, model: 'fixture-choice', effort: 'low' } });
+    assert.deepEqual([(await data()).currentModel, (await data()).currentEffort, (await data()).model], ['fixture-choice', 'low', 'gpt-6-astra']);
+    await update({ ...session, native: { ...session.native, model: 'other', switched: { kind: 'resume', nativeSessionId: randomUUID() } } });
+    assert.equal((await data()).currentModel, 'fixture-choice');
+  } finally { await f.close(); }
+});
+
 test('Codex reporting an error is not a disconnect, and a stop during preparation is not a failure', async () => {
   assert.equal(nativeAttentionNote({ status: 'error' }), 'Agent disconnected');
   assert.equal(nativeAttentionNote({ status: 'error' }, false), 'Agent reported an error');

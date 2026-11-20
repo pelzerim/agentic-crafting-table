@@ -1,4 +1,5 @@
 import { providerLabels } from '../../../agents/display-names.ts';
+import { agentModelLabel } from '../../../agents/model-label.ts';
 import type { AgentPromptStatus, ResourcePluginViews } from '../../types.ts';
 
 export const agentViews: ResourcePluginViews = {
@@ -6,7 +7,7 @@ export const agentViews: ResourcePluginViews = {
   mountDetail(container, resource, services) {
     let requestId: string | undefined, promptRequestId: string | undefined;
     const terminal = services.attachTerminal(String(resource.data.sessionId), container, {
-      launchLabel: [resource.data.provider, resource.data.model].filter(Boolean).join(' · '),
+      launchLabel: agentModelLabel(resource.data), observeLaunchLabel: services.observeData && (listener => services.observeData!(data => listener(agentModelLabel(data)))),
       agentMenu: true, nativePaste: resource.data.provider === 'codex', selectionCut: resource.data.provider === 'claude' ? 'end-included' : 'end-excluded', agentName: providerLabels[String(resource.data.provider)],
       prompt: ['claude', 'codex'].includes(String(resource.data.provider)) ? async operation => {
         if (operation === 'queue') promptRequestId ??= crypto.randomUUID();
