@@ -1449,7 +1449,9 @@ function MapCanvas(props: ProjectMapProps) {
       const rect = container.current!.getBoundingClientRect();
       props.onBadge?.(noteId, { screen: { x: event.clientX - rect.left, y: event.clientY - rect.top }, position: screenToFlowPosition({ x: event.clientX, y: event.clientY }) }, menu);
     } });
-  const detailContext = useMemo(() => ({ ...actions, renderDetail: props.renderDetail, renderNode: props.renderNode, markSeen: props.onMarkSeen, keep: props.onKeep, sendBelow: props.onSendBelow }), [actions, props.renderDetail, props.renderNode, props.onMarkSeen, props.onKeep, props.onSendBelow]);
+  // The parent passes a new Undermap callback each render; a stable one keeps panning from redrawing every card.
+  const { sendBelow } = useStableHandlers({ sendBelow: (ids: string[]) => props.onSendBelow?.(ids) }), canSendBelow = Boolean(props.onSendBelow);
+  const detailContext = useMemo(() => ({ ...actions, renderDetail: props.renderDetail, renderNode: props.renderNode, markSeen: props.onMarkSeen, keep: props.onKeep, sendBelow: canSendBelow ? sendBelow : undefined }), [actions, props.renderDetail, props.renderNode, props.onMarkSeen, props.onKeep, canSendBelow]);
   const coverHandlers = useStableHandlers({
     enter: (id: string, event: React.PointerEvent) => { if (!focus && !drag && !linkDrag && !marqueeRef.current) mute.enter(id, event.buttons); },
     leave: (id: string) => mute.leave(id),
