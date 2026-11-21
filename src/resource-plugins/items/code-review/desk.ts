@@ -474,7 +474,9 @@ export function mountReviewDesk(container: HTMLElement, resource: ResourceRecord
     previewLink.onclick = () => { if (picker!.preview) { picker!.preview = undefined; renderPicker(); } else void preview(); };
     const cancel = el('button', { type: 'button', class: 'rd-btn quiet', text: 'Cancel' }); cancel.onclick = close;
     const newOne = picker.agent === NEW && fresh?.available;
-    const send = el('button', { type: 'button', class: 'rd-btn primary', disabled: !(agent || newOne) || picker.busy }, pixel(document, 'send', true), newOne ? `Start ${providerName(fresh!.provider)} agent and send` : agent ? `${queued ? 'Queue for' : 'Send to'} ${agent.title}` : 'Choose an agent');
+    /** An agent's title can be its whole first prompt: the label ellipsizes and the tooltip keeps the full name. */
+    const sendLabel = newOne ? `Start ${providerName(fresh!.provider)} agent and send` : agent ? `${queued ? 'Queue for' : 'Send to'} ${agent.title}` : 'Choose an agent';
+    const send = el('button', { type: 'button', class: 'rd-btn primary rd-pop-send', disabled: !(agent || newOne) || picker.busy, title: sendLabel }, pixel(document, 'send', true), el('span', { class: 'rd-pop-send-label', text: sendLabel }));
     send.onclick = () => void sendNow();
     pop.append(el('div', { class: 'rd-pop-head' }, el('h4', { text: `Send ${what} to an agent` }), el('span', { text: `PR ${pr} · ${plural(agents.length, 'linked agent')}` })), group,
       el('div', { class: 'rd-pop-sec' }, el('div', { class: 'rd-pop-label' }, el('span', { text: 'Note for the agent' }), el('span', { class: 'rd-optional', text: 'optional' })), note), manifest,
