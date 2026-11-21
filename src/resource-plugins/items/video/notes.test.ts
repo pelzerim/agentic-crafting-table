@@ -24,21 +24,21 @@ const until = async (ready: () => unknown) => { for (let turn = 0; turn < 500 &&
 const deferred = <T>() => { let resolve!: (value: T) => void, reject!: (error: Error) => void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 
 function panel(notes: string) {
-  const saves: { patch: JsonObject; expect?: JsonObject; done: ReturnType<typeof deferred<boolean>> }[] = [], actions: ReturnType<typeof deferred<void>>[] = [];
+  const saves: { patch: JsonObject; expect?: JsonObject; done: ReturnType<typeof deferred<boolean>> }[] = [], actions: ReturnType<typeof deferred<void>>[] = [], inputs: JsonObject[] = [];
   let observe!: (data: JsonObject) => void;
   const time = { next: deferred<number | undefined>() };
   const view = mountVideoNotes(document, { id: 'clip-r', pluginId: 'workspace.video', schemaVersion: 1, title: 'clip', data: { source: 'https://youtu.be/dQw4w9WgXcQ', notes } } as never, {
     saveData: (patch: JsonObject, expect?: JsonObject) => { const done = deferred<boolean>(); saves.push({ patch, expect, done }); return done.promise; },
     observeData: (listener: (data: JsonObject) => void) => { observe = listener; return () => {}; },
     observeRelated: (listener: (items: unknown[]) => void) => { listener([{ nodeId: 'agent', title: 'Listener', summary: '', activity: 'idle', attention: 'none', typeName: 'Agent', resource: { pluginId: 'agent.session', data: { sessionId: 's1' } } }]); return () => {}; },
-    runAction: () => { const done = deferred<void>(); actions.push(done); return done.promise; },
+    runAction: (_action: string, input: JsonObject) => { const done = deferred<void>(); actions.push(done); inputs.push(input); return done.promise; },
     openResource() {},
   } as never, { time: () => time.next.promise, seek: async () => {} });
   const root = view.element as unknown as Element, text = view.text as unknown as Element;
   const button = (label: string) => { const find = (node: Element): Element | undefined => node.tag === 'button' && node.textContent === label ? node : node.children.map(find).find(Boolean); return find(root)!; };
   const type = (value: string) => { text.value += value; text.oninput!(); };
   const feedback = () => root.children.find(child => child.tag === 'small')!.textContent;
-  return { view, text, saves, actions, time, observe: (data: JsonObject) => observe(data), button, type, feedback };
+  return { view, text, saves, actions, inputs, time, observe: (data: JsonObject) => observe(data), button, type, feedback };
 }
 
 test('drafts whose queued saves fail stay on screen, and the panel never reports them saved', async () => {
@@ -87,8 +87,9 @@ test('while a send waits for the agent the draft cannot change, and Sent records
   await stamping;
   assert.equal(notes.button('Add time').disabled, true);
   await until(() => notes.actions.length);
+  assert.equal(notes.inputs[0].fingerprint, createHash('sha256').update('Draft').digest('hex'));
   notes.actions[0].resolve();
-  await until(() => notes.saves.length);
+  await until(() => notes.feedback().startsWith('Sent to Listener'));
   assert.equal(notes.text.value, 'Draft', 'the time read before the send was dropped');
-  assert.equal((notes.saves[0].patch.notesSent as { fingerprint: string }).fingerprint, createHash('sha256').update('Draft').digest('hex'));
+  assert.equal(notes.saves.length, 0, 'the service records the delivery');
 });

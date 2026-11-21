@@ -125,12 +125,13 @@ export function mountVideoNotes(document: Document, resource: ResourceRecord, se
     sending = true; sends++; text.readOnly = true; updateAgents(); feedback.textContent = 'Sending…';
     try {
       if (!await flush()) return;
-      // The service sends only this draft and reuses the request of an unconfirmed send of it.
+      // The service sends only this draft, reuses the request of an unconfirmed send of it and records the delivery.
       const draft = text.value, print = await fingerprint(draft);
       await services.runAction('video.notes', { sourceResourceId: resource.id, targetNodeId: target.nodeId, sessionId, requestId: crypto.randomUUID(), fingerprint: print });
+      // What was observed before the service's write is older than it.
+      observed = undefined;
       if (text.value !== draft) { feedback.textContent = ''; return; }
       sent = { to: target.title, at: new Date().toISOString(), fingerprint: print }; showSent();
-      await save({ notesSent: sent, notesPending: null });
     } catch (error) { feedback.textContent = (error as Error).message; }
     finally { sending = false; text.readOnly = false; updateAgents(); if (observed) void adopt(observed); }
   };
