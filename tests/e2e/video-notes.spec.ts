@@ -57,3 +57,26 @@ test('notes on a video start hidden, keep what was typed across closing the item
   await expect(feedback).not.toHaveText(/notes changed/);
   expect(await page.evaluate(async () => (await window.craftingTable.workspaceRead()).state.resources.find(resource => resource.id === 'clip-r')?.data.notesPending)).toBeUndefined();
 });
+
+test('an open notes panel follows notes saved elsewhere and never replaces them unseen', async ({ visual: { page } }) => {
+  const source = 'https://www.youtube.com/watch?v=ddddddddddd', notesTo = (notes: string) => ({ type: 'item.update', id: 'clip', data: { source, notes } });
+  await apply(page, [{ type: 'item.add', id: 'clip', resourceId: 'clip-r', pluginId: 'workspace.video', title: 'clip', data: { source, notes: 'First' }, projectId: 'billing', position: { x: 650, y: 620 } }]);
+  await page.locator('.map-card[data-item-id="clip"]').click();
+  await page.getByRole('button', { name: 'Notes', exact: true }).click();
+  const notes = page.getByRole('textbox', { name: 'Notes', exact: true });
+  const saved = () => page.evaluate(async () => (await window.craftingTable.workspaceRead()).state.resources.find(resource => resource.id === 'clip-r')?.data.notes);
+  await expect(notes).toHaveValue('First');
+  await apply(page, [notesTo('From another window')]);
+  await expect(notes).toHaveValue('From another window');
+
+  // Typing that started from older notes keeps the draft here and leaves the newer saved notes alone.
+  await page.evaluate(async command => {
+    const area = document.querySelector<HTMLTextAreaElement>('.video-notes-text')!;
+    area.value += ' and mine'; area.dispatchEvent(new Event('input'));
+    const { state } = await window.craftingTable.workspaceRead();
+    await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: state.revision, actor: { kind: 'user', id: 'test' }, commands: [command as never] });
+  }, notesTo('Newer elsewhere'));
+  await expect(page.locator('.video-notes .pr-comment-feedback')).toHaveText(/saved notes changed elsewhere/);
+  expect(await saved()).toBe('Newer elsewhere');
+  await expect(notes).toHaveValue('From another window and mine');
+});

@@ -58,3 +58,21 @@ test('an undo that landed is filed for redo even when reading the map back fails
   await history.redo();
   assert.deepEqual([sent, failed], [['undo:Move', 'redo:Move'], ['Read failed', 'Read failed']]);
 });
+
+test('an Undo button reverses its own change after keyboard undo and redo replaced its step, and the other steps stay in order', async () => {
+  const sent: string[] = [];
+  // Like the service, each reversal answers with a new copy of what it put back.
+  const history = createMapHistory(() => ({ active: () => true, notify() {}, fail(message) { throw new Error(message); }, refresh: async () => {},
+    revert: async (step, direction) => { sent.push(`${direction}:${step.label}`); return { applied: structuredClone(step), reverted: 1, skipped: 0 }; } }));
+  const step = (label: string, id: string) => history.trackStep(label, async () => ({ receipt: { items: [{ id, before: snap(0), after: snap(300) }], links: [], plots: [] } }));
+  await step('Move', 'a');
+  const archived = await step('Archive', 'n');
+  await history.undo();
+  await history.redo();
+  await step('Drag', 'b');
+  await history.undo(archived);
+  await history.undo(archived);
+  for (let i = 0; i < 2; i++) await history.undo();
+  for (let i = 0; i < 3; i++) await history.redo();
+  assert.deepEqual(sent, ['undo:Archive', 'redo:Archive', 'undo:Archive', 'undo:Drag', 'undo:Move', 'redo:Move', 'redo:Drag', 'redo:Archive']);
+});

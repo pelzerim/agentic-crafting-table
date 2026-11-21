@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,4 +25,10 @@ test('the video route serves only the file a live video item names, and only a v
   await writeFile(join(folder, 'clip.mp4'), '0123456789');
   const part = await videoResponse(join(folder, 'clip.mp4'), 'bytes=2-5');
   assert.equal(part.status, 206); assert.equal(part.headers.get('content-range'), 'bytes 2-5/10'); assert.equal(await part.text(), '2345');
+});
+
+test('a named pipe named like a video is refused without waiting for a writer', { skip: process.platform === 'win32', timeout: 5000 }, async () => {
+  const folder = await mkdtemp(join(tmpdir(), 'video-fifo-'));
+  execFileSync('mkfifo', [join(folder, 'pipe.mp4')]);
+  assert.equal((await videoResponse(join(folder, 'pipe.mp4'), null)).status, 404);
 });
