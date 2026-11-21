@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Reviews
+- **Send picker**: a long agent title no longer pushes the picker's send button off its left edge; the label ends in an ellipsis and the tooltip shows the full name. (#41, @pmallol)
+
 ## 0.24.0 — 2026-11-17
 
 ### Agents
