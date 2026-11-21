@@ -134,6 +134,13 @@
   margin-left: auto;
 }
 
+.command-menu-notice {
+  margin: 0;
+  padding: var(--act-sp-2) var(--act-sp-4) 0;
+  color: var(--act-ink-dim);
+  font-size: var(--act-fs-ui);
+}
+
 .command-menu-empty {
   margin: 0;
   padding: var(--act-sp-4);

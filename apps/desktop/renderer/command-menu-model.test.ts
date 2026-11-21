@@ -42,3 +42,18 @@ test('the menu never lists itself, keys that only work inside a view, or a comma
   assert.equal(new Set(COMMAND_MENU_COMMANDS.map(command => command.title)).size, ids.length);
   assert.ok(ids.includes('action:new-item') && ids.includes('action:new-project'));
 });
+
+test('on the Undermap the menu leaves out New item and New project, which only work on the map', () => {
+  const below = commandMenuSections(nodes, [], '', { below: true }).find(section => section.label === 'Commands')!;
+  assert.ok(!below.rows.some(row => row.target.startsWith('action:')));
+  assert.ok(below.rows.some(row => row.target === 'shortcut:layer.toggle'), 'travel back still shows');
+  assert.ok(!commandMenuSections(nodes, [], 'new', { below: true }).some(section => section.rows.some(row => row.target.startsWith('action:'))));
+  assert.ok(commandMenuSections(nodes, [], 'new').some(section => section.rows.some(row => row.target === 'action:new-item')));
+});
+
+test('rail commands say Toggle, since picking one on a held-open panel closes it', () => {
+  for (const id of ['rail.attention', 'rail.reminders', 'rail.inbox', 'rail.actions', 'todos.toggle']) {
+    const command = COMMAND_MENU_COMMANDS.find(entry => entry.id === `shortcut:${id}`);
+    if (command) assert.match(command.title, /^Toggle /, id);
+  }
+});

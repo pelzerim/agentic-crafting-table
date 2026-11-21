@@ -15,15 +15,16 @@ const action = (id: CommandMenuAction, title: string): CommandMenuCommand => ({ 
 const shown = (slot: string) => RAIL_SLOTS.some(rail => rail === slot);
 
 /** What the command menu can do: map and app actions with their keys, and the creations a person starts most.
- * Keys that only work inside an open view, and the menu itself, stay out. */
+ * Keys that only work inside an open view, and the menu itself, stay out. Rail panels say Toggle: their key closes a
+ * panel that is held open. */
 export const COMMAND_MENU_COMMANDS: readonly CommandMenuCommand[] = [
   action('new-item', 'New item…'),
   action('new-project', 'New project…'),
-  shortcut('rail.attention', 'Show Needs me'),
+  shortcut('rail.attention', 'Toggle Needs me'),
   shortcut('todos.toggle', 'Toggle to-do list'),
-  shortcut('rail.reminders', 'Show reminders'),
-  shortcut('rail.inbox', 'Show GitHub inbox'),
-  ...shown('actions') ? [shortcut('rail.actions', 'Show actions')] : [],
+  shortcut('rail.reminders', 'Toggle reminders'),
+  shortcut('rail.inbox', 'Toggle GitHub inbox'),
+  ...shown('actions') ? [shortcut('rail.actions', 'Toggle actions')] : [],
   shortcut('layer.toggle', 'Go to Undermap and back'),
   shortcut('map.overview', 'Toggle map overview'),
   shortcut('map.find', 'Find an item on the map'),
@@ -40,16 +41,17 @@ const commandRow = (command: CommandMenuCommand): CommandMenuRow => ({ id: comma
 const itemRow = (match: { id: string; title: string; project: string | undefined }): CommandMenuRow => ({ id: `item:${match.id}`, kind: 'item', target: match.id, title: match.title, ...(match.project ? { detail: match.project } : {}) });
 
 /** The menu's sections for a query: before typing, recent items and every command; then the items, projects and
- * commands that hold every word. Empty sections are left out, so no sections means nothing matches. */
-export function commandMenuSections(nodes: readonly GraphNode[], recent: readonly string[], query: string): CommandMenuSection[] {
-  const typed = words(query);
+ * commands that hold every word. Empty sections are left out, so no sections means nothing matches. On the Undermap
+ * the creations stay out: new items land on the map only. */
+export function commandMenuSections(nodes: readonly GraphNode[], recent: readonly string[], query: string, { below = false }: { below?: boolean } = {}): CommandMenuSection[] {
+  const typed = words(query), commands = below ? COMMAND_MENU_COMMANDS.filter(command => !('action' in command.run)) : COMMAND_MENU_COMMANDS;
   const sections: CommandMenuSection[] = typed.length ? [
     { label: 'Items', rows: searchMap(nodes, query, LIMITS.items).map(itemRow) },
     { label: 'Projects', rows: searchProjects(nodes, query, LIMITS.projects).map(match => ({ id: `project:${match.id}`, kind: 'project' as const, target: match.id, title: match.title, detail: 'Project' })) },
-    { label: 'Commands', rows: COMMAND_MENU_COMMANDS.filter(command => typed.every(word => command.title.toLowerCase().includes(word))).slice(0, LIMITS.commands).map(commandRow) },
+    { label: 'Commands', rows: commands.filter(command => typed.every(word => command.title.toLowerCase().includes(word))).slice(0, LIMITS.commands).map(commandRow) },
   ] : [
     { label: 'Recently opened', rows: recentOnMap(nodes, recent, LIMITS.recent).map(itemRow) },
-    { label: 'Commands', rows: COMMAND_MENU_COMMANDS.map(commandRow) },
+    { label: 'Commands', rows: commands.map(commandRow) },
   ];
   return sections.filter(section => section.rows.length);
 }

@@ -172,13 +172,16 @@ person starts most (**New item…** opens the item picker and **New project…**
 the menu panel stood: the form's top centre at the panel's, the ring centred just below the panel's top; the new
 item lands on the map under that point) and the map and app actions of the shortcut registry, each with its
 key: Needs me, to-dos, reminders, GitHub inbox, Actions while shown, Undermap and back, map
-overview, find on map, zoom, Settings and Controls. Keys that only work inside an open view and
+overview, find on map, zoom, Settings and Controls. Rail panels are named **Toggle …**, as their key closes a
+panel held open. On the Undermap the creations are not listed. Keys that only work inside an open view and
 the menu itself are not commands. Arrows move through every row across headings, Enter or a
 click picks one, and the menu closes before the pick runs: an item flies there and opens as in
-MAP-33, a project flies there and selects it, a command runs as its key would. Going back from the first layer of a form the menu opened (Escape or a right-click on
+MAP-33, a project flies there and selects it, a command runs as its key would. A command that cannot run in the current state (its key is declined) reopens
+the menu with the query and the line "“<command>” can’t run here." Going back from the first layer of a form the menu opened (Escape or a right-click on
 **New project…**'s form or **New item…**'s picker) closes it and reopens the menu with the query kept;
 a created item or project closes both. Escape, ⌘K again
-or a click outside closes the menu without running anything; with nothing matching it says so
+or a click outside closes the menu without running anything, and Enter or Escape that ends an IME composition
+stays with the IME; with nothing matching it says so
 and Enter does nothing. ⌘F stays find only (MAP-33).
 
 **MAP-19 — Independent expanded-view movement.** Drag anywhere on the expanded item's menu bar (including status, directory, provider/model text and empty space; excluding buttons and other interactive controls)

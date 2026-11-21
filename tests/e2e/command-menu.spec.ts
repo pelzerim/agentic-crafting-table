@@ -109,3 +109,27 @@ test('New project and New item open where the command menu was, not in a corner'
     await expect(menu).toHaveCount(0);
   }
 });
+
+test('Enter and Escape that end an IME composition neither pick a row nor close the menu', async ({ visual: { page } }) => {
+  const menu = page.getByRole('dialog', { name: 'Command menu' }), field = menu.getByRole('combobox');
+  await page.keyboard.press('Meta+k');
+  await field.fill('plan');
+  for (const key of ['Enter', 'Escape']) await field.evaluate((input, key) => input.dispatchEvent(new KeyboardEvent('keydown', { key, isComposing: true, bubbles: true, cancelable: true })), key);
+  await expect(menu).toBeVisible();
+  await expect(field).toHaveValue('plan');
+  await expect(page.locator('.map-area')).toHaveAttribute('data-focus', '');
+});
+
+test('a command its handler declines reopens the menu with the query instead of failing silently', async ({ visual: { page } }) => {
+  const menu = page.getByRole('dialog', { name: 'Command menu' }), field = menu.getByRole('combobox'), area = page.locator('.map-area');
+  await page.keyboard.press('Meta+k');
+  await field.fill('plan sw');
+  await page.keyboard.press('Enter');
+  await expect(area).toHaveAttribute('data-focus', 'pr');
+  await page.keyboard.press('Meta+k');
+  await field.fill('overview');
+  await page.keyboard.press('Enter');
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue('overview');
+  await expect(menu.getByRole('status')).toContainText('can’t run here');
+});

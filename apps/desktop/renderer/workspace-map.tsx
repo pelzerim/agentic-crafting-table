@@ -439,7 +439,7 @@ export function WorkspaceMap() {
   }, [mirrorBelow]);
   const searchBelow = useCallback((query: string) => mirrorBelow ? searchUndermap(mirrorBelow, snapshotRef.current?.state.nodes ?? [], query, Infinity) : [], [mirrorBelow]);
   const flyBelow = (match: UndermapMatch) => { setEditor(undefined); setFoundBelow(match.id); revealNode(match.id, 'map'); };
-  const [mapFindOpen, setMapFindOpen] = useState(false), [commandMenu, setCommandMenu] = useState<{ query: string }>();
+  const [mapFindOpen, setMapFindOpen] = useState(false), [commandMenu, setCommandMenu] = useState<{ query: string; notice?: string }>();
   const searchOnMap = useCallback((query: string) => searchMap(snapshotRef.current?.state.nodes ?? [], query, Infinity).map(match => ({ id: match.id, title: match.title, detail: match.project })), []);
   const recentlyOpened = useMemo(() => ({ label: 'Recently opened', matches: () => recentOnMap(snapshotRef.current?.state.nodes ?? [], viewRef.current?.recentItems ?? []).map(match => ({ id: match.id, title: match.title, detail: match.project })) }), []);
   /** Plots exist on the map layer only; hidden plots and projects that turned plots off are left out. */
@@ -671,9 +671,10 @@ export function WorkspaceMap() {
   const runCommandMenu = (row: CommandMenuRow, query: string, panel: DOMRect | undefined) => {
     if (row.kind === 'item') { setEditor(undefined); revealNode(row.target, 'centred'); return; }
     if (row.kind === 'project') { setEditor(undefined); revealNode(row.target, 'map'); return; }
-    if (row.target === 'action:new-project') { if (!below) createFromCommandMenu('project', panel, query); return; }
-    if (row.target === 'action:new-item') { if (!below) createFromCommandMenu(undefined, panel, query); return; }
-    if (row.target.startsWith('shortcut:')) runWorkspaceShortcut(row.target.slice('shortcut:'.length) as Parameters<typeof runWorkspaceShortcut>[0]);
+    // A command that cannot run here brings the menu back with the query and says so, never closes in silence.
+    const declined = () => setCommandMenu({ query, notice: `“${row.title}” can’t run here.` });
+    if (row.target === 'action:new-project' || row.target === 'action:new-item') { if (below) declined(); else createFromCommandMenu(row.target === 'action:new-project' ? 'project' : undefined, panel, query); return; }
+    if (row.target.startsWith('shortcut:') && !runWorkspaceShortcut(row.target.slice('shortcut:'.length) as Parameters<typeof runWorkspaceShortcut>[0])) declined();
   };
   /** A change to one link lands on the newest revision while that link is still the one the person chose; other writes in between never refuse it. */
   const applyToLink = async (seen: GraphLink, commands: WorkspaceCommand[]) => {
@@ -966,7 +967,7 @@ export function WorkspaceMap() {
     {snapshot && !below && mapFindOpen && <div className="below-bar map-find-bar"><FindField label="Find on map" listLabel="Items on map" placeholder="Find an item and open it…"
       empty={query => `Nothing on the map matches “${query}”.`} shortcut={shortcutKey('map.find')} search={searchOnMap}
       pick={id => { setEditor(undefined); revealNode(id, 'centred'); }} idle={recentlyOpened} transient={{ close: () => setMapFindOpen(false) }} /></div>}
-    {snapshot && commandMenu && <CommandMenu nodes={() => snapshotRef.current?.state.nodes ?? []} recent={() => viewRef.current?.recentItems ?? []} initialQuery={commandMenu.query} pick={runCommandMenu} close={() => setCommandMenu(undefined)} />}
+    {snapshot && commandMenu && <CommandMenu nodes={() => snapshotRef.current?.state.nodes ?? []} recent={() => viewRef.current?.recentItems ?? []} initialQuery={commandMenu.query} below={below} notice={commandMenu.notice} pick={runCommandMenu} close={() => setCommandMenu(undefined)} />}
     {snapshot && below && !layerGraph.nodes.length && <div className="map-message below-empty"><p>Undermap is empty. Right-click an item on the map and choose <b>Send to Undermap</b>.</p></div>}
     {below && riseCharge > 0 && <div className="below-rise" aria-hidden="true"><span>Keep zooming out to rise to the map</span><i style={{ width: `${riseCharge * 100}%` }} /></div>}
     {snapshot && !below && !snapshot.state.nodes.length && !snapshot.layers?.below.items && firstRun === false && <div className="map-message"><span className="eyebrow">YOUR WORKSPACE</span><h1>A place for every project.</h1><p>Double-click anywhere to add an item · right-click for more</p><button onClick={createProject}>Create your first project</button><button onClick={() => toggleFirstRun(true)}>Guide me through my first session</button></div>}
