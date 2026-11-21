@@ -1,0 +1,16 @@
+/* Video view: the player or the embedded page fills the item, with the Notes panel beside it. */
+.resource-detail:has(.video-view){padding:0;overflow:hidden}
+.video-view{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--act-surface);color:var(--act-ink)}
+.video-body{display:flex;flex:1 1 auto;min-height:0}
+.video-stage{display:flex;flex:1 1 auto;min-width:0;min-height:0}
+.video-player{width:100%;height:100%;min-height:0;object-fit:contain}
+.video-keep[aria-pressed=true],.video-notes-toggle[aria-pressed=true]{color:var(--act-accent);background:var(--act-accent-bg)}
+.video-notes{display:flex;flex-direction:column;gap:var(--act-sp-2);flex:0 0 300px;min-height:0;padding:var(--act-sp-3);border-left:1px solid var(--act-line);overflow:auto}
+.video-notes[hidden]{display:none}
+.video-notes .pr-comment-controls{margin-top:0}
+.video-notes-text{flex:1 1 160px;min-height:120px;resize:none;font:inherit;background:var(--act-sunken);color:inherit;border:1px solid var(--act-line-control);padding:10px}
+.video-notes[data-sent=true] .video-notes-text{color:var(--act-ink-faint)}
+.video-notes-stamps{display:flex;flex-direction:column;gap:2px;margin:0;padding:0;list-style:none}
+.video-notes-stamps[hidden]{display:none}
+.video-notes-stamps button{width:100%;padding:4px 6px;text-align:left;font-size:var(--act-fs-meta);color:var(--act-ink-dim);background:none;border:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.video-notes-stamps button:hover{color:var(--act-ink);background:var(--act-hover)}

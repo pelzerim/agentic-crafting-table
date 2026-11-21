@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isMuted, mutedProjectIds, splitAttention } from './mute.ts';
+import { boardAttention, isMuted, mutedProjectIds, splitAttention } from './mute.ts';
 import { attentionItems } from './attention.ts';
 import { projectActivity } from './project-neighborhoods.ts';
 import { DEFAULT_MAP_DASHBOARDS, dashboardLayout, projectDashboard } from './project-dashboard.ts';
@@ -87,4 +87,13 @@ test('the Atlas draws no item marks inside a muted project', () => {
 test('to-dos of a muted project stay listed, tagged muted', () => {
   const groups = groupWorkspaceTodos({ nodes: [...nodes, item('todo-q', 'quiet', { inTodoList: true }), item('todo-l', 'loud', { inTodoList: true })], resources: [], links: [], todos: [] });
   assert.deepEqual(groups.map(group => [group.title, group.muted, group.items.length]), [['Photos', true, 1], ['Billing', undefined, 1]]);
+});
+
+test('each board counts its own aliases, with mute applied within that board', () => {
+  const quiet = { id: 'quiet', title: 'Quiet', position: { x: 0, y: 0 }, mutedAt: AT };
+  const spread: Node[] = [quiet, item('shared-main', undefined, { resourceId: 'shared', attention: 'input' }), item('shared-side', undefined, { resourceId: 'shared', board: 'side', attention: 'review' }),
+    item('muted-main', 'quiet', { resourceId: 'other', attention: 'input' }), item('other-side', undefined, { resourceId: 'other', board: 'side', attention: 'input' })];
+  const counted = (board: string) => boardAttention(spread, board).map(entry => [entry.identity, entry.tier]);
+  assert.deepEqual(counted('main'), [['shared', 'asking']]);
+  assert.deepEqual(counted('side'), [['other', 'asking'], ['shared', 'turn']]);
 });

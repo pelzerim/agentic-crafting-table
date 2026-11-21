@@ -30,7 +30,7 @@ export function itemChoiceLayers(choices: ItemChoice[], quickIds: string[]) {
   return { quick, remaining: choices.filter(choice => !shown.has(choice.id)) };
 }
 
-const GROUND_ICONS: Readonly<Record<string, string>> = { 'new-project': 'project', 'archive-browser': 'archive', mute: 'bell', unmute: 'bell' };
+const GROUND_ICONS: Readonly<Record<string, string>> = { 'new-project': 'project', 'new-board': 'grid', 'archive-browser': 'archive', mute: 'bell', unmute: 'bell' };
 /** The ground menu's entries as ring choices (MAP-31). New item is left out because the ring is that entry; New project is
  * the ring's Project choice, so it is added only when `quick` does not show one. Counts in a label stay in the tooltip. */
 export function groundRingChoices(actions: readonly MenuAction[], quick: readonly ItemChoice[]): ItemChoice[] {

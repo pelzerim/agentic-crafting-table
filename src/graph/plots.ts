@@ -69,13 +69,15 @@ export function plotPatches(boxes: readonly PlotBox[]) {
 }
 
 interface PlotGroup { ids: string[]; linked: boolean; pinned?: string }
+/** The most items nearness alone holds in one plot of a project with `projectItems` items on the map; a bigger cluster is a pile. */
+export const plotSizeLimit = (projectItems: number) => Math.min(PLOT_MAX_ITEMS, projectItems * PLOT_MAX_SHARE);
 
 /** One pass over a project. `together` says which plot each member is in already, `pinnedIn` which
  * plot a person pinned it in. Units are proximity clusters; a cluster past the caps is a pile and
  * each of its items is a unit of its own. A pinned plot's members are one unit wherever they sit,
  * and an unpinned unit within reach of one joins the nearest. Links join units, except between two plots. */
 function projectGroups(members: readonly PlotBox[], links: readonly PlotLink[], together: ReadonlyMap<string, string>, pinnedIn: ReadonlyMap<string, string>, locked: ReadonlySet<string> = new Set()): PlotGroup[] {
-  const limit = Math.min(PLOT_MAX_ITEMS, members.length * PLOT_MAX_SHARE);
+  const limit = plotSizeLimit(members.length);
   const capped = (cluster: PlotBox[], split: (cluster: PlotBox[]) => PlotBox[][]) => cluster.length > limit ? split(cluster) : [cluster];
   const reach = (a: PlotBox, b: PlotBox) => together.has(a.id) && together.get(a.id) === together.get(b.id) ? PLOT_LEAVE : PLOT_JOIN;
   // The leave gap only holds a plot together: where it would push a cluster past the caps, the join gap decides.

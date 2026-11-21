@@ -11,7 +11,7 @@ import { currentProcessStart, isProcessRunning } from '../platform/process-ident
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { canonical, CommandIdConflict, emptyState, receiptRevision, RevisionConflict, stateSchema, viewSchema } from '../core/control.ts';
+import { canonical, CommandIdConflict, emptyState, keepBoards, receiptRevision, RevisionConflict, stateSchema, viewSchema } from '../core/control.ts';
 import type { CommandEnvelope, CommandResult, WorkspaceCommand, WorkspaceState, WorkspaceStore } from '../core/control.ts';
 import type { RecoveryState } from './lifecycle.ts';
 import { attentionItems, nodeAttentionReasons } from '../../src/graph/attention.ts';
@@ -28,6 +28,7 @@ import type { StandupEvidence } from '../core/standup.ts';
 import { migrateTodoHorizons } from './todo-horizon-migration.ts';
 import { migrateValidationLinks } from './validation-link-migration.ts';
 import { findById } from '../../src/graph/lookup.ts';
+import { boardList } from '../../src/graph/boards.ts';
 
 /** Marks settings saved before package settings existed, so the values they relied on can be kept. */
 const SETTINGS_BEFORE_PLUGINS = 'settings:before-plugin-settings';
@@ -111,6 +112,9 @@ export const migrations = [
   // Pins a lock added (MAP-24): JSON array added once as the `lock_pinned_ids` column (`PLOT_LOCK_PINS_VERSION`), so unlock
   // removes only those; NULL (old rows) means the lock added none.
   `SELECT 1; -- plots.lock_pinned_ids`,
+  // Boards: one row per board in tab order. A node without a board is on Main, so no node row changes.
+  `CREATE TABLE IF NOT EXISTS boards (id TEXT PRIMARY KEY, ordinal INTEGER NOT NULL UNIQUE, body TEXT NOT NULL);
+   INSERT OR IGNORE INTO boards(id, ordinal, body) VALUES ('main', 0, '{"id":"main","name":"Main"}');`,
 ] as const;
 const CONFLICTS_KEPT = 1000, CONFLICT_LANDED_SHOWN = 20;
 export interface RevisionConflictRecord { at: string; actor: string; commands: CommandSubject[]; expected: number; current: number; landed: { revision: number; actor: string; commands: CommandSubject[] }[] }
@@ -153,6 +157,8 @@ export interface ProjectSummaryRecord { projectId: string; fingerprint: string; 
  * `color` is assigned once, `chosenColor` is a person's override. `pinnedMemberIds` are the items a person pinned in it;
  * a `locked` plot takes no other items. */
 export interface PlotRecord { id: string; projectId: string; memberIds: string[]; active: boolean; name?: string; generated: boolean; hidden: boolean; changedAt: number; fingerprint?: string; attemptedAt?: number; color?: string; chosenColor?: string; pinnedMemberIds: string[]; locked: boolean; lockPinnedIds: string[] }
+/** The plot fields an undo or redo puts back; `null` clears a name or chosen colour. */
+export interface PlotPatch { id: string; projectId: string; create?: true; name?: string | null; generated?: boolean; color?: string; chosenColor?: string | null; pinnedMemberIds?: readonly string[]; locked?: boolean; lockPinnedIds?: readonly string[] | null }
 /** The latest hook a Claude process sent, and when its hook process saw it. */
 export interface AgentObservation { event: string; observedAt: number }
 export type RolloutValidationPatch = Partial<Pick<Validation, 'state' | 'verdict' | 'sequence' | 'reports' | 'report' | 'scope' | 'startedAt' | 'finishedAt'>> & { idleSince?: number | null };
@@ -612,9 +618,10 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     });
   }
   /** An item is pinned in one plot at most: these members leave every plot's pins. A plot left with none is unlocked. */
-  private unpinEverywhere(memberIds: readonly string[]) {
+  private unpinEverywhere(memberIds: readonly string[], except?: string) {
     const leaving = new Set(memberIds), update = this.db.prepare('UPDATE plots SET pinned_member_ids = ?, locked = locked AND ?, lock_pinned_ids = ? WHERE id = ?');
     for (const record of this.plotRecords()) {
+      if (record.id === except) continue;
       const kept = record.pinnedMemberIds.filter(id => !leaving.has(id)), lockKept = record.lockPinnedIds.filter(id => !leaving.has(id));
       if (kept.length !== record.pinnedMemberIds.length) update.run(kept.length ? JSON.stringify(kept) : null, Number(kept.length > 0), kept.length && lockKept.length ? JSON.stringify(lockKept) : null, record.id);
     }
@@ -671,6 +678,38 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       if (name === undefined) this.db.prepare('UPDATE plots SET name = NULL, generated = 0, fingerprint = NULL, attempted_at = NULL WHERE id = ?').run(id);
       else this.db.prepare('UPDATE plots SET name = ?, generated = ? WHERE id = ?').run(name, Number(generated), id);
       return true;
+    });
+  }
+  /** Puts back the plot fields an undo or redo names; `create` recreates a plot a redo brings back, `remove` drops plots an undo takes away. */
+  restorePlots(patches: readonly PlotPatch[], remove: readonly string[], now: number) {
+    this.transaction(() => {
+      for (const id of remove) this.db.prepare('DELETE FROM plots WHERE id = ?').run(id);
+      for (const patch of patches) {
+        const record = this.plotRecords().find(entry => entry.id === patch.id), pinned = patch.pinnedMemberIds && [...new Set(patch.pinnedMemberIds)].sort();
+        if (!record) {
+          if (!patch.create || !pinned?.length) continue;
+          this.unpinEverywhere(pinned);
+          this.db.prepare('INSERT INTO plots(id, project_id, member_ids, active, changed_at, pinned_member_ids, name, generated, color, chosen_color) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?)')
+            .run(patch.id, patch.projectId, JSON.stringify(pinned), now, JSON.stringify(pinned), patch.name ?? null, Number(Boolean(patch.name) && Boolean(patch.generated)), patch.color ?? null, patch.chosenColor ?? null);
+          continue;
+        }
+        if (patch.projectId !== record.projectId) this.movePlots([patch.id], patch.projectId);
+        if (pinned) {
+          // Other plots give these members up; this plot keeps its lock and which pins the lock added.
+          this.unpinEverywhere(pinned, patch.id);
+          const locked = (patch.locked ?? record.locked) && pinned.length > 0, lockPinned = (patch.lockPinnedIds === undefined ? record.lockPinnedIds : patch.lockPinnedIds ?? []).filter(id => pinned.includes(id));
+          this.db.prepare('UPDATE plots SET pinned_member_ids = ?, locked = ?, lock_pinned_ids = ? WHERE id = ?').run(pinned.length ? JSON.stringify(pinned) : null, Number(locked), locked && lockPinned.length ? JSON.stringify(lockPinned) : null, patch.id);
+        } else if (patch.locked !== undefined || patch.lockPinnedIds !== undefined) {
+          const locked = (patch.locked ?? record.locked) && record.pinnedMemberIds.length > 0, lockPinned = (patch.lockPinnedIds === undefined ? record.lockPinnedIds : patch.lockPinnedIds ?? []).filter(id => record.pinnedMemberIds.includes(id));
+          this.db.prepare('UPDATE plots SET locked = ?, lock_pinned_ids = ? WHERE id = ?').run(Number(locked), locked && lockPinned.length ? JSON.stringify(lockPinned) : null, patch.id);
+        }
+        if (patch.name !== undefined || patch.generated !== undefined) {
+          const name = patch.name === undefined ? record.name ?? null : patch.name, generated = patch.generated ?? record.generated;
+          this.db.prepare('UPDATE plots SET name = ?, generated = ? WHERE id = ?').run(name, Number(name !== null && generated), patch.id);
+        }
+        if (patch.color !== undefined) this.db.prepare('UPDATE plots SET color = ? WHERE id = ?').run(patch.color, patch.id);
+        if (patch.chosenColor !== undefined) this.db.prepare('UPDATE plots SET chosen_color = ? WHERE id = ?').run(patch.chosenColor, patch.id);
+      }
     });
   }
   colorPlots(colors: ReadonlyMap<string, string>) {
@@ -987,12 +1026,15 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
   }
 
   /** Never await or call external services inside these synchronous transactions. */
+  /** Whether a transaction is open; a nested one joins it and commits or rolls back with it. */
+  private open = false;
   private transaction<T>(change: () => T, readOnly = false): T {
+    if (this.open) return change();
     this.db.exec(readOnly ? 'BEGIN' : 'BEGIN IMMEDIATE');
-    this.keptJobs = false;
+    this.keptJobs = false; this.open = true;
     let result: T;
-    try { result = change(); this.db.exec('COMMIT'); }
-    catch (error) { this.changedRollouts.clear(); this.decoded = undefined; if (this.keptJobs) this.jobs = undefined; this.db.exec('ROLLBACK'); throw error; }
+    try { result = change(); this.open = false; this.db.exec('COMMIT'); }
+    catch (error) { this.open = false; this.changedRollouts.clear(); this.decoded = undefined; if (this.keptJobs) this.jobs = undefined; this.db.exec('ROLLBACK'); throw error; }
     if (this.changedRollouts.size) {
       const changed = [...this.changedRollouts]; this.changedRollouts.clear();
       for (const id of changed) for (const listener of this.rolloutListeners) try { listener(id); } catch { /* A committed change stands whatever a listener does. */ }
@@ -1016,7 +1058,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     const metadata = this.db.prepare('SELECT revision, view FROM workspace WHERE id = 1').get()!;
     const records = (table: string, order: string) => this.db.prepare(`SELECT body FROM ${table} ORDER BY ${order}`).all().map(row => decode(row.body));
     return stateSchema.parse({ version: 1, revision: metadata.revision, view: decode(metadata.view),
-      resources: records('resources', 'rowid'), nodes: records('nodes', 'ordinal'), links: records('links', 'ordinal'), todos: records('todos', 'ordinal') });
+      resources: records('resources', 'rowid'), nodes: records('nodes', 'ordinal'), links: records('links', 'ordinal'), todos: records('todos', 'ordinal'), boards: records('boards', 'ordinal') });
   }
 
   private writeState(input: WorkspaceState): WorkspaceState {
@@ -1036,6 +1078,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     this.writeRows('nodes', ['resource_id', 'project_id', 'ordinal', 'body'], state.nodes.map((record, i) => [record.id, record.resourceId ?? null, record.projectId ?? null, i, JSON.stringify(record)]));
     this.writeRows('links', ['source_id', 'target_id', 'ordinal', 'body'], state.links.map((record, i) => [record.id, record.sourceId, record.targetId, i, JSON.stringify(record)]));
     this.writeRows('todos', ['ordinal', 'body'], state.todos.map((record, i) => [record.id, i, JSON.stringify(record)]));
+    this.writeRows('boards', ['ordinal', 'body'], boardList(state).map((record, i) => [record.id, i, JSON.stringify(record)]));
     this.db.prepare('UPDATE workspace SET revision = ?, view = ? WHERE id = 1').run(state.revision, JSON.stringify(state.view));
     return state;
   }
@@ -1086,6 +1129,10 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       this.appendEvent('workspace.changed', next.revision, randomUUID());
       return next;
     });
+  }
+  /** Runs `work` in one transaction against the current workspace; what it commits and writes lands together or not at all. */
+  atomic<T>(work: (state: WorkspaceState, commit: (envelope: CommandEnvelope, change: (state: WorkspaceState) => WorkspaceState) => CommandResult) => T): T {
+    return this.transaction(() => work(this.readState(), (envelope, change) => this.commitDraft(envelope, change)));
   }
   async commit(envelope: CommandEnvelope, change: (state: WorkspaceState) => WorkspaceState): Promise<CommandResult> {
     try { return this.transaction(() => this.commitDraft(envelope, change)); }
@@ -1172,6 +1219,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       if (this.db.prepare('SELECT digest FROM imports WHERE digest = ?').get(digest)) return { imported: false, state: this.readState() };
       const before = this.readState();
       if (before.revision || before.nodes.length || before.resources.length || before.todos.length || before.links.length) throw new Error('Import requires an empty workspace');
+      keepBoards(state);
       this.writeState(state);
       this.db.prepare('INSERT INTO imports(digest, imported_at) VALUES (?, ?)').run(digest, new Date().toISOString());
       this.appendEvent('workspace.changed', state.revision, `import:${digest}`);

@@ -325,6 +325,18 @@ test('explicit JSON import preserves identities, is repeatable and retains inval
   } finally { store.close(); }
 }));
 
+test('an import puts items of a board it lacks on the first board, and members on their project\'s board', () => fixture(async directory => {
+  const source = join(directory, 'boards.state.json');
+  await writeFile(source, JSON.stringify({ ...emptyState(), revision: 1, boards: [{ id: 'main', name: 'Main' }, { id: 'side', name: 'Side' }],
+    resources: [{ id: 'r', pluginId: 'workspace.note', schemaVersion: 1, title: 'm', data: { text: 'm' } }], nodes: [
+    { id: 'p', title: 'p', board: 'side', position: { x: 0, y: 0 } }, { id: 'member', title: 'm', resourceId: 'r', projectId: 'p', position: { x: 0, y: 0 } }, { id: 'lost', title: 'l', board: 'gone', position: { x: 0, y: 0 } }] }));
+  const store = new SqliteStore(join(directory, 'workspace.sqlite'));
+  try {
+    await store.importJson(source);
+    assert.deepEqual((await store.read()).nodes.map(node => [node.id, node.board]), [['p', 'side'], ['member', 'side'], ['lost', undefined]]);
+  } finally { store.close(); }
+}));
+
 test('schema upgrade creates a usable original backup and rejects future versions without resetting them', () => fixture(async directory => {
   const file = join(directory, 'old.sqlite');
   const old = new DatabaseSync(file);
@@ -1054,5 +1066,25 @@ test('the time a cached resource read was stored is answered without its fingerp
     assert.equal(store.resourceCacheCheckedAt('pull-r', 'snapshot'), 1000);
     store.cacheResource('pull-r', 'snapshot', 'second', { detail: {} }, 2000);
     assert.equal(store.resourceCacheCheckedAt('pull-r', 'snapshot'), 2000);
+  } finally { store.close(); }
+}));
+
+test('the boards migration keeps every item of an existing database and puts it on Main', () => fixture(async directory => {
+  const file = join(directory, 'boards.sqlite');
+  let store = new SqliteStore(file), control = new WorkspaceControl(store);
+  await control.apply({ type: 'project.create', id: 'kept', title: 'Kept', position: { x: 10, y: 20 } }, 0);
+  await control.apply({ type: 'item.add', id: 'loose', resourceId: 'loose-r', pluginId: 'workspace.note', title: 'Loose', data: { text: 'x' }, position: { x: 900, y: 20 } }, 1);
+  const before = await store.read();
+  store.close();
+  const old = new DatabaseSync(file); old.exec(`DROP TABLE boards; PRAGMA user_version = ${migrations.length - 1};`); old.close();
+  store = new SqliteStore(file); control = new WorkspaceControl(store);
+  try {
+    const after = await store.read();
+    assert.deepEqual(after, before);
+    assert.deepEqual(after.boards, [{ id: 'main', name: 'Main' }]);
+    assert.ok(after.nodes.every(node => node.board === undefined));
+    await control.apply({ type: 'board.save', board: { id: 'side', name: 'Side' } }, after.revision);
+    store.close(); store = new SqliteStore(file);
+    assert.deepEqual((await store.read()).boards.map(board => board.name), ['Main', 'Side']);
   } finally { store.close(); }
 }));

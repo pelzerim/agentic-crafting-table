@@ -186,6 +186,17 @@ test('a person creates a pinned plot of far-apart items, pins more into it and u
   assert.deepEqual(groups(view), ['a1,a2,a3', 'b1,b2,b3'], 'unpinned, the items follow detection again');
 }));
 
+test('a pin receipt covers every plot it changed, with stored pins: an emptied plot and an archived member', () => fixture(async ({ store, control, apply }) => {
+  const plots = new Plots(store, control);
+  await apply(note('f1', -4000, 4000), note('f2', 6000, 5000), note('f3', 6200, 5000));
+  const lone = (await plots.run('photos', { operation: 'create', memberIds: ['f1'] }) as { plotId: string }).plotId;
+  const pair = (await plots.run('photos', { operation: 'create', memberIds: ['f2', 'f3'] }) as { plotId: string }).plotId;
+  await apply({ type: 'node.archive', id: 'f3' });
+  type Pinned = { receipt?: { plots: { id: string; before: { pinnedMemberIds: string[] }; after: { pinnedMemberIds: string[] } }[] } };
+  const pins = (result: Pinned) => Object.fromEntries(result.receipt!.plots.map(plot => [plot.id, [plot.before.pinnedMemberIds.join(','), plot.after.pinnedMemberIds.join(',')]]));
+  assert.deepEqual(pins(await plots.run('photos', { operation: 'pin', plotId: pair, memberIds: ['f1'] }) as Pinned), { [lone]: ['f1', ''], [pair]: ['f2,f3', 'f1,f2,f3'] });
+}));
+
 test('moving an item to another plot or a new plot takes only that item; the plot it sat in stays', () => fixture(async ({ store, control, apply }) => {
   const plots = new Plots(store, control);
   await apply(note('b4', 3000, 0), note('b5', 3000, 0));

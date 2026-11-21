@@ -7,7 +7,7 @@ import type { GraphNode } from '../../src/graph/graph.ts';
 import { plotMapOrder } from '../../src/graph/project-column.ts';
 
 export type MenuScope = 'board' | 'neighborhood' | 'item' | 'project' | 'link';
-export type MenuActionId = 'open' | 'connect' | 'new-item' | 'new-project' | 'archive-browser' | 'edit' | 'complete' | 'reopen' | 'archive' | 'below' | 'surface' | 'remove-link' | 'make-blocking' | 'make-normal' | 'reverse-link' | 'open-web' | 'copy-url' | 'add-todo' | 'remove-todo' | 'auto-title' | 'move-plot' | 'plot-new' | 'plot-unpin' | `plot-pin:${string}` | 'plot-select' | 'plot-rename' | 'plot-auto' | 'plot-color' | 'plot-color-auto' | 'plot-hide' | 'plot-leave' | 'plot-below' | 'plot-lock' | `plot-merge:${string}` | 'project-into' | `project-into:${string}` | 'delete' | 'delete-cancel' | 'delete-confirm' | 'plots-toggle' | 'plots-unhide' | 'send-project' | 'context-show' | 'context-hide' | 'context-add' | 'context-clear' | 'archive-stale' | 'mute' | 'unmute' | 'settings' | 'size-default' | 'standup-report' | 'show-hidden' | 'hide-item' | `send:${string}` | `convert:${string}` | `plugin:${string}` | `field:${string}`;
+export type MenuActionId = 'open' | 'connect' | 'new-item' | 'new-project' | 'new-board' | 'archive-browser' | 'edit' | 'complete' | 'reopen' | 'archive' | 'below' | 'surface' | 'remove-link' | 'make-blocking' | 'make-normal' | 'reverse-link' | 'open-web' | 'copy-url' | 'add-todo' | 'remove-todo' | 'auto-title' | 'move-plot' | 'plot-new' | 'plot-unpin' | `plot-pin:${string}` | 'plot-select' | 'plot-rename' | 'plot-auto' | 'plot-color' | 'plot-color-auto' | 'plot-hide' | 'plot-leave' | 'plot-below' | 'plot-lock' | `plot-merge:${string}` | 'project-into' | `project-into:${string}` | 'delete' | 'delete-cancel' | 'delete-confirm' | 'plots-toggle' | 'plots-unhide' | 'send-project' | 'context-show' | 'context-hide' | 'context-add' | 'context-clear' | 'archive-stale' | 'mute' | 'unmute' | 'settings' | 'size-default' | 'standup-report' | 'show-hidden' | 'hide-item' | `send:${string}` | 'move-board' | `board:${string}` | 'board-rename' | 'board-color' | 'board-delete' | `convert:${string}` | `plugin:${string}` | `field:${string}`;
 /** One choice of a row: `swatch` is the colour it is drawn in. */
 export interface MenuRowChoice { value: string; label: string; swatch?: string; checked: boolean }
 /** `remote` marks actions that write to a provider (drawn with a remote glyph). An action with a `row` is a labelled
@@ -159,7 +159,7 @@ export function contextMenuActions(scope: MenuScope, completed = false, editLabe
     ];
   }
   if (scope === 'neighborhood') return [{ id: 'new-item', label: 'New item' }, ...(mute ? [{ ...mute, divider: true }] : [])];
-  if (scope === 'board') return [{ id: 'new-item', label: 'New item' }, { id: 'new-project', label: 'New project' }, { id: 'archive-browser', label: 'Open archive' }];
+  if (scope === 'board') return [{ id: 'new-item', label: 'New item' }, { id: 'new-project', label: 'New project' }, { id: 'new-board', label: 'New board…' }, { id: 'archive-browser', label: 'Open archive' }];
   const project = scope === 'project';
   // Items group their verbs: basics, provider actions, opening elsewhere, then map housekeeping.
   const sections: MenuAction[][] = [
@@ -236,6 +236,20 @@ export const projectIntoAction = (title: string, items: number, targets: readonl
     ? others.map(target => ({ id: `project-into:${target.id}` as const, label: target.title, confirm: { prompt: `Move “${title}” into “${target.title}”?`, note: `“${title}” is archived afterwards.`, action: `Move ${count} into “${target.title}”` } }))
     : [{ id: 'project-into:' as const, label: 'No other projects', disabled: true }] };
 };
+/** A project's or loose item's Move to board submenu: the other boards in tab order. */
+export const moveToBoardAction = (boards: readonly { id: string; name: string }[], current: string): MenuAction => ({ id: 'move-board', label: 'Move to board',
+  children: boards.map(board => ({ id: `board:${board.id}` as const, label: board.name, checked: board.id === current, ...(board.id === current ? { disabled: true } : {}) })) });
+const MAP_ACTIONS: ReadonlySet<string> = new Set<MenuActionId>(['move-plot', 'plot-unpin', 'add-todo', 'remove-todo', 'auto-title', 'plots-toggle', 'plots-unhide', 'complete', 'reopen', 'mute', 'unmute', 'hide-item', 'below']);
+/** Move to board follows Move to project or Move project into; with neither shown, it opens the map actions. */
+export function withBoardMove(actions: readonly MenuAction[], boardMove: MenuAction | undefined): MenuAction[] {
+  if (!boardMove) return [...actions];
+  const at = actions.findIndex(action => action.id === 'send-project' || action.id === 'project-into');
+  if (at >= 0) return [...actions.slice(0, at + 1), boardMove, ...actions.slice(at + 1)];
+  const first = actions.findIndex(action => MAP_ACTIONS.has(action.id));
+  if (first < 0) return [...actions, { ...boardMove, divider: true }];
+  const { divider, ...lead } = actions[first]!;
+  return [...actions.slice(0, first), divider ? { ...boardMove, divider } : boardMove, lead, ...actions.slice(first + 1)];
+}
 /** A map item's (or selection's) Move to project submenu; `targets` come from `moveTargets`. */
 export const moveToProjectAction = (targets: readonly ProjectTarget[]): MenuAction => projectSubmenu('Move to project', targets);
 type PlotTarget = { id: string; name: string; hidden: boolean; current: boolean };

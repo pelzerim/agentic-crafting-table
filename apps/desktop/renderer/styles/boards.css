@@ -1,0 +1,56 @@
+/* Board tabs: one per board in the top left corner, clear of the docked project title; the shown one raised. */
+.board-tabs {
+  position: absolute;
+  z-index: 112;
+  left: var(--act-sp-3);
+  top: var(--act-sp-3);
+  display: flex;
+  align-items: center;
+  gap: var(--act-sp-1);
+  max-width: calc(50% - 160px);
+  padding: var(--act-sp-0_5);
+  background: color-mix(in srgb, var(--act-panel) 92%, transparent);
+  border: 1px solid var(--act-line);
+  clip-path: var(--act-shape-panel);
+  font-size: var(--act-fs-ui);
+}
+.board-tabs [role="tablist"] { display: flex; gap: var(--act-sp-0_5); min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.board-tabs .board-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--act-sp-1_5);
+  flex: none;
+  max-width: 180px;
+  padding: var(--act-sp-1) var(--act-sp-2);
+  color: var(--act-ink-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0;
+  clip-path: var(--act-shape-control);
+  font: inherit;
+  cursor: pointer;
+}
+.board-tabs .board-tab:hover { color: var(--act-ink); background: var(--act-hover); font-size: inherit; }
+.board-tabs .board-tab[data-selected] { color: var(--act-ink-bright); background: var(--act-selected); border-color: var(--act-line-accent); }
+.board-tabs .board-tab:focus-visible { outline: var(--act-focus-ring); outline-offset: -2px; }
+.board-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board-tab-color { flex: none; width: 8px; height: 8px; border: 1px solid var(--act-line-strong); }
+.board-tab-count { flex: none; min-width: 14px; padding: 0 var(--act-sp-1); text-align: center; font-size: var(--act-fs-meta); color: var(--act-ink-on-attention); background: var(--act-attention); }
+.board-tabs .board-tab input { width: 120px; padding: 0; color: var(--act-ink-bright); background: transparent; border: 0; font: inherit; }
+.board-tabs .board-tab input:focus-visible { outline: var(--act-focus-ring); outline-offset: 1px; }
+.board-tabs .board-tab-add {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--act-ink-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0;
+  clip-path: var(--act-shape-control);
+  cursor: pointer;
+}
+.board-tabs .board-tab-add:hover { color: var(--act-ink); background: var(--act-hover); font-size: inherit; }
+.board-tabs .board-tab-add:focus-visible { outline: var(--act-focus-ring); outline-offset: -2px; }

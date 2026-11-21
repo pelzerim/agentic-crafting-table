@@ -71,6 +71,8 @@ export const COMMAND_REVISION_RULES: { readonly [T in WorkspaceCommand['type']]:
   'todo.restore': { free: false, why: 'returns an archived to-do to the list' },
   'todo.remove': { free: false, why: 'permanently removes a to-do' },
   'view.set': { free: false, why: 'overwrites the user\'s view of the map' },
+  'board.save': { free: (command, { state }) => !state.boards.some(board => board.id === command.board.id), why: 'adds a new board under a new id', otherwise: 'renames or recolours a board the user may be changing' },
+  'board.delete': { free: false, why: 'removes a board the user may be filling' },
 };
 
 /** The same decision for requests outside the command union that carry a revision, by MCP tool. */

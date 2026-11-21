@@ -86,7 +86,7 @@ test('a floating card has no project checked, and a to-do card has one Move to p
   await expect(submenu(page).locator('[aria-checked="true"]')).toHaveCount(0); await expect(submenu(page).locator(':disabled')).toHaveCount(0);
   await target(page, 'Docs site').click();
   await expect.poll(async () => (await read(page)).nodes.find(node => node.id === 'loose')?.projectId).toBe('docs');
-  expect(await selected(page)).toEqual(['loose']);
+  await expect.poll(() => selected(page)).toEqual(['loose']);
 
   await page.evaluate(async () => window.craftingTable.viewWrite({ ...(await window.craftingTable.viewRead()), camera: { x: 140, y: 100, zoom: .7 } }));
   await page.reload(); await expect(page.locator('[data-item-id="task"]')).toBeVisible();

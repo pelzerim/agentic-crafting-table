@@ -15,6 +15,13 @@ import { RemindersTool } from './reminders-tool.tsx';
 import { undermapColor } from '../../../src/graph/project-colors.ts';
 import { ConnectionEditor } from './connection-editor.tsx';
 import { ArchiveBrowser } from './archive-browser.tsx';
+import { useMapHistory } from './map-history.ts';
+import type { UndoToken } from './map-history.ts';
+import type { Receipt, UndoStep } from '../../../packages/core/map-undo.ts';
+import { stepBoard } from '../../../packages/core/map-undo.ts';
+import { BOARD_LIMIT, DEFAULT_BOARD, boardList, boardOf, shownBoard } from '../../../src/graph/boards.ts';
+import type { BoardRecord } from '../../../src/graph/boards.ts';
+import { BoardTabs } from './board-tabs.tsx';
 import type { GraphLink, GraphNode } from '../../../src/graph/graph.ts';
 import { automaticLink } from '../../../src/graph/graph.ts';
 import { Settings } from './settings.tsx';
@@ -42,13 +49,13 @@ import type { ResourcePluginRegistry } from '../../../src/resource-plugins/regis
 import { ProjectMap } from './project-map.tsx';
 import { pinNeighborhoodStyle, pinnedNeighborhoodStyle } from '../neighborhood-style-pin.ts';
 import { embeddedSite } from '../embedded-sites.ts';
-import type { ProjectMapProps } from './project-map.tsx';
+import type { PlotJoin, ProjectMapProps } from './project-map.tsx';
 import { InlineEditor } from './inline-editor.tsx';
 import { useUrlCandidates } from './use-url-candidates.ts';
 import { mountNativeTerminal } from './native-terminal.tsx';
 import { RecoveryStatus } from './recovery-status.tsx';
 import { CanvasMenu } from './canvas-menu.tsx';
-import { contextMenuActions, convertLinkActions, deleteItemAction, enabledMenuGroups, fieldMenuActions, itemEditLabel, itemMenuCustom, itemPlotActions, linkMenuActions, muteProjectAction, moveToProjectAction, projectIntoAction, sharedContextMenuActions } from '../../../packages/core/context-menu.ts';
+import { contextMenuActions, convertLinkActions, deleteItemAction, enabledMenuGroups, fieldMenuActions, itemEditLabel, itemMenuCustom, itemPlotActions, linkMenuActions, muteProjectAction, moveToBoardAction, moveToProjectAction, projectIntoAction, sharedContextMenuActions, withBoardMove } from '../../../packages/core/context-menu.ts';
 import { mapBadges } from '../../../src/graph/badges.ts';
 import { moveTargets } from '../../../packages/core/todos.ts';
 import type { MenuAction, MenuActionId } from '../../../packages/core/context-menu.ts';
@@ -62,7 +69,7 @@ import { needsMeIds } from '../../../src/graph/atlas.ts';
 import { shareUnchanged } from '../../../src/graph/share-state.ts';
 import { belowSummary, layerNodes, presentLayer } from '../../../src/graph/layers.ts';
 import type { MapLayer } from '../../../src/graph/layers.ts';
-import { splitAttention } from '../../../src/graph/mute.ts';
+import { boardAttention, splitAttention } from '../../../src/graph/mute.ts';
 import { fitOrder } from '../../../src/graph/project-column.ts';
 import { doneArchiveDays, todoEntries as listTodos } from '../../../src/graph/todos.ts';
 import { completeTodo } from '../../../packages/core/todos.ts';
@@ -112,10 +119,24 @@ function PluginDetail({ resource, registry, active, nodeId, onOpen, onShow, onEd
   useEffect(() => {
     const view = views.mount('detail', container.current!, resource, {
       editResource: () => editRef.current(),
-      saveData: async patch => {
+      saveData: async (patch, expect) => {
         const { state } = await window.craftingTable.workspaceRead(), record = state.resources.find(candidate => candidate.id === state.nodes.find(node => node.id === nodeId)?.resourceId);
         if (!record) throw new Error('This item is no longer on the map.');
+        if (expect && Object.entries(expect).some(([key, value]) => JSON.stringify(record.data[key] ?? null) !== JSON.stringify(value))) return false;
+        // The revision guard refuses the write if anything changed since this read.
         await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: state.revision, actor: { kind: 'user', id: 'desktop' }, commands: [{ type: 'item.update', id: nodeId, data: patchedData(record.data, patch) }] });
+        return true;
+      },
+      observeData: listener => {
+        let disposed = false, cursor = -1;
+        const receive = (snapshot: WorkspaceSnapshot) => {
+          if (disposed || snapshot.cursor < cursor) return; cursor = snapshot.cursor;
+          const record = snapshot.state.resources.find(candidate => candidate.id === snapshot.state.nodes.find(node => node.id === nodeId)?.resourceId);
+          if (record) listener(record.data);
+        };
+        const off = window.craftingTable.onWorkspace(receive);
+        void window.craftingTable.workspaceRead().then(receive).catch(() => {});
+        return () => { disposed = true; off(); };
       },
       viewState: () => viewStore.read(nodeId),
       saveViewState: patch => viewStore.save(nodeId, patch),
@@ -227,7 +248,14 @@ function mountEmbeddedPage(container: HTMLElement, { site, url }: { site: string
   };
   page.addEventListener('did-navigate', navigated); page.addEventListener('did-navigate-in-page', navigated);
   frame.append(address, page); container.append(frame);
-  return { dispose() { frame.remove(); } };
+  const run = (script: string) => (page as unknown as { executeJavaScript(code: string): Promise<unknown> }).executeJavaScript(script);
+  return {
+    dispose() { frame.remove(); },
+    media: {
+      time: async () => { const value = await run("document.querySelector('video')?.currentTime ?? null"); return typeof value === 'number' && Number.isFinite(value) ? value : undefined; },
+      seek: async (seconds: number) => { await run(`(video => { if (video) video.currentTime = ${Math.max(0, Number(seconds) || 0)}; })(document.querySelector('video'))`); },
+    },
+  };
 }
 
 const PINNED_NEIGHBORHOOD_STYLE = pinnedNeighborhoodStyle(location.search);
@@ -290,6 +318,38 @@ export function WorkspaceMap() {
   const [reveal, setReveal] = useState<{ nodeId: string; nonce: number; mode?: 'map' | 'centred'; origin?: 'program'; select?: readonly string[]; from?: string }>();
   useEffect(() => window.craftingTable.onSessionSwitched(({ fromNodeId, toNodeId }) => setReveal({ nodeId: toNodeId, nonce: Date.now(), origin: 'program', from: fromNodeId })), []);
   const saveView = (patch: Partial<ViewState>) => { const next = { ...viewRef.current!, ...patch }; viewRef.current = next; setView(next); void window.craftingTable.viewWrite(next).catch(error => setError(error.message)); };
+  const boards = useMemo(() => boardList(snapshot?.state ?? {}), [snapshot?.state.boards]);
+  const board = shownBoard(boards, view?.board), boardRef = useRef(board); boardRef.current = board;
+  const boardExists = (id: string) => boardList(snapshotRef.current?.state ?? {}).some(candidate => candidate.id === id);
+  /** Each board keeps its own camera: the leaving one is stored and the shown one comes back. */
+  const switchBoard = (id: string) => {
+    const current = viewRef.current;
+    if (!current || id === boardRef.current || !boardExists(id)) return false;
+    setEditor(undefined); boardRef.current = id;
+    const live = boardList(snapshotRef.current!.state), cameras = Object.fromEntries(Object.entries(current.boardCameras ?? {}).filter(([key]) => live.some(entry => entry.id === key)));
+    saveView({ board: id, boardCameras: { ...cameras, ...current.camera ? { [shownBoard(live, current.board)]: current.camera } : {} }, camera: current.boardCameras?.[id] });
+    return true;
+  };
+  /** The other board is another map: the open view is asked first, as travel does; false when it kept the person here. */
+  const showBoard = async (id: string) => {
+    if (id === boardRef.current || !boardExists(id)) return false;
+    if (viewedItem.current) {
+      if (travelWaitsForView.current) return false;
+      travelWaitsForView.current = true;
+      try { if (!await confirmViewClose(viewedItem.current)) return false; } finally { travelWaitsForView.current = false; }
+    }
+    return switchBoard(id);
+  };
+  const showBoardRef = useRef(showBoard); showBoardRef.current = showBoard;
+  // The shown board was deleted: the first board opens with its own camera before its map mounts.
+  const boardGone = Boolean(snapshot && view && (view.board ?? DEFAULT_BOARD) !== board);
+  useEffect(() => {
+    const current = viewRef.current;
+    if (!boardGone || !current) return;
+    const cameras = Object.fromEntries(Object.entries(current.boardCameras ?? {}).filter(([key]) => boards.some(entry => entry.id === key)));
+    saveView({ board, boardCameras: cameras, camera: cameras[board] });
+  }, [boardGone, board]);
+  const boardNeeds = useMemo(() => Object.fromEntries(boards.map(entry => [entry.id, boards.length > 1 ? attentionCounts(boardAttention(snapshot?.state.nodes ?? [], entry.id), counting).needsMe : needsMeCount])), [boards, snapshot?.state.nodes, counting, needsMeCount]);
   const [connectionDraft, setConnectionDraft] = useState<{ sourceId: string; screen: { x: number; y: number } }>();
   const [sessionRequestId, setSessionRequestId] = useState(0);
   const [sessionListView, setSessionListView] = useState<'active' | 'archived' | undefined>(undefined);
@@ -297,7 +357,7 @@ export function WorkspaceMap() {
   const [settingsSection, setSettingsSection] = useState<string>();
   const updates = useUpdates(Boolean(snapshot));
   const updateOffers = useMemo(() => pendingOffers(updates.status, view?.dismissedUpdates), [updates.status, view?.dismissedUpdates]);
-  const [archiveOpen, setArchiveOpen] = useState(false), [removedLink, setRemovedLink] = useState<GraphLink>();
+  const [archiveOpen, setArchiveOpen] = useState(false), [removedLink, setRemovedLink] = useState<GraphLink & { undo?: UndoToken }>();
   const [layer, setLayer] = useState<'map' | 'below'>('map'), layerRef = useRef(layer); layerRef.current = layer;
   const [travelling, setTravelling] = useState(false), [riseCharge, setRiseCharge] = useState(0), [portalHot, setPortalHot] = useState(false);
   const workspace = useRef<HTMLElement>(null), zoomRef = useRef<number>(undefined), entryZoom = useRef<number>(undefined);
@@ -307,10 +367,11 @@ export function WorkspaceMap() {
   const [foundBelow, setFoundBelow] = useState<string>(), undermapSearch = useRef<UndermapSearchHandle>(null);
   useEffect(() => { if (!foundBelow) return; const timer = setTimeout(() => setFoundBelow(undefined), 4000); return () => clearTimeout(timer); }, [foundBelow]);
   const [paperDraft, setPaperDraft] = useState<PaperDraft>(), paperDraftRef = useRef(paperDraft); paperDraftRef.current = paperDraft;
-  const [archivedNote, setArchivedNote] = useState<{ id: string; title: string }>(), noteNotice = useNotice(archivedNote, true);
+  const [archivedNote, setArchivedNote] = useState<{ id: string; title: string; undo?: UndoToken }>(), noteNotice = useNotice(archivedNote, true);
   const [unmuted, setUnmuted] = useState<{ id: string; title: string; needs: number }>(), unmuteNotice = useNotice(unmuted, true);
   const [todoUndo, setTodoUndo] = useState<TodoUndo>(), todoUndoNotice = useNotice(todoUndo, true);
   const [copiedUrls, setCopiedUrls] = useState<{ count: number }>(), copyNotice = useNotice(copiedUrls, true);
+  const [undoNotice, setUndoNotice] = useState<{ text: string }>(), undoShown = useNotice(undoNotice, true);
   useNativeAnnouncement(removedLink, { title: 'Connection removed', body: 'Return to ACT to undo this change.' });
   const [openItemId, setOpenItemId] = useState<string>();
   const [firstRun, setFirstRun] = useState(readFirstRunActive);
@@ -336,7 +397,7 @@ export function WorkspaceMap() {
     if (node) revealRef.current(node.id);
     else if (snapshotRef.current?.layer === 'map') void window.craftingTable.workspaceRead().then(whole => { const below = found(whole.state.nodes); if (below) revealRef.current(below.id); }).catch(() => {});
   }, []);
-  const revealRef = useRef((nodeId: string, mode?: 'map' | 'centred') => setReveal({ nodeId, nonce: Date.now(), ...(mode ? { mode } : {}) }));
+  const revealRef = useRef((nodeId: string, mode?: 'map' | 'centred', select?: readonly string[]) => setReveal({ nodeId, nonce: Date.now(), ...(mode ? { mode } : {}), ...(select ? { select } : {}) }));
   const motion = activeMotion(settings?.value.belowAnimation);
   /** The mounted detail views by map item, and the one that is open, so a view can be asked before it closes. */
   const detailViews = useRef(new Map<string, MountedResourceView>()).current, viewedItem = useRef<string>(undefined);
@@ -389,31 +450,43 @@ export function WorkspaceMap() {
       return record ? resolveMapSize(node, record, registry.get(record.pluginId), itemMapSizes) : { width: node.resourceId ? 150 : LARGE_ITEM_WIDTH, height: node.resourceId ? 48 : 112 };
     } });
   }, [registry, itemMapSizes, neighborhoodPadding]);
-  const revealNode = useCallback((nodeId: string, mode?: 'map' | 'centred') => {
+  const revealNode = useCallback((nodeId: string, mode?: 'map' | 'centred', select?: readonly string[]) => {
+    const request = { nodeId, nonce: Date.now(), ...(mode ? { mode } : {}), ...(select ? { select } : {}) };
+    // An item on another board is revealed once that board is shown.
+    const elsewhere = (node: GraphNode | undefined) => {
+      if (!node || boardOf(node) === boardRef.current) return false;
+      void showBoardRef.current(boardOf(node)).then(shown => { if (shown) revealRef.current(nodeId, mode, select); });
+      return true;
+    };
     // The map layer's snapshot leaves out most of the Undermap: an item there is looked up in the whole workspace, then revealed.
     if (snapshotRef.current?.layer === 'map' && !snapshotRef.current.state.nodes.some(candidate => candidate.id === nodeId)) {
       void window.craftingTable.workspaceRead().then(whole => {
         const node = whole.state.nodes.find(candidate => candidate.id === nodeId);
-        if (node && isBelow(node, whole.state.nodes)) void travel('below').then(arrived => { if (arrived) revealRef.current(nodeId, mode); });
-        else setReveal({ nodeId, nonce: Date.now(), ...(mode ? { mode } : {}) });
+        if (elsewhere(node)) return;
+        if (node && isBelow(node, whole.state.nodes)) void travel('below').then(arrived => { if (arrived) revealRef.current(nodeId, mode, select); });
+        else setReveal(request);
       }).catch(error => setError(error.message));
       return;
     }
     const state = snapshotRef.current?.state, node = state?.nodes.find(candidate => candidate.id === nodeId);
+    if (elsewhere(node)) return;
     if (node && state) void travel(isBelow(node, state.nodes) ? 'below' : 'map');
     // An item in a closed month has no card: open its month so the reveal finds it.
     if (node && state && mirrorMode && isBelow(node, state.nodes)) {
       const layout = layoutBelow(state.nodes, state.resources, openMonthsRef.current), place = layout.places.get(nodeId);
       if (place && !layout.positions.has(nodeId)) setOpenMonths(old => ({ ...old, [place.areaId]: place.month }));
     }
-    setReveal({ nodeId, nonce: Date.now(), ...(mode ? { mode } : {}) });
+    setReveal(request);
   }, [travel, mirrorMode, layoutBelow]);
   revealRef.current = revealNode;
   /** Each layer shows its own items; projects below also show their neighborhood as orientation. Hidden items are on no layer. */
   const layerGraph = useMemo(() => {
-    const all = snapshot?.state.nodes ?? [], links = snapshot?.state.links ?? [];
+    const whole = snapshot?.state.nodes ?? [], links = snapshot?.state.links ?? [];
+    // Only the board on screen is drawn; a link to an item on another board draws nothing.
+    const all = whole.some(node => boardOf(node) !== board) ? whole.filter(node => boardOf(node) === board) : whole;
     const projectsById = new Map(all.filter(node => !node.resourceId).map(node => [node.id, node]));
-    const belowCount = snapshot?.layers?.below.items ?? belowSummary(all).items;
+    const summary = snapshot?.layers?.below, elsewhere = Object.values(summary?.byBoard ?? {}).reduce((sum, count) => sum + count, 0);
+    const belowCount = !summary ? belowSummary(all).items : summary.byBoard?.[board] ?? (board === DEFAULT_BOARD ? summary.items - elsewhere : 0);
     const sentBelow = (node: GraphNode) => node.belowAt ?? (node.projectId ? projectsById.get(node.projectId)?.belowAt : undefined);
     const dated = <T extends GraphNode & { summary?: string }>(node: T): T => node.resourceId && sentBelow(node) ? { ...node, summary: `⬇ ${new Date(sentBelow(node)!).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}${node.summary ? ` · ${node.summary}` : ''}` } : node;
     // Mirror: positions below are computed, and only the cards the layout shows are given to the map.
@@ -425,8 +498,8 @@ export function WorkspaceMap() {
     })() : layer === 'map' ? layerNodes(all, 'map') : layerNodes(all, 'below').map(dated);
     const ids = new Set(nodes.map(node => node.id));
     const draft = layer === 'map' && paperDraft && !ids.has(paperDraft.nodeId) ? [{ id: paperDraft.nodeId, resourceId: paperDraft.resourceId, projectId: paperDraft.projectId, title: 'Note', position: paperDraft.position, mapDimensions: paperDraft.mapDimensions, summary: '', activity: 'unknown' as const, attention: 'none' as const }] : [];
-    return { nodes: draft.length ? [...nodes, ...draft] : nodes, links: nodes === all ? links : links.filter(link => ids.has(link.sourceId) && ids.has(link.targetId)), belowCount, mirror };
-  }, [snapshot?.state.nodes, snapshot?.state.links, snapshot?.state.resources, snapshot?.layers, layer, paperDraft, mirrorMode, layoutBelow, openMonths]);
+    return { nodes: draft.length ? [...nodes, ...draft] : nodes, links: nodes === whole ? links : links.filter(link => ids.has(link.sourceId) && ids.has(link.targetId)), belowCount, mirror };
+  }, [snapshot?.state.nodes, snapshot?.state.links, snapshot?.state.resources, snapshot?.layers, layer, paperDraft, mirrorMode, layoutBelow, openMonths, board]);
   const mirrorBelow: MirrorLayout | undefined = layerGraph.mirror;
   const undermapView = useMemo(() => mirrorBelow && {
     areas: mirrorBelow.areas,
@@ -443,6 +516,7 @@ export function WorkspaceMap() {
     const value = snapshot?.plots;
     return layer !== 'map' || !value || settings?.value.mapPlots === false ? undefined : value.list.filter(plot => !plot.hidden && !value.hiddenProjects.includes(plot.projectId));
   }, [snapshot?.plots, layer, settings?.value.mapPlots]);
+  const plotMemberIds = useMemo(() => new Set(snapshot?.plots?.list.flatMap(plot => plot.memberIds) ?? []), [snapshot?.plots]);
   const summaryKey = JSON.stringify(snapshot?.projectSummaries?.list ?? []);
   const projectSummaries = useMemo(() => new Map((JSON.parse(summaryKey) as { projectId: string; next?: string; status?: string }[]).map(entry => [entry.projectId, { next: entry.next, status: entry.status }])), [summaryKey]);
   const layerResources = useMemo(() => {
@@ -482,7 +556,7 @@ export function WorkspaceMap() {
   const showOnMap = useCallback((nodeId: string) => {
     void window.craftingTable.workspaceRead().then(next => {
       if (!snapshotRef.current || next.cursor >= snapshotRef.current.cursor) { snapshotRef.current = next; setSnapshot(next); }
-      setReveal({ nodeId, nonce: Date.now(), mode: 'map', select: [nodeId] });
+      revealRef.current(nodeId, 'map', [nodeId]);
     }).catch(error => setError(error.message));
   }, []);
   // Reads the resources when called, so a changed record never changes this function and with it every card's context.
@@ -576,17 +650,29 @@ export function WorkspaceMap() {
     document.addEventListener('keydown', escape);
     return () => { document.removeEventListener('pointerdown', dismiss, true); document.removeEventListener('contextmenu', rightClick, true); document.removeEventListener('keydown', escape); };
   }, [editor?.mode]);
-  /** Applies to the workspace on screen, or to the newest one when only background writes landed in between. */
-  const apply = async (commands: WorkspaceCommand[]) => {
+  /** Applies to the workspace on screen, or to the newest one when only background writes landed in between; resolves with the commit. */
+  const commit = async (asked: WorkspaceCommand[]) => {
     const seen = snapshotRef.current?.state;
     if (!seen) throw new Error('Workspace is not connected');
+    // A loose item or project the person adds lands on the board on screen.
+    const commands = boardList(seen).length < 2 ? asked : asked.map(command => (command.type === 'item.add' || command.type === 'project.create' || command.type === 'todo.place') && !command.board && !('projectId' in command && command.projectId) ? { ...command, board: boardRef.current } : command);
     const result = await applyToLatest(seen, commands,
       revision => window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: revision, actor: { kind: 'user', id: 'desktop' }, commands }),
       async () => { const fresh = await window.craftingTable.workspaceRead().catch(() => undefined); if (fresh) accept(fresh); return fresh?.state; });
     // The service broadcasts the state it committed before it replies; read it back only when that has not arrived.
     if ((snapshotRef.current?.state.revision ?? -1) < (result?.state?.revision ?? Infinity)) accept(await window.craftingTable.workspaceRead());
     setError('');
+    return result;
   };
+  const apply = async (commands: WorkspaceCommand[]) => { await commit(commands); };
+  const history = useMapHistory({
+    // Map undo covers the map layer only; changes made below are not recorded.
+    active: () => layerRef.current === 'map' && Boolean(snapshotRef.current),
+    revert: async (step, direction) => await window.craftingTable.runtimeRun({ action: 'map.undo', nodeId: 'board', arguments: { direction, step } as never }) as { applied?: UndoStep; reverted: number; skipped: number },
+    refresh: async () => accept(await window.craftingTable.workspaceRead()),
+    notify: text => setUndoNotice({ text }), fail: setError,
+    focus: async (step, direction) => { const target = stepBoard(step, direction); if (!target) return true; if (!boardExists(target)) return false; await showBoardRef.current(target); return true; },
+  });
   /** Saves and resolves with the revision now held, which has the saved commands. */
   const applyAt = async (commands: WorkspaceCommand[]) => { await apply(commands); return snapshotRef.current?.state.revision; };
   /** Text saves name the text they replace, so a write made elsewhere is never overwritten. */
@@ -623,13 +709,13 @@ export function WorkspaceMap() {
       setPaperDraft(current => current?.nodeId === id ? { ...current, mapDimensions: dimensions, position } : current);
       return Promise.resolve();
     }
-    return apply([{ type: 'node.resize', id, dimensions, position }]).catch(error => { setError(error.message); throw error; });
+    return history.track('Resize', () => commit([{ type: 'node.resize', id, dimensions, position }])).catch(error => { setError(error.message); throw error; });
   };
   const archivePaper = (nodeId: string, silent: boolean) => {
     if (paperDraftRef.current?.nodeId === nodeId && !snapshotRef.current?.state.nodes.some(node => node.id === nodeId)) { setPaperDraft(undefined); return; }
     const node = snapshotRef.current?.state.nodes.find(candidate => candidate.id === nodeId);
     if (!node) return;
-    void apply([{ type: 'node.archive', id: nodeId }]).then(() => { if (!silent) setArchivedNote({ id: nodeId, title: node.title }); }).catch(error => setError(error.message));
+    void history.trackStep('Archive', () => commit([{ type: 'node.archive', id: nodeId }])).then(undo => { if (!silent) setArchivedNote({ id: nodeId, title: node.title, undo }); }).catch(error => setError(error.message));
   };
   const paperPlugin = plugins?.find(plugin => plugin.appearance?.paper && plugin.creation)?.id;
   const writeInPlace = (pluginId: string, anchor: Pick<Editor, 'position' | 'projectId' | 'connectedFromId'>) => {
@@ -642,10 +728,16 @@ export function WorkspaceMap() {
   const offerFileItem = async (path: string, anchor: Anchor) => {
     const [candidate, ...others] = path && path.length <= 4096 && !/[\r\n]/.test(path) ? await window.craftingTable.resourceMatchFile(path) : [];
     if (!candidate || others.length) return false;
+    // A type that attaches from its input (a video file) needs no form.
+    if (registry.get(candidate.pluginId)?.creation?.mode === 'url') {
+      await window.craftingTable.resourceCreate({ requestId: crypto.randomUUID(), nodeId: crypto.randomUUID(), resourceId: crypto.randomUUID(), pluginId: candidate.pluginId, title: candidate.title, data: { url: path }, projectId: anchor.projectId, position: anchor.position, ...!anchor.projectId && boards.length > 1 ? { board: boardRef.current } : {} })
+        .catch(error => setError(error.message));
+      return true;
+    }
     setEditor({ ...anchor, mode: 'create', initialType: candidate.pluginId, initialData: candidate.data });
     return true;
   };
-  const dropFile = ({ file, ...anchor }: Anchor & { file: File }) => { void offerFileItem(window.craftingTable.pathForFile(file), anchor).catch(error => setError(error.message)); };
+  const dropFile = ({ file, ...anchor }: Anchor & { file: File }) => offerFileItem(window.craftingTable.pathForFile(file), anchor).catch(error => { setError(error.message); return true; });
   const pasteText = async ({ text, ...anchor }: Anchor & { text: string }) => {
     if (await offerFileItem(text.trim(), anchor).catch(() => false) || !paperPlugin) return;
     const field = registry.get(paperPlugin)?.appearance?.paper?.textField ?? 'text';
@@ -659,7 +751,7 @@ export function WorkspaceMap() {
   /** A change to one link lands on the newest revision while that link is still the one the person chose; other writes in between never refuse it. */
   const applyToLink = async (seen: GraphLink, commands: WorkspaceCommand[]) => {
     for (let attempt = 0; ; attempt++) {
-      try { await apply(commands); return; }
+      try { return await commit(commands); }
       catch (error) {
         if ((error as { code?: string }).code !== 'REVISION_CONFLICT' || attempt >= 3) throw error;
         const fresh = await window.craftingTable.workspaceRead(); accept(fresh);
@@ -668,7 +760,25 @@ export function WorkspaceMap() {
       }
     }
   };
-  const run = (commands: WorkspaceCommand[]) => { setEditor(undefined); void apply(commands).catch(error => setError(error.message)); };
+  /** A new board opens at once, its name ready to change. */
+  const creatingBoard = useRef(false), [renameBoard, setRenameBoard] = useState<string>();
+  const createBoard = async (): Promise<BoardRecord | undefined> => {
+    if (creatingBoard.current) return undefined;
+    if (boards.length >= BOARD_LIMIT) { setError(`At most ${BOARD_LIMIT} boards`); return undefined; }
+    let next = boards.length + 1; while (boards.some(entry => entry.name === `Board ${next}`)) next++;
+    const record = { id: crypto.randomUUID(), name: `Board ${next}` };
+    creatingBoard.current = true;
+    try { await history.track('New board', () => commit([{ type: 'board.save', board: record }])); await showBoard(record.id); return record; }
+    catch (error) { setError((error as Error).message); return undefined; }
+    finally { creatingBoard.current = false; }
+  };
+  const saveBoard = (record: BoardRecord) => {
+    const before = boards.find(entry => entry.id === record.id);
+    void history.track(before && before.name !== record.name ? 'Rename board' : 'Board colour', () => commit([{ type: 'board.save', board: record }])).catch(error => setError(error.message));
+  };
+  const removeBoard = (id: string) => { void history.track('Delete board', () => commit([{ type: 'board.delete', id }])).catch(error => setError(error.message)); };
+  /** A `label` records the change for map undo. */
+  const run = (commands: WorkspaceCommand[], label?: string) => { setEditor(undefined); void (label ? history.track(label, () => commit(commands)) : apply(commands)).catch(error => setError(error.message)); };
   /** Mute is display only. Unmuting says how many items were waiting and can be undone. */
   const setMuted = (id: string, muted: boolean) => {
     const state = snapshotRef.current?.state, project = state?.nodes.find(node => node.id === id);
@@ -703,11 +813,14 @@ export function WorkspaceMap() {
   // Any item card on the map can move to another project; a selection moves as one block led by the card that was right-clicked.
   const moveIds = editor?.mode !== 'menu' || layer !== 'map' ? undefined : selectedItems.length > 1 ? selectedItems.every(node => node.resourceId) ? [editor.nodeId!, ...selectedItems.map(node => node.id).filter(id => id !== editor.nodeId)] : undefined
     : selected?.resourceId ? [selected.id] : undefined;
-  const move = moveIds && snapshot ? moveToProjectAction(moveTargets(snapshot.state, moveIds)) : undefined;
+  const onBoard = (target: { id: string }) => boardOf(snapshot?.state.nodes.find(node => node.id === target.id) ?? {}) === board;
+  const move = moveIds && snapshot ? moveToProjectAction(moveTargets(snapshot.state, moveIds).filter(onBoard)) : undefined;
   // A project on the map can move everything it holds into another project, which archives it.
   const projectInto = editor?.mode === 'menu' && layer === 'map' && scope === 'project' && selected && !selected.resourceId && snapshot ? projectIntoAction(selected.title,
     snapshot.state.nodes.filter(node => node.projectId === selected.id && node.resourceId && !isArchived(node, snapshot.state.nodes)).length,
-    moveTargets(snapshot.state, []).map(target => ({ ...target, current: target.id === selected.id }))) : undefined;
+    moveTargets(snapshot.state, []).filter(onBoard).map(target => ({ ...target, current: target.id === selected.id }))) : undefined;
+  // A project or loose item can move to another board; members follow their project.
+  const boardMove = editor?.mode === 'menu' && layer === 'map' && boards.length > 1 && selectedItems.length <= 1 && selected && !selected.projectId && !selectedLink ? moveToBoardAction(boards, boardOf(selected)) : undefined;
   // Move to plot and Remove from plot (MAP-24) while plots are on; hidden plots are listed too.
   const plotEntries = moveIds && snapshot && settings?.value.mapPlots !== false ? itemPlotActions(snapshot.state.nodes, snapshot.plots?.list ?? [], moveIds) : [];
   // The project a Mute or Unmute entry acts on: the project itself, or the neighbourhood that was right-clicked.
@@ -727,11 +840,26 @@ export function WorkspaceMap() {
   const menuActions = selectedItems.length > 1 ? sharedContextMenuActions(selectedItems.map(node => {
     const resource = resources?.find(r => r.id === node.resourceId), plugin = plugins?.find(p => p.id === resource?.pluginId);
     return contextMenuActions(node.resourceId ? 'item' : 'project', Boolean(node.completedAt), undefined, enabledMenuGroups(plugin?.contextMenu, pluginSettings), plugin?.todoSupport ? { enabled: Boolean(node.inTodoList) } : undefined, belowMenu(node), webPage(resource), false, undefined, move, undefined, [], {}, undefined, {}, [], plotEntries);
-  })) : !selectedLink && selected?.resourceId && settings?.value.itemDelete ? [...singleActions, deleteItemAction()] : singleActions;
+  })) : !selectedLink && selected?.resourceId && settings?.value.itemDelete ? [...withBoardMove(singleActions, boardMove), deleteItemAction()] : withBoardMove(singleActions, boardMove);
   /** One command moves the block; then the map flies to the lead as Show on map does, keeping the moved items selected and closed. */
-  const moveToProject = (ids: string[], projectId: string | null) => {
+  const moveToProject = (ids: string[], projectId: string | null, plot?: { id: string; from: string }) => {
     setEditor(undefined);
-    return apply([{ type: 'nodes.send', ids, projectId }]).then(() => { setReveal({ nodeId: ids[0], nonce: Date.now(), mode: 'map', select: ids }); return true; }, error => { setError(error.message); return false; });
+    return history.track('Move to project', async () => {
+      const moved = await commit([{ type: 'nodes.send', ids, projectId }]);
+      return plot && projectId ? withPlots(moved, await plotReceipt(plot.from, { operation: 'move', plotId: plot.id, projectId })) : moved;
+    }).then(() => { setReveal({ nodeId: ids[0], nonce: Date.now(), mode: 'map', select: ids }); return true; }, error => { setError(error.message); return false; });
+  };
+  /** A drop on a plot's patch pins the items there; the move and the pin are one undo step. */
+  const moveAndJoin = (commands: WorkspaceCommand[], join?: PlotJoin) => history.track('Move', async () => {
+    const moved = await commit(commands);
+    return join?.ids.length ? withPlots(moved, await plotReceipt(join.projectId, { operation: 'pin', plotId: join.plotId, memberIds: join.ids })) : moved;
+  }).catch(error => setError(error.message));
+  /** A plot request that follows a tracked commit; a failure is shown and leaves the commit's own step. */
+  const plotReceipt = (projectId: string, request: Record<string, unknown>) => (window.craftingTable.runtimeRun({ action: 'plot', nodeId: projectId, arguments: request as never }) as Promise<{ receipt?: Receipt }>)
+    .then(result => result?.receipt, error => { setError(error.message); return undefined; });
+  const withPlots = (moved: { receipt?: Receipt } | undefined, extra?: Receipt) => {
+    const plots = extra?.plots ?? [];
+    return moved?.receipt || plots.length ? { receipt: { items: [], links: [], ...moved?.receipt, plots: [...moved?.receipt?.plots ?? [], ...plots] } } : undefined;
   };
   /** Pins the items in a plot of their project, in a new plot, or unpins them. */
   const plotItems = (ids: string[], id: MenuActionId) => {
@@ -774,6 +902,7 @@ export function WorkspaceMap() {
   const menuAction = (id: MenuActionId) => {
     if (!editor) return;
     if (id.startsWith('send:')) { if (moveIds && id.length > 'send:'.length) moveToProject(moveIds, id.slice('send:'.length)); return; }
+    if (id.startsWith('board:')) { if (boardMove && selected) run([{ type: 'node.move', id: selected.id, board: id.slice('board:'.length) }], 'Move to board'); return; }
     if (id.startsWith('project-into:')) {
       if (!projectInto || !selected || id.length === 'project-into:'.length) return;
       // The merge moves the plot records with the items, so plots keep their names, colors, pins and locks there.
@@ -795,7 +924,7 @@ export function WorkspaceMap() {
       if (!menuActions.some(action => action.id === id)) return;
       if (id === 'below' || id === 'surface') { moveLayer(selectedItems.map(node => node.id), id); return; }
       if (id === 'copy-url') { copyUrls(selectedItems.flatMap(node => webPage(resources?.find(resource => resource.id === node.resourceId))?.url ?? [])); return; }
-      run([{ type: 'nodes.action', ids: selectedItems.map(node => node.id), action: id as 'archive' | 'complete' | 'reopen' | 'add-todo' | 'remove-todo' }]); return;
+      run([{ type: 'nodes.action', ids: selectedItems.map(node => node.id), action: id as 'archive' | 'complete' | 'reopen' | 'add-todo' | 'remove-todo' }], id === 'archive' ? 'Archive' : undefined); return;
     }
     if (id.startsWith('plugin:') && selected && selectedResource) {
       const picks = pluginPicks(id);
@@ -814,12 +943,13 @@ export function WorkspaceMap() {
     if (id === 'auto-title' && selected) { setEditor(undefined); void window.craftingTable.runtimeRun({ action: 'agent.title', nodeId: selected.id, arguments: {} }).catch(error => setError(error.message)); return; }
     if (selected && (id === 'add-todo' || id === 'remove-todo')) { run([{ type: 'node.todo', id: selected.id, enabled: id === 'add-todo' }]); return; }
     if (id === 'open' && selected) { setEditor(undefined); revealNode(selected.id); return; }
-    if (id === 'show-hidden' && selected && shownPartner) { const shownId = shownPartner.id; setEditor(undefined); void apply([{ type: 'node.show', id: shownId, near: [selected.id] }]).then(() => setReveal({ nodeId: shownId, nonce: Date.now(), mode: 'map', select: [shownId] })).catch(error => setError(error.message)); return; }
+    if (id === 'show-hidden' && selected && shownPartner) { const shownId = shownPartner.id; setEditor(undefined); void apply([{ type: 'node.show', id: shownId, near: [selected.id] }]).then(() => revealNode(shownId, 'map', [shownId])).catch(error => setError(error.message)); return; }
     if (id === 'hide-item' && selected) { run([{ type: 'node.hide', id: selected.id }]); return; }
     if (id === 'connect' && selected) { setEditor(undefined); setConnectionDraft({ sourceId: selected.id, screen: editor.screen }); return; }
     if (id === 'new-item') { setEditor({ ...editor, mode: 'create' }); return; }
     if (id === 'new-project') { setEditor({ ...editor, mode: 'create', initialType: 'project', nodeId: undefined, projectId: undefined }); return; }
     if (id === 'archive-browser') { setEditor(undefined); setArchiveOpen(true); return; }
+    if (id === 'new-board') { setEditor(undefined); void createBoard().then(created => setRenameBoard(created?.id)); return; }
     if (id === 'open-web' && webUrl) { setEditor(undefined); const nodeId = selected?.id; void window.craftingTable.openUrl(webUrl).then(() => { if (nodeId) { recordOpened(nodeId); opened(nodeId); } }).catch(error => setError(error.message)); return; }
     if (id === 'copy-url' && webUrl) { copyUrls([webUrl]); return; }
     if (id === 'edit' && selected) { setEditor({ ...editor, mode: 'edit' }); return; }
@@ -832,12 +962,12 @@ export function WorkspaceMap() {
       setEditor(undefined); void applyToLink(selectedLink, [{ type: 'link.save', link }]).catch(error => setError(error.message)); return;
     }
     if (id === 'remove-link' && selectedLink) {
-      setEditor(undefined); void applyToLink(selectedLink, [{ type: 'link.remove', id: selectedLink.id }]).then(() => setRemovedLink(selectedLink)).catch(error => setError(error.message)); return;
+      setEditor(undefined); void history.trackStep('Remove connection', () => applyToLink(selectedLink, [{ type: 'link.remove', id: selectedLink.id }])).then(undo => setRemovedLink({ ...selectedLink, undo })).catch(error => setError(error.message)); return;
     }
     if (id === 'delete-cancel') { setEditor(undefined); return; }
     if (id === 'delete-confirm' && selected?.resourceId) { run([{ type: 'node.archive', id: selected.id }, { type: 'node.delete', id: selected.id }]); return; }
     if (selected && (id === 'below' || id === 'surface')) { moveLayer([selected.id], id); return; }
-    if (selected && ['complete', 'reopen', 'archive'].includes(id)) run([{ type: `node.${id}` as 'node.complete' | 'node.reopen' | 'node.archive', id: selected.id }]);
+    if (selected && ['complete', 'reopen', 'archive'].includes(id)) run([{ type: `node.${id}` as 'node.complete' | 'node.reopen' | 'node.archive', id: selected.id }], id === 'archive' ? 'Archive' : undefined);
   };
   const below = layer === 'below';
   /** A dragged order keeps only projects and plots that still exist; undefined when it is still too long to save. */
@@ -865,14 +995,24 @@ export function WorkspaceMap() {
     'settings.open': () => { setSessionListView(undefined); setSettingsOpen(true); },
     'rail.settings': () => { setSessionListView(undefined); setSettingsOpen(true); },
     'shortcuts.help': () => { setControlsOpen(old => !old); },
+    // An open item view keeps its own keys; map undo is for the map.
+    ...Object.fromEntries(([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map(slot => [`board.${slot}`, () => { const target = boards[slot - 1]; if (!target || travelling) return false; void showBoard(target.id); }])),
+    'map.undo': () => { if (!snapshot || travelling || document.querySelector('.item-view:not([hidden])')) return false; void history.undo(); },
+    'map.redo': () => { if (!snapshot || travelling || document.querySelector('.item-view:not([hidden])')) return false; void history.redo(); },
   });
+  /** Plot colour, name and lock changes are undo steps too, recorded from the receipt the service returns for the write. */
+  const plotChange = (projectId: string, request: JsonObject) => {
+    const run = () => window.craftingTable.runtimeRun({ action: 'plot', nodeId: projectId, arguments: request }) as Promise<{ receipt?: Receipt }>;
+    const label = request.operation === 'color' ? 'Plot colour' : request.operation === 'rename' ? 'Plot rename' : request.operation === 'lock' ? request.locked ? 'Plot lock' : 'Plot unlock' : undefined;
+    return label ? history.track(label, run) : run();
+  };
   return <RailContext.Provider value={rail}><section ref={workspace} className="live-workspace" aria-label={below ? 'Undermap' : 'Project map'} data-layer={layer} data-travelling={travelling || undefined} data-chrome-docked={chromeDocked || undefined}>
-    {snapshot && plugins && view && settings && <ProjectMap key={layer} layer={layer} neighborhoodColor={below ? undermapColor : undefined} registry={registry} nodes={badged.nodes} resources={layerResources} links={badged.links} badges={badged.onItems} onBadge={(noteId, anchor, menu) => { setConnectionDraft(undefined); setEditor({ ...anchor, nodeId: noteId, mode: menu ? 'menu' : 'edit' }); }}
+    {snapshot && plugins && view && settings && !boardGone && <ProjectMap key={`${layer}:${board}`} layer={layer} neighborhoodColor={below ? undermapColor : undefined} registry={registry} nodes={badged.nodes} resources={layerResources} links={badged.links} badges={badged.onItems} onBadge={(noteId, anchor, menu) => { setConnectionDraft(undefined); setEditor({ ...anchor, nodeId: noteId, mode: menu ? 'menu' : 'edit' }); }}
       onMarkSeen={acknowledge} keep={keep} onKeep={restore} onChromeCover={setChromeDocked} onOpened={opened} onView={viewed} onMute={below ? undefined : setMuted}
       mapCorner={settings.value.mapCorner} projectSummaries={projectSummaries} overview={overviewOpen} onOverview={open => { setOverviewOpen(open); if (open && atlasCorner) { rail.unpin('attention'); rail.close('attention'); } }}
       projectsPanel={view.projectsPanel} onProjectsPanel={patch => { const pruned = pruneOrder(patch), next = pruned && viewSchema.shape.projectsPanel.safeParse({ ...viewRef.current?.projectsPanel, ...pruned }); if (next?.success) saveView({ projectsPanel: next.data }); return Boolean(next?.success); }} undermapCount={layerGraph.belowCount} onTravel={to => { rail.clear(); void travel(to); }}
       highlightedNodes={menuHighlight?.nodes ?? (below && foundBelow ? foundNodes : highlightedNodes)} highlightedLinks={menuHighlight?.links} menuFor={editor?.mode === 'menu' ? menuTargets : undefined} undermap={below ? undermapView : undefined}
-      attentionCounting={counting} offscreenAttention={settings.value.offscreenAttention} reviewOpenCounts={settings.value.reviewOpenCounts} sessionCracks={settings.value.sessionCracks} cardTags={settings.value.pullRequestCardLabels} itemMapSizes={settings.value.itemMapSizes} itemViews={settings.value.itemViews} viewBounds={view.itemViewBounds} onViewBounds={saveViewBounds} neighborhoodPadding={settings.value.neighborhoodPadding} neighborhoodAppearance={neighborhoodAppearance} dashboards={settings.value.mapDashboards} workingMark={settings.value.workingMark} plots={plots} onPlot={(projectId, request) => window.craftingTable.runtimeRun({ action: 'plot', nodeId: projectId, arguments: request }).then(() => {}, error => { if (request.operation !== 'seen') setError(error.message); })} plotNaming={settings.value.summaries.plotNames} plotTargets={ids => snapshot ? moveTargets(snapshot.state, ids) : []} onMoveItems={moveToProject} onSendBelow={ids => moveLayer(ids, 'below')} hideImpliedLinks={settings.value.hideImpliedLinks} snap={settings.value.snapToGrid ? SNAP_PITCH : undefined} collisions={settings.value.mapCollisions} initialViewport={view.camera} onViewport={camera => { zoomRef.current = camera.zoom; saveView({ camera }); }} reveal={reveal} onRevealed={revealed => setReveal(current => current === revealed ? undefined : current)}
+      attentionCounting={counting} offscreenAttention={settings.value.offscreenAttention} reviewOpenCounts={settings.value.reviewOpenCounts} sessionCracks={settings.value.sessionCracks} cardTags={settings.value.pullRequestCardLabels} itemMapSizes={settings.value.itemMapSizes} itemViews={settings.value.itemViews} viewBounds={view.itemViewBounds} onViewBounds={saveViewBounds} neighborhoodPadding={settings.value.neighborhoodPadding} neighborhoodAppearance={neighborhoodAppearance} dashboards={settings.value.mapDashboards} workingMark={settings.value.workingMark} plots={plots} plotMemberIds={plotMemberIds} onPlot={(projectId, request) => plotChange(projectId, request).then(() => undefined, error => { if (request.operation !== 'seen') setError(error.message); })} plotNaming={settings.value.summaries.plotNames} plotTargets={ids => snapshot ? moveTargets(snapshot.state, ids) : []} onMoveItems={moveToProject} onSendBelow={ids => moveLayer(ids, 'below')} hideImpliedLinks={settings.value.hideImpliedLinks} snap={settings.value.snapToGrid ? SNAP_PITCH : undefined} collisions={settings.value.mapCollisions} initialViewport={view.camera} onViewport={camera => { zoomRef.current = camera.zoom; saveView({ camera }); }} reveal={reveal} onRevealed={revealed => setReveal(current => current === revealed ? undefined : current)}
       onItemDrag={below ? undefined : (id, point) => todoOverlay.current?.drag(id, point)} onItemDrop={below ? undefined : (id, point) => todoOverlay.current?.drop(id, point) ?? false}
       onLink={below ? undefined : anchor => {
         setEditor(undefined); setConnectionDraft(undefined);
@@ -900,8 +1040,8 @@ export function WorkspaceMap() {
         setEditor({ ...anchor, mode: 'create', initialType: FROM_URL, initialUrl: url });
       } : undefined}
       onFileDrop={!below && (!editor || editor.mode === 'menu') && !settingsOpen && !archiveOpen && !connectionDraft ? dropFile : undefined}
-      onMove={(id, position, projectId) => apply([...(projectId ? [{ type: 'node.attach' as const, id, projectId }] : []), { type: 'node.move', id, position }]).catch(error => setError(error.message))}
-      onMoveMany={positions => apply([{ type: 'nodes.move', positions }]).catch(error => setError(error.message))}
+      onMove={(id, position, projectId, join) => moveAndJoin([...(projectId ? [{ type: 'node.attach' as const, id, projectId }] : []), { type: 'node.move', id, position }], join)}
+      onMoveMany={(positions, join) => moveAndJoin([{ type: 'nodes.move', positions }], join)}
       onResize={below && mirrorBelow ? undefined : resizeOnMap}
       onRename={(id, title) => apply([{ type: 'node.update', id, title }])}
       onComplete={(id, completed) => apply([{ type: completed ? 'node.complete' : 'node.reopen', id }]).catch(error => { setError(error.message); throw error; })}
@@ -921,6 +1061,7 @@ export function WorkspaceMap() {
       renderDetail={renderDetail} confirmClose={confirmViewClose} renderNode={renderNode} />}
     {!snapshot && (error ? <div className="error-screen-overlay"><ErrorScreen error={error} kind="load" retry={() => retryLoad.current()} /></div> : <div className="map-message"><p>Opening your table…</p></div>)}
     <ToolRail below={below} settings={settingsOpen} actions={actionsOpen || standupOpen} />
+    {snapshot && view && boards.length > 1 && <BoardTabs boards={boards} current={board} needs={boardNeeds} rename={renameBoard} renamed={() => setRenameBoard(undefined)} show={id => { if (!travelling) void showBoard(id); }} create={createBoard} save={saveBoard} remove={removeBoard} />}
     {snapshot && view && <NeedsMeTool items={attention} muted={mutedAttention} counting={counting} state={withUndermap ?? snapshot.state} highlight={setAttentionHighlight} size={view.attentionPanel ?? {}} onSize={size => saveView({ attentionPanel: size })}
       reveal={nodeId => revealNode(nodeId, 'centred')} locate={nodeId => revealNode(nodeId, 'map')} dismiss={acknowledge} openWeb={openOnWeb} unavailable={setError} />}
     {snapshot && view && plugins && <TodoOverlay ref={todoOverlay} state={snapshot.state} registry={registry} view={view} save={applyAt} saveView={saveView} reveal={nodeId => revealNode(nodeId, 'map')} onDragTodo={setTodoDrag}
@@ -929,7 +1070,7 @@ export function WorkspaceMap() {
     {snapshot && view && <RemindersTool reminders={snapshot.reminders} size={view.remindersPanel ?? {}} onSize={size => saveView({ remindersPanel: size })} />}
     {snapshot && view && <GitHubInboxTool openConnections={openConnections} size={view.inboxPanel ?? {}} onSize={size => saveView({ inboxPanel: size })} reveal={nodeId => revealNode(nodeId)} mapCenter={() => {
       const camera = viewRef.current?.camera ?? { x: 70, y: 80, zoom: .85 };
-      return { x: (innerWidth / 2 - camera.x) / camera.zoom, y: (innerHeight / 2 - camera.y) / camera.zoom };
+      return { x: (innerWidth / 2 - camera.x) / camera.zoom, y: (innerHeight / 2 - camera.y) / camera.zoom, ...boards.length > 1 ? { board: boardRef.current } : {} };
     }} />}
     {snapshot && <button type="button" className="below-portal" style={{ left: railSlot('undermap').x, top: railSlot('undermap').y }} data-layer={layer} onPointerEnter={() => setPortalHot(true)} onPointerLeave={() => setPortalHot(false)} onFocus={() => setPortalHot(true)} onBlur={() => setPortalHot(false)} aria-label={below ? 'Back to the map' : 'Go to Undermap'} aria-keyshortcuts={`${shortcutKey('rail.undermap')} ${shortcutKey('layer.toggle')}`} title={below ? 'Back to the map' : 'Go to Undermap'} disabled={travelling} onClick={() => { rail.clear(); void travel(below ? 'map' : 'below'); }}>
       <PortalArt destination={below ? 'map' : 'below'} animate={portalHot} />
@@ -962,12 +1103,12 @@ export function WorkspaceMap() {
     {updateOffers.map(offer => <UpdateNotice key={offer.key} offer={offer} dismiss={() => saveView({ dismissedUpdates: { ...viewRef.current?.dismissedUpdates, [offer.key]: offer.latest } })}
       open={() => { setSessionListView(undefined); if (offer.plugin) setInstallRequest({ id: ++installRequests.current, link: { source: offer.plugin.source, ref: offer.latest } }); else setSettingsSection('General'); setSettingsOpen(true); }} />)}
     {removedLink && linkNotice.visible && <Toast tone="undo" title="Connection removed" detail={`${snapshot?.state.nodes.find(node => node.id === removedLink.sourceId)?.title ?? 'Item'} → ${snapshot?.state.nodes.find(node => node.id === removedLink.targetId)?.title ?? 'item'}`}
-      action={{ label: 'Undo', run: () => {
+      action={removedLink.undo && { label: 'Undo', run: () => {
         if (snapshotRef.current?.state.links.some(link => link.id === removedLink.id)) { setError('This connection changed after removal. Undo cannot replace it.'); return; }
-        void apply([{ type: 'link.save', link: removedLink }]).then(() => setRemovedLink(undefined)).catch(error => setError(error.message));
+        const { undo } = removedLink; setRemovedLink(undefined); void history.undo(undo);
       } }} dismiss={() => setRemovedLink(undefined)} dismissLabel="Dismiss undo" />}
     {archivedNote && noteNotice.visible && <Toast tone="undo" title="Note archived" detail={archivedNote.title}
-      action={{ label: 'Undo', run: () => { void apply([{ type: 'node.restore', id: archivedNote.id }]).then(() => setArchivedNote(undefined)).catch(error => setError(error.message)); } }}
+      action={archivedNote.undo && { label: 'Undo', run: () => { const { undo } = archivedNote; setArchivedNote(undefined); void history.undo(undo); } }}
       dismiss={() => setArchivedNote(undefined)} dismissLabel="Dismiss undo" />}
     {todoUndo && todoUndoNotice.visible && <Toast tone="undo" title={todoUndo.title} detail={todoUndo.detail}
       action={todoUndo.undo.length ? { label: 'Undo', run: () => { const { undo } = todoUndo; setTodoUndo(undefined); void apply(undo).catch(error => setError(error.message)); } } : undefined}
@@ -975,13 +1116,14 @@ export function WorkspaceMap() {
     {unmuted && unmuteNotice.visible && <Toast tone="undo" title={`${unmuted.title} unmuted`} detail={unmuted.needs ? `${NEEDS_ME}: ${unmuted.needs}` : undefined}
       action={{ label: 'Undo', run: () => { const { id } = unmuted; setUnmuted(undefined); void apply([{ type: 'project.mute', id, muted: true }]).catch(error => setError(error.message)); } }}
       dismiss={() => setUnmuted(undefined)} dismissLabel="Dismiss undo" />}
+    {undoNotice && undoShown.visible && <Toast tone="done" title={undoNotice.text} dismiss={() => setUndoNotice(undefined)} />}
     {copiedUrls && copyNotice.visible && <Toast tone="done" title={copiedUrls.count === 1 ? 'URL copied' : `${copiedUrls.count} URLs copied`} dismiss={() => setCopiedUrls(undefined)} />}
     {shownError && snapshot && <Toast tone="error" title={shownError.message} details={shownError.details} dismiss={() => setError('')} dismissLabel="Dismiss error" />}
     </div>
     {controlsOpen && <ControlsCard close={() => setControlsOpen(false)} />}
     {standupOpen && <StandupPanel close={() => setStandupOpen(false)} reveal={nodeId => revealNode(nodeId, 'map')} openUrl={url => { void window.craftingTable.openUrl(url).catch(error => setError(error.message)); }}
       onMap={nodeId => { const nodes = withUndermapRef.current?.nodes ?? [], node = nodes.find(candidate => candidate.id === nodeId); return Boolean(node && !isArchived(node, nodes)); }} />}
-    {settingsOpen && <Settings startGuide={() => { setSettingsOpen(false); toggleFirstRun(true); }} sessionRequestId={sessionRequestId} initialSessionView={sessionListView} installRequest={installRequest} initialSection={settingsSection} updates={updates} nodeTitles={new Map(withUndermap?.nodes.map(node => [node.id, node.title]) ?? [])} plugins={plugins ?? []} providers={providers} openArchive={() => setArchiveOpen(true)} clearOverlaps={() => apply([{ type: 'layout.repair' }])} close={() => { setSettingsOpen(false); setInstallRequest(undefined); setSettingsSection(undefined); }} />}
+    {settingsOpen && <Settings startGuide={() => { setSettingsOpen(false); toggleFirstRun(true); }} sessionRequestId={sessionRequestId} initialSessionView={sessionListView} installRequest={installRequest} initialSection={settingsSection} updates={updates} nodeTitles={new Map(withUndermap?.nodes.map(node => [node.id, node.title]) ?? [])} plugins={plugins ?? []} providers={providers} openArchive={() => setArchiveOpen(true)} clearOverlaps={() => history.track('Clear overlaps', () => commit([{ type: 'layout.repair' }]))} close={() => { setSettingsOpen(false); setInstallRequest(undefined); setSettingsSection(undefined); }} />}
     {editor?.mode === 'menu' && <CanvasMenu key={`${editor.nodeId ?? editor.linkId ?? ''}:${editor.screen.x}:${editor.screen.y}`} screen={editor.screen} avoid={editor.avoid} actions={menuActions}
       loadChoices={async (action, refreshed) => {
         if (!selected || !action.choices) return [];
@@ -998,7 +1140,7 @@ export function WorkspaceMap() {
         else if (action.id.startsWith('field:')) { const [, key, option = action.value] = action.id.split(':'); if (key && option && selected && selectedResource) run([{ type: 'item.update', id: selected.id, data: { ...selectedResource.data, [key]: option } }]); }
         else menuAction(action.id);
       }} onHighlight={setMenuHighlight} close={() => setEditor(undefined)} />}
-    {editor && editor.mode !== 'menu' && snapshot && plugins && settings && <InlineEditor key={`${editor.mode}:${editor.nodeId ?? ''}:${editor.position.x}:${editor.position.y}`} editor={editor} state={withUndermap ?? snapshot.state} plugins={plugins} quickIds={settings.value.quickItemTypes} capabilities={capabilities} save={apply} close={() => setEditor(undefined)}
+    {editor && editor.mode !== 'menu' && snapshot && plugins && settings && <InlineEditor key={`${editor.mode}:${editor.nodeId ?? ''}:${editor.position.x}:${editor.position.y}`} editor={editor} state={withUndermap ?? snapshot.state} plugins={plugins} quickIds={settings.value.quickItemTypes} capabilities={capabilities} save={apply} close={() => setEditor(undefined)} board={boards.length > 1 ? board : undefined}
       writeInPlace={below ? undefined : pluginId => writeInPlace(pluginId, editor)} ground={editor.ground ? menuActions : undefined} act={menuAction} />}
   </section></RailContext.Provider>;
 }

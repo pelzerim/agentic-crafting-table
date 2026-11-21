@@ -6,6 +6,7 @@ import { freePosition } from './footprints.ts';
 import { ITEM_GAP } from './movement.ts';
 import { NEIGHBORHOOD_PADDING } from './project-neighborhoods.ts';
 import { boundsOf, field } from './undermap.ts';
+import { boardOf, boardless } from './boards.ts';
 
 type Point = GraphNode['position'];
 type Footprint = (node: GraphNode) => SpatialBox;
@@ -66,8 +67,9 @@ function beside(size: Size, anchor: SpatialBox, obstacles: readonly SpatialBox[]
  * given. A position within reach of the destination project, or of the anchor of a floating item, is kept as
  * given. Otherwise the item goes beside its anchor, or among the project's members at the nearest clear spot to
  * their centre. Nothing else moves, and the spot is never inside another project's neighborhood. */
-export function itemPlacement(nodes: readonly GraphNode[], footprint: Footprint, context: CreationContext, size: Size, position?: Point, padding = NEIGHBORHOOD_PADDING): Point | undefined {
-  const visible = nodes.filter(node => isDrawn(node, nodes)), areas = projectAreas(visible, footprint);
+export function itemPlacement(nodes: readonly GraphNode[], boxOf: Footprint, context: CreationContext, size: Size, position?: Point, padding = NEIGHBORHOOD_PADDING): Point | undefined {
+  const target = context.projectId ? nodes.find(node => node.id === context.projectId) : context.anchor, footprint = boardless(boxOf);
+  const visible = nodes.filter(node => isDrawn(node, nodes) && (!target || boardOf(node) === boardOf(target))), areas = projectAreas(visible, footprint);
   const destination = areas.find(area => area.project.id === context.projectId), anchor = context.anchor && footprint(context.anchor);
   if (context.projectId ? !destination : !anchor) return position;
   if (position && (destination ? overlaps(box(position, size), field('', destination.bounds, CONTEXT_REACH), 0) : overlaps(box(position, size), anchor!, CONTEXT_REACH))) return position;
@@ -82,10 +84,11 @@ export function itemPlacement(nodes: readonly GraphNode[], footprint: Footprint,
 /** The map position of a project an agent creates (MAP-14): beside the caller's project (or the caller, when it
  * floats), with its own neighborhood clear of every other one and of floating items. A position whose
  * neighborhood is within reach of the caller's is kept; with no caller on the map the position is used as given. */
-export function projectPlacement(nodes: readonly GraphNode[], footprint: Footprint, anchors: readonly string[], size: Size, position?: Point, padding = NEIGHBORHOOD_PADDING): Point | undefined {
-  const visible = nodes.filter(node => isDrawn(node, nodes)), areas = projectAreas(visible, footprint);
-  const caller = anchors.flatMap(id => visible.find(node => node.id === id) ?? [])[0];
+export function projectPlacement(nodes: readonly GraphNode[], boxOf: Footprint, anchors: readonly string[], size: Size, position?: Point, padding = NEIGHBORHOOD_PADDING): Point | undefined {
+  const drawn = nodes.filter(node => isDrawn(node, nodes)), footprint = boardless(boxOf);
+  const caller = anchors.flatMap(id => drawn.find(node => node.id === id) ?? [])[0];
   if (!caller) return position;
+  const visible = drawn.filter(node => boardOf(node) === boardOf(caller)), areas = projectAreas(visible, footprint);
   const own = areas.find(area => area.project.id === (caller.projectId ?? caller.id));
   const home = own ? field(own.project.id, own.bounds, padding) : grown(footprint(caller), ITEM_GAP), reserved = { width: size.width + padding * 2, height: size.height + padding * 2 };
   if (position && overlaps(box(position, reserved), home, CONTEXT_REACH)) return position;

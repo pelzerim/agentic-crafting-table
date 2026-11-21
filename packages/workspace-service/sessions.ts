@@ -21,7 +21,7 @@ export const terminalCreateSchema = z.object({
   requestId: z.string().uuid(), nodeId: z.string().uuid(), resourceId: z.string().uuid(), sessionId: z.string().uuid(),
   expectedRevision: z.number().int().nonnegative().optional(), title: z.string().trim().min(1).max(500),
   projectId: z.string().min(1).max(200).optional(), position: z.object({ x: z.number().finite(), y: z.number().finite() }).optional(), placedBy: z.string().min(1).max(200).optional(),
-  cwd: z.string().min(1).max(4096).optional(), connection: creationConnectionSchema.optional(),
+  cwd: z.string().min(1).max(4096).optional(), connection: creationConnectionSchema.optional(), board: z.string().min(1).max(200).optional(),
 });
 export type TerminalCreate = z.infer<typeof terminalCreateSchema>;
 /** Without `expectedRevision` the plan's commands are applied to the newest workspace when it launches. */

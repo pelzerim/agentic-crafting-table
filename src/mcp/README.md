@@ -133,6 +133,16 @@ stopped/replaced process is rejected. The desktop Session menu uses this same ac
   already-clear items and leaving archived items untouched. Resource identities,
   links, statuses and camera do not change. Do not invoke without a layout request.
 - `node.attach`: set project membership; null makes an item floating.
+- Boards: the map is split into boards, shown as tabs. `workspace_read` lists `boards`
+  (`id`, `name`, `color`) in tab order and gives every node its `board`. Projects and
+  items not in a project have their own board; an item in a project is always on its
+  project's board. `item.add`, `item.create` and `project.create` take an optional
+  `board`; without it an item lands on the board of the first node it links to, else on
+  the agent's own board. `node.move` with `board` (and an optional `position`) moves a
+  project with all its members, or an item not in a project, to another board; it needs
+  `expectedRevision` like any move. Links may cross boards. Creating, renaming and
+  deleting boards (`board.save`, `board.delete`) is for the person only and refused for
+  agents.
 - `node.archive` / `node.restore`: reversible visibility; links and sessions remain.
 - `node.complete` / `node.reopen`: set or clear independent `completedAt` map state;
   provider activity, attention, positions and connections remain intact. The map

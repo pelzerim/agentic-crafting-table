@@ -4,6 +4,7 @@ import { isArchived } from '../../src/graph/archive.ts';
 import { defaultArtifactTitle, parseClaudeArtifactUrl } from '../../src/resource-plugins/items/claude-artifact/url.ts';
 import type { ClaudeArtifactUrl } from '../../src/resource-plugins/items/claude-artifact/url.ts';
 import { findById } from '../../src/graph/lookup.ts';
+import { boardOf } from '../../src/graph/boards.ts';
 
 export interface PublishedArtifact { nodeId: string; processSessionId: string; nativeSessionId: string; url: string; title?: string }
 
@@ -47,7 +48,7 @@ export async function attachPublishedArtifact(control: WorkspaceControl, changed
     } else {
       targetId = randomUUID();
       const placed = state.links.filter(link => link.sourceId === agent.id && state.resources.find(resource => resource.id === findById(state.nodes, link.targetId)?.resourceId)?.pluginId === 'claude.artifact').length;
-      commands.push({ type: 'item.create', id: targetId, ...(agent.projectId ? { projectId: agent.projectId } : {}), position: { x: agent.position.x, y: agent.position.y + 150 + placed * 70 },
+      commands.push({ type: 'item.create', id: targetId, ...(agent.projectId ? { projectId: agent.projectId } : { board: boardOf(agent) }), position: { x: agent.position.x, y: agent.position.y + 150 + placed * 70 },
         resource: { id: randomUUID(), pluginId: 'claude.artifact', schemaVersion: 2, title: published.title ?? defaultArtifactTitle(artifact.id), data: {
           url: artifact.url, artifactId: artifact.id, sessionId: published.processSessionId,
           ...(pr ? { sourcePrId: pr.id } : {}), ...(pr && typeof architecture?.headSha === 'string' ? { headSha: architecture.headSha } : {}) } } });

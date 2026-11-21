@@ -103,7 +103,7 @@ export class GitHubInbox {
   /** Adds the PR beside the project that already holds PRs from its repository, or
    * floating at `position`. An existing item is reused, never duplicated. */
   async showOnMap(input: unknown) {
-    const { connectionId, key, position } = z.object({ connectionId: z.string().min(1), key: z.string().min(1).max(400), position: z.object({ x: z.number().finite(), y: z.number().finite() }) }).parse(input);
+    const { connectionId, key, position, board } = z.object({ connectionId: z.string().min(1), key: z.string().min(1).max(400), position: z.object({ x: z.number().finite(), y: z.number().finite() }), board: z.string().min(1).max(200).optional() }).parse(input);
     const connection = this.accounts().find(candidate => candidate.id === connectionId);
     const item = connection && this.cached(connection).items.find(candidate => candidate.key === key);
     if (!connection || !item) throw new Error('This pull request is no longer in your inbox. Refresh it and try again.');
@@ -120,7 +120,7 @@ export class GitHubInbox {
       try {
         await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'user', id: 'github-inbox' }, commands: [
           { type: 'item.add', id: nodeId, resourceId: randomUUID(), pluginId: 'github.pull-request', connectionId: connection.id, title: item.title,
-            data: { owner: item.owner, repo: item.repo, number: item.number }, ...(projectId ? { projectId } : {}), position: project?.position ?? position },
+            data: { owner: item.owner, repo: item.repo, number: item.number }, ...(projectId ? { projectId } : board ? { board } : {}), position: project?.position ?? position },
         ] });
         return { nodeId, created: true };
       } catch (error) { if ((error as { code?: string }).code !== 'REVISION_CONFLICT') throw error; }

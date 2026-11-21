@@ -20,6 +20,9 @@ export const hostRuntimeOperations: readonly RuntimeOperationDeclaration[] = [
   { id: 'resource.read' }, { id: 'resource.actions' }, { id: 'resource.action' }, { id: 'resource.content' }, { id: 'resource.context' }, { id: 'resource.viewed' },
   { id: 'resource.opened', agentPolicy: 'humanOnly' },
   { id: 'plot', agentPolicy: 'humanOnly' },
+  { id: 'map.undo', agentPolicy: 'humanOnly' },
+  // Notes are the person's words: an agent never sends them, whatever the setting.
+  { id: 'video.notes', agentPolicy: 'humanOnly' },
 ];
 
 /** Host operations followed by every bundled package's declared operations. */

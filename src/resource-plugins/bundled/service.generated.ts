@@ -12,6 +12,7 @@ import todo from '../items/todo/service.ts';
 import note from '../items/note/service.ts';
 import textFile from '../items/text-file/service.ts';
 import githubIssue from '../items/github-issue/service.ts';
+import video from '../items/video/service.ts';
 
 export const bundledServiceModules: Readonly<Record<string, ServiceModule>> = {
   'github.pull-request': githubPullRequest,
@@ -26,4 +27,5 @@ export const bundledServiceModules: Readonly<Record<string, ServiceModule>> = {
   'workspace.note': note,
   'workspace.text': textFile,
   'github.issue': githubIssue,
+  'workspace.video': video,
 };
