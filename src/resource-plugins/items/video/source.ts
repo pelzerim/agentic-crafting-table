@@ -39,3 +39,16 @@ export function parseVideoSource(input: unknown): VideoSource | undefined {
 }
 
 export const videoTitle = (source: VideoSource) => source.kind === 'file' ? lastPathPart(source.path) ?? 'Video' : 'YouTube video';
+
+export type PendingNotesSend = { requestId: string; targetNodeId: string; sessionId: string; fingerprint: string; delivered?: boolean };
+const PENDING_KEYS = ['requestId', 'targetNodeId', 'sessionId', 'fingerprint'] as const;
+const pendingSend = (value: unknown): value is PendingNotesSend => typeof value === 'object' && value !== null && !Array.isArray(value) && PENDING_KEYS.every(key => typeof (value as Record<string, unknown>)[key] === 'string')
+  && [undefined, true].includes((value as Record<string, unknown>).delivered as true | undefined);
+/** The latest notes send by target session, marked once delivered; an item saved with the older single send reads as one entry. */
+export function pendingNotesSends(value: unknown): Record<string, PendingNotesSend> {
+  if (pendingSend(value)) return { [value.sessionId]: value };
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, PendingNotesSend] => pendingSend(entry[1])));
+}
+export const validPendingNotesSends = (value: unknown) => value === undefined || pendingSend(value)
+  || (typeof value === 'object' && value !== null && !Array.isArray(value) && Object.values(value).every(pendingSend));

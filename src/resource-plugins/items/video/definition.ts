@@ -1,5 +1,5 @@
 import { defineResourcePlugin } from '../../define.ts';
-import { VIDEO_NOTES_LIMIT, VIDEO_TYPE, parseVideoSource, videoTitle } from './source.ts';
+import { VIDEO_NOTES_LIMIT, VIDEO_TYPE, parseVideoSource, validPendingNotesSends, videoTitle } from './source.ts';
 
 const strings = (value: unknown, keys: string[]) => value === undefined || (typeof value === 'object' && value !== null && !Array.isArray(value) && keys.every(key => typeof (value as Record<string, unknown>)[key] === 'string'));
 
@@ -20,9 +20,9 @@ export const video = defineResourcePlugin({
     const source = parseVideoSource(data.source);
     return source?.kind === 'youtube' ? `youtube:${source.id}${source.start ? `@${source.start}` : ''}` : source ? `file:${source.path}` : undefined;
   },
-  // Notes are the person's draft from the view's Notes panel; `notesSent` says when and to whom they last went, `notesPending` holds an unconfirmed send.
+  // Notes are the person's draft from the view's Notes panel; `notesSent` says when and to whom they last went, `notesPending` holds the latest send by session.
   validateData: data => Boolean(parseVideoSource(data.source)) && (data.notes === undefined || (typeof data.notes === 'string' && data.notes.length <= VIDEO_NOTES_LIMIT))
-    && strings(data.notesSent, ['to', 'at']) && strings(data.notesPending, ['requestId', 'targetNodeId', 'sessionId', 'fingerprint']),
+    && strings(data.notesSent, ['to', 'at']) && validPendingNotesSends(data.notesPending),
   matchInput(input) {
     const source = parseVideoSource(input);
     return source ? { title: videoTitle(source), data: { source: source.kind === 'file' ? source.path : input.trim() } } : undefined;
