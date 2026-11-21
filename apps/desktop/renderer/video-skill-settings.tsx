@@ -32,7 +32,7 @@ export function VideoSkillSettings({ value, enabled, cwd, visible, change }: { v
       {loading && <small>Finding skills…</small>}
       {error && <small>{error}</small>}
       {catalog && !skills.length && <small>No installed skills in this folder.</small>}
-      {value.skillId && !enabled[value.provider] && <small>{providerLabels[value.provider]} is turned off, so the menu entries are hidden until it is on again.</small>}
+      {value.skillId && !enabled[value.provider] && <small>{providerLabels[value.provider]} is turned off, so the pull request entry is hidden until it is on again.</small>}
       {value.skillId && <button type="button" className="settings-quiet" onClick={() => change({ ...value, skillId: '', name: '' })}>Clear</button>}
     </SettingRow>
   </SettingsSection>;

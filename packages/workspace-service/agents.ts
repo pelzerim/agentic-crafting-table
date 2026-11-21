@@ -117,7 +117,7 @@ export class AgentCoordinator {
       }
       const readiness = await agentReadiness(this.sessions, state, { nodeId: node.id, sessionId }, sessionId => this.observations.agentObservation(sessionId), now);
       if (readiness !== 'idle') continue;
-      commands.push({ type: 'node.update', id: node.id, ...(prompted ? this.settled(waiting) : { activity: 'idle', summary: 'Ready for your next prompt' }) });
+      commands.push({ type: 'node.update', id: node.id, ...(prompted ? this.settled(waiting) : { activity: 'idle', summary: 'Ready for your next prompt', turnEndedAt: new Date(now()).toISOString() }) });
     }
     if (!commands.length) return;
     try { await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'system', id: 'agent-quiet' }, commands }); await this.changed(); }
@@ -488,7 +488,7 @@ export class AgentCoordinator {
         : event.notificationType === 'idle_prompt' ? 'Agent waiting' : event.event === 'StopFailure' ? 'Agent hit an error' : undefined;
       // The line the agent ended its turn on stays on the node until the next prompt starts a turn.
       const lastLine = event.event === 'Stop' && !waitingSummary ? agentLastLine(redactSecrets(event.lastMessage ?? '')) ?? null : event.event === 'UserPromptSubmit' ? null : undefined;
-      const turnEndedAt = event.event === 'Stop' ? new Date(event.observedAt).toISOString() : undefined;
+      const turnEndedAt = event.event === 'Stop' || event.event === 'StopFailure' ? new Date(event.observedAt).toISOString() : undefined;
       const next = waitingSummary ? { activity: 'working', attention: 'none', summary: waitingSummary } as const : {
         activity: working ? 'working' : 'idle', attention: inputNeeded ? 'input' : event.event === 'StopFailure' ? 'error' : event.event === 'SessionEnd' ? node.attention : 'none', ...(attentionNote ? { attentionNote } : {}),
         summary: inputNeeded ? 'Waiting for your input' : working ? 'Claude is working' : event.event === 'StopFailure' ? 'Claude reported an error' : event.event === 'SessionEnd' ? 'Conversation closed' : 'Ready for your next prompt',

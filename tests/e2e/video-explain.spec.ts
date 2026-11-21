@@ -22,9 +22,10 @@ test('Explain in video shows on pull request and agent menus only while a video 
   const write = (patch: object) => page.evaluate(async patch => { const current = await window.craftingTable.settingsRead(); await window.craftingTable.settingsWrite({ expectedRevision: current.revision, value: { ...current.value, ...patch } }); }, patch);
   await write({ agentProviders: { claude: false, codex: false, opencode: false, pi: false, gemini: false, grok: false }, videoSkill: { provider: 'codex', skillId: 'demo-video', name: 'demo-video' } });
   await expect.poll(() => entries(pr)).not.toContain('Explain in video');
+  expect(await entries(agent)).toContain('Explain what you built in video');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('treeitem', { name: 'Agents', exact: true }).locator(':scope > .settings-tree-row').click();
-  await expect(page.getByText('Codex is turned off, so the menu entries are hidden until it is on again.')).toBeVisible();
+  await expect(page.getByText('Codex is turned off, so the pull request entry is hidden until it is on again.')).toBeVisible();
   await expect(page.getByText('No unsaved changes')).toBeVisible();
   expect(await page.evaluate(async () => (await window.craftingTable.settingsRead()).value.videoSkill)).toEqual({ provider: 'codex', skillId: 'demo-video', name: 'demo-video' });
 });

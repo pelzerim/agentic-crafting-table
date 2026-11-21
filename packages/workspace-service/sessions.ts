@@ -16,6 +16,7 @@ import { fieldDefaults } from '../../src/resource-plugins/define.ts';
 import { applyAtHead } from './apply-at-head.ts';
 import { defaultDirectory } from '../core/working-directories.ts';
 import { findById } from '../../src/graph/lookup.ts';
+import { providerLabels } from '../../src/agents/display-names.ts';
 
 export const terminalCreateSchema = z.object({
   requestId: z.string().uuid(), nodeId: z.string().uuid(), resourceId: z.string().uuid(), sessionId: z.string().uuid(),
@@ -288,6 +289,14 @@ export class SessionCoordinator {
         if (node && ((resource?.data.provider === 'claude' && isArchived(node, graph.nodes)) || isBelow(node, graph.nodes))) {
           const current = job.state === 'queued' ? this.store.transitionJob(job.id, 'queued', 'running') : job;
           this.store.transitionJob(job.id, current.state, 'failed', { error: isBelow(node, graph.nodes) ? 'Session sent to Undermap before launch recovery; bring it back and resume explicitly.' : 'Session archived before launch recovery; restore and resume explicitly.' });
+          continue;
+        }
+        // A start of a provider turned off since is refused (AGENT-01b), once no process for this launch exists.
+        const provider = resource?.data.provider, launch = job.input.arguments.launch as LaunchRequest;
+        if (job.input.action === 'agent.create' && typeof provider === 'string' && (this.store.readSettings().value.agentProviders as Record<string, boolean>)[provider] === false
+          && !(await this.runtime.call<SessionRecord[]>('sessions.list')).some(session => session.id === launch.sessionId)) {
+          const current = job.state === 'queued' ? this.store.transitionJob(job.id, 'queued', 'running') : job;
+          this.store.transitionJob(job.id, current.state, 'failed', { error: `Not started: ${providerLabels[provider] ?? provider} was turned off before this launch was confirmed.` });
           continue;
         }
         const current = job.state === 'queued' ? this.store.transitionJob(job.id, 'queued', 'running') : job;

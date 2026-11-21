@@ -1,4 +1,4 @@
-import { FROM_TABLE, promptAgent } from './agent-prompt.ts';
+import { FROM_TABLE, prompting as sending, promptAgent } from './agent-prompt.ts';
 import * as z from 'zod/v4';
 import { createHash, randomUUID } from 'node:crypto';
 import { applyAtHead } from './apply-at-head.ts';
@@ -10,8 +10,6 @@ import { relatedResourceItems } from '../core/related-items.ts';
 import { isArchived } from '../../src/graph/archive.ts';
 import { findById } from '../../src/graph/lookup.ts';
 import { VIDEO_TYPE, parseVideoSource } from '../../src/resource-plugins/items/video/source.ts';
-// Sessions with a send in flight: a second send would interleave its paste with the first.
-const sending = new Set<string>();
 const schema = z.object({ sourceResourceId: z.string().min(1), targetNodeId: z.string().min(1), sessionId: z.string().min(1), requestId: z.string().uuid(), fingerprint: z.string().regex(/^[0-9a-f]{64}$/) }).strict();
 const CHANGED = 'The notes changed. Check them and send again.';
 const fingerprintOf = (notes: string) => createHash('sha256').update(notes).digest('hex');

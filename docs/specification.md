@@ -1755,7 +1755,7 @@ transcript of each Claude agent that is idle or waiting, not working and not arc
 reads its last 256 KB only when the file's time or size changed. It keeps the newest recap
 there, without the trailing “(disable recaps in /config)”, secrets redacted, flattened and
 clipped to 600 characters on a word boundary, as the node's `recap` (`{ text, at }`) when
-it is newer than the turn end the Stop hook recorded (`turnEndedAt`); an older one clears
+it is newer than the recorded turn end (`turnEndedAt`: Stop, StopFailure or an interrupt); an older one clears
 it. One tick writes at most one batch of up to 100 node updates, and file access never
 blocks the service. The next prompt clears the recap, as it clears the last line.
 `node.update` takes `recap` (`null` clears) and `turnEndedAt`; older nodes read
@@ -1984,7 +1984,9 @@ installed OpenCode (`opencode`), Pi (`pi`), Gemini (`gemini`) or Grok Build (`gr
 the same real terminal. **Settings → Agents → <name> → Enabled**
 (setting `agentProviders`) lists a provider in the start form; the bottom of that page, under **Not available**, lists what the CLI lacks next to Claude and Codex; Claude and Codex are
 on by default and the four others are off. A start of a provider that is off, from the form,
-MCP or another first-party service, is refused with the name of that setting; items already
+MCP or another first-party service, is refused with the name of that setting; a launch whose
+outcome was uncertain is not restarted by recovery once its provider is off and no process for it
+runs; items already
 on the map keep working and resuming. Each provider shows its logo in the start form and on
 its items; a provider without a logo shows its name in the start form. The model choice is **CLI default**: no `--model` flag, so the CLI's own configuration
 picks it; an MCP start may name a model, which is passed as `--model`. These CLIs have no
@@ -4505,19 +4507,23 @@ The first real publication is a supervised acceptance gate.
 **VIDEO-EXPLAIN — Explain in video.** Settings → Agents → Explain in video holds one
 video skill: an agent provider and one of its installed skills, listed from the
 default working directory. A provider that is turned off stays chosen. Neither entry
-below shows while the skill is empty or its provider is turned off, and both refuse
-while it is off. A PR's context menu then offers **Explain in video**, which starts a
-new session beside the PR, connected from it, running the skill of the same name in
-the PR project's folder through `skill.run` with the PR URL and a line asking for the
-finished MP4 as a Video item linked to the PR. The launch's ids come from the request,
-so a retry returns the first launch. A launch whose start is uncertain is replayed as
-the same launch by the next click, and a click while that video session still works or
-asks answers with it ("Already running") instead of a second launch. An agent
-session's context menu offers **Explain what you built in video**, which types the
-skill invocation of that session's own provider, found by name in the session's
-folder, into the idle session ("Asked the agent"); readiness is checked again after
-the skill lookup. A prompt holds the session until the agent ends a turn after it, so
-a lost reply never prompts twice. A missing skill is refused by name.
+below shows while the skill is empty. Following AGENT-01b, only a start is refused
+while the skill's provider is turned off, so the PR entry is hidden and refused then,
+while the session entry still shows. A PR's context menu offers **Explain in video**,
+which starts a new session beside the PR, connected from it, running the skill of the
+same name in the PR project's folder through `skill.run` with the PR URL and a line
+asking for the finished MP4 as a Video item linked to the PR. The launch's ids come
+from the request, so a retry returns the first launch. A launch whose start is
+uncertain is replayed as the same launch by the next click, unless its saved provider
+was turned off since and no process for it runs. A click while that video session's
+process runs and it works, asks, or has not ended its first turn (done, failed or interrupted) answers with it
+("Already running") instead of a second launch. An agent session's context menu
+offers **Explain what you built in video**, which types the skill invocation of that
+session's own provider, found by name in the session's folder, into the idle session
+("Asked the agent"); readiness is checked again after the skill lookup, and video
+notes and this action never type into one session at the same time. A prompt holds
+the session until the agent ends a turn after it, so a lost reply never prompts
+twice. A missing skill is refused by name.
 Both run the `video.explain` runtime action, which acts for the person and keeps its
 requests in the job journal. The app never
 makes or renders the video itself; the agent adds the MP4 as a RES-13 Video item.

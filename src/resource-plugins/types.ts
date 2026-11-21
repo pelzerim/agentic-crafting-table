@@ -419,7 +419,7 @@ export interface ResourcePluginViews {
 }
 
 /** App settings a menu group may depend on: `videoSkill` is chosen once it names a skill. */
-export type MenuAppSetting = 'videoSkill';
+export type MenuAppSetting = 'videoSkill' | 'videoLaunch';
 export interface ResourceMenuGroup {
   id: string; label: string;
   /** `runs` makes an entry start the named children of this group together, each as if it had been picked. */

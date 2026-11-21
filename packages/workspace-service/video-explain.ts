@@ -1,6 +1,6 @@
 import * as z from 'zod/v4';
 import { createHash } from 'node:crypto';
-import { FROM_TABLE, promptAgent } from './agent-prompt.ts';
+import { FROM_TABLE, prompting as sending, promptAgent } from './agent-prompt.ts';
 import type { WorkspaceControl, WorkspaceState } from '../core/control.ts';
 import type { VideoSkill } from '../core/settings.ts';
 import type { ProjectSkill, ProjectSkillCatalog, SkillRun } from '../core/skills.ts';
@@ -19,8 +19,6 @@ const schema = z.object({ requestId: z.string().uuid() }).strict();
 const UNSETTLED: ReadonlySet<JobRecord['state']> = new Set(['queued', 'running', 'waiting', 'outcome-unknown']);
 /** What a session prompt remembers to tell whether the agent took a turn after it. */
 interface Prompted { requestId: string; sessionId: string; promptAt: string; completion?: string }
-// Sessions with a prompt in flight: a second one would interleave its input with the first.
-const sending = new Set<string>();
 // Pull request launches in flight: a click that arrives meanwhile answers with the same launch.
 const launching = new Map<string, Promise<{ nodeId: string }>>();
 
@@ -53,13 +51,11 @@ export function pullRequestVideoRun(pr: { id: string; position: { x: number; y: 
 export async function explainInVideo(control: WorkspaceControl, host: VideoExplainHost, nodeId: string, input: unknown) {
   const { requestId } = schema.parse(input), skill = host.skill(), state = await control.read();
   if (!skill.skillId) throw new Error('Choose a video skill in Settings → Agents first.');
-  const enabled = () => { if (!host.enabled(skill.provider)) throw new Error(`${label(skill.provider)} is turned off. Turn it on in Settings → Agents → ${label(skill.provider)} → Enabled.`); };
-  enabled();
   const node = findById(state.nodes, nodeId), resource = findById(state.resources, node?.resourceId);
   if (node && resource?.pluginId === 'github.pull-request') {
     const running = launching.get(node.id);
     if (running) return running;
-    const launch = pullRequest(control, host, state, node, resource.data, skill, requestId, enabled).finally(() => launching.delete(node.id));
+    const launch = pullRequest(control, host, state, node, resource.data, skill, requestId).finally(() => launching.delete(node.id));
     launching.set(node.id, launch);
     return launch;
   }
@@ -89,7 +85,6 @@ export async function explainInVideo(control: WorkspaceControl, host: VideoExpla
     const catalog = await host.skills({ provider, cwd: session.cwd });
     const selected = catalog.skills.find(candidate => candidate.name === skill.name && !candidate.unavailable);
     if (!selected) throw new Error(`${label(provider)} has no ${skill.name} skill in this session's folder.`);
-    enabled();
     const fresh = (await ready(await control.read())).node;
     const job = host.store.enqueueJob(holding?.requestKey ?? `video-explain:${requestId}`, holding?.input ?? { action: 'video.explain', nodeId,
       arguments: { requestId, sessionId, promptAt: new Date().toISOString(), ...(fresh.attentionEvents?.completion ? { completion: fresh.attentionEvents.completion } : {}) } satisfies Prompted as never });
@@ -104,16 +99,25 @@ export async function explainInVideo(control: WorkspaceControl, host: VideoExpla
   } finally { sending.delete(sessionId); }
 }
 
-/** An earlier video session counts as still at work only while it works or asks, and its process runs. */
-async function busy(host: VideoExplainHost, state: WorkspaceState, nodeId: string) {
+const turnedOff = (provider: string) => new Error(`${label(provider)} is turned off. Turn it on in Settings → Agents → ${label(provider)} → Enabled.`);
+
+/** Whether a video session's process still runs. */
+async function alive(host: VideoExplainHost, state: WorkspaceState, nodeId: string) {
   const session = findById(state.nodes, nodeId), sessionId = findById(state.resources, session?.resourceId)?.data.sessionId;
-  if (!session || isArchived(session, state.nodes) || (session.activity !== 'working' && session.attention !== 'input') || typeof sessionId !== 'string' || !host.sessions) return false;
+  if (!session || isArchived(session, state.nodes) || typeof sessionId !== 'string' || !host.sessions) return false;
   const live = await host.sessions.runtime.call<SessionSnapshot>('sessions.read', { sessionId, after: Number.MAX_SAFE_INTEGER }).catch(() => undefined);
   return live?.session.state === 'running' && !live.session.stopRequestedAt;
 }
+/** An earlier video session is still at work while its process runs and it works, asks, or has not ended its first turn. */
+async function busy(host: VideoExplainHost, state: WorkspaceState, nodeId: string) {
+  const session = findById(state.nodes, nodeId);
+  if (!session || (session.activity !== 'working' && session.attention !== 'input' && (session.turnEndedAt || session.attentionEvents?.completion))) return false;
+  return alive(host, state, nodeId);
+}
 
-async function pullRequest(control: WorkspaceControl, host: VideoExplainHost, state: WorkspaceState, node: WorkspaceState['nodes'][number], data: Record<string, unknown>, skill: VideoSkill, requestId: string, enabled: () => void) {
+async function pullRequest(control: WorkspaceControl, host: VideoExplainHost, state: WorkspaceState, node: WorkspaceState['nodes'][number], data: Record<string, unknown>, skill: VideoSkill, requestId: string) {
   if (!host.runSkill) throw new Error('Agent runtime is unavailable');
+  if (!host.enabled(skill.provider)) throw turnedOff(skill.provider);
   const template = control.registry.get('github.pull-request')?.webLink?.template, url = template && webLinkUrl(template, data as never);
   if (!url || isArchived(node, state.nodes)) throw new Error('This pull request is no longer on the map.');
   if (!node.projectId) throw new Error('Move this pull request into a project first.');
@@ -130,13 +134,18 @@ async function pullRequest(control: WorkspaceControl, host: VideoExplainHost, st
     const selected = catalog.skills.find(candidate => candidate.name === skill.name && !candidate.unavailable);
     if (!selected) throw new Error(`${label(skill.provider)} has no ${skill.name} skill in this project's folder.`);
     const run = pullRequestVideoRun(node, url, { provider: skill.provider, model: await host.defaultModel(skill.provider), skillId: selected.id, cwd: catalog.cwd }, requestId);
-    enabled();
+    if (!host.enabled(skill.provider)) throw turnedOff(skill.provider);
     job = host.store.enqueueJob(`video-explain:${requestId}`, { action: 'video.explain', nodeId: node.id, arguments: { requestId, projectId: node.projectId, run } });
   }
   const { projectId, run } = job.input.arguments as { projectId: string; run: SkillRun };
-  if (job.state === 'queued' || job.state === 'waiting') job = host.store.transitionJob(job.id, job.state, 'running');
   // A concurrent click on the same request may have settled the job first.
   const settle = (next: 'succeeded' | 'failed' | 'outcome-unknown', patch: { result?: unknown; error?: string }) => { const current = host.store.getJob(job.id)!; if (UNSETTLED.has(current.state)) host.store.transitionJob(job.id, current.state, next, patch); };
+  if (job.state === 'queued' || job.state === 'waiting') job = host.store.transitionJob(job.id, job.state, 'running');
+  // A replay starts the saved run's provider, which may have been turned off since.
+  if (!host.enabled(run.provider)) {
+    if (await alive(host, await control.read(), run.nodeId)) { settle('succeeded', { result: { nodeId: run.nodeId } }); return { nodeId: run.nodeId, reused: true }; }
+    settle('failed', { error: turnedOff(run.provider).message }); throw turnedOff(run.provider);
+  }
   try { await host.runSkill(projectId, run); }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error);

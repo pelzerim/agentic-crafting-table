@@ -710,7 +710,7 @@ export function WorkspaceMap() {
   const selectedResource = resources?.find(resource => resource.id === selected?.resourceId);
   const selectedPlugin = plugins?.find(plugin => plugin.id === selectedResource?.pluginId);
   const pluginSettings = pluginSettingsValues(plugins ?? [], settings?.value.plugins);
-  const menuApp = { videoSkill: Boolean(settings?.value.videoSkill.skillId && settings.value.agentProviders[settings.value.videoSkill.provider]) };
+  const menuApp = { videoSkill: Boolean(settings?.value.videoSkill.skillId), videoLaunch: Boolean(settings?.value.videoSkill.skillId && settings.value.agentProviders[settings.value.videoSkill.provider]) };
   const scope = selectedLink ? 'link' : selected ? selected.resourceId ? 'item' : 'project' : editor?.projectId ? 'neighborhood' : 'board';
   const belowMenu = (node?: GraphNode) => layer === 'below' ? { blocker: node && snapshot ? surfaceBlocker(node, snapshot.state.nodes) : undefined } : undefined;
   /** The item's web page: what Open on … opens and Copy URL copies. */

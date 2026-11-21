@@ -7,7 +7,7 @@ import type { AppSettings } from '../../packages/core/settings.ts';
 import type { RecoveryState } from '../../packages/workspace-service/lifecycle.ts';
 
 export const announcementSchema = z.object({ key: z.string().min(1).max(500), title: z.string().min(1).max(250), body: z.string().max(1000).default(''), nodeId: z.string().max(200).optional(), startup: z.boolean().optional() }).strict();
-/** Moves when any provider ends a turn: Claude's Stop writes `turnEndedAt`, every agent's finish raises a new completion event. */
+/** Moves when any provider ends a turn: Claude's turn end (done, failed or interrupted) writes `turnEndedAt`, every agent's finish raises a new completion event. */
 const turnEnd = (node: { turnEndedAt?: string; attentionEvents?: Record<string, string> } | undefined) => `${node?.turnEndedAt ?? ''}|${node?.attentionEvents?.completion ?? ''}`;
 export type DesktopAnnouncement = z.infer<typeof announcementSchema>;
 export type NotificationPreferences = AppSettings['notifications'];
