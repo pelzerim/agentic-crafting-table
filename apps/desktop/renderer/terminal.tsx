@@ -18,7 +18,7 @@ import { bindTerminalIdentity } from './terminal-identity.ts';
 import { createTerminalRenderer } from './terminal-renderer.ts';
 import { useTerminalPreferences } from './terminal-preferences.ts';
 import { useColorScheme } from './color-scheme.ts';
-import { TERMINAL_THEMES } from './terminal-theme.ts';
+import { TERMINAL_CONTRAST, TERMINAL_THEMES } from './terminal-theme.ts';
 
 const WRITE_SLICE = 32 * 1024;
 
@@ -52,7 +52,7 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
     // Leave ordinary history on the native viewport default: xterm 6 smoothing
     // can retain an old bottom target after output arrives while reading history.
     // Search decorations use xterm's proposed decoration API.
-    const terminal = new Terminal({ allowProposedApi: true, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: Math.max(8, Math.min(32, Number(localStorage.getItem('craft.terminal.fontSize')) || 13)), cursorBlink: true, screenReaderMode: preferencesRef.current.screenReaderMode, scrollback: preferencesRef.current.scrollback, theme: TERMINAL_THEMES[schemeRef.current] });
+    const terminal = new Terminal({ allowProposedApi: true, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: Math.max(8, Math.min(32, Number(localStorage.getItem('craft.terminal.fontSize')) || 13)), cursorBlink: true, screenReaderMode: preferencesRef.current.screenReaderMode, scrollback: preferencesRef.current.scrollback, theme: TERMINAL_THEMES[schemeRef.current], minimumContrastRatio: TERMINAL_CONTRAST[schemeRef.current] });
     const fit = new FitAddon();
     const search = new SearchAddon();
     terminal.loadAddon(fit); terminal.loadAddon(search);
@@ -154,7 +154,9 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
     const terminal = instance.current?.terminal;
     if (!terminal) return;
     if (terminal.options.theme !== TERMINAL_THEMES[scheme]) terminal.options.theme = TERMINAL_THEMES[scheme];
+    if (terminal.options.minimumContrastRatio !== TERMINAL_CONTRAST[scheme]) terminal.options.minimumContrastRatio = TERMINAL_CONTRAST[scheme];
     container.current!.dataset.terminalTheme = scheme;
+    container.current!.dataset.terminalContrast = String(terminal.options.minimumContrastRatio);
   }, [scheme, channel]);
   useLayoutEffect(() => {
     const current = instance.current;
