@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Terminal
+- **Light mode text**: grey text that agents write in ANSI white, such as Claude Code's tool results and hints, is readable on the light terminal; white and bright white are darker greys, and faint text is darkened to a minimum contrast. (#44, @pmallol)
+
 ## 0.24.0 — 2026-11-17
 
 ### Agents
