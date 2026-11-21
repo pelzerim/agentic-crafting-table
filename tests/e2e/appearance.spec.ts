@@ -51,6 +51,12 @@ test('the light theme reaches tokens, the window and the terminal, and Settings 
     }, directory);
     await page.getByRole('article', { name: 'Light terminal' }).click();
     await expect(page.locator('.terminal-surface')).toHaveAttribute('data-terminal-theme', 'light');
+    /** The styles Claude Code uses for its secondary text: white, dim white, bright white, white on a grey highlight and dim default. */
+    await page.locator('.xterm-helper-textarea').focus();
+    await page.keyboard.type("clear; printf '\\033[37mRan 3 shell commands\\033[0m\\n\\033[2;37m  Interrupted · What should Claude do instead?\\033[0m\\n\\033[97;100m > open a pr for this \\033[0m\\n\\033[2mrecap: dim text in the default colour\\033[0m\\nLIGHT_TERMINAL_DONE_%s\\n' $((40+2))\n");
+    await expect(page.locator('.xterm-accessibility-tree')).toContainText('LIGHT_TERMINAL_DONE_42');
+    await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+    await page.locator('.terminal-surface').screenshot({ path: 'test-results/pr/light-terminal-agent-text.png' });
     await page.keyboard.press('Escape');
 
     expect((await page.evaluate(() => window.craftingTable.settingsRead())).value.appearance).toBe('system');

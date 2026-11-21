@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TERMINAL_THEMES } from './terminal-theme.ts';
+import { TERMINAL_CONTRAST, TERMINAL_THEMES } from './terminal-theme.ts';
 
 const luminance = (hex: string) => {
   const [r, g, b] = [1, 3, 5].map(at => parseInt(hex.slice(at, at + 2), 16) / 255).map(c => c <= .03928 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
@@ -17,11 +17,17 @@ test('the dark terminal keeps its colours', () => {
 test('on the light terminal the text and every coloured ANSI colour stay readable', () => {
   const theme = TERMINAL_THEMES.light, background = theme.background!;
   assert.ok(contrast(theme.foreground!, background) >= 7, 'foreground');
-  /** White and bright white are background-like by design; agents use them for faint fills, not text. */
-  for (const name of ANSI.filter(name => name !== 'white')) {
+  /** Agents such as Claude Code write secondary text in white and bright white, so those must read as text too. */
+  for (const name of ANSI) {
     for (const key of [name, `bright${name[0].toUpperCase()}${name.slice(1)}`] as const) {
       const colour = theme[key as keyof typeof theme] as string;
       assert.ok(contrast(colour, background) >= 3, `${key} ${colour}`);
     }
   }
+});
+
+test('white text reads at normal contrast on the light terminal, and only light mode raises faint colours', () => {
+  const theme = TERMINAL_THEMES.light;
+  assert.ok(contrast(theme.white!, theme.background!) >= 4.5, 'white');
+  assert.deepEqual(TERMINAL_CONTRAST, { dark: 1, light: 4.5 });
 });
