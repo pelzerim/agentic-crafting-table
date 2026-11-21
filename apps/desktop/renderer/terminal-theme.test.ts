@@ -17,8 +17,8 @@ test('the dark terminal keeps its colours', () => {
 test('on the light terminal the text and every coloured ANSI colour stay readable', () => {
   const theme = TERMINAL_THEMES.light, background = theme.background!;
   assert.ok(contrast(theme.foreground!, background) >= 7, 'foreground');
-  /** Agents such as Claude Code write secondary text in white and bright white, so those must read as text too. */
-  for (const name of ANSI) {
+  /** White and bright white are pale on purpose (bars, highlights); TERMINAL_CONTRAST darkens them when used as text. */
+  for (const name of ANSI.filter(name => name !== 'white')) {
     for (const key of [name, `bright${name[0].toUpperCase()}${name.slice(1)}`] as const) {
       const colour = theme[key as keyof typeof theme] as string;
       assert.ok(contrast(colour, background) >= 3, `${key} ${colour}`);
@@ -26,8 +26,15 @@ test('on the light terminal the text and every coloured ANSI colour stay readabl
   }
 });
 
-test('white text reads at normal contrast on the light terminal, and only light mode raises faint colours', () => {
+test('the light greys keep their order, white bars stay light and the highlight row reads without help', () => {
   const theme = TERMINAL_THEMES.light;
-  assert.ok(contrast(theme.white!, theme.background!) >= 4.5, 'white');
+  const [black, brightBlack, white, brightWhite] = [theme.black!, theme.brightBlack!, theme.white!, theme.brightWhite!].map(luminance);
+  assert.ok(black < brightBlack && brightBlack < white && white < brightWhite, 'black < bright black < white < bright white');
+  assert.ok(contrast(theme.black!, theme.white!) >= 4.5, 'black on white (SGR 30;47)');
+  assert.ok(contrast(theme.black!, theme.brightWhite!) >= 4.5, 'black on bright white (SGR 30;107)');
+  assert.ok(contrast(theme.brightWhite!, theme.brightBlack!) >= 4.5, 'bright white on bright black (SGR 97;100)');
+});
+
+test('only the light terminal raises faint text to a minimum contrast', () => {
   assert.deepEqual(TERMINAL_CONTRAST, { dark: 1, light: 4.5 });
 });

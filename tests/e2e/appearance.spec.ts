@@ -51,9 +51,11 @@ test('the light theme reaches tokens, the window and the terminal, and Settings 
     }, directory);
     await page.getByRole('article', { name: 'Light terminal' }).click();
     await expect(page.locator('.terminal-surface')).toHaveAttribute('data-terminal-theme', 'light');
-    /** The styles Claude Code uses for its secondary text: white, dim white, bright white, white on a grey highlight and dim default. */
+    await expect(page.locator('.terminal-surface')).toHaveAttribute('data-terminal-contrast', '4.5');
+    /** The styles Claude Code uses for its secondary text (white, dim white, bright white on a grey highlight, dim default),
+     * plus bright black hints and black text on white bars, which the light greys must keep apart. */
     await page.locator('.xterm-helper-textarea').focus();
-    await page.keyboard.type("clear; printf '\\033[37mRan 3 shell commands\\033[0m\\n\\033[2;37m  Interrupted · What should Claude do instead?\\033[0m\\n\\033[97;100m > open a pr for this \\033[0m\\n\\033[2mrecap: dim text in the default colour\\033[0m\\nLIGHT_TERMINAL_DONE_%s\\n' $((40+2))\n");
+    await page.keyboard.type("clear; printf '\\033[37mRan 3 shell commands\\033[0m\\n\\033[2;37m  Interrupted · What should Claude do instead?\\033[0m\\n\\033[97;100m > open a pr for this \\033[0m\\n\\033[2mrecap: dim text in the default colour\\033[0m\\n\\033[90mhint in bright black\\033[0m  \\033[97mbright white text\\033[0m\\n\\033[30;47m black on white \\033[0m \\033[30;107m black on bright white \\033[0m\\nLIGHT_TERMINAL_DONE_%s\\n' $((40+2))\n");
     await expect(page.locator('.xterm-accessibility-tree')).toContainText('LIGHT_TERMINAL_DONE_42');
     await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
     await page.locator('.terminal-surface').screenshot({ path: 'test-results/pr/light-terminal-agent-text.png' });
@@ -71,6 +73,7 @@ test('the light theme reaches tokens, the window and the terminal, and Settings 
     expect((await page.evaluate(() => window.craftingTable.settingsRead())).value.appearance).toBe('dark');
     await expect.poll(() => theme(page)).toBe('dark');
     await expect(page.locator('.terminal-surface')).toHaveAttribute('data-terminal-theme', 'dark');
+    await expect(page.locator('.terminal-surface')).toHaveAttribute('data-terminal-contrast', '1');
   });
 });
 
@@ -84,12 +87,14 @@ test('a theme change reaches the open page and terminal without reloading, as wh
     await page.getByRole('article', { name: 'Switching terminal' }).click();
     const surface = page.locator('.terminal-surface'), mount = await surface.getAttribute('data-mount-id');
     await expect(surface).toHaveAttribute('data-terminal-theme', 'light');
+    await expect(surface).toHaveAttribute('data-terminal-contrast', '4.5');
     await page.evaluate(() => { (window as unknown as { loaded: boolean }).loaded = true; });
 
     await app.evaluate(({ nativeTheme }) => { nativeTheme.themeSource = 'dark'; });
     await expect.poll(() => theme(page)).toBe('dark');
     expect(await token(page, '--act-bg')).toBe('#141a17');
     await expect(surface).toHaveAttribute('data-terminal-theme', 'dark');
+    await expect(surface).toHaveAttribute('data-terminal-contrast', '1');
     expect(await surface.getAttribute('data-mount-id')).toBe(mount);
     expect(await page.evaluate(() => (window as unknown as { loaded?: boolean }).loaded)).toBe(true);
     expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBackgroundColor().toLowerCase())).toBe('#141a17');

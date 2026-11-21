@@ -156,6 +156,7 @@ export function TerminalSurface({ channel, active, readOnly = false, nativeShift
     if (terminal.options.theme !== TERMINAL_THEMES[scheme]) terminal.options.theme = TERMINAL_THEMES[scheme];
     if (terminal.options.minimumContrastRatio !== TERMINAL_CONTRAST[scheme]) terminal.options.minimumContrastRatio = TERMINAL_CONTRAST[scheme];
     container.current!.dataset.terminalTheme = scheme;
+    container.current!.dataset.terminalContrast = String(terminal.options.minimumContrastRatio);
   }, [scheme, channel]);
   useLayoutEffect(() => {
     const current = instance.current;
