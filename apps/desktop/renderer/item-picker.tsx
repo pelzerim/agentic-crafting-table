@@ -13,8 +13,10 @@ const RING_RADIUS = 136, WIDE_RING_RADIUS = 168;
 const PAGE_SIZE = 8;
 
 /** A bounded ring stays reachable even with many third-party item types. */
-export function ItemPicker({ choices, quickIds, panel, select, close, ground, act }: {
+export function ItemPicker({ choices, quickIds, panel, select, close, back: leave, ground, act }: {
   choices: ItemChoice[]; quickIds: string[]; panel: RefObject<HTMLFormElement | null>; select(id: string): void; close(): void;
+  /** Back from the first layer (Escape or a right-click), when it leads somewhere other than closing. */
+  back?(): void;
   /** The ground's menu entries, joined to the quick ring after All (MAP-31). */
   ground?: readonly MenuAction[]; act?(id: MenuActionId): void;
 }) {
@@ -31,8 +33,8 @@ export function ItemPicker({ choices, quickIds, panel, select, close, ground, ac
   const seed = useRef<HTMLDivElement>(null), ring = useRef<HTMLDivElement>(null);
   usePickerMotion(seed, ring, JSON.stringify([all, pageIndex, visible.map(choice => choice.id)]));
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
-  const latest = useRef({ all, close, choices, select }); latest.current = { all, close, choices, select };
-  const back = () => { if (latest.current.all) { setAll(false); setPage(0); } else latest.current.close(); };
+  const latest = useRef({ all, close, leave, choices, select }); latest.current = { all, close, leave, choices, select };
+  const back = () => { if (latest.current.all) { setAll(false); setPage(0); } else (latest.current.leave ?? latest.current.close)(); };
   useEffect(() => {
     const dismiss = (event: MouseEvent) => { event.preventDefault(); event.stopImmediatePropagation(); back(); };
     const keyboard = (event: KeyboardEvent) => {

@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Map
+- **Command menu**: ⌘K opens one field to jump to an item or project, or run a command (New item, New project, Needs me, to-dos, Undermap, overview, zoom, Settings and more), each command with its key. Before you type it shows the items you opened last. ⌘F stays find only. Back from New item or New project returns to the menu, and both open where the menu stood. (#42, @pmallol)
+
 ## 0.24.0 — 2026-11-17
 
 ### Agents
