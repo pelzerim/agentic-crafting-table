@@ -25,7 +25,7 @@ const ago = (iso?: string) => {
 let lastAccounts: InboxAccount[] | undefined;
 
 /** GitHub's PR inbox as a rail tool: hover to peek, click to keep it open. */
-export function GitHubInboxTool({ mapCenter, reveal, openConnections, size, onSize }: { mapCenter(): { x: number; y: number }; reveal(nodeId: string): void; openConnections(): void; size: PanelSize; onSize(size: PanelSize): void }) {
+export function GitHubInboxTool({ mapCenter, reveal, openConnections, size, onSize }: { mapCenter(): { x: number; y: number; board?: string }; reveal(nodeId: string): void; openConnections(): void; size: PanelSize; onSize(size: PanelSize): void }) {
   const [accounts, setAccountsState] = useState<InboxAccount[] | undefined>(lastAccounts), { rail, open, pinned } = useRailTool('inbox');
   const setAccounts = (value: InboxAccount[]) => { lastAccounts = value; setAccountsState(value); };
   const setOpen = (value: boolean) => { if (value) rail.open('inbox'); else rail.close('inbox'); };
@@ -68,7 +68,7 @@ export function GitHubInboxTool({ mapCenter, reveal, openConnections, size, onSi
   const show = async (item: (typeof items)[number]) => {
     if (item.nodeId) { reveal(item.nodeId); return; }
     setBusy(item.key);
-    try { const result = await window.craftingTable.githubInboxShow({ connectionId: item.account.connectionId, key: item.key, position: mapCenter() }); await load(); reveal(result.nodeId); }
+    try { const { board, ...position } = mapCenter(), result = await window.craftingTable.githubInboxShow({ connectionId: item.account.connectionId, key: item.key, position, ...board ? { board } : {} }); await load(); reveal(result.nodeId); }
     catch (failure) { setError((failure as Error).message); } finally { setBusy(undefined); }
   };
   const hide = async (item: (typeof items)[number]) => {

@@ -6,7 +6,7 @@ import { pluginSettingsValues } from '../../src/resource-plugins/describe.client
 import { githubPullRequest } from '../../src/resource-plugins/items/github-pull-request/definition.ts';
 
 test('context lists contain only local actions and keep creation off objects', () => {
-  assert.deepEqual(contextMenuActions('board').map(a => a.label), ['New item', 'New project', 'Open archive']);
+  assert.deepEqual(contextMenuActions('board').map(a => a.label), ['New item', 'New project', 'New board…', 'Open archive']);
   assert.deepEqual(contextMenuActions('neighborhood').map(a => a.label), ['New item']);
   assert.deepEqual(contextMenuActions('link').map(a => a.label), ['Remove connection']);
   assert.deepEqual(contextMenuActions('project').map(a => a.label), ['Project settings…', 'Mark done', 'Send project to Undermap']);

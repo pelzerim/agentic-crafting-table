@@ -292,6 +292,16 @@ test('terminals without a folder use the project folder, then the global default
   } finally { await f.close(); }
 });
 
+test('a terminal created with a board lands on that board', async () => {
+  const f = await fixture(0), coordinator = f.coordinator();
+  try {
+    await f.control.apply({ type: 'board.save', board: { id: 'side', name: 'Side' } }, 0);
+    const requestId = randomUUID(), nodeId = randomUUID();
+    await coordinator.create({ requestId, sessionId: requestId, nodeId, resourceId: randomUUID(), title: 'Shell', cwd: f.directory, board: 'side' });
+    assert.equal((await f.control.read()).nodes.find(node => node.id === nodeId)?.board, 'side');
+  } finally { await f.close(); }
+});
+
 test('successful new launches remember their directory; failed launches do not', async () => {
   const f = await fixture(0), coordinator = f.coordinator();
   try {

@@ -1,6 +1,7 @@
 import type { GraphNode } from './graph.ts';
 import { attentionItems } from './attention.ts';
 import type { AttentionItem } from './attention.ts';
+import { boardOf } from './boards.ts';
 
 type MuteNode = GraphNode & { activity?: string; attention?: string };
 
@@ -24,3 +25,6 @@ export function splitAttention<T extends MuteNode>(nodes: readonly T[]): { shown
   const shown = attentionItems(nodes.filter(node => !isMuted(node, nodes, quiet) || !node.resourceId)), identities = new Set(shown.map(item => item.identity));
   return { shown, muted: attentionItems(nodes).filter(item => !identities.has(item.identity)) };
 }
+
+/** Needs me on one board: its own aliases, deduplicated and muted within that board. */
+export const boardAttention = <T extends MuteNode>(nodes: readonly T[], board: string): AttentionItem[] => splitAttention(nodes.filter(node => boardOf(node) === board)).shown;

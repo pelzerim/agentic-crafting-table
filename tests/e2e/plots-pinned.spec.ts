@@ -102,3 +102,62 @@ test('Move to plot: a new plot of two far-apart items gets a patch per part and 
     await expect(plotMenu(page).getByRole('menuitem', { name: 'Items in one project only' })).toBeDisabled();
   });
 });
+
+test('an item dropped on a plot patch joins it, even a locked plot that never gains items by nearness', async () => {
+  await launch(async page => {
+    await expect(page.locator('[data-plot-sign]')).toHaveCount(3);
+    const billing = await page.evaluate(async () => {
+      const snapshot = await window.craftingTable.workspaceRead() as unknown as { plots: { list: { id: string; memberIds: string[] }[] } };
+      const id = snapshot.plots.list.find(plot => plot.memberIds.includes('billing-pr'))!.id;
+      await window.craftingTable.runtimeRun({ action: 'plot', nodeId: 'photos', arguments: { operation: 'lock', plotId: id, locked: true } });
+      return id;
+    });
+    await settle(page);
+    const position = (id: string) => page.evaluate(async id => (await window.craftingTable.workspaceRead()).state.nodes.find(node => node.id === id)!.position, id), start = await position('ideas');
+    const from = (await card(page, 'ideas').boundingBox())!, target = { x: 0, y: 0 };
+    // Between two cards of a plot, read again before each drop since undo can move the camera.
+    const aim = async (left: string, right: string) => { const a = (await card(page, left).boundingBox())!, b = (await card(page, right).boundingBox())!; target.x = (a.x + a.width + b.x) / 2; target.y = a.y + a.height / 2; };
+    await aim('billing-pr', 'billing-agent');
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2); await page.mouse.down();
+    await page.mouse.move(target.x, target.y, { steps: 12 }); await page.mouse.up();
+    const holds = (id: string) => page.evaluate(async ([plotId, id]) => {
+      const snapshot = await window.craftingTable.workspaceRead() as unknown as { plots: { list: { id: string; memberIds: string[] }[] } };
+      return snapshot.plots.list.find(plot => plot.id === plotId)?.memberIds.includes(id);
+    }, [billing, id]);
+    const drop = async (id: string) => {
+      const from = (await card(page, id).boundingBox())!;
+      await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2); await page.mouse.down();
+      await page.mouse.move(target.x, target.y, { steps: 12 }); await page.mouse.up();
+    };
+    await expect.poll(() => holds('ideas')).toBe(true);
+    // The move and the join are one undo step.
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect.poll(() => holds('ideas')).toBe(false);
+    await expect.poll(() => position('ideas')).toEqual(start);
+    // A member of another plot moves over: its own patch, following the drag, never wins the drop.
+    await aim('billing-pr', 'billing-agent');
+    await drop('thumb-ticket');
+    await expect.poll(() => holds('thumb-ticket')).toBe(true);
+    // And the other way, whichever plot is listed first.
+    await aim('thumb-agent', 'thumb-pr');
+    await drop('billing-rollout');
+    const thumbnail = () => page.evaluate(async () => {
+      const snapshot = await window.craftingTable.workspaceRead() as unknown as { plots: { list: { memberIds: string[]; pinnedMemberIds: string[] }[] } };
+      return snapshot.plots.list.find(plot => plot.memberIds.includes('thumb-agent'));
+    });
+    await expect.poll(async () => (await thumbnail())?.memberIds.includes('billing-rollout')).toBe(true);
+    // A free item on an open plot joins by nearness, unpinned, so dragging it out again takes it out.
+    await drop('ideas');
+    await expect.poll(async () => (await thumbnail())?.memberIds.includes('ideas')).toBe(true);
+    expect((await thumbnail())!.pinnedMemberIds).not.toContain('ideas');
+    // A member of an open plot, linked there, joins a pinned plot only through a pin.
+    await drop('upload-terminal');
+    await expect.poll(async () => (await thumbnail())?.pinnedMemberIds.includes('upload-terminal')).toBe(true);
+    // A plot hidden from the map still holds its members, so one of them joins an open plot through a pin.
+    await page.evaluate(async plotId => { await window.craftingTable.runtimeRun({ action: 'plot', nodeId: 'photos', arguments: { operation: 'hide', plotId, hidden: true } }); }, billing);
+    await settle(page);
+    await aim('thumb-agent', 'thumb-pr');
+    await drop('billing-terminal');
+    await expect.poll(async () => (await thumbnail())?.pinnedMemberIds.includes('billing-terminal')).toBe(true);
+  });
+});

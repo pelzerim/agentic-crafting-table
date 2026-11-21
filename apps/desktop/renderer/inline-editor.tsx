@@ -92,7 +92,7 @@ function Fields({ fields, values, change, pluginId, focusField, directories, pro
   </label>);
 }
 
-export function InlineEditor({ editor, state, plugins, quickIds, capabilities, save, close, writeInPlace, ground, act }: { editor: Editor; state: WorkspaceState; plugins: PluginDescription[]; quickIds: string[]; capabilities: string[]; save(commands: WorkspaceCommand[]): Promise<void>; close(): void;
+export function InlineEditor({ editor, state, plugins, quickIds, capabilities, save, close, writeInPlace, ground, act, board }: { editor: Editor; state: WorkspaceState; /** The board a new loose item lands on. */ board?: string; plugins: PluginDescription[]; quickIds: string[]; capabilities: string[]; save(commands: WorkspaceCommand[]): Promise<void>; close(): void;
   /** Paper types skip the form: the new tile opens on the map with the caret in it. */
   writeInPlace?(pluginId: string): void;
   /** A ring opened by right-clicking the ground also offers that ground's menu entries (MAP-31). */
@@ -200,7 +200,7 @@ export function InlineEditor({ editor, state, plugins, quickIds, capabilities, s
         if (resource && membership !== originalMembership.current) commands.push({ type: 'node.attach', id: target.id, projectId: membership || null });
         if (commands.length) await save(commands);
       } else if (plugin?.creation?.action) {
-        submitted.current ??= { requestId: crypto.randomUUID(), nodeId: ids.nodeId, resourceId: ids.resourceId, connection, pluginId: plugin.id, expectedRevision: state.revision, title: resume?.title ?? name, data: resume ? { provider: data.provider ?? 'claude', resumeNativeSessionId: resume.id } : fromUrl ? { url: String(data.url).trim() } : data, projectId: editor.projectId, position: editor.position };
+        submitted.current ??= { requestId: crypto.randomUUID(), nodeId: ids.nodeId, resourceId: ids.resourceId, connection, pluginId: plugin.id, expectedRevision: state.revision, title: resume?.title ?? name, data: resume ? { provider: data.provider ?? 'claude', resumeNativeSessionId: resume.id } : fromUrl ? { url: String(data.url).trim() } : data, projectId: editor.projectId, position: editor.position, ...!editor.projectId && board ? { board } : {} };
         await window.craftingTable.resourceCreate(submitted.current);
       } else {
         const id = ids.nodeId;

@@ -13,6 +13,7 @@ export interface GraphNode {
   /** Optional pointer-resized footprint; tier defaults remain the fallback. */
   mapDimensions?: { width: number; height: number };
   projectId?: string;
+  board?: string;
   /** Reversible visibility; the service applies provider-specific archive lifecycle. */
   archivedAt?: string;
   /** Sent below the map: hidden from it, kept readable in the layer below. */

@@ -66,7 +66,7 @@ export interface DesktopBridge {
   providerSelect(providerId: string, account?: string, label?: string): Promise<import('../../packages/core/settings.ts').SettingsSnapshot>;
   recoveryStatus(): Promise<import('../../packages/workspace-service/lifecycle.ts').RecoveryState>;
   githubInbox(refresh?: boolean, opened?: boolean): Promise<{ accounts: import('../../packages/workspace-service/github-inbox.ts').InboxAccount[] }>;
-  githubInboxShow(request: { connectionId: string; key: string; position: { x: number; y: number } }): Promise<{ nodeId: string; created: boolean }>;
+  githubInboxShow(request: { connectionId: string; key: string; position: { x: number; y: number }; board?: string }): Promise<{ nodeId: string; created: boolean }>;
   githubInboxHide(key: string): Promise<{ hidden: true }>;
   githubInboxSeen(key: string, seen: boolean): Promise<{ seen: boolean }>;
   /** Starts the standup report for a range (STANDUP-01), superseding one still running; poll standupStatus until it is done. */

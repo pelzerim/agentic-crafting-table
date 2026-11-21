@@ -3,7 +3,9 @@ import { RAIL_LABELS, RAIL_SLOTS, railKey } from './rail-slots.ts';
 import type { RailSlot } from './rail-slots.ts';
 
 export type ShortcutGroup = 'Hotbar' | 'Map' | 'Views' | 'App' | 'Sheets';
-interface ShortcutBinding { id: string; label: string; key: string; group: ShortcutGroup; aliases?: readonly string[]; display?: string; ctrl?: boolean; meta?: boolean; alt?: boolean; shift?: boolean }
+/** `primary` is ⌘ on macOS and Ctrl elsewhere; `hidden` keeps a second gesture off the controls card. */
+interface ShortcutBinding { id: string; label: string; key: string; group: ShortcutGroup; aliases?: readonly string[]; display?: string; ctrl?: boolean; meta?: boolean; alt?: boolean; shift?: boolean; primary?: boolean; hidden?: boolean; platform?: 'mac' | 'other' }
+const isMac = () => typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
 /** Add future workspace actions here, then supply their handler at the owning view.
  * The controls card, rail tooltips and menus read their key labels from this list.
  * Views keys work while that item view has focus; the view handles them itself. */
@@ -17,6 +19,11 @@ export const WORKSPACE_SHORTCUTS = [
   { id: 'undermap.search', label: 'Find in Undermap', key: '/', group: 'Map' },
   { id: 'map.find', label: 'Find an item and open it', key: 'f', meta: true, display: '⌘F', group: 'Map' },
   { id: 'project.mute', label: 'Mute focused project', key: 'm', shift: true, display: '⇧M', group: 'Map' },
+  { id: 'map.undo', label: 'Undo the last map change', key: 'z', primary: true, group: 'Map' },
+  { id: 'map.redo', label: 'Redo', key: 'z', primary: true, shift: true, group: 'Map' },
+  { id: 'map.redo', label: 'Redo', key: 'y', ctrl: true, platform: 'other', hidden: true, group: 'Map' },
+  { id: 'board.1', label: 'Switch board', key: '1', primary: true, display: '1–9', group: 'Map' },
+  ...(['2', '3', '4', '5', '6', '7', '8', '9'] as const).map(key => ({ id: `board.${key}` as const, label: 'Switch board', key, primary: true, hidden: true, group: 'Map' as const })),
   { id: 'map.zoomIn', label: 'Zoom in', key: '+', aliases: ['='], group: 'Map' },
   { id: 'map.zoomOut', label: 'Zoom out', key: '-', group: 'Map' },
   { id: 'map.zoomReset', label: 'Zoom to 100%', key: '0', group: 'Map' },
@@ -33,24 +40,27 @@ type KeyGesture = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' |
 /** Keys like `?` and `+` need Shift on many layouts, so Shift only counts for letters. */
 const letter = (key: string) => /^[a-z]$/.test(key);
 
-export function matchWorkspaceShortcut(event: KeyGesture): ShortcutId | undefined {
+export function matchWorkspaceShortcut(event: KeyGesture, mac = isMac()): ShortcutId | undefined {
   if (event.defaultPrevented || event.repeat || event.isComposing) return;
   const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
   return WORKSPACE_SHORTCUTS.find((binding: ShortcutBinding) => (binding.key === key || binding.aliases?.includes(key))
-    && Boolean(binding.ctrl) === event.ctrlKey && Boolean(binding.meta) === event.metaKey
+    && (!binding.platform || (binding.platform === 'mac') === mac)
+    && Boolean(binding.ctrl || (binding.primary && !mac)) === event.ctrlKey && Boolean(binding.meta || (binding.primary && mac)) === event.metaKey
     && Boolean(binding.alt) === event.altKey && (!letter(binding.key) || Boolean(binding.shift) === event.shiftKey))?.id;
 }
 
 /** The key as a keycap shows it: letters upper case, named keys by their display name. */
-export function shortcutKey(id: ShortcutId) {
-  const binding: ShortcutBinding | undefined = WORKSPACE_SHORTCUTS.find(binding => binding.id === id);
-  return binding ? binding.display ?? (letter(binding.key) ? binding.key.toUpperCase() : binding.key) : '';
+export function shortcutKey(id: ShortcutId, mac = isMac()) {
+  const binding: ShortcutBinding | undefined = WORKSPACE_SHORTCUTS.find((binding: ShortcutBinding) => binding.id === id && !binding.hidden);
+  if (!binding) return '';
+  const key = binding.display ?? (letter(binding.key) ? binding.key.toUpperCase() : binding.key);
+  return binding.primary ? `${mac ? '⌘' : 'Ctrl+'}${binding.shift ? (mac ? '⇧' : 'Shift+') : ''}${key}` : key;
 }
 
 /** Rows for the controls card, in registry order within each group. */
 export function shortcutGroups() {
   const groups = new Map<ShortcutGroup, { id: ShortcutId; label: string; key: string }[]>();
-  for (const binding of WORKSPACE_SHORTCUTS) groups.set(binding.group, [...groups.get(binding.group) ?? [], { id: binding.id, label: binding.label, key: shortcutKey(binding.id) }]);
+  for (const binding of WORKSPACE_SHORTCUTS as readonly ShortcutBinding[]) if (!binding.hidden) groups.set(binding.group, [...groups.get(binding.group) ?? [], { id: binding.id as ShortcutId, label: binding.label, key: shortcutKey(binding.id as ShortcutId) }]);
   return [...groups].map(([group, rows]) => ({ group, rows }));
 }
 

@@ -14,6 +14,7 @@ import bookmark from '../items/bookmark/renderer.ts';
 import webLink from '../items/web-link/renderer.ts';
 import textFile from '../items/text-file/renderer.ts';
 import githubIssue from '../items/github-issue/renderer.ts';
+import video from '../items/video/renderer.ts';
 
 export const bundledRendererModules: Readonly<Record<string, RendererModule>> = {
   'agent.session': agentSession,
@@ -30,4 +31,5 @@ export const bundledRendererModules: Readonly<Record<string, RendererModule>> = 
   'web.link': webLink,
   'workspace.text': textFile,
   'github.issue': githubIssue,
+  'workspace.video': video,
 };

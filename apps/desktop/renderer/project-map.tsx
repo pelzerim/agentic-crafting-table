@@ -88,6 +88,7 @@ import { plotFill } from '../../../src/graph/plot-fill.ts';
 import { placePlotSigns, plotSignPosition, plotSignSize, PLOT_NAME_LENGTH } from '../../../src/graph/plot-signs.ts';
 import { PLOT_MIN_LINKED, plotColor, plotPatches } from '../../../src/graph/plots.ts';
 import { plotStyle } from './plot-style.ts';
+import { plotJoinIds } from './plot-join.ts';
 import { paperPaint } from './paper-color.ts';
 import type { PlotView } from '../../../src/graph/plots.ts';
 import { mutedProjectIds } from '../../../src/graph/mute.ts';
@@ -105,14 +106,16 @@ import { ViewCloseGate } from './view-close-gate.ts';
 
 const registry = createResourcePluginRegistry();
 type MapItem = GraphNode & { activity?: string; attention?: string; summary?: string; lastLine?: string; recap?: { text: string; at: string } };
+/** Items a drop puts into a plot, saved in the same undo step as the move. */
+export interface PlotJoin { ids: string[]; plotId: string; projectId: string }
 export interface ProjectMapProps {
   registry?: ResourcePluginRegistry;
   nodes: MapItem[];
   resources: ResourceRecord[];
   links: GraphLink[];
   onLink?(anchor: { sourceId: string; targetId?: string; projectId?: string; position: { x: number; y: number }; screen: { x: number; y: number } }): void;
-  onMove(id: string, position: { x: number; y: number }, projectId?: string): void | Promise<void>;
-  onMoveMany?(positions: { id: string; position: { x: number; y: number } }[]): void | Promise<void>;
+  onMove(id: string, position: { x: number; y: number }, projectId?: string, join?: PlotJoin): void | Promise<void>;
+  onMoveMany?(positions: { id: string; position: { x: number; y: number } }[], join?: PlotJoin): void | Promise<void>;
   onResize?(id: string, dimensions: { width: number; height: number }, position: { x: number; y: number }): Promise<void>;
   onRename?(id: string, title: string): Promise<void>;
   /** Saves a paper tile's data patch; with `base`, only while its saved text still equals it. */
@@ -179,7 +182,8 @@ export interface ProjectMapProps {
   onPreviewDetail?(id: string, signal: AbortSignal): Promise<ResourcePreview | undefined>;
   onUrlDrop?(target: { url: string; screen: { x: number; y: number }; position: { x: number; y: number }; projectId?: string }): void;
   /** A file dragged from another program onto the map. */
-  onFileDrop?(target: { file: File; screen: { x: number; y: number }; position: { x: number; y: number }; projectId?: string }): void;
+  /** Resolves false when no item type takes the file. */
+  onFileDrop?(target: { file: File; screen: { x: number; y: number }; position: { x: number; y: number }; projectId?: string }): Promise<boolean>;
   /** ⌘V of plain text over the map, at the pointer. A pasted URL goes to `onUrlDrop`. */
   onPasteText?(target: { text: string; screen: { x: number; y: number }; position: { x: number; y: number }; projectId?: string }): void;
   renderDetail?(node: MapItem, active: boolean): ReactNode;
@@ -209,6 +213,8 @@ export interface ProjectMapProps {
   workingMark?: WorkingMarkSettings;
   /** Plots to draw (MAP-24); the host leaves out hidden ones. */
   plots?: readonly PlotView[];
+  /** Every item some plot holds, hidden plots included. */
+  plotMemberIds?: ReadonlySet<string>;
   /** A person's plot change: rename, hide or name automatically; also reports which plots were on screen. */
   onPlot?(projectId: string, request: JsonObject): Promise<void>;
   /** Note badges on items (MAP-BADGES), by item id; the host leaves the badge notes themselves out of `nodes`. */
@@ -220,7 +226,7 @@ export interface ProjectMapProps {
   /** Projects a plot's members can move to; without it the sign's menu offers no move. */
   plotTargets?(ids: string[]): { id: string; title: string; current: boolean }[];
   /** Moves items as one block to a project, or out of their project with null. */
-  onMoveItems?(ids: string[], projectId: string | null): void | Promise<boolean>;
+  onMoveItems?(ids: string[], projectId: string | null, plot?: { id: string; from: string }): void | Promise<boolean>;
   /** Sends items to Undermap together. */
   onSendBelow?(ids: string[]): void;
   /** Settings → Map → Hide implied connections (LINK-06); absent hides them. */
@@ -463,10 +469,19 @@ function ProjectHeader({ header }: { header?: HeaderData }) {
   return <small className="project-counts" data-needs-me={header.asking + header.turn > 0}><TierCounts counts={header} working={header.working} words /></small>;
 }
 /** `bounds` and `center` are the largest part's, where the sign stands. */
-type PlotShape = { plot: PlotView; parts: number; paths: string[]; bounds: { left: number; top: number; right: number; bottom: number }; center: Point };
+type PlotShape = { plot: PlotView; parts: number; paths: string[]; outlines: Point[][]; bounds: { left: number; top: number; right: number; bottom: number }; center: Point };
 type PlotSign = PlotShape & { x: number; y: number; spot: number };
 /** One cell of patch around the members' footprints, on the field's 24 px grid. */
 const PLOT_PADDING = 24, PLOT_CELL = 24, PLOT_SEEN_BATCH = 60;
+/** Even-odd test of `point` against a closed outline. */
+const insideOutline = (point: Point, outline: readonly Point[]) => {
+  let inside = false;
+  for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
+    const a = outline[i], b = outline[j];
+    if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+};
 const plotLabel = (name: string) => name.length > PLOT_NAME_LENGTH ? `${name.slice(0, PLOT_NAME_LENGTH - 1).trimEnd()}…` : name;
 type PlotStats = { tiers: AttentionCounts; working: number };
 interface PlotSignActions {
@@ -809,13 +824,16 @@ function MapCanvas(props: ProjectMapProps) {
       for (const outline of outlines) plotFill(outline, field, PLOT_CELL).paths.forEach((path, shade) => { paths[shade] += path; });
       const xs = outlines[0].map(point => point.x), ys = outlines[0].map(point => point.y);
       const bounds = { left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) };
-      const shape = { plot, parts: parts.length, paths, bounds, center: { x: (bounds.left + bounds.right) / 2, y: (bounds.top + bounds.bottom) / 2 } };
+      const shape = { plot, parts: parts.length, paths, outlines, bounds, center: { x: (bounds.left + bounds.right) / 2, y: (bounds.top + bounds.bottom) / 2 } };
       next.set(plot.id, { key, field, shape }); return [shape];
     });
     plotCache.current = next;
     if (computed) performanceMetrics.record('map.plots', performance.now() - started);
     return shapes;
   }, [props.plots, boxes, projects, mutedProjects]);
+  // Patches as they stood before the drag: a live patch follows the dragged cards and would catch their own drop.
+  const restingPlots = useRef(plotShapes);
+  if (!drag && !settling) restingPlots.current = plotShapes;
   // Placement follows committed layout and the zoom band; a drag keeps each sign's spot.
   const placementZoom = Math.round(viewport.zoom * 20) / 20, signSpots = useRef(new Map<string, number>());
   const placing = Boolean(drag || itemResize.preview);
@@ -1215,10 +1233,17 @@ function MapCanvas(props: ProjectMapProps) {
       : snapPosition(props.collisions === 'solid' ? stop : dropped, props.snap);
     const many = held && held.selected.length > 1 ? selectionMoves(base, held.selected, id, position) : undefined, projectId = !many && item ? dropProject(item, position) : undefined;
     moving.current = false; setDrag({ id, ...position }); saving.pending++;
+    const dragged = many ? held!.selected : [id], into = plotAt(screenToFlowPosition(screen), projectId ?? item?.projectId, dragged);
+    // Pin only where nearness cannot join; a plot hidden from the map still holds its members.
+    const plotted = props.plotMemberIds ?? new Set(restingPlots.current.flatMap(({ plot }) => plot.memberIds));
+    const landed = dragged.flatMap(member => { const node = base.find(entry => entry.id === member); return node ? [many ? node : { ...node, projectId: projectId ?? node.projectId }] : []; });
+    const inPlotProject = (node: { resourceId?: string; projectId?: string; archivedAt?: string; belowAt?: string }) => Boolean(node.resourceId) && node.projectId === into?.projectId && !node.archivedAt && !node.belowAt;
+    const projectItems = base.filter(node => !dragged.includes(node.id) && inPlotProject(node)).length + landed.filter(inPlotProject).length;
+    const ids = into ? plotJoinIds(into, landed, plotted, projectItems) : [], join = into && ids.length ? { ids, plotId: into.id, projectId: into.projectId } : undefined;
     const save = async () => {
-      if (many) { await props.onMoveMany?.(many); return; }
-      if (await props.onItemDrop?.(id, screen)) return;
-      await props.onMove(id, position, projectId);
+      if (many) await props.onMoveMany?.(many, join);
+      else if (await props.onItemDrop?.(id, screen)) return;
+      else await props.onMove(id, position, projectId, join);
     };
     saving.queue = saving.queue.then(save).finally(() => {
       if (--saving.pending) return;
@@ -1227,6 +1252,9 @@ function MapCanvas(props: ProjectMapProps) {
       props.onItemDrag?.(undefined); if (dragStart.current === held) dragStart.current = undefined; setDrag(undefined);
     }).catch(error => { console.error(error); });
   };
+  /** The plot of `projectId` whose resting patch holds `point`, skipping one that already holds every dragged item. */
+  const plotAt = (point: Point, projectId: string | undefined, dragged: string[]) => projectId === undefined ? undefined
+    : restingPlots.current.find(shape => shape.plot.projectId === projectId && dragged.some(id => !shape.plot.memberIds.includes(id)) && shape.outlines.some(outline => insideOutline(point, outline)))?.plot;
   /** A drag that starts while a move is saving builds on the map that move leaves. */
   const startMoving = () => { moving.current = true; if (saves.current.pending) setSettling(old => old ?? layout); };
   /** A press on a dashboard stays a click until it travels past the threshold; then it drags the project like its label does. */
@@ -1320,9 +1348,8 @@ function MapCanvas(props: ProjectMapProps) {
     else if (action.id.startsWith('plot-merge:')) void props.onPlot?.(plot.projectId, { operation: 'merge', plotId: plot.id, into: action.id.slice('plot-merge:'.length) });
     else if (action.id === 'plot-leave') props.onMoveItems?.(plot.memberIds, null);
     else if (action.id.startsWith('send:') && action.id.length > 'send:'.length) {
-      // The plot record follows its members, so it keeps its name, color, pins and lock there.
-      const projectId = action.id.slice('send:'.length);
-      void Promise.resolve(props.onMoveItems?.(plot.memberIds, projectId)).then(moved => { if (moved) void props.onPlot?.(plot.projectId, { operation: 'move', plotId: plot.id, projectId }); });
+      // The plot record follows its members, so it keeps its name, color, pins and lock there; one undo step.
+      void props.onMoveItems?.(plot.memberIds, action.id.slice('send:'.length), { id: plot.id, from: plot.projectId });
     }
     else if (action.id === 'plot-below') props.onSendBelow?.(plot.memberIds);
   };
@@ -1422,7 +1449,9 @@ function MapCanvas(props: ProjectMapProps) {
       const rect = container.current!.getBoundingClientRect();
       props.onBadge?.(noteId, { screen: { x: event.clientX - rect.left, y: event.clientY - rect.top }, position: screenToFlowPosition({ x: event.clientX, y: event.clientY }) }, menu);
     } });
-  const detailContext = useMemo(() => ({ ...actions, renderDetail: props.renderDetail, renderNode: props.renderNode, markSeen: props.onMarkSeen, keep: props.onKeep, sendBelow: props.onSendBelow }), [actions, props.renderDetail, props.renderNode, props.onMarkSeen, props.onKeep, props.onSendBelow]);
+  // The parent passes a new Undermap callback each render; a stable one keeps panning from redrawing every card.
+  const { sendBelow } = useStableHandlers({ sendBelow: (ids: string[]) => props.onSendBelow?.(ids) }), canSendBelow = Boolean(props.onSendBelow);
+  const detailContext = useMemo(() => ({ ...actions, renderDetail: props.renderDetail, renderNode: props.renderNode, markSeen: props.onMarkSeen, keep: props.onKeep, sendBelow: canSendBelow ? sendBelow : undefined }), [actions, props.renderDetail, props.renderNode, props.onMarkSeen, props.onKeep, canSendBelow]);
   const coverHandlers = useStableHandlers({
     enter: (id: string, event: React.PointerEvent) => { if (!focus && !drag && !linkDrag && !marqueeRef.current) mute.enter(id, event.buttons); },
     leave: (id: string) => mute.leave(id),
@@ -1486,18 +1515,20 @@ function MapCanvas(props: ProjectMapProps) {
   useEffect(() => {
     const paste = (event: ClipboardEvent) => {
       const target = event.target instanceof Element ? event.target : null;
-      if (focus || (!props.onPasteText && !props.onUrlDrop) || target?.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),.terminal-host,.xterm')) return;
+      if (focus || (!props.onPasteText && !props.onUrlDrop && !props.onFileDrop) || target?.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),.terminal-host,.xterm')) return;
       if (document.querySelector('.inline-editor,.canvas-menu,[role="dialog"],.session-manager')) return;
-      const text = event.clipboardData?.getData('text/plain') ?? '';
-      if (!text.trim()) return;
+      // A file copied in the file manager goes the way a dropped one does.
+      const text = event.clipboardData?.getData('text/plain') ?? '', file = props.onFileDrop ? event.clipboardData?.files[0] : undefined;
+      if (!text.trim() && !file) return;
       const rect = container.current!.getBoundingClientRect(), pointer = pointerPosition.current;
       const inside = pointer && pointer.x >= rect.left && pointer.x <= rect.right && pointer.y >= rect.top && pointer.y <= rect.bottom;
       const screen = inside ? pointer : { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, position = screenToFlowPosition(screen), projectId = containingProject(position, projects);
       const url = /^https?:\/\/\S+$/.test(text.trim()) ? text.trim() : undefined;
       event.preventDefault();
       const anchor = { screen: { x: screen.x - rect.left, y: screen.y - rect.top }, position, projectId };
-      if (url) props.onUrlDrop?.({ url, ...anchor });
-      else props.onPasteText?.({ text, ...anchor });
+      const asText = () => { if (url) props.onUrlDrop?.({ url, ...anchor }); else if (text.trim()) props.onPasteText?.({ text, ...anchor }); };
+      if (file) void props.onFileDrop!({ file, ...anchor }).then(taken => { if (!taken) asText(); });
+      else asText();
     };
     window.addEventListener('paste', paste);
     return () => window.removeEventListener('paste', paste);
@@ -1540,7 +1571,7 @@ function MapCanvas(props: ProjectMapProps) {
       clearInspection();
       const rect = container.current!.getBoundingClientRect(), position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
       const anchor = { screen: { x: event.clientX - rect.left, y: event.clientY - rect.top }, position, projectId: containingProject(position, projects) };
-      if (file) props.onFileDrop!({ file, ...anchor }); else props.onUrlDrop!({ url: url!, ...anchor });
+      if (file) void props.onFileDrop!({ file, ...anchor }); else props.onUrlDrop!({ url: url!, ...anchor });
     }} onDoubleClick={event => {
     const press = titlePress.current; titlePress.current = undefined;
     if (focus && press?.id === focus && event.timeStamp - press.at < 500) { event.preventDefault(); event.stopPropagation(); toggleFilled(focus); return; }

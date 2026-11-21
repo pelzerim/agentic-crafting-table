@@ -6,13 +6,14 @@ import { overlaps } from './spatial.ts';
 import { snapPosition } from './snap.ts';
 import type { ResourceRecord } from '../resource-plugins/types.ts';
 import type { ResourcePluginRegistry } from '../resource-plugins/registry.ts';
+import { DEFAULT_BOARD } from './boards.ts';
 
 export const LARGE_ITEM_WIDTH = 240;
 /** Shared detailed geometry: zoom and provider status never change saved layout. */
 export function itemFootprint(node: GraphNode, resources: readonly ResourceRecord[], registry: ResourcePluginRegistry, sizes: ItemMapSizes = {}): SpatialBox {
   const record = resources.find(resource => resource.id === node.resourceId);
   const { width, height } = record ? resolveMapSize(node, record, registry.get(record.pluginId), sizes) : { width: node.resourceId ? 150 : LARGE_ITEM_WIDTH, height: node.resourceId ? 48 : 112 };
-  return { id: node.id, x: node.position.x, y: node.position.y, width, height };
+  return { id: node.id, x: node.position.x, y: node.position.y, width, height, ...node.board && node.board !== DEFAULT_BOARD ? { board: node.board } : {} };
 }
 
 /** Prefer the requested spot; otherwise choose the nearest clear edge deterministically.

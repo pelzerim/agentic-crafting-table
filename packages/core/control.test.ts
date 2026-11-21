@@ -4,6 +4,7 @@ import { MemoryStore, WorkspaceControl, RevisionConflict, CommandIdConflict, emp
 import { createResourcePluginRegistry } from '../../src/resource-plugins/builtins.ts';
 import { layoutFootprints, ITEM_GAP } from '../../src/graph/movement.ts';
 import { overlaps } from '../../src/graph/spatial.ts';
+import { placedRequest, resourceCreateSchema } from './resource-creation.ts';
 
 const actor = { kind: 'user', id: 'test' };
 const project = (id: string) => ({ type: 'project.create', id, title: id, position: { x: 0, y: 0 } });
@@ -358,4 +359,69 @@ test('a scene-only update is saved without a new revision, so it never makes a p
   await control.dispatch({ commandId: 'rename', expectedRevision: seen.revision, actor: { kind: 'user', id: 'test' }, commands: [{ type: 'node.update', id: 'agent', title: 'Renamed' }] });
   const status = await control.dispatch({ commandId: 'summary', expectedRevision: seen.revision + 1, actor: provider, commands: [{ type: 'node.update', id: 'agent', pose: 'none', summary: 'Done' }] });
   assert.equal(status.state.revision, seen.revision + 2, 'a change that also carries status other than the scene is a new revision');
+});
+
+test('Move to board takes a project with its members; a member cannot leave alone and a board with items cannot be deleted', async () => {
+  const control = new WorkspaceControl();
+  const send = async (commands: unknown[], actor: { kind: string; id: string } = { kind: 'user', id: 'person' }) => control.dispatch({ commandId: crypto.randomUUID(), expectedRevision: (await control.read()).revision, actor, commands });
+  await send([{ type: 'board.save', board: { id: 'side', name: 'Side' } }, project('acme'),
+    { type: 'item.add', id: 'a', resourceId: 'a-r', pluginId: 'workspace.note', title: 'a', data: { text: 'a' }, projectId: 'acme', position: { x: 0, y: 200 } }]);
+  await send([{ type: 'node.move', id: 'acme', board: 'side' }]);
+  assert.deepEqual((await control.read()).nodes.map(node => [node.id, node.board]), [['acme', 'side'], ['a', 'side']]);
+  await assert.rejects(send([{ type: 'node.move', id: 'a', board: 'main' }]), /follow their project/);
+  await assert.rejects(send([{ type: 'board.delete', id: 'side' }]), /Move or archive its items first/);
+  await send([{ type: 'node.move', id: 'acme', board: 'main' }, { type: 'board.delete', id: 'side' }]);
+  await assert.rejects(send([{ type: 'board.delete', id: 'main' }]), /last board/);
+  await assert.rejects(send([{ type: 'board.save', board: { id: 'other', name: 'Other' } }], { kind: 'agent', id: 'a' }), /person/i);
+});
+
+test('an agent\'s new item without a board lands on the board of what it links to, else on the agent\'s own', async () => {
+  const control = new WorkspaceControl();
+  const send = async (commands: unknown[], actor: { kind: string; id: string } = { kind: 'user', id: 'person' }) => control.dispatch({ commandId: crypto.randomUUID(), expectedRevision: (await control.read()).revision, actor, commands });
+  const note = (id: string, extra = {}) => ({ type: 'item.add', id, resourceId: `${id}-r`, pluginId: 'workspace.note', title: id, data: { text: id }, ...extra });
+  await send([{ type: 'board.save', board: { id: 'side', name: 'Side' } }, note('pr', { position: { x: 0, y: 0 } }), note('agent', { board: 'side', position: { x: 0, y: 0 } })]);
+  const agent = { kind: 'agent', id: 'agent' };
+  await send([note('linked', { links: [{ otherId: 'pr', kind: 'reference' }] }), note('own')], agent);
+  const state = await control.read(), board = (id: string) => state.nodes.find(node => node.id === id)!.board;
+  assert.equal(board('linked'), undefined, 'Main, beside the item it links to');
+  assert.equal(board('own'), 'side');
+  // An agent in a project on Main that names another board gets a loose item there, not a refusal after the provider work.
+  await send([project('p'), note('member', { projectId: 'p', position: { x: 0, y: 200 } })]);
+  const request = placedRequest(resourceCreateSchema.parse({ requestId: crypto.randomUUID(), nodeId: crypto.randomUUID(), resourceId: crypto.randomUUID(), pluginId: 'workspace.note', title: 'x', data: {}, board: 'side', placedBy: 'member' }), (await control.read()).nodes);
+  await send([note(request.nodeId, { projectId: request.projectId, board: request.board })], { kind: 'agent', id: 'member' });
+  const placed = (await control.read()).nodes.find(node => node.id === request.nodeId)!;
+  assert.deepEqual([placed.board, placed.projectId], ['side', undefined]);
+});
+
+test('Move to board and boards\' rules: other boards keep every position, a reused item is the one on the destination board, a cross-board attach lands clear', async () => {
+  const seeded = { ...emptyState(), revision: 1, boards: [{ id: 'main', name: 'Main' }, { id: 'side', name: 'Side' }],
+    nodes: [{ id: 'old-a', title: 'a', position: { x: 0, y: 0 } }, { id: 'old-b', title: 'b', position: { x: 10, y: 0 } }, { id: 'away', title: 'away', position: { x: 4000, y: 0 } }] };
+  const control = new WorkspaceControl(new MemoryStore(seeded as never));
+  const send = async (commands: unknown[], actor: { kind: string; id: string } = { kind: 'user', id: 'person' }) => control.dispatch({ commandId: crypto.randomUUID(), expectedRevision: (await control.read()).revision, actor, commands });
+  const at = async (id: string) => (await control.read()).nodes.find(node => node.id === id)!;
+  await send([{ type: 'node.move', id: 'away', board: 'side' }]);
+  assert.deepEqual([(await at('old-a')).position, (await at('old-b')).position], [{ x: 0, y: 0 }, { x: 10, y: 0 }], 'an overlap on Main stays as it was');
+  await send([{ type: 'node.move', id: 'away', position: { x: 4100, y: 0 } }]);
+  assert.deepEqual([(await at('old-a')).position, (await at('old-b')).position], [{ x: 0, y: 0 }, { x: 10, y: 0 }], 'a move on Side leaves Main alone');
+  const pr = (id: string, extra = {}) => ({ type: 'item.add', id, resourceId: `${id}-r`, pluginId: 'github.pull-request', title: 'PR', data: { owner: 'acme', repo: 'app', number: 1 }, ...extra });
+  await send([pr('on-main', { position: { x: 2000, y: 2000 } }), { type: 'item.add', id: 'agent', resourceId: 'agent-r', pluginId: 'workspace.note', title: 'agent', data: { text: 'a' }, board: 'side', position: { x: 6000, y: 0 } }]);
+  const result = await send([pr('on-side')], { kind: 'agent', id: 'agent' });
+  assert.equal(result.alreadyOnMap, undefined);
+  assert.equal((await at('on-side')).board, 'side');
+  await send([{ type: 'item.add', id: 'member', resourceId: 'member-r', pluginId: 'workspace.note', title: 'm', data: { text: 'm' }, projectId: 'away', position: { x: 4000, y: 200 } },
+    { type: 'item.add', id: 'loose', resourceId: 'loose-r', pluginId: 'workspace.note', title: 'l', data: { text: 'l' }, position: { x: 4000, y: 200 } }]);
+  await send([{ type: 'node.attach', id: 'loose', projectId: 'away' }]);
+  const state = await control.read(), boxes = layoutFootprints(state.nodes, state.resources, control.registry), box = boxes.find(entry => entry.id === 'loose')!;
+  assert.equal(box.board, 'side');
+  assert.ok(!boxes.some(other => other.id !== 'loose' && overlaps(box, other, ITEM_GAP)), 'it arrives clear of the project\'s items');
+});
+
+test('a member\'s to-do dropped on another board\'s open ground is refused, and a board holding only hidden items says so', async () => {
+  const control = new WorkspaceControl();
+  const send = async (commands: unknown[]) => control.dispatch({ commandId: crypto.randomUUID(), expectedRevision: (await control.read()).revision, actor: { kind: 'user', id: 'person' }, commands });
+  await send([{ type: 'board.save', board: { id: 'side', name: 'Side' } }, { ...project('p'), board: 'side' }, { type: 'todo.save', todo: { id: 'task', title: 'Ship it', completed: false, nodeIds: [] } }]);
+  await send([{ type: 'todo.place', id: 'task', nodeId: 'placed', resourceId: 'placed-r', projectId: 'p', position: { x: 600, y: 500 } }]);
+  await assert.rejects(send([{ type: 'todo.place', id: 'map:placed', nodeId: 'unused', resourceId: 'unused-r', board: 'main', position: { x: 0, y: 0 } }]), /Move its project to this board first/);
+  await send([{ type: 'node.below', id: 'p' }]);
+  await assert.rejects(send([{ type: 'board.delete', id: 'side' }]), /holds 1 item, hidden or in Undermap/);
 });
