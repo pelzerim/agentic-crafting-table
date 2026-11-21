@@ -249,3 +249,19 @@ test('redo of a project archive never hides an item added to the project after t
   const again = revert(revert((await person({ type: 'node.archive', id: 'acme' }))!).applied!, 'redo');
   assert.deepEqual([Boolean((await control.read()).nodes.find(node => node.id === 'acme')!.archivedAt), again.reverted], [true, 1], 'with the same items it redoes');
 }));
+
+test('Move to board of a project whose items shifted on arrival undoes and redoes through the service', () => fixture(async ({ control, revert, person }) => {
+  await person({ type: 'board.save', board: { id: 'side', name: 'Side' } });
+  await person({ type: 'item.add', id: 'blocker', resourceId: 'blocker-r', pluginId: 'workspace.note', title: 'Blocker', data: { text: 'Blocker' }, board: 'side', position: { x: 0, y: 0 } });
+  const before = positions(await control.read());
+  const moved = (await person({ type: 'node.move', id: 'acme', board: 'side' }))!;
+  const item = moved.items.find(entry => entry.id === 'acme')!;
+  assert.notEqual(item.memberState!.before, item.memberState!.after, 'its items arrived shifted');
+  const boardOf = (state: { nodes: { id: string; board?: string }[] }) => state.nodes.filter(node => node.id !== 'blocker').map(node => node.board ?? 'main');
+  const undone = revert(moved);
+  const restored = await control.read();
+  assert.deepEqual([new Set(boardOf(restored)), undone.skipped], [new Set(['main']), 0]);
+  assert.deepEqual({ ...positions(restored), blocker: before.blocker }, before);
+  revert(undone.applied!, 'redo');
+  assert.deepEqual(new Set(boardOf(await control.read())), new Set(['side']));
+}));

@@ -14,8 +14,8 @@ export interface HistoryHost {
   refresh(): Promise<void>;
   notify(text: string): void;
   fail(message: string): void;
-  /** Shows the board a step lands on before it is reverted. */
-  focus?(step: UndoStep, direction: 'undo' | 'redo'): void;
+  /** Shows the board a step lands on before it is reverted; false when that board does not exist yet. */
+  focus?(step: UndoStep, direction: 'undo' | 'redo'): boolean | Promise<boolean>;
 }
 
 /** Names one recorded change for an Undo button. */
@@ -40,9 +40,11 @@ export function createMapHistory(host: () => HistoryHost) {
     const { active, revert, refresh, notify, fail, focus } = host(), picked = chosen === undefined ? undefined : stepOf.get(chosen), next = picked ?? history.peek(direction);
     if (busy || !active() || (chosen !== undefined && (!picked || !history.holds(direction, picked)))) return;
     if (!next) { notify(`Nothing to ${direction}`); return; }
-    busy = true; focus?.(next, direction);
+    busy = true;
     const recorded = history.recorded;
     try {
+      let shown = focus?.(next, direction);
+      if (shown instanceof Promise) shown = await shown;
       let result: Awaited<ReturnType<HistoryHost['revert']>>;
       try { result = await revert(next, direction); }
       catch (error) {
@@ -56,7 +58,12 @@ export function createMapHistory(host: () => HistoryHost) {
       const filed = direction === 'undo' && history.recorded !== recorded ? undefined : result.applied, token = tokenOf.get(next);
       history.settle(direction, next, filed);
       if (token !== undefined) { if (filed) bind(token, filed); else stepOf.delete(token); }
-      try { await refresh(); notify(reversalNotice(next, result, direction)); } catch (error) { fail((error as Error).message); }
+      try {
+        await refresh();
+        // A board the reversal brought back is shown once the map has it.
+        if (shown === false && result.applied) await focus?.(result.applied, direction);
+        notify(reversalNotice(next, result, direction));
+      } catch (error) { fail((error as Error).message); }
     } finally { busy = false; }
   };
   const track = async (label: string, work: () => Promise<{ receipt?: Receipt } | void>): Promise<void> => { await trackStep(label, work); };

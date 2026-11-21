@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { contextMenuActions, convertLinkActions, enabledMenuGroups, itemEditLabel, addMenuSeparator, canHideMenuEntry, drawnMenuLayout, isCustomMenu, itemMenuCustom, itemMenuEntries, linkMenuActions, MENU_SEPARATOR, menuLayout, menuSlot, mergeMenuOrder, moveMenuRow, muteProjectAction, removeMenuSeparator, resetItemMenu, saveItemMenu, setMenuEntryHidden, plotMenuActions, deleteItemAction, itemPlotActions, moveToPlotAction, moveToProjectAction, projectIntoAction, removeFromPlotAction, sendToProjectAction, sharedContextMenuActions, todoContextActions, fieldMenuActions } from './context-menu.ts';
+import { contextMenuActions, convertLinkActions, enabledMenuGroups, itemEditLabel, addMenuSeparator, canHideMenuEntry, drawnMenuLayout, isCustomMenu, itemMenuCustom, itemMenuEntries, linkMenuActions, MENU_SEPARATOR, menuLayout, menuSlot, mergeMenuOrder, moveMenuRow, muteProjectAction, removeMenuSeparator, resetItemMenu, saveItemMenu, setMenuEntryHidden, plotMenuActions, deleteItemAction, itemPlotActions, moveToPlotAction, moveToProjectAction, projectIntoAction, removeFromPlotAction, sendToProjectAction, sharedContextMenuActions, todoContextActions, fieldMenuActions, moveToBoardAction, withBoardMove } from './context-menu.ts';
 import { noteItem } from '../../src/resource-plugins/items/note/definition.ts';
 import { pluginSettingsValues } from '../../src/resource-plugins/describe.client.ts';
 import { githubPullRequest } from '../../src/resource-plugins/items/github-pull-request/definition.ts';
@@ -540,4 +540,10 @@ test('a note offers Show as and its colour in its menu, the shown value checked,
   const menu = contextMenuActions('item', false, undefined, [], undefined, undefined, undefined, false, undefined, undefined, undefined, [], {}, undefined, {}, fields);
   assert.deepEqual(menu.map(action => action.id), ['open', 'connect', 'field:paper', 'field:display', 'settings', 'complete', 'below']);
   assert.ok(itemMenuEntries(noteItem).some(row => row.id === 'field:display' && row.label === 'Show as'), 'Settings can reorder and hide them');
+});
+
+test('Move to board stays in a loose item\'s menu when Move to project is hidden, opening the map actions', () => {
+  const board = moveToBoardAction([{ id: 'main', name: 'Main' }, { id: 'side', name: 'Side' }], 'main');
+  const menu = withBoardMove(contextMenuActions('item', false, undefined, [], { enabled: false }, undefined, undefined, false, undefined, moveToProjectAction([]), undefined, [], { hidden: ['send-project'] }), board);
+  assert.deepEqual(menu.map(action => [action.id, Boolean(action.divider)]), [['open', false], ['connect', false], ['settings', true], ['move-board', true], ['add-todo', false], ['complete', false], ['below', false]]);
 });

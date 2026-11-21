@@ -425,3 +425,11 @@ test('a member\'s to-do dropped on another board\'s open ground is refused, and 
   await send([{ type: 'node.below', id: 'p' }]);
   await assert.rejects(send([{ type: 'board.delete', id: 'side' }]), /holds 1 item, hidden or in Undermap/);
 });
+
+test('Move to board refuses a hidden loose item with no spot given', async () => {
+  const control = new WorkspaceControl();
+  const send = async (commands: unknown[]) => control.dispatch({ commandId: crypto.randomUUID(), expectedRevision: (await control.read()).revision, actor: { kind: 'user', id: 'person' }, commands });
+  await send([{ type: 'board.save', board: { id: 'side', name: 'Side' } }, { type: 'item.add', id: 'loose', resourceId: 'loose-r', pluginId: 'workspace.note', title: 'l', data: { text: 'l' }, position: { x: 0, y: 0 } }]);
+  await send([{ type: 'node.hide', id: 'loose' }]);
+  await assert.rejects(send([{ type: 'node.move', id: 'loose', board: 'side' }]), /This item is hidden. Show it to move it/);
+});

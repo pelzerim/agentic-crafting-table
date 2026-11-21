@@ -15,7 +15,7 @@ import { creationAnchors, creationContext, itemPlacement, projectPlacement } fro
 import type { CreationContext } from '../../src/graph/creation-placement.ts';
 import { NEIGHBORHOOD_PADDING } from '../../src/graph/project-neighborhoods.ts';
 import type { TodoContext, TodoEntry } from '../../src/graph/todos.ts';
-import { archiveNode, restoreNode, isArchived, isDrawn, isOffMap, surfaceBlocker } from '../../src/graph/archive.ts';
+import { archiveNode, restoreNode, isArchived, isDrawn, isHidden, isOffMap, surfaceBlocker } from '../../src/graph/archive.ts';
 import { createResourcePluginRegistry } from '../../src/resource-plugins/builtins.ts';
 import type { ResourcePluginRegistry } from '../../src/resource-plugins/registry.ts';
 import { itemFootprint, freePosition } from '../../src/graph/footprints.ts';
@@ -224,7 +224,7 @@ const otherCommands = [
   z.object({ type: z.literal('todo.restore'), id }),
   z.object({ type: z.literal('todo.remove'), id }),
   z.object({ type: z.literal('view.set'), view: viewSchema }),
-  z.object({ type: z.literal('board.save'), board: boardSchema }),
+  z.object({ type: z.literal('board.save'), board: boardSchema, index: z.number().int().min(0).max(BOARD_LIMIT).optional().describe('Set by undo. Omit it.') }),
   z.object({ type: z.literal('board.delete'), id }),
 ] as const;
 /** The command union with another shape for a new item's links, for a transport that resolves its own shorthand before dispatch. */
@@ -521,6 +521,8 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
         if (target.archivedAt && actor?.kind === UNDO_ACTOR.kind && actor.id === UNDO_ACTOR.id && !position) { for (const node of group) setBoard(node, board); return; }
         if (isArchived(target, state.nodes)) throw new Error('Restore this item from the archive before moving it');
         if (isOffMap(target, state.nodes)) throw new Error('This item is in Undermap. Bring it back to move it.');
+        // A hidden item has no footprint to place by; a recorded spot, as undo passes, still works.
+        if (isHidden(target) && !position) throw new Error('This item is hidden. Show it to move it.');
         for (const node of group) setBoard(node, board);
         const ids = new Set(group.map(node => node.id)), boxes = group.filter(node => isDrawn(node, state.nodes)).map(footprint);
         let destination = position;
@@ -1121,7 +1123,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           const boards = [...boardList(state)], at = boards.findIndex(board => board.id === command.board.id);
           if (at < 0 && boards.length >= BOARD_LIMIT) throw new Error(`At most ${BOARD_LIMIT} boards`);
           const saved = { id: command.board.id, name: command.board.name, ...command.board.color ? { color: command.board.color.toLowerCase() } : {} };
-          if (at < 0) boards.push(saved); else boards[at] = saved;
+          if (at < 0) boards.splice(command.index ?? boards.length, 0, saved); else boards[at] = saved;
           state.boards = boards;
           break;
         }

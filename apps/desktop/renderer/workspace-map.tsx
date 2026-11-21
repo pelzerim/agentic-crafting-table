@@ -55,7 +55,7 @@ import { useUrlCandidates } from './use-url-candidates.ts';
 import { mountNativeTerminal } from './native-terminal.tsx';
 import { RecoveryStatus } from './recovery-status.tsx';
 import { CanvasMenu } from './canvas-menu.tsx';
-import { contextMenuActions, convertLinkActions, deleteItemAction, enabledMenuGroups, fieldMenuActions, itemEditLabel, itemMenuCustom, itemPlotActions, linkMenuActions, muteProjectAction, moveToBoardAction, moveToProjectAction, projectIntoAction, sharedContextMenuActions } from '../../../packages/core/context-menu.ts';
+import { contextMenuActions, convertLinkActions, deleteItemAction, enabledMenuGroups, fieldMenuActions, itemEditLabel, itemMenuCustom, itemPlotActions, linkMenuActions, muteProjectAction, moveToBoardAction, moveToProjectAction, projectIntoAction, sharedContextMenuActions, withBoardMove } from '../../../packages/core/context-menu.ts';
 import { mapBadges } from '../../../src/graph/badges.ts';
 import { moveTargets } from '../../../packages/core/todos.ts';
 import type { MenuAction, MenuActionId } from '../../../packages/core/context-menu.ts';
@@ -320,16 +320,35 @@ export function WorkspaceMap() {
   const saveView = (patch: Partial<ViewState>) => { const next = { ...viewRef.current!, ...patch }; viewRef.current = next; setView(next); void window.craftingTable.viewWrite(next).catch(error => setError(error.message)); };
   const boards = useMemo(() => boardList(snapshot?.state ?? {}), [snapshot?.state.boards]);
   const board = shownBoard(boards, view?.board), boardRef = useRef(board); boardRef.current = board;
+  const boardExists = (id: string) => boardList(snapshotRef.current?.state ?? {}).some(candidate => candidate.id === id);
   /** Each board keeps its own camera: the leaving one is stored and the shown one comes back. */
-  const showBoard = (id: string) => {
+  const switchBoard = (id: string) => {
     const current = viewRef.current;
-    if (!current || id === boardRef.current || !boardList(snapshotRef.current?.state ?? {}).some(candidate => candidate.id === id)) return false;
+    if (!current || id === boardRef.current || !boardExists(id)) return false;
     setEditor(undefined); boardRef.current = id;
     const live = boardList(snapshotRef.current!.state), cameras = Object.fromEntries(Object.entries(current.boardCameras ?? {}).filter(([key]) => live.some(entry => entry.id === key)));
     saveView({ board: id, boardCameras: { ...cameras, ...current.camera ? { [shownBoard(live, current.board)]: current.camera } : {} }, camera: current.boardCameras?.[id] });
     return true;
   };
+  /** The other board is another map: the open view is asked first, as travel does; false when it kept the person here. */
+  const showBoard = async (id: string) => {
+    if (id === boardRef.current || !boardExists(id)) return false;
+    if (viewedItem.current) {
+      if (travelWaitsForView.current) return false;
+      travelWaitsForView.current = true;
+      try { if (!await confirmViewClose(viewedItem.current)) return false; } finally { travelWaitsForView.current = false; }
+    }
+    return switchBoard(id);
+  };
   const showBoardRef = useRef(showBoard); showBoardRef.current = showBoard;
+  // The shown board was deleted: the first board opens with its own camera before its map mounts.
+  const boardGone = Boolean(snapshot && view && (view.board ?? DEFAULT_BOARD) !== board);
+  useEffect(() => {
+    const current = viewRef.current;
+    if (!boardGone || !current) return;
+    const cameras = Object.fromEntries(Object.entries(current.boardCameras ?? {}).filter(([key]) => boards.some(entry => entry.id === key)));
+    saveView({ board, boardCameras: cameras, camera: cameras[board] });
+  }, [boardGone, board]);
   const boardNeeds = useMemo(() => Object.fromEntries(boards.map(entry => [entry.id, boards.length > 1 ? attentionCounts(boardAttention(snapshot?.state.nodes ?? [], entry.id), counting).needsMe : needsMeCount])), [boards, snapshot?.state.nodes, counting, needsMeCount]);
   const [connectionDraft, setConnectionDraft] = useState<{ sourceId: string; screen: { x: number; y: number } }>();
   const [sessionRequestId, setSessionRequestId] = useState(0);
@@ -378,7 +397,7 @@ export function WorkspaceMap() {
     if (node) revealRef.current(node.id);
     else if (snapshotRef.current?.layer === 'map') void window.craftingTable.workspaceRead().then(whole => { const below = found(whole.state.nodes); if (below) revealRef.current(below.id); }).catch(() => {});
   }, []);
-  const revealRef = useRef((nodeId: string, mode?: 'map' | 'centred') => setReveal({ nodeId, nonce: Date.now(), ...(mode ? { mode } : {}) }));
+  const revealRef = useRef((nodeId: string, mode?: 'map' | 'centred', select?: readonly string[]) => setReveal({ nodeId, nonce: Date.now(), ...(mode ? { mode } : {}), ...(select ? { select } : {}) }));
   const motion = activeMotion(settings?.value.belowAnimation);
   /** The mounted detail views by map item, and the one that is open, so a view can be asked before it closes. */
   const detailViews = useRef(new Map<string, MountedResourceView>()).current, viewedItem = useRef<string>(undefined);
@@ -431,26 +450,33 @@ export function WorkspaceMap() {
       return record ? resolveMapSize(node, record, registry.get(record.pluginId), itemMapSizes) : { width: node.resourceId ? 150 : LARGE_ITEM_WIDTH, height: node.resourceId ? 48 : 112 };
     } });
   }, [registry, itemMapSizes, neighborhoodPadding]);
-  const revealNode = useCallback((nodeId: string, mode?: 'map' | 'centred') => {
+  const revealNode = useCallback((nodeId: string, mode?: 'map' | 'centred', select?: readonly string[]) => {
+    const request = { nodeId, nonce: Date.now(), ...(mode ? { mode } : {}), ...(select ? { select } : {}) };
+    // An item on another board is revealed once that board is shown.
+    const elsewhere = (node: GraphNode | undefined) => {
+      if (!node || boardOf(node) === boardRef.current) return false;
+      void showBoardRef.current(boardOf(node)).then(shown => { if (shown) revealRef.current(nodeId, mode, select); });
+      return true;
+    };
     // The map layer's snapshot leaves out most of the Undermap: an item there is looked up in the whole workspace, then revealed.
     if (snapshotRef.current?.layer === 'map' && !snapshotRef.current.state.nodes.some(candidate => candidate.id === nodeId)) {
       void window.craftingTable.workspaceRead().then(whole => {
         const node = whole.state.nodes.find(candidate => candidate.id === nodeId);
-        if (node) showBoardRef.current(boardOf(node));
-        if (node && isBelow(node, whole.state.nodes)) void travel('below').then(arrived => { if (arrived) revealRef.current(nodeId, mode); });
-        else setReveal({ nodeId, nonce: Date.now(), ...(mode ? { mode } : {}) });
+        if (elsewhere(node)) return;
+        if (node && isBelow(node, whole.state.nodes)) void travel('below').then(arrived => { if (arrived) revealRef.current(nodeId, mode, select); });
+        else setReveal(request);
       }).catch(error => setError(error.message));
       return;
     }
     const state = snapshotRef.current?.state, node = state?.nodes.find(candidate => candidate.id === nodeId);
-    if (node) showBoardRef.current(boardOf(node));
+    if (elsewhere(node)) return;
     if (node && state) void travel(isBelow(node, state.nodes) ? 'below' : 'map');
     // An item in a closed month has no card: open its month so the reveal finds it.
     if (node && state && mirrorMode && isBelow(node, state.nodes)) {
       const layout = layoutBelow(state.nodes, state.resources, openMonthsRef.current), place = layout.places.get(nodeId);
       if (place && !layout.positions.has(nodeId)) setOpenMonths(old => ({ ...old, [place.areaId]: place.month }));
     }
-    setReveal({ nodeId, nonce: Date.now(), ...(mode ? { mode } : {}) });
+    setReveal(request);
   }, [travel, mirrorMode, layoutBelow]);
   revealRef.current = revealNode;
   /** Each layer shows its own items; projects below also show their neighborhood as orientation. Hidden items are on no layer. */
@@ -530,7 +556,7 @@ export function WorkspaceMap() {
   const showOnMap = useCallback((nodeId: string) => {
     void window.craftingTable.workspaceRead().then(next => {
       if (!snapshotRef.current || next.cursor >= snapshotRef.current.cursor) { snapshotRef.current = next; setSnapshot(next); }
-      setReveal({ nodeId, nonce: Date.now(), mode: 'map', select: [nodeId] });
+      revealRef.current(nodeId, 'map', [nodeId]);
     }).catch(error => setError(error.message));
   }, []);
   // Reads the resources when called, so a changed record never changes this function and with it every card's context.
@@ -645,7 +671,7 @@ export function WorkspaceMap() {
     revert: async (step, direction) => await window.craftingTable.runtimeRun({ action: 'map.undo', nodeId: 'board', arguments: { direction, step } as never }) as { applied?: UndoStep; reverted: number; skipped: number },
     refresh: async () => accept(await window.craftingTable.workspaceRead()),
     notify: text => setUndoNotice({ text }), fail: setError,
-    focus: (step, direction) => { const target = stepBoard(step, direction); if (target) showBoardRef.current(target); },
+    focus: async (step, direction) => { const target = stepBoard(step, direction); if (!target) return true; if (!boardExists(target)) return false; await showBoardRef.current(target); return true; },
   });
   /** Saves and resolves with the revision now held, which has the saved commands. */
   const applyAt = async (commands: WorkspaceCommand[]) => { await apply(commands); return snapshotRef.current?.state.revision; };
@@ -742,7 +768,7 @@ export function WorkspaceMap() {
     let next = boards.length + 1; while (boards.some(entry => entry.name === `Board ${next}`)) next++;
     const record = { id: crypto.randomUUID(), name: `Board ${next}` };
     creatingBoard.current = true;
-    try { await history.track('New board', () => commit([{ type: 'board.save', board: record }])); showBoard(record.id); return record; }
+    try { await history.track('New board', () => commit([{ type: 'board.save', board: record }])); await showBoard(record.id); return record; }
     catch (error) { setError((error as Error).message); return undefined; }
     finally { creatingBoard.current = false; }
   };
@@ -811,16 +837,10 @@ export function WorkspaceMap() {
     selectedResource ? itemMenuCustom(settings?.value.menus, selectedResource.pluginId) : undefined, sizeDefault, visibility,
     // A note that became a badge on its own shows Badge as its Show as.
     layer === 'map' && selected && selectedResource ? fieldMenuActions(selectedPlugin?.fields, selectedResource.data, { display: badged.attached.has(selected.id) || selectedResource.data.display === 'badge' ? 'badge' : 'note' }) : [], plotEntries);
-  /** Move to board follows Move to project, or Move project into for a project. */
-  function withBoardMove(actions: MenuAction[]) {
-    if (!boardMove) return actions;
-    const at = actions.findIndex(action => action.id === 'send-project' || action.id === 'project-into');
-    return at < 0 ? actions : [...actions.slice(0, at + 1), boardMove, ...actions.slice(at + 1)];
-  }
   const menuActions = selectedItems.length > 1 ? sharedContextMenuActions(selectedItems.map(node => {
     const resource = resources?.find(r => r.id === node.resourceId), plugin = plugins?.find(p => p.id === resource?.pluginId);
     return contextMenuActions(node.resourceId ? 'item' : 'project', Boolean(node.completedAt), undefined, enabledMenuGroups(plugin?.contextMenu, pluginSettings), plugin?.todoSupport ? { enabled: Boolean(node.inTodoList) } : undefined, belowMenu(node), webPage(resource), false, undefined, move, undefined, [], {}, undefined, {}, [], plotEntries);
-  })) : !selectedLink && selected?.resourceId && settings?.value.itemDelete ? [...withBoardMove(singleActions), deleteItemAction()] : withBoardMove(singleActions);
+  })) : !selectedLink && selected?.resourceId && settings?.value.itemDelete ? [...withBoardMove(singleActions, boardMove), deleteItemAction()] : withBoardMove(singleActions, boardMove);
   /** One command moves the block; then the map flies to the lead as Show on map does, keeping the moved items selected and closed. */
   const moveToProject = (ids: string[], projectId: string | null, plot?: { id: string; from: string }) => {
     setEditor(undefined);
@@ -923,7 +943,7 @@ export function WorkspaceMap() {
     if (id === 'auto-title' && selected) { setEditor(undefined); void window.craftingTable.runtimeRun({ action: 'agent.title', nodeId: selected.id, arguments: {} }).catch(error => setError(error.message)); return; }
     if (selected && (id === 'add-todo' || id === 'remove-todo')) { run([{ type: 'node.todo', id: selected.id, enabled: id === 'add-todo' }]); return; }
     if (id === 'open' && selected) { setEditor(undefined); revealNode(selected.id); return; }
-    if (id === 'show-hidden' && selected && shownPartner) { const shownId = shownPartner.id; setEditor(undefined); void apply([{ type: 'node.show', id: shownId, near: [selected.id] }]).then(() => setReveal({ nodeId: shownId, nonce: Date.now(), mode: 'map', select: [shownId] })).catch(error => setError(error.message)); return; }
+    if (id === 'show-hidden' && selected && shownPartner) { const shownId = shownPartner.id; setEditor(undefined); void apply([{ type: 'node.show', id: shownId, near: [selected.id] }]).then(() => revealNode(shownId, 'map', [shownId])).catch(error => setError(error.message)); return; }
     if (id === 'hide-item' && selected) { run([{ type: 'node.hide', id: selected.id }]); return; }
     if (id === 'connect' && selected) { setEditor(undefined); setConnectionDraft({ sourceId: selected.id, screen: editor.screen }); return; }
     if (id === 'new-item') { setEditor({ ...editor, mode: 'create' }); return; }
@@ -976,7 +996,7 @@ export function WorkspaceMap() {
     'rail.settings': () => { setSessionListView(undefined); setSettingsOpen(true); },
     'shortcuts.help': () => { setControlsOpen(old => !old); },
     // An open item view keeps its own keys; map undo is for the map.
-    ...Object.fromEntries(([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map(slot => [`board.${slot}`, () => { const target = boards[slot - 1]; if (!target || travelling) return false; showBoard(target.id); }])),
+    ...Object.fromEntries(([1, 2, 3, 4, 5, 6, 7, 8, 9] as const).map(slot => [`board.${slot}`, () => { const target = boards[slot - 1]; if (!target || travelling) return false; void showBoard(target.id); }])),
     'map.undo': () => { if (!snapshot || travelling || document.querySelector('.item-view:not([hidden])')) return false; void history.undo(); },
     'map.redo': () => { if (!snapshot || travelling || document.querySelector('.item-view:not([hidden])')) return false; void history.redo(); },
   });
@@ -987,7 +1007,7 @@ export function WorkspaceMap() {
     return label ? history.track(label, run) : run();
   };
   return <RailContext.Provider value={rail}><section ref={workspace} className="live-workspace" aria-label={below ? 'Undermap' : 'Project map'} data-layer={layer} data-travelling={travelling || undefined} data-chrome-docked={chromeDocked || undefined}>
-    {snapshot && plugins && view && settings && <ProjectMap key={`${layer}:${board}`} layer={layer} neighborhoodColor={below ? undermapColor : undefined} registry={registry} nodes={badged.nodes} resources={layerResources} links={badged.links} badges={badged.onItems} onBadge={(noteId, anchor, menu) => { setConnectionDraft(undefined); setEditor({ ...anchor, nodeId: noteId, mode: menu ? 'menu' : 'edit' }); }}
+    {snapshot && plugins && view && settings && !boardGone && <ProjectMap key={`${layer}:${board}`} layer={layer} neighborhoodColor={below ? undermapColor : undefined} registry={registry} nodes={badged.nodes} resources={layerResources} links={badged.links} badges={badged.onItems} onBadge={(noteId, anchor, menu) => { setConnectionDraft(undefined); setEditor({ ...anchor, nodeId: noteId, mode: menu ? 'menu' : 'edit' }); }}
       onMarkSeen={acknowledge} keep={keep} onKeep={restore} onChromeCover={setChromeDocked} onOpened={opened} onView={viewed} onMute={below ? undefined : setMuted}
       mapCorner={settings.value.mapCorner} projectSummaries={projectSummaries} overview={overviewOpen} onOverview={open => { setOverviewOpen(open); if (open && atlasCorner) { rail.unpin('attention'); rail.close('attention'); } }}
       projectsPanel={view.projectsPanel} onProjectsPanel={patch => { const pruned = pruneOrder(patch), next = pruned && viewSchema.shape.projectsPanel.safeParse({ ...viewRef.current?.projectsPanel, ...pruned }); if (next?.success) saveView({ projectsPanel: next.data }); return Boolean(next?.success); }} undermapCount={layerGraph.belowCount} onTravel={to => { rail.clear(); void travel(to); }}
@@ -1041,7 +1061,7 @@ export function WorkspaceMap() {
       renderDetail={renderDetail} confirmClose={confirmViewClose} renderNode={renderNode} />}
     {!snapshot && (error ? <div className="error-screen-overlay"><ErrorScreen error={error} kind="load" retry={() => retryLoad.current()} /></div> : <div className="map-message"><p>Opening your table…</p></div>)}
     <ToolRail below={below} settings={settingsOpen} actions={actionsOpen || standupOpen} />
-    {snapshot && view && boards.length > 1 && <BoardTabs boards={boards} current={board} needs={boardNeeds} rename={renameBoard} renamed={() => setRenameBoard(undefined)} show={id => { if (!travelling) showBoard(id); }} create={createBoard} save={saveBoard} remove={removeBoard} />}
+    {snapshot && view && boards.length > 1 && <BoardTabs boards={boards} current={board} needs={boardNeeds} rename={renameBoard} renamed={() => setRenameBoard(undefined)} show={id => { if (!travelling) void showBoard(id); }} create={createBoard} save={saveBoard} remove={removeBoard} />}
     {snapshot && view && <NeedsMeTool items={attention} muted={mutedAttention} counting={counting} state={withUndermap ?? snapshot.state} highlight={setAttentionHighlight} size={view.attentionPanel ?? {}} onSize={size => saveView({ attentionPanel: size })}
       reveal={nodeId => revealNode(nodeId, 'centred')} locate={nodeId => revealNode(nodeId, 'map')} dismiss={acknowledge} openWeb={openOnWeb} unavailable={setError} />}
     {snapshot && view && plugins && <TodoOverlay ref={todoOverlay} state={snapshot.state} registry={registry} view={view} save={applyAt} saveView={saveView} reveal={nodeId => revealNode(nodeId, 'map')} onDragTodo={setTodoDrag}

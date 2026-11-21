@@ -216,3 +216,52 @@ test('undoing a board deletion brings back its archived items on it, still archi
   const redone = await revert(undone.applied!, 'redo');
   assert.deepEqual([redone.state.boards.map(entry => entry.id), acme(redone.state)], [['main'], [undefined, true]]);
 });
+
+test('undoing a loose item\'s Move to board puts it back at its spot with a neighbour close by', async () => {
+  const { control, send, edit, revert } = await board();
+  await send([{ type: 'board.save', board: { id: 'side', name: 'Side' } }, { type: 'item.add', id: 'loose', resourceId: 'loose-r', pluginId: 'linear.ticket', title: 'loose', position: { x: 6000, y: 0 }, data: { issueId: 'ACME-loose' } }]);
+  const state = await control.read(), spot = at(state, 'loose'), { width } = layoutFootprints(state.nodes, state.resources, control.registry).find(box => box.id === 'loose')!;
+  const moved = await edit([{ type: 'node.move', id: 'loose', board: 'side' }]);
+  await send([{ type: 'item.add', id: 'near', resourceId: 'near-r', pluginId: 'linear.ticket', title: 'near', position: { x: spot.x + width + 100, y: spot.y }, data: { issueId: 'ACME-near' } }]);
+  const undone = await revert(moved, 'undo'), loose = undone.state.nodes.find(node => node.id === 'loose')!;
+  assert.deepEqual([loose.board, loose.position, undone.skipped], [undefined, spot, 0]);
+});
+
+test('redo of Move to board for a project whose items shifted on arrival skips none of them', async () => {
+  const { send, edit, revert } = await board();
+  await send([{ type: 'board.save', board: { id: 'side', name: 'Side' } }, { type: 'item.add', id: 'blocker', resourceId: 'blocker-r', pluginId: 'linear.ticket', title: 'blocker', board: 'side', position: { x: 300, y: 200 }, data: { issueId: 'ACME-blocker' } }]);
+  const moved = await edit([{ type: 'node.move', id: 'acme', board: 'side' }]);
+  assert.ok(moved.items.some(item => item.id !== 'acme'), 'its items arrived shifted');
+  const undone = await revert(moved, 'undo'), redone = await revert(undone.applied!, 'redo');
+  assert.deepEqual([undone.skipped, redone.skipped, redone.state.nodes.filter(node => node.id !== 'blocker').every(node => node.board === 'side')], [0, 0, true]);
+});
+
+test('undoing a board deletion puts the board back in its tab place', async () => {
+  const { send, edit, revert } = await board();
+  await send([{ type: 'board.save', board: { id: 'side', name: 'Side' } }, { type: 'board.save', board: { id: 'third', name: 'Third' } }]);
+  await send([{ type: 'node.move', id: 'acme', board: 'side' }]);
+  const deleted = await edit([{ type: 'board.delete', id: 'main' }]);
+  const undone = await revert(deleted, 'undo');
+  assert.deepEqual(undone.state.boards.map(entry => entry.id), ['main', 'side', 'third']);
+});
+
+test('undoing a project\'s Move to board after an agent took it to a third board changes nothing there, nor does redo', async () => {
+  const { control, send, edit, revert } = await board();
+  await send([{ type: 'board.save', board: { id: 'side', name: 'Side' } }, { type: 'board.save', board: { id: 'third', name: 'Third' } }, { type: 'item.add', id: 'blocker', resourceId: 'blocker-r', pluginId: 'linear.ticket', title: 'blocker', board: 'side', position: { x: 300, y: 200 }, data: { issueId: 'ACME-blocker' } }]);
+  const moved = await edit([{ type: 'node.move', id: 'acme', board: 'side' }]);
+  assert.ok(moved.items.some(item => item.id !== 'acme'), 'its items arrived shifted');
+  await send([{ type: 'node.move', id: 'acme', board: 'third' }], AGENT);
+  const third = async () => (await control.read()).nodes.filter(node => node.board === 'third').map(node => [node.id, node.position]);
+  const before = await third(), undone = await revert(moved, 'undo');
+  assert.deepEqual([await third(), undone.commands], [before, []]);
+  assert.deepEqual([await third(), (await revert(moved, 'redo')).commands], [before, []]);
+});
+
+test('undoing a loose item\'s Move to board after it moved on the new board leaves it there', async () => {
+  const { send, edit, revert } = await board();
+  await send([{ type: 'board.save', board: { id: 'side', name: 'Side' } }, { type: 'item.add', id: 'loose', resourceId: 'loose-r', pluginId: 'linear.ticket', title: 'loose', position: { x: 3000, y: 0 }, data: { issueId: 'ACME-loose' } }]);
+  const moved = await edit([{ type: 'node.move', id: 'loose', board: 'side' }]);
+  await send([{ type: 'node.move', id: 'loose', position: { x: 4000, y: 2000 } }]);
+  const undone = await revert(moved, 'undo'), loose = undone.state.nodes.find(node => node.id === 'loose')!;
+  assert.deepEqual([loose.board, loose.position, undone.skipped], ['side', { x: 4000, y: 2000 }, 1]);
+});

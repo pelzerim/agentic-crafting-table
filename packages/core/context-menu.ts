@@ -239,6 +239,17 @@ export const projectIntoAction = (title: string, items: number, targets: readonl
 /** A project's or loose item's Move to board submenu: the other boards in tab order. */
 export const moveToBoardAction = (boards: readonly { id: string; name: string }[], current: string): MenuAction => ({ id: 'move-board', label: 'Move to board',
   children: boards.map(board => ({ id: `board:${board.id}` as const, label: board.name, checked: board.id === current, ...(board.id === current ? { disabled: true } : {}) })) });
+const MAP_ACTIONS: ReadonlySet<string> = new Set<MenuActionId>(['move-plot', 'plot-unpin', 'add-todo', 'remove-todo', 'auto-title', 'plots-toggle', 'plots-unhide', 'complete', 'reopen', 'mute', 'unmute', 'hide-item', 'below']);
+/** Move to board follows Move to project or Move project into; with neither shown, it opens the map actions. */
+export function withBoardMove(actions: readonly MenuAction[], boardMove: MenuAction | undefined): MenuAction[] {
+  if (!boardMove) return [...actions];
+  const at = actions.findIndex(action => action.id === 'send-project' || action.id === 'project-into');
+  if (at >= 0) return [...actions.slice(0, at + 1), boardMove, ...actions.slice(at + 1)];
+  const first = actions.findIndex(action => MAP_ACTIONS.has(action.id));
+  if (first < 0) return [...actions, { ...boardMove, divider: true }];
+  const { divider, ...lead } = actions[first]!;
+  return [...actions.slice(0, first), divider ? { ...boardMove, divider } : boardMove, lead, ...actions.slice(first + 1)];
+}
 /** A map item's (or selection's) Move to project submenu; `targets` come from `moveTargets`. */
 export const moveToProjectAction = (targets: readonly ProjectTarget[]): MenuAction => projectSubmenu('Move to project', targets);
 type PlotTarget = { id: string; name: string; hidden: boolean; current: boolean };

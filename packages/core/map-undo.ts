@@ -32,8 +32,8 @@ export interface UndoStep {
   anchors?: { id: string; position: Position }[];
   /** [moved item, item it overlapped before the step]; a moved item with no pair here is never placed onto another. */
   pairs?: [string, string][];
-  /** Boards the step created, renamed or deleted. */
-  boards?: { id: string; before?: BoardRecord; after?: BoardRecord }[];
+  /** Boards the step created, renamed or deleted; `index` is the tab place of one that existed on one side only. */
+  boards?: { id: string; before?: BoardRecord; after?: BoardRecord; index?: number }[];
 }
 export const UNDO_ANCHOR_CAP = 500, UNDO_PAIR_CAP = 1000, UNDO_MEMBER_CAP = 2000;
 /** Only the plot fields a step changed; `null` clears one, `create` brings back a plot the step made. */
@@ -111,8 +111,9 @@ export function buildUndoStep(label: string, before: Mapped, after: Mapped, cont
   });
   const { anchors, pairs } = overlapPairs(before, context, items);
   const boardsBefore = new Map(boardList(before).map(board => [board.id, board])), boardsAfter = new Map(boardList(after).map(board => [board.id, board]));
+  const place = (id: string) => (boardsBefore.has(id) ? boardList(before) : boardList(after)).findIndex(board => board.id === id);
   const boards = [...new Set([...boardsBefore.keys(), ...boardsAfter.keys()])].flatMap(id => same(boardsBefore.get(id), boardsAfter.get(id)) ? []
-    : [{ id, ...boardsBefore.has(id) ? { before: boardsBefore.get(id)! } : {}, ...boardsAfter.has(id) ? { after: boardsAfter.get(id)! } : {} }]);
+    : [{ id, ...boardsBefore.has(id) ? { before: boardsBefore.get(id)! } : {}, ...boardsAfter.has(id) ? { after: boardsAfter.get(id)! } : {}, ...boardsBefore.has(id) !== boardsAfter.has(id) ? { index: place(id) } : {} }]);
   return items.length || links.length || plotChanges.length || boards.length ? { label, items, links, plots: plotChanges, ...pairs.length ? { anchors, pairs } : {}, ...boards.length ? { boards } : {} } : undefined;
 }
 
@@ -157,12 +158,18 @@ type Footprints = (state: Pick<WorkspaceState, 'nodes' | 'resources'>) => Spatia
 export function planReversal(step: UndoStep, current: Mapped, currentPlots: readonly PlotSnap[], context: SnapContext, direction: 'undo' | 'redo',
   simulate: (commands: WorkspaceCommand[]) => Pick<WorkspaceState, 'nodes' | 'resources'>, footprints: Footprints): Reversal {
   const back = direction === 'undo', nodes = new Map(current.nodes.map(node => [node.id, node]));
-  const eligible = new Map<string, Set<Group>>(), skipped = new Set<string>();
+  const eligible = new Map<string, Set<Group>>(), skipped = new Set<string>(), carriedBy = new Map<string, string[]>();
+  // A project's items change board with it, guarded by its member check, so their own board is neither checked nor moved.
+  const carriers = new Set(step.items.filter(change => nodes.has(change.id) && !nodes.get(change.id)!.resourceId && !same(change.before.board, change.after.board)).map(change => change.id));
   for (const change of step.items) {
     const from = back ? change.after : change.before, node = nodes.get(change.id), now = node && itemSnap(node, current, context);
-    const changed = GROUP_NAMES.filter(group => GROUPS[group].some(field => !same(change.before[field], change.after[field])));
+    const carried = Boolean(from.projectId && carriers.has(from.projectId) && same(change.before.projectId, change.after.projectId));
+    if (carried) carriedBy.set(from.projectId!, [...carriedBy.get(from.projectId!) ?? [], change.id]);
+    const changed = GROUP_NAMES.filter(group => !(carried && group === 'board') && GROUPS[group].some(field => !same(change.before[field], change.after[field])));
+    // A visible item moved since its board change keeps its board too: going back needs its recorded spot.
+    const movedSince = Boolean(now && !(back ? change.before : change.after).archived && !same(now.position, from.position));
     // An item since taken to another board is out of reach: a reversal never changes a board other than the step's.
-    const ok = now && same(now.board, from.board) ? changed.filter(group => GROUPS[group].every(field => same(now[field], from[field]))) : [];
+    const ok = now && (carried || same(now.board, from.board)) ? changed.filter(group => !(group === 'board' && movedSince) && GROUPS[group].every(field => same(now[field], from[field]))) : [];
     if (ok.length < changed.length) skipped.add(change.id);
     if (ok.length) eligible.set(change.id, new Set(ok));
   }
@@ -170,10 +177,13 @@ export function planReversal(step: UndoStep, current: Mapped, currentPlots: read
   const drop = (id: string, groups = GROUP_NAMES) => {
     const own = eligible.get(id);
     if (!own) return;
+    // Items that follow their project's board change go back only with it.
+    if (groups.includes('board') && own.has('board')) for (const member of carriedBy.get(id) ?? []) drop(member);
     for (const group of groups) own.delete(group);
     skipped.add(id);
     if (!own.size) eligible.delete(id);
   };
+  for (const [projectId, members] of carriedBy) if (!eligible.get(projectId)?.has('board')) members.forEach(member => drop(member));
   // Putting an item back into a project archived, sent to Undermap or gone since would take it off the map, so it stays where it is.
   const restoring = new Set([...eligible].filter(([id, groups]) => groups.has('archived') && !toOf.get(id)!.archived).map(([id]) => id));
   for (const [id, groups] of [...eligible]) {
@@ -199,12 +209,14 @@ export function planReversal(step: UndoStep, current: Mapped, currentPlots: read
   for (const change of step.boards ?? []) {
     const from = back ? change.after : change.before, to = back ? change.before : change.after;
     if (!same(known.get(change.id), from)) { skipped.add(`board:${change.id}`); continue; }
-    if (to) opened.push({ type: 'board.save', board: to }); else closed.push({ type: 'board.delete', id: change.id });
+    if (to) opened.push({ type: 'board.save', board: to, ...!from && change.index !== undefined ? { index: change.index } : {} }); else closed.push({ type: 'board.delete', id: change.id });
     appliedBoards.push(change);
   }
   // Items placed exactly, before any simulation: nodes.move refuses a request whose positions overlap.
   const exact = new Set<string>();
   // Projects before their items: an item cannot be restored while its project is still archived.
+  // A visible item goes back to its recorded spot; an archived one takes the no-place path.
+  const exactSpot = (id: string) => eligible.get(id)!.has('position') || (eligible.get(id)!.has('board') && !toOf.get(id)!.archived);
   const projectsFirst = (a: string, b: string) => Number(Boolean(nodes.get(a)?.resourceId)) - Number(Boolean(nodes.get(b)?.resourceId));
   const build = (only?: ReadonlySet<string>) => {
     const restore: string[] = [], attach: WorkspaceCommand[] = [], resize: WorkspaceCommand[] = [], archive: WorkspaceCommand[] = [], boards: WorkspaceCommand[] = [];
@@ -215,7 +227,7 @@ export function planReversal(step: UndoStep, current: Mapped, currentPlots: read
       if (groups.has('archived')) { if (to.archived) archive.push({ type: 'node.archive', id }); else restore.push(id); }
       if (groups.has('projectId')) attach.push({ type: 'node.attach', id, projectId: to.projectId });
       if (groups.has('size')) resize.push(to.mapDimensions ? { type: 'node.resize', id, dimensions: to.mapDimensions, position: groups.has('position') ? to.position : node.position } : { type: 'node.resize', id, size: to.size });
-      if (groups.has('board')) boards.push({ type: 'node.move', id, board: to.board ?? DEFAULT_BOARD, ...groups.has('position') ? { position: to.position } : {} });
+      if (groups.has('board')) boards.push({ type: 'node.move', id, board: to.board ?? DEFAULT_BOARD, ...exactSpot(id) ? { position: to.position } : {} });
       else if (groups.has('position') && !exact.has(id)) positions.push({ id, position: to.position });
     }
     // One restore for the whole group, so placement sees each project with its returning items.
@@ -248,7 +260,7 @@ export function planReversal(step: UndoStep, current: Mapped, currentPlots: read
       if (!runs(build(kept))) { kept.delete(id); drop(id); }
     }
   }
-  const aim = (id: string) => eligible.get(id)!.has('position') ? toOf.get(id)!.position : nodes.get(id)!.position;
+  const aim = (id: string) => exactSpot(id) ? toOf.get(id)!.position : nodes.get(id)!.position;
   // Items outside the reversal are fixed: whatever would push one, or cannot reach its exact spot, keeps its place instead.
   const blocks = (box: SpatialBox, other: SpatialBox) => box.id !== other.id && overlaps(box, other, ITEM_GAP) && !(placed(box.id) && paired(box.id, other.id) && (anchored.has(other.id) || placed(other.id)));
   for (let round = 0; round <= step.items.length; round++) {
