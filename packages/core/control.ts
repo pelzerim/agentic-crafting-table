@@ -179,7 +179,7 @@ const otherCommands = [
   z.object({ type: z.literal('layout.repair') }),
   z.object({ type: z.literal('node.attach'), id, projectId: id.nullable() }),
   z.object({ type: z.literal('node.archive'), id }),
-  z.object({ type: z.literal('nodes.action'), ids: z.array(id).min(1).max(1000), action: z.enum(['archive', 'below', 'surface', 'complete', 'reopen', 'add-todo', 'remove-todo']) }),
+  z.object({ type: z.literal('nodes.action'), ids: z.array(id).min(1).max(1000), action: z.enum(['archive', 'restore', 'below', 'surface', 'complete', 'reopen', 'add-todo', 'remove-todo']) }),
   z.object({ type: z.literal('node.below'), id }),
   z.object({ type: z.literal('project.mute'), id, muted: z.boolean() }),
   z.object({ type: z.literal('project.merge'), id, into: id }),
@@ -459,6 +459,13 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
         const found = find(key);
         if (found.resourceId || found.projectId) throw new Error('Target is not a project');
         return found;
+      };
+      /** Clears every archive flag first, projects before their items, then places what returns to the map in one pass. */
+      const restoreDraft = (ids: readonly string[]) => {
+        for (const id of [...ids].sort((a, b) => Number(Boolean(find(a).resourceId)) - Number(Boolean(find(b).resourceId)))) state.nodes = restoreNode(state.nodes, id);
+        // Undermap items and hidden ones are not drawn, so they are not placed.
+        const drawn = ids.filter(id => isDrawn(find(id), state.nodes));
+        if (drawn.length) state.nodes = moveItems(state.nodes, state.resources, registry, drawn.map(id => ({ id, position: find(id).position })), sizes, snap);
       };
       /** Sends items below, with every note shown as a badge on them once none of the items it badges stays on the map. */
       const sendBelowDraft = (ids: readonly string[]) => {
@@ -791,6 +798,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
         case 'nodes.action': {
           if (new Set(command.ids).size !== command.ids.length) throw new Error('Duplicate selection identities');
           if (command.action === 'below') { sendBelowDraft(command.ids); break; }
+          if (command.action === 'restore') { restoreDraft(command.ids); break; }
           for (const id of command.ids) applyToDraft(state, command.action === 'add-todo' || command.action === 'remove-todo'
             ? { type: 'node.todo', id, enabled: command.action === 'add-todo' }
             : { type: `node.${command.action}`, id }, registry, layout);
@@ -851,11 +859,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           } else state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: target.id, position: snapPosition(target.position, snap) }], sizes, snap);
           break;
         }
-        case 'node.restore':
-          state.nodes = restoreNode(state.nodes, command.id);
-          if (!isDrawn(find(command.id), state.nodes)) break; // Returns to Undermap, where it was archived from, or stays hidden.
-          state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: command.id, position: find(command.id).position }], sizes, snap);
-          break;
+        case 'node.restore': restoreDraft([command.id]); break;
         case 'node.complete': find(command.id).completedAt ??= new Date().toISOString(); touchNode(find(command.id)); break;
         case 'node.reopen':
           delete find(command.id).completedAt; delete find(command.id).todoDoneAt; touchNode(find(command.id));

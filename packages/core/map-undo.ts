@@ -171,18 +171,21 @@ export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'node
   }
   // Items placed exactly, before any simulation: nodes.move refuses a request whose positions overlap.
   const exact = new Set<string>();
+  // Projects before their items: an item cannot be restored while its project is still archived.
+  const projectsFirst = (a: string, b: string) => Number(Boolean(nodes.get(a)?.resourceId)) - Number(Boolean(nodes.get(b)?.resourceId));
   const build = (only?: ReadonlySet<string>) => {
-    const restore: WorkspaceCommand[] = [], attach: WorkspaceCommand[] = [], resize: WorkspaceCommand[] = [], archive: WorkspaceCommand[] = [];
+    const restore: string[] = [], attach: WorkspaceCommand[] = [], resize: WorkspaceCommand[] = [], archive: WorkspaceCommand[] = [];
     const positions: { id: string; position: Position }[] = [];
     for (const [id, groups] of eligible) {
       if (only && !only.has(id)) continue;
       const to = toOf.get(id)!, node = nodes.get(id)!;
-      if (groups.has('archived')) (to.archived ? archive : restore).push({ type: to.archived ? 'node.archive' : 'node.restore', id });
+      if (groups.has('archived')) { if (to.archived) archive.push({ type: 'node.archive', id }); else restore.push(id); }
       if (groups.has('projectId')) attach.push({ type: 'node.attach', id, projectId: to.projectId });
       if (groups.has('size')) resize.push(to.mapDimensions ? { type: 'node.resize', id, dimensions: to.mapDimensions, position: groups.has('position') ? to.position : node.position } : { type: 'node.resize', id, size: to.size });
       if (groups.has('position') && !exact.has(id)) positions.push({ id, position: to.position });
     }
-    return [...restore, ...attach, ...resize, ...positions.length ? [{ type: 'nodes.move' as const, positions }] : [], ...archive];
+    // One restore for the whole group, so placement sees each project with its returning items.
+    return [...restore.length ? [{ type: 'nodes.action' as const, ids: restore, action: 'restore' as const }] : [], ...attach, ...resize, ...positions.length ? [{ type: 'nodes.move' as const, positions }] : [], ...archive];
   };
   // An item goes back onto what it overlapped only while every one of those is in place or placed with it.
   const anchored = new Set((step.anchors ?? []).filter(anchor => near(nodes.get(anchor.id)?.position, anchor.position)).map(anchor => anchor.id));
@@ -206,7 +209,7 @@ export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'node
   // A change that can no longer run (its project archived, a link end deleted) is skipped; projects go first so their items can follow.
   if (eligible.size && !runs(build())) {
     const kept = new Set<string>();
-    for (const id of [...eligible.keys()].sort((a, b) => Number(Boolean(nodes.get(a)?.resourceId)) - Number(Boolean(nodes.get(b)?.resourceId)))) {
+    for (const id of [...eligible.keys()].sort(projectsFirst)) {
       kept.add(id);
       if (!runs(build(kept))) { kept.delete(id); drop(id); }
     }
@@ -295,6 +298,7 @@ export class UndoHistory {
   recorded = 0;
   record(step: UndoStep | undefined) { if (!step) return; this.done.push(step); if (this.done.length > UNDO_LIMIT) this.done.shift(); this.undone = []; this.recorded++; }
   peek(direction: 'undo' | 'redo') { return (direction === 'undo' ? this.done : this.undone).at(-1); }
+  holds(direction: 'undo' | 'redo', step: UndoStep) { return (direction === 'undo' ? this.done : this.undone).includes(step); }
   /** Takes `step` off its list, wherever a change made meanwhile left it, and files what was put back on the other. */
   settle(direction: 'undo' | 'redo', step: UndoStep, applied?: UndoStep) {
     const from = direction === 'undo' ? this.done : this.undone, to = direction === 'undo' ? this.undone : this.done, at = from.lastIndexOf(step);
