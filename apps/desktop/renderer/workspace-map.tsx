@@ -16,6 +16,7 @@ import { undermapColor } from '../../../src/graph/project-colors.ts';
 import { ConnectionEditor } from './connection-editor.tsx';
 import { ArchiveBrowser } from './archive-browser.tsx';
 import { useMapHistory } from './map-history.ts';
+import type { UndoToken } from './map-history.ts';
 import type { Receipt, UndoStep } from '../../../packages/core/map-undo.ts';
 import { stepBoard } from '../../../packages/core/map-undo.ts';
 import { BOARD_LIMIT, DEFAULT_BOARD, boardList, boardOf, shownBoard } from '../../../src/graph/boards.ts';
@@ -118,10 +119,24 @@ function PluginDetail({ resource, registry, active, nodeId, onOpen, onShow, onEd
   useEffect(() => {
     const view = views.mount('detail', container.current!, resource, {
       editResource: () => editRef.current(),
-      saveData: async patch => {
+      saveData: async (patch, expect) => {
         const { state } = await window.craftingTable.workspaceRead(), record = state.resources.find(candidate => candidate.id === state.nodes.find(node => node.id === nodeId)?.resourceId);
         if (!record) throw new Error('This item is no longer on the map.');
+        if (expect && Object.entries(expect).some(([key, value]) => JSON.stringify(record.data[key] ?? null) !== JSON.stringify(value))) return false;
+        // The revision guard refuses the write if anything changed since this read.
         await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: state.revision, actor: { kind: 'user', id: 'desktop' }, commands: [{ type: 'item.update', id: nodeId, data: patchedData(record.data, patch) }] });
+        return true;
+      },
+      observeData: listener => {
+        let disposed = false, cursor = -1;
+        const receive = (snapshot: WorkspaceSnapshot) => {
+          if (disposed || snapshot.cursor < cursor) return; cursor = snapshot.cursor;
+          const record = snapshot.state.resources.find(candidate => candidate.id === snapshot.state.nodes.find(node => node.id === nodeId)?.resourceId);
+          if (record) listener(record.data);
+        };
+        const off = window.craftingTable.onWorkspace(receive);
+        void window.craftingTable.workspaceRead().then(receive).catch(() => {});
+        return () => { disposed = true; off(); };
       },
       viewState: () => viewStore.read(nodeId),
       saveViewState: patch => viewStore.save(nodeId, patch),
@@ -323,7 +338,7 @@ export function WorkspaceMap() {
   const [settingsSection, setSettingsSection] = useState<string>();
   const updates = useUpdates(Boolean(snapshot));
   const updateOffers = useMemo(() => pendingOffers(updates.status, view?.dismissedUpdates), [updates.status, view?.dismissedUpdates]);
-  const [archiveOpen, setArchiveOpen] = useState(false), [removedLink, setRemovedLink] = useState<GraphLink>();
+  const [archiveOpen, setArchiveOpen] = useState(false), [removedLink, setRemovedLink] = useState<GraphLink & { undo?: UndoToken }>();
   const [layer, setLayer] = useState<'map' | 'below'>('map'), layerRef = useRef(layer); layerRef.current = layer;
   const [travelling, setTravelling] = useState(false), [riseCharge, setRiseCharge] = useState(0), [portalHot, setPortalHot] = useState(false);
   const workspace = useRef<HTMLElement>(null), zoomRef = useRef<number>(undefined), entryZoom = useRef<number>(undefined);
@@ -333,7 +348,7 @@ export function WorkspaceMap() {
   const [foundBelow, setFoundBelow] = useState<string>(), undermapSearch = useRef<UndermapSearchHandle>(null);
   useEffect(() => { if (!foundBelow) return; const timer = setTimeout(() => setFoundBelow(undefined), 4000); return () => clearTimeout(timer); }, [foundBelow]);
   const [paperDraft, setPaperDraft] = useState<PaperDraft>(), paperDraftRef = useRef(paperDraft); paperDraftRef.current = paperDraft;
-  const [archivedNote, setArchivedNote] = useState<{ id: string; title: string }>(), noteNotice = useNotice(archivedNote, true);
+  const [archivedNote, setArchivedNote] = useState<{ id: string; title: string; undo?: UndoToken }>(), noteNotice = useNotice(archivedNote, true);
   const [unmuted, setUnmuted] = useState<{ id: string; title: string; needs: number }>(), unmuteNotice = useNotice(unmuted, true);
   const [todoUndo, setTodoUndo] = useState<TodoUndo>(), todoUndoNotice = useNotice(todoUndo, true);
   const [copiedUrls, setCopiedUrls] = useState<{ count: number }>(), copyNotice = useNotice(copiedUrls, true);
@@ -674,7 +689,7 @@ export function WorkspaceMap() {
     if (paperDraftRef.current?.nodeId === nodeId && !snapshotRef.current?.state.nodes.some(node => node.id === nodeId)) { setPaperDraft(undefined); return; }
     const node = snapshotRef.current?.state.nodes.find(candidate => candidate.id === nodeId);
     if (!node) return;
-    void history.track('Archive', () => commit([{ type: 'node.archive', id: nodeId }])).then(() => { if (!silent) setArchivedNote({ id: nodeId, title: node.title }); }).catch(error => setError(error.message));
+    void history.trackStep('Archive', () => commit([{ type: 'node.archive', id: nodeId }])).then(undo => { if (!silent) setArchivedNote({ id: nodeId, title: node.title, undo }); }).catch(error => setError(error.message));
   };
   const paperPlugin = plugins?.find(plugin => plugin.appearance?.paper && plugin.creation)?.id;
   const writeInPlace = (pluginId: string, anchor: Pick<Editor, 'position' | 'projectId' | 'connectedFromId'>) => {
@@ -927,7 +942,7 @@ export function WorkspaceMap() {
       setEditor(undefined); void applyToLink(selectedLink, [{ type: 'link.save', link }]).catch(error => setError(error.message)); return;
     }
     if (id === 'remove-link' && selectedLink) {
-      setEditor(undefined); void history.track('Remove connection', () => applyToLink(selectedLink, [{ type: 'link.remove', id: selectedLink.id }])).then(() => setRemovedLink(selectedLink)).catch(error => setError(error.message)); return;
+      setEditor(undefined); void history.trackStep('Remove connection', () => applyToLink(selectedLink, [{ type: 'link.remove', id: selectedLink.id }])).then(undo => setRemovedLink({ ...selectedLink, undo })).catch(error => setError(error.message)); return;
     }
     if (id === 'delete-cancel') { setEditor(undefined); return; }
     if (id === 'delete-confirm' && selected?.resourceId) { run([{ type: 'node.archive', id: selected.id }, { type: 'node.delete', id: selected.id }]); return; }
@@ -1068,12 +1083,12 @@ export function WorkspaceMap() {
     {updateOffers.map(offer => <UpdateNotice key={offer.key} offer={offer} dismiss={() => saveView({ dismissedUpdates: { ...viewRef.current?.dismissedUpdates, [offer.key]: offer.latest } })}
       open={() => { setSessionListView(undefined); if (offer.plugin) setInstallRequest({ id: ++installRequests.current, link: { source: offer.plugin.source, ref: offer.latest } }); else setSettingsSection('General'); setSettingsOpen(true); }} />)}
     {removedLink && linkNotice.visible && <Toast tone="undo" title="Connection removed" detail={`${snapshot?.state.nodes.find(node => node.id === removedLink.sourceId)?.title ?? 'Item'} → ${snapshot?.state.nodes.find(node => node.id === removedLink.targetId)?.title ?? 'item'}`}
-      action={{ label: 'Undo', run: () => {
+      action={removedLink.undo && { label: 'Undo', run: () => {
         if (snapshotRef.current?.state.links.some(link => link.id === removedLink.id)) { setError('This connection changed after removal. Undo cannot replace it.'); return; }
-        void apply([{ type: 'link.save', link: removedLink }]).then(() => setRemovedLink(undefined)).catch(error => setError(error.message));
+        const { undo } = removedLink; setRemovedLink(undefined); void history.undo(undo);
       } }} dismiss={() => setRemovedLink(undefined)} dismissLabel="Dismiss undo" />}
     {archivedNote && noteNotice.visible && <Toast tone="undo" title="Note archived" detail={archivedNote.title}
-      action={{ label: 'Undo', run: () => { void apply([{ type: 'node.restore', id: archivedNote.id }]).then(() => setArchivedNote(undefined)).catch(error => setError(error.message)); } }}
+      action={archivedNote.undo && { label: 'Undo', run: () => { const { undo } = archivedNote; setArchivedNote(undefined); void history.undo(undo); } }}
       dismiss={() => setArchivedNote(undefined)} dismissLabel="Dismiss undo" />}
     {todoUndo && todoUndoNotice.visible && <Toast tone="undo" title={todoUndo.title} detail={todoUndo.detail}
       action={todoUndo.undo.length ? { label: 'Undo', run: () => { const { undo } = todoUndo; setTodoUndo(undefined); void apply(undo).catch(error => setError(error.message)); } } : undefined}

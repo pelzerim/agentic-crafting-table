@@ -369,8 +369,11 @@ export interface ResourceViewServices {
   showOnMap?(nodeId: string): void;
   /** Open the host's existing edit form for this item, using shared commands. */
   editResource?(): void;
-  /** Saves fields into this item's data with the shared item.update command; null removes a field. */
-  saveData?(patch: JsonObject): Promise<void>;
+  /** Saves fields into this item's data with the shared item.update command; null removes a field. With `expect`, it saves
+   * only while those fields still hold these values (null for absent) and otherwise saves nothing and resolves false. */
+  saveData?(patch: JsonObject, expect?: JsonObject): Promise<boolean | void>;
+  /** This item's saved data now and after each change. */
+  observeData?(listener: (data: JsonObject) => void): () => void;
   /** What the host keeps of this item's view layout, such as a folded panel. It survives reload and restart and,
    * unlike saveData, never changes the item, so it never invalidates the provider's cached read. */
   viewState?(): Readonly<Record<string, string | number | boolean>>;

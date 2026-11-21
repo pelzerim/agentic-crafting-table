@@ -125,6 +125,20 @@ test('an undo that can no longer run is skipped instead of failing: archived pro
   assert.deepEqual([second.reverted, second.skipped, second.state.links.length], [0, 1, 0]);
 });
 
+test('undoing a bulk archive restores an item stored before its project', async () => {
+  const { send, edit, revert } = await board();
+  await send([{ type: 'item.add', id: 'z', resourceId: 'z-r', pluginId: 'linear.ticket', title: 'z', position: { x: 4000, y: 600 }, data: { issueId: 'ACME-z' } }]);
+  await send([{ type: 'project.create', id: 'beta', title: 'Beta', workingDirectory: '/Users/example/beta', position: { x: 4000, y: 0 } }, { type: 'node.attach', id: 'z', projectId: 'beta' }]);
+  // A populated project's anchor has no footprint, so a loose item can be moved onto it.
+  await send([{ type: 'item.add', id: 'f', resourceId: 'f-r', pluginId: 'linear.ticket', title: 'f', position: { x: 6000, y: 0 }, data: { issueId: 'ACME-f' } }]);
+  const loose = (await send([{ type: 'node.move', id: 'f', position: { x: 4000, y: 0 } }])).state.nodes.find(node => node.id === 'f')!.position;
+  const archived = await edit([{ type: 'node.archive', id: 'z' }, { type: 'node.archive', id: 'beta' }]);
+  assert.deepEqual(archived.items.map(item => item.id), ['z', 'beta'], 'the receipt lists the item first');
+  const undone = await revert(archived, 'undo');
+  assert.deepEqual([undone.skipped, ...['z', 'beta'].map(id => Boolean(undone.state.nodes.find(node => node.id === id)!.archivedAt))], [0, false, false]);
+  assert.deepEqual(undone.state.nodes.find(node => node.id === 'f')!.position, loose, 'the loose item on the anchor stays put');
+});
+
 test('undoing Move to project brings a to-do\'s attached items back too', async () => {
   const { send, edit, revert } = await board();
   await send([{ type: 'project.create', id: 'beta', title: 'Beta', workingDirectory: '/Users/example/beta', position: { x: 4000, y: 0 } }]);

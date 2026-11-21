@@ -18,18 +18,27 @@ export interface HistoryHost {
   focus?(step: UndoStep, direction: 'undo' | 'redo'): void;
 }
 
+/** Names one recorded change for an Undo button. */
+export type UndoToken = { readonly label: string };
+
 /** The window's map undo and redo (MAP-34): each step is the receipt the service returned for the person's own commit. */
 export function createMapHistory(host: () => HistoryHost) {
   const history = new UndoHistory();
   let busy = false, failing: UndoStep | undefined;
-  /** Runs `work` and records its receipt, if any. */
-  const track = async (label: string, work: () => Promise<{ receipt?: Receipt } | void>): Promise<void> => {
+  // A recorded change keeps its token while undo and redo replace its step with the part put back.
+  const tokenOf = new WeakMap<UndoStep, UndoToken>(), stepOf = new WeakMap<UndoToken, UndoStep>();
+  const bind = (token: UndoToken, step: UndoStep) => { tokenOf.set(step, token); stepOf.set(token, step); };
+  /** Runs `work` and records its receipt, if any; resolves with the recorded change's token. */
+  const trackStep = async (label: string, work: () => Promise<{ receipt?: Receipt } | void>): Promise<UndoToken | undefined> => {
     const active = host().active(), result = await work();
-    if (active && result?.receipt) history.record({ label, ...result.receipt });
+    if (!active || !result?.receipt) return undefined;
+    const recorded = { label, ...result.receipt }, token = { label };
+    history.record(recorded); bind(token, recorded); return token;
   };
-  const step = async (direction: 'undo' | 'redo') => {
-    const { active, revert, refresh, notify, fail, focus } = host(), next = history.peek(direction);
-    if (busy || !active()) return;
+  /** `chosen` reverses that change wherever it is in the history, as an Undo button names it; one already reversed does nothing. */
+  const step = async (direction: 'undo' | 'redo', chosen?: UndoToken) => {
+    const { active, revert, refresh, notify, fail, focus } = host(), picked = chosen === undefined ? undefined : stepOf.get(chosen), next = picked ?? history.peek(direction);
+    if (busy || !active() || (chosen !== undefined && (!picked || !history.holds(direction, picked)))) return;
     if (!next) { notify(`Nothing to ${direction}`); return; }
     busy = true; focus?.(next, direction);
     const recorded = history.recorded;
@@ -44,11 +53,14 @@ export function createMapHistory(host: () => HistoryHost) {
       }
       failing = undefined;
       // A change recorded while the undo ran cleared redo; the undo must not refill it.
-      history.settle(direction, next, direction === 'undo' && history.recorded !== recorded ? undefined : result.applied);
+      const filed = direction === 'undo' && history.recorded !== recorded ? undefined : result.applied, token = tokenOf.get(next);
+      history.settle(direction, next, filed);
+      if (token !== undefined) { if (filed) bind(token, filed); else stepOf.delete(token); }
       try { await refresh(); notify(reversalNotice(next, result, direction)); } catch (error) { fail((error as Error).message); }
     } finally { busy = false; }
   };
-  return { track, undo: () => step('undo'), redo: () => step('redo') };
+  const track = async (label: string, work: () => Promise<{ receipt?: Receipt } | void>): Promise<void> => { await trackStep(label, work); };
+  return { track, trackStep, undo: (chosen?: UndoToken) => step('undo', chosen), redo: () => step('redo') };
 }
 
 export function useMapHistory(host: HistoryHost) {

@@ -22,14 +22,18 @@ export async function videoResponse(path: string, range: string | null): Promise
   const real = await realpath(path), type = TYPES[extname(real).toLowerCase()];
   if (!type) return new Response('Not found', { status: 404 });
   // One handle for the check and the read, so the file cannot be swapped in between.
-  const file = await open(real, constants.O_RDONLY | constants.O_NOFOLLOW), info = await file.stat();
-  if (!info.isFile()) { await file.close(); return new Response('Not found', { status: 404 }); }
-  const size = info.size, match = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : undefined;
-  if (range && (!match || (!match[1] && !match[2]))) { await file.close(); return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } }); }
-  let start = 0, end = size - 1;
-  if (match?.[1]) { start = Number(match[1]); if (match[2]) end = Math.min(Number(match[2]), size - 1); }
-  else if (match?.[2]) start = Math.max(0, size - Number(match[2]));
-  if (match && (start > end || start >= size)) { await file.close(); return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } }); }
+  // Non-blocking, so a named pipe fails the file check instead of waiting for a writer.
+  const file = await open(real, constants.O_RDONLY | constants.O_NOFOLLOW | (constants.O_NONBLOCK ?? 0));
+  let size: number, start = 0, end: number, match: RegExpExecArray | null | undefined;
+  try {
+    const info = await file.stat();
+    if (!info.isFile()) { await file.close(); return new Response('Not found', { status: 404 }); }
+    size = info.size; end = size - 1; match = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : undefined;
+    if (range && (!match || (!match[1] && !match[2]))) { await file.close(); return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } }); }
+    if (match?.[1]) { start = Number(match[1]); if (match[2]) end = Math.min(Number(match[2]), size - 1); }
+    else if (match?.[2]) start = Math.max(0, size - Number(match[2]));
+    if (match && (start > end || start >= size)) { await file.close(); return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } }); }
+  } catch (error) { await file.close().catch(() => {}); throw error; }
   const body = Readable.toWeb(file.createReadStream({ start, end: Math.max(end, start) })) as ReadableStream<Uint8Array>;
   const headers: Record<string, string> = { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Content-Length': String(end - start + 1) };
   if (!match) return new Response(body, { status: 200, headers });
