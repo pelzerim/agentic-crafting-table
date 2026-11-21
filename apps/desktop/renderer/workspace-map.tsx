@@ -76,7 +76,10 @@ import { relatedResourceItems } from '../../../packages/core/related-items.ts';
 import { FROM_URL } from '../../../packages/core/item-picker.ts';
 import { creationConnections } from '../../../packages/core/resource-creation.ts';
 import { ErrorBoundary, ErrorScreen, PanelError } from './error-screen.tsx';
-import { shortcutKey, useWorkspaceShortcuts } from './shortcuts.ts';
+import { runWorkspaceShortcut, shortcutKey, useWorkspaceShortcuts } from './shortcuts.ts';
+import { CommandMenu } from './command-menu.tsx';
+import { PICKER_SIZE } from './item-picker.tsx';
+import type { CommandMenuRow } from './command-menu-model.ts';
 import { ControlsCard } from './controls-card.tsx';
 import { UNDERMAP_LOOSE, mirrorLayout, searchUndermap } from '../../../src/graph/undermap.ts';
 import type { MirrorLayout, UndermapMatch } from '../../../src/graph/undermap.ts';
@@ -90,7 +93,8 @@ import type { UndermapSearchHandle } from './undermap-search.tsx';
 import { MapWheelGestures } from './map-wheel.ts';
 
 type Anchor = Parameters<NonNullable<ProjectMapProps['onContext']>>[0];
-type Editor = Anchor & { connectedFromId?: string; initialType?: string; initialUrl?: string; initialData?: JsonObject; mode: 'menu' | 'create' | 'edit'; /** A ring opened by right-clicking the ground, offering that ground's menu entries (MAP-31). */ ground?: true };
+type Editor = Anchor & { connectedFromId?: string; initialType?: string; initialUrl?: string; initialData?: JsonObject; mode: 'menu' | 'create' | 'edit'; /** A ring opened by right-clicking the ground, offering that ground's menu entries (MAP-31). */ ground?: true;
+  /** Opened from the command menu with this query: Back from the first layer returns there (MAP-34). */ fromCommandMenu?: { query: string } };
 /** A new paper tile shown on the map before its first words; it is saved only once it has text. */
 type PaperDraft = { nodeId: string; resourceId: string; linkId: string; pluginId: string; position: { x: number; y: number }; projectId?: string; connectedFromId?: string; data: Record<string, string>;
   /** A size given before the first words; the first save applies it. */
@@ -435,7 +439,7 @@ export function WorkspaceMap() {
   }, [mirrorBelow]);
   const searchBelow = useCallback((query: string) => mirrorBelow ? searchUndermap(mirrorBelow, snapshotRef.current?.state.nodes ?? [], query, Infinity) : [], [mirrorBelow]);
   const flyBelow = (match: UndermapMatch) => { setEditor(undefined); setFoundBelow(match.id); revealNode(match.id, 'map'); };
-  const [mapFindOpen, setMapFindOpen] = useState(false);
+  const [mapFindOpen, setMapFindOpen] = useState(false), [commandMenu, setCommandMenu] = useState<{ query: string }>();
   const searchOnMap = useCallback((query: string) => searchMap(snapshotRef.current?.state.nodes ?? [], query, Infinity).map(match => ({ id: match.id, title: match.title, detail: match.project })), []);
   const recentlyOpened = useMemo(() => ({ label: 'Recently opened', matches: () => recentOnMap(snapshotRef.current?.state.nodes ?? [], viewRef.current?.recentItems ?? []).map(match => ({ id: match.id, title: match.title, detail: match.project })) }), []);
   /** Plots exist on the map layer only; hidden plots and projects that turned plots off are left out. */
@@ -656,6 +660,21 @@ export function WorkspaceMap() {
     const camera = view?.camera ?? { x: 70, y: 80, zoom: .85 };
     setEditor({ mode: 'create', initialType: 'project', screen: { x: 35, y: 60 }, position: { x: (innerWidth / 2 - camera.x) / camera.zoom, y: (innerHeight / 2 - 80 - camera.y) / camera.zoom } });
   };
+  /** A form the command menu opens takes the menu panel's place: the project form's top centre at the panel's, the
+   * item picker's ring centred below the panel's top so it never runs above it. The new item lands under that point. */
+  const createFromCommandMenu = (initialType: 'project' | undefined, panel: DOMRect | undefined, query: string) => {
+    const camera = viewRef.current?.camera ?? { x: 70, y: 80, zoom: .85 }, origin = workspace.current?.getBoundingClientRect() ?? { left: 0, top: 0 };
+    const box = panel ?? new DOMRect(innerWidth / 2 - 280, innerHeight * .14, 560, 320);
+    const screen = { x: box.left + box.width / 2 - origin.left, y: (initialType ? box.top + 24 : box.top + PICKER_SIZE.height / 2) - origin.top };
+    setEditor({ mode: 'create', ...(initialType ? { initialType } : {}), screen, position: { x: (screen.x - camera.x) / camera.zoom, y: (screen.y - camera.y) / camera.zoom }, fromCommandMenu: { query } });
+  };
+  const runCommandMenu = (row: CommandMenuRow, query: string, panel: DOMRect | undefined) => {
+    if (row.kind === 'item') { setEditor(undefined); revealNode(row.target, 'centred'); return; }
+    if (row.kind === 'project') { setEditor(undefined); revealNode(row.target, 'map'); return; }
+    if (row.target === 'action:new-project') { if (!below) createFromCommandMenu('project', panel, query); return; }
+    if (row.target === 'action:new-item') { if (!below) createFromCommandMenu(undefined, panel, query); return; }
+    if (row.target.startsWith('shortcut:')) runWorkspaceShortcut(row.target.slice('shortcut:'.length) as Parameters<typeof runWorkspaceShortcut>[0]);
+  };
   /** A change to one link lands on the newest revision while that link is still the one the person chose; other writes in between never refuse it. */
   const applyToLink = async (seen: GraphLink, commands: WorkspaceCommand[]) => {
     for (let attempt = 0; ; attempt++) {
@@ -862,6 +881,10 @@ export function WorkspaceMap() {
       rail.clear();
       if (below) { if (!mirrorBelow) return false; undermapSearch.current?.focus(); } else setMapFindOpen(true);
     },
+    'command.menu': () => {
+      if (!snapshot || travelling) return false;
+      rail.clear(); setMapFindOpen(false); setCommandMenu({ query: '' });
+    },
     'settings.open': () => { setSessionListView(undefined); setSettingsOpen(true); },
     'rail.settings': () => { setSessionListView(undefined); setSettingsOpen(true); },
     'shortcuts.help': () => { setControlsOpen(old => !old); },
@@ -943,6 +966,7 @@ export function WorkspaceMap() {
     {snapshot && !below && mapFindOpen && <div className="below-bar map-find-bar"><FindField label="Find on map" listLabel="Items on map" placeholder="Find an item and open it…"
       empty={query => `Nothing on the map matches “${query}”.`} shortcut={shortcutKey('map.find')} search={searchOnMap}
       pick={id => { setEditor(undefined); revealNode(id, 'centred'); }} idle={recentlyOpened} transient={{ close: () => setMapFindOpen(false) }} /></div>}
+    {snapshot && commandMenu && <CommandMenu nodes={() => snapshotRef.current?.state.nodes ?? []} recent={() => viewRef.current?.recentItems ?? []} initialQuery={commandMenu.query} pick={runCommandMenu} close={() => setCommandMenu(undefined)} />}
     {snapshot && below && !layerGraph.nodes.length && <div className="map-message below-empty"><p>Undermap is empty. Right-click an item on the map and choose <b>Send to Undermap</b>.</p></div>}
     {below && riseCharge > 0 && <div className="below-rise" aria-hidden="true"><span>Keep zooming out to rise to the map</span><i style={{ width: `${riseCharge * 100}%` }} /></div>}
     {snapshot && !below && !snapshot.state.nodes.length && !snapshot.layers?.below.items && firstRun === false && <div className="map-message"><span className="eyebrow">YOUR WORKSPACE</span><h1>A place for every project.</h1><p>Double-click anywhere to add an item · right-click for more</p><button onClick={createProject}>Create your first project</button><button onClick={() => toggleFirstRun(true)}>Guide me through my first session</button></div>}
@@ -998,7 +1022,7 @@ export function WorkspaceMap() {
         else if (action.id.startsWith('field:')) { const [, key, option = action.value] = action.id.split(':'); if (key && option && selected && selectedResource) run([{ type: 'item.update', id: selected.id, data: { ...selectedResource.data, [key]: option } }]); }
         else menuAction(action.id);
       }} onHighlight={setMenuHighlight} close={() => setEditor(undefined)} />}
-    {editor && editor.mode !== 'menu' && snapshot && plugins && settings && <InlineEditor key={`${editor.mode}:${editor.nodeId ?? ''}:${editor.position.x}:${editor.position.y}`} editor={editor} state={withUndermap ?? snapshot.state} plugins={plugins} quickIds={settings.value.quickItemTypes} capabilities={capabilities} save={apply} close={() => setEditor(undefined)}
+    {editor && editor.mode !== 'menu' && snapshot && plugins && settings && <InlineEditor key={`${editor.mode}:${editor.nodeId ?? ''}:${editor.position.x}:${editor.position.y}`} editor={editor} state={withUndermap ?? snapshot.state} plugins={plugins} quickIds={settings.value.quickItemTypes} capabilities={capabilities} save={apply} close={() => setEditor(undefined)} back={editor.fromCommandMenu && (() => { setEditor(undefined); setCommandMenu(editor.fromCommandMenu); })}
       writeInPlace={below ? undefined : pluginId => writeInPlace(pluginId, editor)} ground={editor.ground ? menuActions : undefined} act={menuAction} />}
   </section></RailContext.Provider>;
 }

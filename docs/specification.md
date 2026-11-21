@@ -162,6 +162,25 @@ project. Arrows and Enter or a click pick one: the bar closes, the map slides to
 at the current zoom and only then opens it, and Escape then closes the view as usual. Escape or leaving the field
 closes the bar without opening anything. On the Undermap ⌘F focuses its own find field.
 
+**MAP-34 — Command menu.** ⌘K (a workspace shortcut, ignored in text fields and terminals) opens
+the command menu: a panel at the top centre over a faint scrim, with one focused field. Before
+anything is typed it lists, under "Recently opened", up to five items from `view.recentItems`
+still on the map, then every command. Typing lists, in this order and each under its heading, the
+items on the map that hold every word (as MAP-33 finds them), the projects on the map whose title
+holds every word, and the commands whose name holds every word. Commands are the creations a
+person starts most (**New item…** opens the item picker and **New project…** the project form, each where
+the menu panel stood: the form's top centre at the panel's, the ring centred just below the panel's top; the new
+item lands on the map under that point) and the map and app actions of the shortcut registry, each with its
+key: Needs me, to-dos, reminders, GitHub inbox, Actions while shown, Undermap and back, map
+overview, find on map, zoom, Settings and Controls. Keys that only work inside an open view and
+the menu itself are not commands. Arrows move through every row across headings, Enter or a
+click picks one, and the menu closes before the pick runs: an item flies there and opens as in
+MAP-33, a project flies there and selects it, a command runs as its key would. Going back from the first layer of a form the menu opened (Escape or a right-click on
+**New project…**'s form or **New item…**'s picker) closes it and reopens the menu with the query kept;
+a created item or project closes both. Escape, ⌘K again
+or a click outside closes the menu without running anything; with nothing matching it says so
+and Enter does nothing. ⌘F stays find only (MAP-33).
+
 **MAP-19 — Independent expanded-view movement.** Drag anywhere on the expanded item's menu bar (including status, directory, provider/model text and empty space; excluding buttons and other interactive controls)
 to move its open view in screen space, without moving or resizing the map bubble,
 rewriting graph/camera state, rearranging neighbors or changing its connections.
@@ -614,7 +633,7 @@ count the hotbar slots from the top and act as a click on that slot: **1** Needs
 from the rail's slot list (`rail-slots.ts`), so a slot added there takes the next
 number (nine at most; **0** resets zoom). **N** and **,** still act on the Needs me
 and Settings slots. **T** toggles the
-to-do list, **U** travels to Undermap and back, **/** focuses the Undermap's find field while below (MAP-18), **+ / − / 0** zoom in,
+to-do list, **U** travels to Undermap and back, **/** focuses the Undermap's find field while below (MAP-18), **⌘K** opens the command menu (MAP-34), **+ / − / 0** zoom in,
 out and to 100%, and **?** opens a Controls card that lists every
 key from the same registry (Escape closes it). Keys an item view handles while it has
 focus are listed there under Views: **[** folds or shows a rollout's jobs rail, and **⌘E**
