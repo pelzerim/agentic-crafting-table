@@ -7,6 +7,8 @@ import { ITEM_GAP, layoutFootprints } from '../../src/graph/movement.ts';
 import { overlaps } from '../../src/graph/spatial.ts';
 import { isOffMap } from '../../src/graph/archive.ts';
 import type { SpatialBox } from '../../src/graph/spatial.ts';
+import { DEFAULT_BOARD, boardList } from '../../src/graph/boards.ts';
+import type { BoardRecord } from '../../src/graph/boards.ts';
 
 /** Map undo (MAP-34): steps live per window, in memory, and are gone on restart. */
 export const UNDO_LIMIT = 50;
@@ -15,14 +17,14 @@ export const UNDO_ACTOR = { kind: 'user', id: 'map-undo' } as const;
 type Position = { x: number; y: number };
 type Link = WorkspaceState['links'][number];
 type ItemSize = NonNullable<WorkspaceState['nodes'][number]['mapSize']>;
-/** `size` is the resolved preset, `mapSize` the one the item itself holds (absent while it follows the default). */
-export interface ItemSnap { position: Position; projectId: string | null; size?: ItemSize; mapSize?: ItemSize; mapDimensions?: { width: number; height: number }; archived: boolean }
+/** `size` is the resolved preset, `mapSize` the one the item itself holds (absent while it follows the default); `board` is absent on the default board. */
+export interface ItemSnap { position: Position; projectId: string | null; board?: string; size?: ItemSize; mapSize?: ItemSize; mapDimensions?: { width: number; height: number }; archived: boolean }
 /** The plot fields a step can change; `name` is absent while the plot shows its local name. */
 export interface PlotSnap { id: string; projectId: string; name?: string; generated: boolean; color: string; chosenColor?: string; pinnedMemberIds: string[]; locked: boolean; lockPinnedIds?: string[] }
 export interface UndoStep {
   label: string;
-  /** `members`: a project's items while archived, at most UNDO_MEMBER_CAP; archiving it again needs the same ones. */
-  items: { id: string; before: ItemSnap; after: ItemSnap; members?: string[] }[];
+  /** `members`: a project's items while archived, at most UNDO_MEMBER_CAP, needed to archive it again; `memberState`: its items around a board move, needed to move it back. */
+  items: { id: string; before: ItemSnap; after: ItemSnap; members?: string[]; memberState?: { before: string; after: string } }[];
   links: { before?: Link; after?: Link }[];
   /** `before` is absent for a plot the step created, `after` for one it removed. */
   plots: { id: string; before?: PlotSnap; after?: PlotSnap }[];
@@ -30,6 +32,8 @@ export interface UndoStep {
   anchors?: { id: string; position: Position }[];
   /** [moved item, item it overlapped before the step]; a moved item with no pair here is never placed onto another. */
   pairs?: [string, string][];
+  /** Boards the step created, renamed or deleted. */
+  boards?: { id: string; before?: BoardRecord; after?: BoardRecord }[];
 }
 export const UNDO_ANCHOR_CAP = 500, UNDO_PAIR_CAP = 1000, UNDO_MEMBER_CAP = 2000;
 /** Only the plot fields a step changed; `null` clears one, `create` brings back a plot the step made. */
@@ -48,7 +52,7 @@ export interface Reversal {
   reverted: number;
   skipped: number;
 }
-const ITEM_FIELDS = ['position', 'projectId', 'size', 'mapSize', 'mapDimensions', 'archived'] as const;
+const ITEM_FIELDS = ['position', 'projectId', 'board', 'size', 'mapSize', 'mapDimensions', 'archived'] as const;
 const PLOT_FIELDS = ['projectId', 'name', 'generated', 'color', 'chosenColor', 'pinnedMemberIds', 'locked', 'lockPinnedIds'] as const;
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const near = (a: Position | undefined, b: Position) => a !== undefined && Math.abs(a.x - b.x) < .5 && Math.abs(a.y - b.y) < .5;
@@ -57,8 +61,12 @@ export interface SnapContext { registry: ResourcePluginRegistry; sizes?: ItemMap
 export function itemSnap(node: WorkspaceState['nodes'][number], state: Pick<WorkspaceState, 'resources'>, context: SnapContext): ItemSnap {
   const record = node.resourceId ? state.resources.find(resource => resource.id === node.resourceId) : undefined;
   const size = record && !node.mapDimensions ? resolveMapSize(node, record, context.registry.get(record.pluginId), context.sizes).size as ItemSize : undefined;
-  return { position: node.position, projectId: node.projectId ?? null, ...size ? { size } : {}, ...node.mapSize && !node.mapDimensions ? { mapSize: node.mapSize } : {}, ...node.mapDimensions ? { mapDimensions: node.mapDimensions } : {},
+  return { position: node.position, projectId: node.projectId ?? null, ...node.board && node.board !== DEFAULT_BOARD ? { board: node.board } : {}, ...size ? { size } : {}, ...node.mapSize && !node.mapDimensions ? { mapSize: node.mapSize } : {}, ...node.mapDimensions ? { mapDimensions: node.mapDimensions } : {},
     archived: Boolean(node.archivedAt) };
+}
+/** A project's items and their map state, board aside, as one comparable value. */
+function memberState(state: Pick<WorkspaceState, 'nodes' | 'resources'>, id: string, context: SnapContext) {
+  return JSON.stringify(state.nodes.filter(node => node.projectId === id).sort((a, b) => a.id < b.id ? -1 : 1).map(node => { const { board: _, ...snap } = itemSnap(node, state, context); return [node.id, snap]; }));
 }
 export function plotSnap(plot: PlotView): PlotSnap {
   return { id: plot.id, projectId: plot.projectId, ...plot.source === 'local' ? {} : { name: plot.name }, generated: plot.source === 'generated', color: plot.color,
@@ -77,17 +85,22 @@ export function commandSubjects(commands: readonly WorkspaceCommand[]): Set<stri
 }
 
 /** What one commit changed; an item it did not name, and whose project stayed, records only its position. */
-export function buildUndoStep(label: string, before: Pick<WorkspaceState, 'nodes' | 'resources' | 'links'>, after: Pick<WorkspaceState, 'nodes' | 'resources' | 'links'>, context: SnapContext,
+type Mapped = Pick<WorkspaceState, 'nodes' | 'resources' | 'links'> & { boards?: readonly BoardRecord[] };
+export function buildUndoStep(label: string, before: Mapped, after: Mapped, context: SnapContext,
   plots: { before: readonly PlotSnap[]; after: readonly PlotSnap[] } = { before: [], after: [] }, named?: ReadonlySet<string>): UndoStep | undefined {
   const earlier = new Map(before.nodes.map(node => [node.id, node]));
+  // Archived items a board deletion rehomed go back with the board.
+  const gone = new Set(boardList(before).map(board => board.id).filter(id => !boardList(after).some(board => board.id === id)));
   const items = after.nodes.flatMap(node => {
     const old = earlier.get(node.id);
     if (!old) return [];
-    const from = itemSnap(old, before, context), to = itemSnap(node, after, context);
-    if (named && !named.has(node.id) && same(from.projectId, to.projectId)) return same(from.position, to.position) ? [] : [{ id: node.id, before: { ...to, position: from.position }, after: to }];
+    const from = itemSnap(old, before, context), to = itemSnap(node, after, context), rehomed = !node.projectId && gone.has(from.board ?? DEFAULT_BOARD);
+    if (named && !named.has(node.id) && !rehomed && same(from.projectId, to.projectId)) return same(from.position, to.position) ? [] : [{ id: node.id, before: { ...to, position: from.position }, after: to }];
     if (!ITEM_FIELDS.some(field => !same(from[field], to[field]))) return [];
     const members = !node.resourceId && from.archived !== to.archived ? (to.archived ? after : before).nodes.filter(member => member.projectId === node.id).map(member => member.id).sort() : undefined;
-    return [{ id: node.id, before: from, after: to, ...members && members.length <= UNDO_MEMBER_CAP ? { members } : {} }];
+    const boarded = !node.resourceId && !same(from.board, to.board) && after.nodes.filter(member => member.projectId === node.id).length <= UNDO_MEMBER_CAP;
+    return [{ id: node.id, before: from, after: to, ...members && members.length <= UNDO_MEMBER_CAP ? { members } : {},
+      ...boarded ? { memberState: { before: memberState(before, node.id, context), after: memberState(after, node.id, context) } } : {} }];
   });
   const linksBefore = new Map(before.links.map(link => [link.id, link])), linksAfter = new Map(after.links.map(link => [link.id, link]));
   const links = [...new Set([...linksBefore.keys(), ...linksAfter.keys()])].flatMap(id => same(linksBefore.get(id), linksAfter.get(id)) ? [] : [{ before: linksBefore.get(id), after: linksAfter.get(id) }]);
@@ -97,7 +110,10 @@ export function buildUndoStep(label: string, before: Pick<WorkspaceState, 'nodes
     return old && now && PLOT_FIELDS.every(field => same(old[field], now[field])) ? [] : [{ id, ...old ? { before: old } : {}, ...now ? { after: now } : {} }];
   });
   const { anchors, pairs } = overlapPairs(before, context, items);
-  return items.length || links.length || plotChanges.length ? { label, items, links, plots: plotChanges, ...pairs.length ? { anchors, pairs } : {} } : undefined;
+  const boardsBefore = new Map(boardList(before).map(board => [board.id, board])), boardsAfter = new Map(boardList(after).map(board => [board.id, board]));
+  const boards = [...new Set([...boardsBefore.keys(), ...boardsAfter.keys()])].flatMap(id => same(boardsBefore.get(id), boardsAfter.get(id)) ? []
+    : [{ id, ...boardsBefore.has(id) ? { before: boardsBefore.get(id)! } : {}, ...boardsAfter.has(id) ? { after: boardsAfter.get(id)! } : {} }]);
+  return items.length || links.length || plotChanges.length || boards.length ? { label, items, links, plots: plotChanges, ...pairs.length ? { anchors, pairs } : {}, ...boards.length ? { boards } : {} } : undefined;
 }
 
 /** Overlaps of each moved item's old footprint (an older layout Clear overlaps repaired); an item past the caps records none. */
@@ -130,22 +146,23 @@ export function clearMapSizes<T extends Pick<WorkspaceState, 'nodes'>>(state: T,
 }
 
 /** Item fields an undo guards and restores together. */
-const GROUPS = { position: ['position'], projectId: ['projectId'], size: ['size', 'mapSize', 'mapDimensions'], archived: ['archived'] } as const satisfies Record<string, readonly (keyof ItemSnap)[]>;
+const GROUPS = { position: ['position'], projectId: ['projectId'], board: ['board'], size: ['size', 'mapSize', 'mapDimensions'], archived: ['archived'] } as const satisfies Record<string, readonly (keyof ItemSnap)[]>;
 type Group = keyof typeof GROUPS;
 const GROUP_NAMES = Object.keys(GROUPS) as Group[];
 /** Groups that place an item on the map, where it could land on another item. */
-const placing = (group: Group, to: ItemSnap) => group === 'position' || group === 'size' || (group === 'archived' && !to.archived);
+const placing = (group: Group, to: ItemSnap) => group === 'position' || group === 'board' || group === 'size' || (group === 'archived' && !to.archived);
 type Footprints = (state: Pick<WorkspaceState, 'nodes' | 'resources'>) => SpatialBox[];
 
 /** Undo or redo of a step on the current map: per-field guards, and items outside it are never pushed. */
-export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'nodes' | 'resources' | 'links'>, currentPlots: readonly PlotSnap[], context: SnapContext, direction: 'undo' | 'redo',
+export function planReversal(step: UndoStep, current: Mapped, currentPlots: readonly PlotSnap[], context: SnapContext, direction: 'undo' | 'redo',
   simulate: (commands: WorkspaceCommand[]) => Pick<WorkspaceState, 'nodes' | 'resources'>, footprints: Footprints): Reversal {
   const back = direction === 'undo', nodes = new Map(current.nodes.map(node => [node.id, node]));
   const eligible = new Map<string, Set<Group>>(), skipped = new Set<string>();
   for (const change of step.items) {
     const from = back ? change.after : change.before, node = nodes.get(change.id), now = node && itemSnap(node, current, context);
     const changed = GROUP_NAMES.filter(group => GROUPS[group].some(field => !same(change.before[field], change.after[field])));
-    const ok = now ? changed.filter(group => GROUPS[group].every(field => same(now[field], from[field]))) : [];
+    // An item since taken to another board is out of reach: a reversal never changes a board other than the step's.
+    const ok = now && same(now.board, from.board) ? changed.filter(group => GROUPS[group].every(field => same(now[field], from[field]))) : [];
     if (ok.length < changed.length) skipped.add(change.id);
     if (ok.length) eligible.set(change.id, new Set(ok));
   }
@@ -169,10 +186,26 @@ export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'node
     const members = step.items.find(change => change.id === id)!.members;
     if (!members || !same(members, current.nodes.filter(node => node.projectId === id).map(node => node.id).sort())) drop(id, ['archived']);
   }
+  // A project changes board back only with the items it took, as the step left them; its items then stay too.
+  for (const [id, groups] of [...eligible]) {
+    if (!groups.has('board') || nodes.get(id)?.resourceId) continue;
+    const recorded = step.items.find(change => change.id === id)!.memberState;
+    if (recorded?.[back ? 'after' : 'before'] === memberState(current, id, context)) continue;
+    drop(id);
+    for (const change of step.items) if (change.before.projectId === id && change.after.projectId === id) drop(change.id);
+  }
+  // Boards still as the step left them come back first when they exist after it, and go last when they do not.
+  const known = new Map(boardList(current).map(board => [board.id, board])), opened: WorkspaceCommand[] = [], closed: WorkspaceCommand[] = [], appliedBoards: NonNullable<UndoStep['boards']> = [];
+  for (const change of step.boards ?? []) {
+    const from = back ? change.after : change.before, to = back ? change.before : change.after;
+    if (!same(known.get(change.id), from)) { skipped.add(`board:${change.id}`); continue; }
+    if (to) opened.push({ type: 'board.save', board: to }); else closed.push({ type: 'board.delete', id: change.id });
+    appliedBoards.push(change);
+  }
   // Items placed exactly, before any simulation: nodes.move refuses a request whose positions overlap.
   const exact = new Set<string>();
   const build = (only?: ReadonlySet<string>) => {
-    const restore: WorkspaceCommand[] = [], attach: WorkspaceCommand[] = [], resize: WorkspaceCommand[] = [], archive: WorkspaceCommand[] = [];
+    const restore: WorkspaceCommand[] = [], attach: WorkspaceCommand[] = [], resize: WorkspaceCommand[] = [], archive: WorkspaceCommand[] = [], boards: WorkspaceCommand[] = [];
     const positions: { id: string; position: Position }[] = [];
     for (const [id, groups] of eligible) {
       if (only && !only.has(id)) continue;
@@ -180,9 +213,10 @@ export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'node
       if (groups.has('archived')) (to.archived ? archive : restore).push({ type: to.archived ? 'node.archive' : 'node.restore', id });
       if (groups.has('projectId')) attach.push({ type: 'node.attach', id, projectId: to.projectId });
       if (groups.has('size')) resize.push(to.mapDimensions ? { type: 'node.resize', id, dimensions: to.mapDimensions, position: groups.has('position') ? to.position : node.position } : { type: 'node.resize', id, size: to.size });
-      if (groups.has('position') && !exact.has(id)) positions.push({ id, position: to.position });
+      if (groups.has('board')) boards.push({ type: 'node.move', id, board: to.board ?? DEFAULT_BOARD, ...groups.has('position') ? { position: to.position } : {} });
+      else if (groups.has('position') && !exact.has(id)) positions.push({ id, position: to.position });
     }
-    return [...restore, ...attach, ...resize, ...positions.length ? [{ type: 'nodes.move' as const, positions }] : [], ...archive];
+    return [...opened, ...restore, ...attach, ...boards, ...resize, ...positions.length ? [{ type: 'nodes.move' as const, positions }] : [], ...archive];
   };
   // An item goes back onto what it overlapped only while every one of those is in place or placed with it.
   const anchored = new Set((step.anchors ?? []).filter(anchor => near(nodes.get(anchor.id)?.position, anchor.position)).map(anchor => anchor.id));
@@ -268,17 +302,26 @@ export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'node
     const groups = eligible.get(change.id);
     if (!groups) return [];
     const fields = [...groups].flatMap(group => GROUPS[group]);
-    return [{ id: change.id, before: { ...change.after, ...Object.fromEntries(fields.map(field => [field, change.before[field]])) } as ItemSnap, after: change.after, ...change.members ? { members: change.members } : {} }];
+    return [{ id: change.id, before: { ...change.after, ...Object.fromEntries(fields.map(field => [field, change.before[field]])) } as ItemSnap, after: change.after, ...change.members ? { members: change.members } : {}, ...change.memberState ? { memberState: change.memberState } : {} }];
   });
-  const reverted = appliedItems.length + appliedLinks.length + appliedPlots.length;
+  // A board delete the map refuses now (it holds items again) is left out.
+  if (closed.length && !runs([...items, ...links, ...closed])) {
+    for (const command of closed.splice(0)) { const key = (command as { id: string }).id; appliedBoards.splice(appliedBoards.findIndex(change => change.id === key), 1); skipped.add(`board:${key}`); }
+  }
+  const reverted = appliedItems.length + appliedLinks.length + appliedPlots.length + appliedBoards.length;
   const unsize = [...eligible].filter(([id, groups]) => groups.has('size') && !toOf.get(id)!.mapSize && !toOf.get(id)!.mapDimensions).map(([id]) => id);
-  return { commands: [...items, ...links], place: place(), unsize, plots, removePlots, reverted, skipped: skipped.size,
-    ...reverted ? { applied: { label: step.label, items: appliedItems, links: appliedLinks, plots: appliedPlots, ...step.pairs ? { anchors: step.anchors ?? [], pairs: step.pairs } : {} } } : {} };
+  return { commands: [...items, ...links, ...closed], place: place(), unsize, plots, removePlots, reverted, skipped: skipped.size,
+    ...reverted ? { applied: { label: step.label, items: appliedItems, links: appliedLinks, plots: appliedPlots, ...step.pairs ? { anchors: step.anchors ?? [], pairs: step.pairs } : {}, ...appliedBoards.length ? { boards: appliedBoards } : {} } } : {} };
 }
 
 /** What a person's own commit did, for their undo history. */
 export type Receipt = Omit<UndoStep, 'label'>;
 
+/** The board a reversal lands on: its first item's, else a board it renames or brings back. */
+export function stepBoard(step: UndoStep, direction: 'undo' | 'redo'): string | undefined {
+  const item = step.items[0], change = step.boards?.find(board => direction === 'undo' ? board.before : board.after);
+  return item ? (direction === 'undo' ? item.before : item.after).board ?? DEFAULT_BOARD : change?.id;
+}
 /** The notice after an undo or redo. */
 export function reversalNotice(step: UndoStep, reversal: Pick<Reversal, 'reverted' | 'skipped'>, direction: 'undo' | 'redo') {
   const verb = direction === 'undo' ? 'Undid' : 'Redid';

@@ -5,7 +5,7 @@ import { isMuted, mutedProjectIds } from '../../src/graph/mute.ts';
 import { blockedBy, blockerList, blockerName } from '../../src/graph/blocking.ts';
 import { patchedData, resourceReference } from '../../src/resource-plugins/views.ts';
 import { createHash, randomUUID } from 'node:crypto';
-import { canonical, CommandIdConflict, MAXIMUM_COMMANDS_PER_ENVELOPE } from '../core/control.ts';
+import { canonical, CommandIdConflict, creationTarget, MAXIMUM_COMMANDS_PER_ENVELOPE } from '../core/control.ts';
 import { attentionNote } from '../../src/graph/attention.ts';
 import type { WorkspaceControl, WorkspaceCommand, CommandEnvelope, WorkspaceState } from '../core/control.ts';
 import { creationConnections, creationNear, requestConnections } from '../core/resource-creation.ts';
@@ -19,6 +19,7 @@ import type { SqliteStore } from './sqlite-store.ts';
 import { inBackground, knownBudget } from '../provider-runtime/request-budget.ts';
 import { OUTCOME_UNKNOWN, PROVIDER_ACTION_MS } from './protocol.ts';
 import { findById, nodesOfResource } from '../../src/graph/lookup.ts';
+import { boardOf } from '../../src/graph/boards.ts';
 
 export const stableUuid = (seed: string) => {
   const hex = createHash('sha256').update(seed).digest('hex');
@@ -239,7 +240,8 @@ export class ResourceCoordinator {
         if (!prepared) {
           const state = await this.control.read(), resource = resolved.resource;
           const { matches, commands } = this.resolution(state, resource, resolved.snapshot);
-          const reusable = state.nodes.filter(node => matches.some(candidate => candidate.id === node.resourceId) && node.projectId === request.projectId && !node.archivedAt);
+          const { board } = creationTarget(state, request, creationNear(request).near);
+          const reusable = state.nodes.filter(node => matches.some(candidate => candidate.id === node.resourceId) && node.projectId === request.projectId && boardOf(node) === board && !node.archivedAt);
           /** An item on the map wins; one only in Undermap is brought back to the map rather than left below. */
           const existing = reusable.find(node => !node.belowAt) ?? reusable[0];
           const nodeId = existing?.id ?? request.nodeId;

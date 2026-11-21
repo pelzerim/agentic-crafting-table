@@ -3,7 +3,7 @@ import type { GraphLink, GraphNode } from './graph.ts';
 /** The map and the Undermap below it (MAP-18). */
 export type MapLayer = 'map' | 'below';
 /** What a layer's snapshot says about the Undermap without carrying it: the items below and the projects drawn there. */
-export interface LayerSummary { below: { items: number; projects: string[]; working: number } }
+export interface LayerSummary { below: { items: number; projects: string[]; working: number; byBoard?: Record<string, number> } }
 interface LayeredState<N extends GraphNode, L extends GraphLink, R extends { id: string }> { nodes: N[]; links: L[]; resources: R[]; todos: readonly { nodeIds: readonly string[] }[] }
 
 /** Below the map, directly or through its project, and not archived; one pass over the projects keeps it linear. */
@@ -25,7 +25,11 @@ export function layerNodes<N extends GraphNode>(nodes: readonly N[], layer: MapL
 export function belowSummary(nodes: readonly (GraphNode & { activity?: string })[]): LayerSummary['below'] {
   const below = belowTest(nodes);
   const items = nodes.filter(node => node.resourceId && below(node));
-  return { items: items.length, working: items.filter(node => node.activity === 'working').length, projects: layerNodes(nodes, 'below').filter(node => !node.resourceId).map(node => node.id).sort() };
+  const byBoard: Record<string, number> = {};
+  for (const node of items) if (node.board) byBoard[node.board] = (byBoard[node.board] ?? 0) + 1;
+  return { items: items.length, working: items.filter(node => node.activity === 'working').length, projects: layerNodes(nodes, 'below').filter(node => !node.resourceId).map(node => node.id).sort(),
+    // Items off the default board, per board, so each board's Undermap names its own count.
+    ...Object.keys(byBoard).length ? { byBoard } : {} };
 }
 
 /** The workspace as a subscriber on one layer receives it. The map leaves out the items below except those a node it keeps

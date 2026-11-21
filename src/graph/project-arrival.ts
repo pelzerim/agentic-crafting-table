@@ -5,6 +5,7 @@ import { isDrawn } from './archive.ts';
 import { ITEM_GAP } from './movement.ts';
 import { NEIGHBORHOOD_PADDING } from './project-neighborhoods.ts';
 import { boundsOf, field } from './undermap.ts';
+import { boardOf, boardless } from './boards.ts';
 
 type Point = GraphNode['position'];
 const SEARCH_STEP = ITEM_GAP * 2;
@@ -17,9 +18,9 @@ const SEARCH_STEP = ITEM_GAP * 2;
  * above, stepping outward) or onto an empty project's anchor. Nothing else moves,
  * and the block never lands inside another project's neighbourhood. With `outside` the block
  * leaves the project instead: it lands beside the project's items but off its neighbourhood. */
-export function arrivalPlacement(nodes: readonly GraphNode[], lead: string, members: readonly string[], projectId: string, footprint: (node: GraphNode) => SpatialBox,
+export function arrivalPlacement(nodes: readonly GraphNode[], lead: string, members: readonly string[], projectId: string, boxOf: (node: GraphNode) => SpatialBox,
   options: { stacked?: ReadonlySet<string>; kept?: ReadonlySet<string>; padding?: number; outside?: boolean } = {}): Map<string, Point> {
-  const padding = options.padding ?? NEIGHBORHOOD_PADDING, byId = new Map(nodes.map(node => [node.id, node]));
+  const padding = options.padding ?? NEIGHBORHOOD_PADDING, byId = new Map(nodes.map(node => [node.id, node])), footprint = boardless(boxOf);
   const first = byId.get(lead), target = byId.get(projectId);
   if (!first || !target) throw new Error('Node does not exist');
   const moving = [first, ...members.filter(id => id !== lead).flatMap(id => byId.get(id) ?? [])], ids = new Set(moving.map(node => node.id));
@@ -29,7 +30,7 @@ export function arrivalPlacement(nodes: readonly GraphNode[], lead: string, memb
     const box = footprint(node), bounds = boundsOf(block);
     block.push({ ...box, x: block[0].x, y: bounds.bottom + ITEM_GAP + box.height / 2 });
   }
-  const visible = nodes.filter(node => !ids.has(node.id) && isDrawn(node, nodes));
+  const visible = nodes.filter(node => !ids.has(node.id) && isDrawn(node, nodes) && boardOf(node) === boardOf(target));
   const items = visible.filter(node => node.resourceId), owned = (id: string) => items.filter(node => node.projectId === id).map(footprint);
   const cluster = owned(projectId);
   const others = (node: GraphNode) => !node.resourceId && (options.outside || node.id !== projectId);

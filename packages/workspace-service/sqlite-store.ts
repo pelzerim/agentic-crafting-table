@@ -11,7 +11,7 @@ import { currentProcessStart, isProcessRunning } from '../platform/process-ident
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { canonical, CommandIdConflict, emptyState, receiptRevision, RevisionConflict, stateSchema, viewSchema } from '../core/control.ts';
+import { canonical, CommandIdConflict, emptyState, keepBoards, receiptRevision, RevisionConflict, stateSchema, viewSchema } from '../core/control.ts';
 import type { CommandEnvelope, CommandResult, WorkspaceCommand, WorkspaceState, WorkspaceStore } from '../core/control.ts';
 import type { RecoveryState } from './lifecycle.ts';
 import { attentionItems, nodeAttentionReasons } from '../../src/graph/attention.ts';
@@ -28,6 +28,7 @@ import type { StandupEvidence } from '../core/standup.ts';
 import { migrateTodoHorizons } from './todo-horizon-migration.ts';
 import { migrateValidationLinks } from './validation-link-migration.ts';
 import { findById } from '../../src/graph/lookup.ts';
+import { boardList } from '../../src/graph/boards.ts';
 
 /** Marks settings saved before package settings existed, so the values they relied on can be kept. */
 const SETTINGS_BEFORE_PLUGINS = 'settings:before-plugin-settings';
@@ -111,6 +112,9 @@ export const migrations = [
   // Pins a lock added (MAP-24): JSON array added once as the `lock_pinned_ids` column (`PLOT_LOCK_PINS_VERSION`), so unlock
   // removes only those; NULL (old rows) means the lock added none.
   `SELECT 1; -- plots.lock_pinned_ids`,
+  // Boards: one row per board in tab order. A node without a board is on Main, so no node row changes.
+  `CREATE TABLE IF NOT EXISTS boards (id TEXT PRIMARY KEY, ordinal INTEGER NOT NULL UNIQUE, body TEXT NOT NULL);
+   INSERT OR IGNORE INTO boards(id, ordinal, body) VALUES ('main', 0, '{"id":"main","name":"Main"}');`,
 ] as const;
 const CONFLICTS_KEPT = 1000, CONFLICT_LANDED_SHOWN = 20;
 export interface RevisionConflictRecord { at: string; actor: string; commands: CommandSubject[]; expected: number; current: number; landed: { revision: number; actor: string; commands: CommandSubject[] }[] }
@@ -1054,7 +1058,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     const metadata = this.db.prepare('SELECT revision, view FROM workspace WHERE id = 1').get()!;
     const records = (table: string, order: string) => this.db.prepare(`SELECT body FROM ${table} ORDER BY ${order}`).all().map(row => decode(row.body));
     return stateSchema.parse({ version: 1, revision: metadata.revision, view: decode(metadata.view),
-      resources: records('resources', 'rowid'), nodes: records('nodes', 'ordinal'), links: records('links', 'ordinal'), todos: records('todos', 'ordinal') });
+      resources: records('resources', 'rowid'), nodes: records('nodes', 'ordinal'), links: records('links', 'ordinal'), todos: records('todos', 'ordinal'), boards: records('boards', 'ordinal') });
   }
 
   private writeState(input: WorkspaceState): WorkspaceState {
@@ -1074,6 +1078,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
     this.writeRows('nodes', ['resource_id', 'project_id', 'ordinal', 'body'], state.nodes.map((record, i) => [record.id, record.resourceId ?? null, record.projectId ?? null, i, JSON.stringify(record)]));
     this.writeRows('links', ['source_id', 'target_id', 'ordinal', 'body'], state.links.map((record, i) => [record.id, record.sourceId, record.targetId, i, JSON.stringify(record)]));
     this.writeRows('todos', ['ordinal', 'body'], state.todos.map((record, i) => [record.id, i, JSON.stringify(record)]));
+    this.writeRows('boards', ['ordinal', 'body'], boardList(state).map((record, i) => [record.id, i, JSON.stringify(record)]));
     this.db.prepare('UPDATE workspace SET revision = ?, view = ? WHERE id = 1').run(state.revision, JSON.stringify(state.view));
     return state;
   }
@@ -1214,6 +1219,7 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       if (this.db.prepare('SELECT digest FROM imports WHERE digest = ?').get(digest)) return { imported: false, state: this.readState() };
       const before = this.readState();
       if (before.revision || before.nodes.length || before.resources.length || before.todos.length || before.links.length) throw new Error('Import requires an empty workspace');
+      keepBoards(state);
       this.writeState(state);
       this.db.prepare('INSERT INTO imports(digest, imported_at) VALUES (?, ?)').run(digest, new Date().toISOString());
       this.appendEvent('workspace.changed', state.revision, `import:${digest}`);

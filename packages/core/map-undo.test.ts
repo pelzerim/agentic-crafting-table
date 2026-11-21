@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { WorkspaceControl, MemoryStore, PERSON_ACTOR } from './control.ts';
-import { UNDO_ACTOR, UndoHistory, planReversal } from './map-undo.ts';
+import { UNDO_ACTOR, UndoHistory, planReversal, stepBoard } from './map-undo.ts';
 import type { UndoStep } from './map-undo.ts';
 import { layoutFootprints } from '../../src/graph/movement.ts';
 
@@ -152,4 +152,53 @@ test('undo never puts an item back into a project sent to Undermap since', async
   await send([{ type: 'node.below', id: 'acme' }]);
   const undone = await revert(sent, 'undo');
   assert.deepEqual([undone.state.nodes.find(node => node.id === 'a')!.projectId, undone.skipped], ['beta', 1]);
+});
+
+test('Move to board undoes and redoes with the project\'s members, and the step names the board to show', async () => {
+  const { control, send, edit, revert } = await board();
+  await send([{ type: 'board.save', board: { id: 'side', name: 'Side' } }]);
+  const before = (await control.read()).nodes.map(node => ({ ...node.position }));
+  const moved = await edit([{ type: 'node.move', id: 'acme', board: 'side' }]);
+  const boards = (state: { nodes: { board?: string }[] }) => state.nodes.map(node => node.board);
+  assert.deepEqual(boards(await control.read()), ['side', 'side', 'side', 'side']);
+  assert.equal(stepBoard(moved, 'undo'), 'main');
+  const undone = await revert(moved, 'undo');
+  assert.deepEqual(boards(undone.state), [undefined, undefined, undefined, undefined]);
+  assert.deepEqual(undone.state.nodes.map(node => node.position), before);
+  assert.equal(stepBoard(undone.applied!, 'redo'), 'side');
+  assert.deepEqual(boards((await revert(undone.applied!, 'redo')).state), ['side', 'side', 'side', 'side']);
+});
+
+test('undoing Move to board is refused once the project gained an item since', async () => {
+  const { control, send, edit, revert } = await board();
+  await send([{ type: 'board.save', board: { id: 'side', name: 'Side' } }]);
+  const moved = await edit([{ type: 'node.move', id: 'acme', board: 'side' }]), { x, y } = at(await control.read(), 'acme');
+  await send([{ type: 'item.add', id: 'd', resourceId: 'd-r', pluginId: 'linear.ticket', title: 'd', projectId: 'acme', position: { x: x + 900, y: y + 200 }, data: { issueId: 'ACME-d' } }], AGENT);
+  const undone = await revert(moved, 'undo');
+  assert.deepEqual(undone.state.nodes.map(node => node.board), ['side', 'side', 'side', 'side', 'side']);
+  assert.equal(undone.reverted, 0);
+});
+
+test('undo never moves an item taken to another board since, even at the same spot', async () => {
+  const { control, send, edit, revert } = await board();
+  await send([{ type: 'board.save', board: { id: 'side', name: 'Side' } }, { type: 'item.add', id: 'loose', resourceId: 'loose-r', pluginId: 'linear.ticket', title: 'loose', position: { x: 2000, y: 0 }, data: { issueId: 'ACME-loose' } }]);
+  const dragged = await edit([{ type: 'node.move', id: 'loose', position: { x: 2000, y: 600 } }]);
+  await send([{ type: 'node.move', id: 'loose', board: 'side', position: { x: 2000, y: 600 } }]);
+  const undone = await revert(dragged, 'undo'), loose = undone.state.nodes.find(node => node.id === 'loose')!;
+  assert.deepEqual([loose.board, loose.position, undone.skipped], ['side', { x: 2000, y: 600 }, 1]);
+});
+
+test('undoing a board deletion brings back its archived items on it, still archived, and redo takes them off again', async () => {
+  const { control, send, edit, revert } = await board();
+  await send([{ type: 'board.save', board: { id: 'side', name: 'Side' } }]);
+  await send([{ type: 'node.move', id: 'acme', board: 'side' }]);
+  await send([{ type: 'node.archive', id: 'acme' }]);
+  const deleted = await edit([{ type: 'board.delete', id: 'side' }]);
+  const acme = (state: { nodes: { id: string; board?: string; archivedAt?: string }[] }) => { const node = state.nodes.find(entry => entry.id === 'acme')!; return [node.board, Boolean(node.archivedAt)]; };
+  assert.deepEqual(acme(await control.read()), [undefined, true]);
+  const undone = await revert(deleted, 'undo');
+  assert.deepEqual(acme(undone.state), ['side', true]);
+  assert.deepEqual(undone.state.nodes.map(node => node.board), ['side', 'side', 'side', 'side'], 'its items follow it');
+  const redone = await revert(undone.applied!, 'redo');
+  assert.deepEqual([redone.state.boards.map(entry => entry.id), acme(redone.state)], [['main'], [undefined, true]]);
 });

@@ -5,7 +5,7 @@ import { openProjectPicker, projectEmptyPoint } from './project-picker.ts';
 test('menus are scoped, short and identical through project options and keyboard access', async ({ visual: { page } }) => {
   const labels = () => page.getByRole('menuitem').allTextContents();
   await page.mouse.click(100, 650, { button: 'right' });
-  await expect(page.getByRole('menuitem')).toHaveText(['New item', 'New project', 'Open archive']);
+  await expect(page.getByRole('menuitem')).toHaveText(['New item', 'New project', 'New board…', 'Open archive']);
   await page.keyboard.press('Escape');
   const point = await projectEmptyPoint(page, 'Billing redesign');
   await page.mouse.click(point.x, point.y, { button: 'right' });

@@ -4,6 +4,7 @@ import { overlaps } from './spatial.ts';
 import { isArchived, isBelow } from './archive.ts';
 import { ITEM_GAP } from './movement.ts';
 import { NEIGHBORHOOD_PADDING } from './project-neighborhoods.ts';
+import { boardOf, boardless } from './boards.ts';
 
 type Point = GraphNode['position'];
 export interface Bounds { left: number; top: number; right: number; bottom: number }
@@ -22,7 +23,8 @@ export const field = (id: string, bounds: Bounds, padding: number): SpatialBox =
  * spot beside that project's items already below: right, below, left, then
  * above, stepping outward. A block with nothing of its project below keeps its
  * position when that is clear. Nodes already below are never moved. */
-export function belowPlacement(nodes: readonly GraphNode[], ids: readonly string[], footprint: (node: GraphNode) => SpatialBox, padding = NEIGHBORHOOD_PADDING): Map<string, Point> {
+export function belowPlacement(nodes: readonly GraphNode[], ids: readonly string[], boxOf: (node: GraphNode) => SpatialBox, padding = NEIGHBORHOOD_PADDING): Map<string, Point> {
+  const footprint = boardless(boxOf);
   const arriving = nodes.filter(node => ids.includes(node.id) && !isArchived(node, nodes) && !isBelow(node, nodes));
   const projects = new Set(arriving.filter(node => !node.resourceId).map(node => node.id));
   const groups = new Map<string, GraphNode[]>();
@@ -38,7 +40,7 @@ export function belowPlacement(nodes: readonly GraphNode[], ids: readonly string
     const moving = groups.get(key)!, movingIds = new Set(moving.map(node => node.id));
     const visible = moving.filter(node => node.resourceId && !isArchived(node, nodes));
     const block = (visible.length ? visible : moving.filter(node => !node.resourceId)).map(box);
-    const layer = nodes.filter(node => below.has(node.id) && !movingIds.has(node.id));
+    const layer = nodes.filter(node => below.has(node.id) && !movingIds.has(node.id) && boardOf(node) === boardOf(moving[0]!));
     const items = layer.filter(node => node.resourceId).map(box);
     const owned = (projectId: string) => layer.filter(node => node.resourceId && node.projectId === projectId);
     const cluster = key ? owned(key).map(box) : [];

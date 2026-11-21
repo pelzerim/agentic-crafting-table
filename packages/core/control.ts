@@ -2,6 +2,7 @@ import { TODO_CONTEXT_LIMIT, checklistContext, checklistContextFields, groupWork
 import { cardPipsSchema, indicatorsSchema } from '../../src/resource-plugins/indicators.ts';
 import { mapDimensionsSchema, resolveMapSize } from './item-map-sizes.ts';
 import type { MapLayout } from '../../src/graph/snap.ts';
+import type { MapCollisions } from '../../src/graph/spatial.ts';
 import { snapPosition } from '../../src/graph/snap.ts';
 import * as z from 'zod/v4';
 import { resourceCardinality } from '../../src/graph/resource-links.ts';
@@ -11,19 +12,22 @@ import { ITEM_GAP, layoutFootprints, moveItems, repairLayout, resizeItem } from 
 import { arrivalPlacement } from '../../src/graph/project-arrival.ts';
 import { COLUMN_KINDS } from '../../src/graph/project-column.ts';
 import { creationAnchors, creationContext, itemPlacement, projectPlacement } from '../../src/graph/creation-placement.ts';
+import type { CreationContext } from '../../src/graph/creation-placement.ts';
+import { NEIGHBORHOOD_PADDING } from '../../src/graph/project-neighborhoods.ts';
 import type { TodoContext, TodoEntry } from '../../src/graph/todos.ts';
 import { archiveNode, restoreNode, isArchived, isDrawn, isOffMap, surfaceBlocker } from '../../src/graph/archive.ts';
 import { createResourcePluginRegistry } from '../../src/resource-plugins/builtins.ts';
 import type { ResourcePluginRegistry } from '../../src/resource-plugins/registry.ts';
 import { itemFootprint, freePosition } from '../../src/graph/footprints.ts';
-import { restoreMapPositions, sendBelow } from '../../src/graph/undermap.ts';
+import { boundsOf, field, restoreMapPositions, sendBelow } from '../../src/graph/undermap.ts';
 import { localItemTitle } from '../../src/resource-plugins/generated-title.ts';
 import { fieldDefaults } from '../../src/resource-plugins/define.ts';
 import { ATTENTION_NOTE_LENGTH, attentionNote } from '../../src/graph/attention.ts';
 import { humanOnlyMessage } from '../../src/resource-plugins/host.ts';
 import { mapBadges } from '../../src/graph/badges.ts';
-import { buildUndoStep, commandSubjects } from './map-undo.ts';
+import { UNDO_ACTOR, buildUndoStep, commandSubjects } from './map-undo.ts';
 import type { Receipt } from './map-undo.ts';
+import { BOARD_LIMIT, DEFAULT_BOARD, MAIN_BOARD, boardList, boardOf } from '../../src/graph/boards.ts';
 const projectColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
 const id = z.string().trim().min(1).max(200);
@@ -49,6 +53,8 @@ const moment = z.object({ kind: z.enum(['stumble', 'bump', 'enter', 'leave']), a
 const recapSchema = z.object({ text: z.string().min(1).max(600), at: z.iso.datetime() });
 const node = z.object({
   id, title, position, resourceId: id.optional(), projectId: id.optional(),
+  /** Off the default board only; members carry their project's (`boards.ts`). */
+  board: id.optional(),
   mapSize: z.enum(ITEM_SIZES).optional(),
   mapDimensions: mapDimensionsSchema.optional(),
   acceptsContext: z.boolean().optional(), archivedAt: z.iso.datetime().optional(), belowAt: z.iso.datetime().optional(), hiddenAt: z.iso.datetime().optional(), hideLabel: z.string().trim().min(1).max(60).optional(), mutedAt: z.iso.datetime().optional(), mapPosition: position.optional(), lostProject: title.optional(),
@@ -114,9 +120,13 @@ const todo = z.object({ id, title, todoOrder: z.number().int().nonnegative().opt
 /** A to-do as a command gives it: the host alone records who wrote its context and when, when it was done or touched, and dismissals. Without `context` a save keeps what is there; an empty one clears it. */
 const todoInput = todo.omit({ contextBy: true, contextAt: true, doneAt: true, touchedAt: true, dismissed: true, horizon: true }).extend({ context: todoContextInput.optional(),
   horizon: z.enum(['next', 'later', 'inbox']).optional().describe('When the to-do is for: next (default for a new to-do) or later. A save without it keeps where the to-do is.') });
+const camera = z.object({ x: z.number().finite(), y: z.number().finite(), zoom: z.number().min(.2).max(1.35) });
+export const boardSchema = z.object({ id, name: z.string().trim().min(1).max(40), color: projectColorSchema.optional() });
 export const viewSchema = z.object({
   mode: z.enum(['workspace', 'project', 'item']).default('workspace'),
-  nodeId: id.optional(), camera: z.object({ x: z.number().finite(), y: z.number().finite(), zoom: z.number().min(.2).max(1.35) }).optional(),
+  nodeId: id.optional(), camera: camera.optional(),
+  /** The board this window shows and each board's own camera. */
+  board: id.optional(), boardCameras: z.record(id, camera).optional(),
   todosOpen: z.boolean().default(false), archive: z.boolean().default(false),
   todoOverlay: z.object({ width: z.number().min(260).max(900).optional(), height: z.number().min(160).max(1000).optional(), autoHide: z.boolean().optional(), x: z.number().finite(), y: z.number().finite(), draft: z.string().max(500).default(''), scrollTop: z.number().finite().nonnegative().default(0),
     groupByProject: z.boolean().optional() }).optional(),
@@ -139,6 +149,7 @@ export const viewSchema = z.object({
 export const stateSchema = z.object({
   version: z.literal(1), revision: z.number().int().nonnegative(),
   nodes: z.array(node), resources: z.array(resource), links: z.array(link), todos: z.array(todo), view: viewSchema,
+  boards: z.array(boardSchema).max(BOARD_LIMIT).default(() => [{ ...MAIN_BOARD }]),
 });
 export type WorkspaceState = z.infer<typeof stateSchema>;
 export const emptyState = (): WorkspaceState => stateSchema.parse({ version: 1, revision: 0, nodes: [], resources: [], links: [], todos: [], view: {} });
@@ -150,13 +161,14 @@ const createdPosition = position.optional().describe('Omit it: the item lands ne
 const near = z.array(id).max(ITEM_LINK_LIMIT + 1).optional().describe('Set by the host. Omit it.');
 /** Set by the host for an item it keeps off the map while it works (`hiddenAt`); `label` names it in Show and Hide. */
 const hidden = z.object({ label: z.string().trim().min(1).max(60) }).optional().describe('Set by the host. Omit it.');
+const createdBoard = id.optional().describe('Omit it: the item lands on the board of what it links to, else on your own board. A board id from workspace_read boards.');
 const itemCommands = <L extends z.ZodType>(link: L) => [
-  z.object({ type: z.literal('item.create'), id, resource, projectId: id.optional(), position: createdPosition, near, hidden, links: z.array(link).max(ITEM_LINK_LIMIT).optional() }),
-  z.object({ type: z.literal('item.add'), id, resourceId: id, pluginId: id, title: title.optional(), data, connectionId: id.optional(), projectId: id.optional(), position: createdPosition, near, hidden, links: z.array(link).max(ITEM_LINK_LIMIT).optional() }),
+  z.object({ type: z.literal('item.create'), id, resource, projectId: id.optional(), position: createdPosition, board: createdBoard, near, hidden, links: z.array(link).max(ITEM_LINK_LIMIT).optional() }),
+  z.object({ type: z.literal('item.add'), id, resourceId: id, pluginId: id, title: title.optional(), data, connectionId: id.optional(), projectId: id.optional(), position: createdPosition, board: createdBoard, near, hidden, links: z.array(link).max(ITEM_LINK_LIMIT).optional() }),
 ] as const;
 const otherCommands = [
   z.object({ type: z.literal('project.create'), id, title, summary: z.string().max(4000).default(''), workingDirectory: z.string().max(4096).optional(), color: projectColorSchema.optional(),
-    position: position.optional().describe('Omit it: the project lands beside your own project, clear of the others. Give one only when the user asked for a specific place.'), near }),
+    position: position.optional().describe('Omit it: the project lands beside your own project, clear of the others. Give one only when the user asked for a specific place.'), board: id.optional().describe('Omit it: the project lands on your own board.'), near }),
   z.object({ type: z.literal('item.update'), id, data }),
   z.object({ type: z.literal('item.resolve'), id, data }),
   z.object({ type: z.literal('item.bind'), id, connectionId: id }),
@@ -172,7 +184,8 @@ const otherCommands = [
     tasks: taskProgress.optional().describe('Progress of the current task list; a total of 0 clears it.'),
     bell: z.boolean().optional().describe('The session runs on another model than it started with.'), pen: z.boolean().optional().describe('The session works in a worktree of its own.'),
     moment: moment.optional().describe('A one-shot event with its time in epoch milliseconds.') }),
-  z.object({ type: z.literal('node.move'), id, position }),
+  z.object({ type: z.literal('node.move'), id, position: position.optional(), board: id.optional().describe('Moves a project or loose item to another board, its members with it. Without position it keeps its layout at the nearest clear spot there.') })
+    .refine(value => Boolean(value.position || value.board), 'Give a position or a board'),
   z.object({ type: z.literal('node.resize'), id, size: z.enum(ITEM_SIZES).optional(), dimensions: mapDimensionsSchema.optional(), position: position.optional() })
     .refine(value => Boolean(value.size) !== Boolean(value.dimensions) && (!value.position || Boolean(value.dimensions)), 'Choose a preset or dimensions; position requires dimensions'),
   z.object({ type: z.literal('nodes.move'), positions: z.array(z.object({ id, position })).min(1).max(1000) }),
@@ -197,7 +210,7 @@ const otherCommands = [
   z.object({ type: z.literal('node.title.generated'), id, title: z.string().trim().min(1).max(48), sourceTitle: title }),
   z.object({ type: z.literal('node.todo'), id, enabled: z.boolean() }),
   z.object({ type: z.literal('todos.reorder'), ids: z.array(id).min(1).max(1000), scope: z.enum(['items', 'projects']) }),
-  z.object({ type: z.literal('todo.place'), id, nodeId: id, resourceId: id, position, projectId: id.optional() }),
+  z.object({ type: z.literal('todo.place'), id, nodeId: id, resourceId: id, position, projectId: id.optional(), board: id.optional() }),
   z.object({ type: z.literal('todo.send'), id, projectId: id, nodeId: id.optional(), resourceId: id.optional() }),
   z.object({ type: z.literal('nodes.send'), ids: z.array(id).min(1).max(1000), projectId: id.nullable() }),
   z.object({ type: z.literal('todo.save'), todo: todoInput }),
@@ -211,6 +224,8 @@ const otherCommands = [
   z.object({ type: z.literal('todo.restore'), id }),
   z.object({ type: z.literal('todo.remove'), id }),
   z.object({ type: z.literal('view.set'), view: viewSchema }),
+  z.object({ type: z.literal('board.save'), board: boardSchema }),
+  z.object({ type: z.literal('board.delete'), id }),
 ] as const;
 /** The command union with another shape for a new item's links, for a transport that resolves its own shorthand before dispatch. */
 export const commandSchemaWith = <L extends z.ZodType>(link: L) => z.discriminatedUnion('type', [...itemCommands(link), ...otherCommands]);
@@ -224,11 +239,19 @@ type Data = WorkspaceState['resources'][number]['data'];
 const proposedRecord = (registry: ResourcePluginRegistry, command: ItemCommand, project: WorkspaceState['nodes'][number] | undefined, stamp: (data: Data, pluginId: string) => Data = data => data): WorkspaceState['resources'][number] => command.type === 'item.add'
   ? { ...registry.createRecord(command.pluginId, command.resourceId, { title: command.title, data: stamp(fieldDefaults(registry.get(command.pluginId)?.fields, project, command.data), command.pluginId) }), ...(command.connectionId ? { connectionId: command.connectionId } : {}) }
   : { ...command.resource, data: stamp(command.resource.data, command.resource.pluginId) };
-/** The node that already shows a provider identity where a new item would land (MAP-14): on the map, in that project or floating like it. */
-function shownAlready(state: Pick<WorkspaceState, 'nodes' | 'resources'>, registry: ResourcePluginRegistry, key: string | undefined, projectId: string | undefined) {
+/** The node that already shows a provider identity where a new item would land (MAP-14): on the map and that board, in that project or floating like it. */
+function shownAlready(state: Pick<WorkspaceState, 'nodes' | 'resources'>, registry: ResourcePluginRegistry, key: string | undefined, projectId: string | undefined, board: string) {
   if (!key) return undefined;
   const records = new Set(state.resources.filter(saved => registry.identity(saved) === key).map(saved => saved.id));
-  return state.nodes.find(node => node.resourceId && records.has(node.resourceId) && node.projectId === projectId && !isOffMap(node, state.nodes));
+  return state.nodes.find(node => node.resourceId && records.has(node.resourceId) && node.projectId === projectId && boardOf(node) === board && !isOffMap(node, state.nodes));
+}
+/** Where an item command lands: its project's board, else the one it names, else that of what it lands beside; a board named elsewhere drops that context. */
+export function creationTarget(state: Pick<WorkspaceState, 'nodes' | 'boards'>, command: { projectId?: string; board?: string }, anchors: readonly string[] | undefined): { board: string; context: CreationContext } {
+  const context = anchors ? creationContext(state.nodes, anchors, command.projectId) : { projectId: command.projectId };
+  const owner = command.projectId ? state.nodes.find(node => node.id === command.projectId) : undefined, beside = context.projectId ? state.nodes.find(node => node.id === context.projectId) : context.anchor;
+  if (owner && command.board && boardOf(owner) !== command.board) throw new Error('An item in a project is on its project\'s board');
+  const board = owner ? boardOf(owner) : command.board ?? (beside ? boardOf(beside) : boardList(state)[0]!.id);
+  return { board, context: beside && boardOf(beside) !== board ? {} : context };
 }
 export interface ExistingItem { requestedId: string; nodeId: string }
 /** The agent's item commands that created no node because their project already showed the item, read from the
@@ -239,8 +262,8 @@ export function itemsAlreadyOnMap(state: WorkspaceState, envelope: Pick<CommandE
   return envelope.commands.flatMap(command => {
     if ((command.type !== 'item.add' && command.type !== 'item.create') || state.nodes.some(node => node.id === command.id)) return [];
     try {
-      const context = creationContext(state.nodes, creationAnchors((command.links ?? []).map(entry => found.get(entry.otherId) ?? entry.otherId), envelope.actor.id), command.projectId);
-      const shown = shownAlready(state, registry, registry.identity(proposedRecord(registry, command, state.nodes.find(node => node.id === context.projectId))), context.projectId);
+      const { board, context } = creationTarget(state, command, creationAnchors((command.links ?? []).map(entry => found.get(entry.otherId) ?? entry.otherId), envelope.actor.id));
+      const shown = shownAlready(state, registry, registry.identity(proposedRecord(registry, command, state.nodes.find(node => node.id === context.projectId))), context.projectId, board);
       if (!shown) return [];
       found.set(command.id, shown.id);
       return [{ requestedId: command.id, nodeId: shown.id }];
@@ -288,7 +311,7 @@ export function itemLinkReport(state: WorkspaceState, commands: readonly Workspa
 /** The actor the desktop app stamps on the person's own map changes. */
 export const PERSON_ACTOR = 'desktop';
 /** Commands only a person may issue. Muting hides a project's questions from the user, so an agent must not decide it. */
-const HUMAN_ONLY_COMMANDS: ReadonlySet<string> = new Set<WorkspaceCommand['type']>(['project.mute', 'project.merge', 'node.hide', 'node.show']);
+const HUMAN_ONLY_COMMANDS: ReadonlySet<string> = new Set<WorkspaceCommand['type']>(['project.mute', 'project.merge', 'node.hide', 'node.show', 'board.save', 'board.delete']);
 /** Why an agent may not apply this command; every agent transport and the reducer share it. */
 export function agentCommandRefusal(command: WorkspaceCommand): string | undefined {
   return HUMAN_ONLY_COMMANDS.has(command.type) || (command.type === 'item.add' || command.type === 'item.create') && command.hidden ? humanOnlyMessage : undefined;
@@ -400,7 +423,7 @@ export class WorkspaceControl {
     const alreadyOnMap = itemsAlreadyOnMap(result.state, envelope, this.registry);
     const step = landed && !result.replayed && envelope.actor.kind === 'user' && envelope.actor.id === PERSON_ACTOR
       ? buildUndoStep('', landed, result.state, { registry: this.registry, sizes: this.store.readMapLayout?.().sizes }, undefined, commandSubjects(envelope.commands)) : undefined;
-    const receipt = step && { items: step.items, links: step.links, plots: step.plots, ...step.pairs ? { anchors: step.anchors, pairs: step.pairs } : {} };
+    const receipt = step && { items: step.items, links: step.links, plots: step.plots, ...step.pairs ? { anchors: step.anchors, pairs: step.pairs } : {}, ...step.boards ? { boards: step.boards } : {} };
     return { ...result, ...alreadyOnMap.length ? { alreadyOnMap } : {}, ...receipt ? { receipt } : {} };
   }
 }
@@ -415,6 +438,7 @@ export function reduceCommands(before: WorkspaceState, commands: readonly Worksp
   if (before.revision !== expectedRevision && !placement) throw new RevisionConflict(expectedRevision, before.revision);
   const state = structuredClone(before), standIns = new Map<string, string>();
   for (const command of commands) applyToDraft(state, redirected(command, standIns), registry, layout, actor, standIns);
+  keepBoards(state);
   // A count of busy helpers describes working: whatever ends that drops it in the same revision.
   for (const node of state.nodes) {
     if (node.helpers !== undefined && node.activity !== 'working') delete node.helpers;
@@ -425,6 +449,18 @@ export function reduceCommands(before: WorkspaceState, commands: readonly Worksp
   }
   if (!commands.every(isSceneOnly)) state.revision += 1;
   return stateSchema.parse(state);
+}
+
+/** Stores a node's board, leaving the default board implicit. */
+const setBoard = (target: { board?: string }, board: string) => { if (board === DEFAULT_BOARD) delete target.board; else target.board = board; };
+/** Top-level nodes on a deleted board go to the first one; members always sit on their project's board. */
+export function keepBoards(state: WorkspaceState) {
+  const boards = boardList(state), ids = new Set(boards.map(board => board.id)), projects = new Map(state.nodes.filter(node => !node.resourceId).map(node => [node.id, node]));
+  for (const node of state.nodes) if (!node.projectId && !ids.has(boardOf(node))) setBoard(node, boards[0]!.id);
+  for (const node of state.nodes) {
+    const owner = node.projectId ? projects.get(node.projectId) : undefined;
+    if (owner && boardOf(node) !== boardOf(owner)) setBoard(node, boardOf(owner));
+  }
 }
 
 /** What a session's map animal shows: its pose, helpers, background work, tasks, flags and one-shot moments. They
@@ -469,6 +505,33 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
         state.nodes = sendBelow(state.nodes, [...ids, ...notes], new Date().toISOString(), node => itemFootprint(node, state.resources, registry, sizes));
       };
       const createId = (key: string) => { if (state.nodes.some(n => n.id === key)) throw new Error(`Node already exists: ${key}`); };
+      const knownBoard = (key: string) => { if (!boardList(state).some(board => board.id === key)) throw new Error(`Board not found: ${key}`); return key; };
+      /** Moves a project with all its members, or a loose item, to another board: at `position`, else where its layout is clear there. */
+      const moveToBoard = (target: WorkspaceState['nodes'][number], board: string, position?: { x: number; y: number }) => {
+        if (target.projectId) throw new Error('Items in a project follow their project. Move the project instead.');
+        const group = [target, ...state.nodes.filter(node => node.projectId === target.id)];
+        // Only undo moves an archived item, back to the board its deletion took it from; it needs no place there.
+        if (target.archivedAt && actor?.kind === UNDO_ACTOR.kind && actor.id === UNDO_ACTOR.id && !position) { for (const node of group) setBoard(node, board); return; }
+        if (isArchived(target, state.nodes)) throw new Error('Restore this item from the archive before moving it');
+        if (isOffMap(target, state.nodes)) throw new Error('This item is in Undermap. Bring it back to move it.');
+        for (const node of group) setBoard(node, board);
+        const ids = new Set(group.map(node => node.id)), boxes = group.filter(node => isDrawn(node, state.nodes)).map(footprint);
+        let destination = position;
+        if (!destination) {
+          const area = { ...field(target.id, boundsOf(boxes), NEIGHBORHOOD_PADDING * 2), ...board === DEFAULT_BOARD ? {} : { board } };
+          const free = freePosition(area, layoutFootprints(state.nodes.filter(node => !ids.has(node.id)), state.resources, registry, sizes), ITEM_GAP, snap);
+          destination = { x: target.position.x + free.x - area.x, y: target.position.y + free.y - area.y };
+        }
+        moveOnBoards([{ id: target.id, position: snapPosition(destination, snap) }], snap);
+      };
+      /** Settles a layout change on the boards of `ids` only: every other board keeps each position, overlaps included. */
+      const onBoards = (ids: readonly string[], change: (nodes: WorkspaceState['nodes']) => WorkspaceState['nodes']) => {
+        const boards = new Set(ids.map(id => boardOf(find(id))));
+        const placed = new Map(change(state.nodes.filter(node => boards.has(boardOf(node)))).map(node => [node.id, node]));
+        state.nodes = state.nodes.map(node => placed.get(node.id) ?? node);
+      };
+      const moveOnBoards = (intents: readonly { id: string; position: { x: number; y: number } }[], pitch?: number, mode?: MapCollisions, attached?: ReadonlySet<string>) =>
+        onBoards(intents.map(intent => intent.id), nodes => moveItems(nodes, state.resources, registry, intents, sizes, pitch, mode, attached));
       const footprint = (target: GraphNode) => itemFootprint(target, state.resources, registry, sizes);
       /** A spot chosen in context is already clear by the shared layout rule, where a populated project's anchor is no obstacle. */
       const place = (created: WorkspaceState['nodes'][number], position: { x: number; y: number } | undefined, requested: { x: number; y: number } | undefined) => {
@@ -499,8 +562,8 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
         const moving = [...members.values()].filter(member => created.has(member.id) || member.projectId !== target.id);
         if (!moving.length) return;
         const positions = arrivalPlacement(state.nodes, moving[0].id, moving.map(member => member.id), target.id, member => itemFootprint(member, state.resources, registry, sizes), { kept });
-        for (const member of moving) member.projectId = target.id;
-        state.nodes = moveItems(state.nodes, state.resources, registry, [...positions].map(([id, position]) => ({ id, position })), sizes);
+        for (const member of moving) { member.projectId = target.id; setBoard(member, boardOf(target)); }
+        moveOnBoards([...positions].map(([id, position]) => ({ id, position })));
       };
       /** Items sent to no project leave as one block that keeps its layout, beside the lead's project but off its ground. */
       const leaveProject = (leads: readonly WorkspaceState['nodes'][number][]) => {
@@ -513,7 +576,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
         if (!moving.length) return;
         const positions = arrivalPlacement(state.nodes, moving[0].id, moving.map(member => member.id), moving[0].projectId!, member => itemFootprint(member, state.resources, registry, sizes), { kept: new Set(moving.map(member => member.id)), outside: true });
         for (const member of moving) delete member.projectId;
-        state.nodes = moveItems(state.nodes, state.resources, registry, [...positions].map(([id, position]) => ({ id, position })), sizes);
+        moveOnBoards([...positions].map(([id, position]) => ({ id, position })));
       };
       const todoEntry = (key: string) => {
         const entry = todoEntries(state).find(entry => entry.id === key);
@@ -539,9 +602,9 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
         return { text, ...(actor ? { by: { kind: actor.kind, id: actor.id, ...(writer ? { title: writer.title } : {}) } } : {}), at: new Date().toISOString() };
       };
       /** A list-only to-do becomes one map to-do; an imported one also gains the item it was imported for. Returns the new node ids. */
-      const placeChecklist = (entry: TodoEntry, nodeId: string, resourceId: string, position: { x: number; y: number }, projectId?: string) => {
+      const placeChecklist = (entry: TodoEntry, nodeId: string, resourceId: string, position: { x: number; y: number }, projectId?: string, board?: string) => {
         const record = state.todos.find(todo => todo.id === entry.id)!, ids = [nodeId];
-        applyToDraft(state, { type: 'item.add', id: nodeId, resourceId, pluginId: 'workspace.todo', title: entry.title, data: {}, position, projectId }, registry, layout);
+        applyToDraft(state, { type: 'item.add', id: nodeId, resourceId, pluginId: 'workspace.todo', title: entry.title, data: {}, position, projectId, ...!projectId && board ? { board } : {} }, registry, layout);
         const created = find(nodeId);
         if (entry.todoOrder !== undefined && entry.horizon !== 'inbox') created.todoOrder = entry.todoOrder;
         if (record.horizon === 'next' || record.horizon === 'later') created.todoHorizon = record.horizon;
@@ -551,7 +614,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
         for (const [index, targetId] of entry.nodeIds.entries()) applyToDraft(state, { type: 'link.save', link: { id: `${nodeId}:todo:${index}`, sourceId: created.id, targetId, kind: 'reference', label: '' } }, registry, layout);
         if (record.triage) {
           const item = record.triage.item, itemId = `${nodeId}:item`;
-          applyToDraft(state, { type: 'item.add', id: itemId, resourceId: `${resourceId}:item`, pluginId: item.pluginId, title: item.title, data: item.data, ...(item.connectionId ? { connectionId: item.connectionId } : {}), projectId,
+          applyToDraft(state, { type: 'item.add', id: itemId, resourceId: `${resourceId}:item`, pluginId: item.pluginId, title: item.title, data: item.data, ...(item.connectionId ? { connectionId: item.connectionId } : {}), projectId, ...!projectId && board ? { board } : {},
             position: { x: created.position.x, y: created.position.y + 2 * ITEM_GAP } }, registry, layout);
           applyToDraft(state, { type: 'link.save', link: { id: `${nodeId}:todo:item`, sourceId: created.id, targetId: itemId, kind: 'reference', label: '' } }, registry, layout);
           created.todoTicketId = itemId; ids.push(itemId);
@@ -564,8 +627,11 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
         case 'project.create': {
           createId(command.id);
           const created = node.parse({ id: command.id, title: command.title, summary: command.summary, ...(command.workingDirectory !== undefined ? { workingDirectory: command.workingDirectory } : {}), ...(command.color ? { color: command.color.toLowerCase() } : {}), position: command.position ?? { x: 0, y: 0 } });
-          const anchors = anchorsOf(command.near);
-          place(created, anchors ? projectPlacement(state.nodes, footprint, anchors, footprint(created), command.position) : command.position, command.position);
+          let anchors = anchorsOf(command.near);
+          const caller = anchors?.flatMap(key => state.nodes.find(node => node.id === key) ?? [])[0], board = knownBoard(command.board ?? (caller ? boardOf(caller) : boardList(state)[0]!.id));
+          setBoard(created, board);
+          if (caller && boardOf(caller) !== board) anchors = undefined;
+          place(created, anchors ? projectPlacement(state.nodes, footprint, anchors, footprint(created), command.position) : command.position ?? (command.board ? { x: 0, y: 0 } : undefined), command.position);
           break;
         }
         case 'item.add':
@@ -573,7 +639,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           createId(command.id);
           if (command.projectId) project(command.projectId);
           const anchors = anchorsOf(command.near, command.links?.map(entry => entry.otherId));
-          const context = anchors ? creationContext(state.nodes, anchors, command.projectId) : { projectId: command.projectId };
+          const target = creationTarget(state, command, anchors), context = target.context, board = knownBoard(target.board);
           let record = proposedRecord(registry, command, context.projectId ? project(context.projectId) : undefined, (data, pluginId) => stampWriter(state, registry, pluginId, data, undefined, actor));
           const resolved = registry.resolve(record);
           if (!resolved.available) throw new Error(resolved.reason);
@@ -582,14 +648,14 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           const existing = key ? state.resources.find(r => registry.identity(r) === key) : undefined;
           if (existing) record = existing;
           else state.resources.push(record);
-          const shown = actor?.kind === 'agent' && existing ? shownAlready(state, registry, key, context.projectId) : undefined;
+          const shown = actor?.kind === 'agent' && existing ? shownAlready(state, registry, key, context.projectId, board) : undefined;
           if (shown) standIns.set(command.id, shown.id);
           const observed = !shown && existing && (state.nodes.find(n => n.resourceId === existing.id && !n.archivedAt) ?? state.nodes.find(n => n.resourceId === existing.id));
-          const created = node.parse({ id: command.id, title: record.title, resourceId: record.id, projectId: context.projectId, position: command.position ?? { x: 0, y: 0 }, acceptsContext: resolved.plugin.acceptsContext === true,
+          const created = node.parse({ id: command.id, title: record.title, resourceId: record.id, projectId: context.projectId, ...board === DEFAULT_BOARD ? {} : { board }, position: command.position ?? { x: 0, y: 0 }, acceptsContext: resolved.plugin.acceptsContext === true,
             ...(command.hidden && !shown ? { hiddenAt: new Date().toISOString(), hideLabel: command.hidden.label } : {}),
             ...(observed ? { activity: observed.activity, attention: observed.attention, attentionNote: observed.attentionNote, attentionSources: observed.attentionSources, attentionNotes: observed.attentionNotes, attentionVersion: observed.attentionVersion,
               attentionSeenVersion: observed.attentionSeenVersion, attentionAt: observed.attentionAt, attentionEvents: observed.attentionEvents, indicators: observed.indicators, pips: observed.pips, summary: observed.summary, activityAt: observed.activityAt } : {}) });
-          if (!shown) place(created, anchors ? itemPlacement(state.nodes, footprint, context, footprint(created), command.position) : command.position, command.position);
+          if (!shown) place(created, (anchors ? itemPlacement(state.nodes, footprint, context, footprint(created), command.position) : command.position) ?? (command.board ? { x: 0, y: 0 } : undefined), command.position);
           for (const entry of command.links ?? []) {
             const wanted = itemLinkRecord(shown?.id ?? command.id, entry), taken = state.links.find(saved => saved.id === wanted.id);
             if (taken && canonical(taken) === canonical(wanted)) continue;
@@ -751,8 +817,9 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           break;
         }
         case 'node.resize': {
-          if (command.dimensions) {
-            state.nodes = resizeItem(state.nodes, state.resources, registry, { id: command.id, dimensions: command.dimensions, position: command.position }, sizes, snap);
+          const { dimensions } = command;
+          if (dimensions) {
+            onBoards([command.id], nodes => resizeItem(nodes, state.resources, registry, { id: command.id, dimensions, position: command.position }, sizes, snap));
             break;
           }
           const target = find(command.id);
@@ -765,23 +832,33 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           delete target.mapDimensions;
           const after = itemFootprint(target, state.resources, registry, sizes);
           if (!isArchived(target, state.nodes) && (after.width > before.width || after.height > before.height)) {
-            state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: target.id, position: target.position }], sizes, snap);
+            moveOnBoards([{ id: target.id, position: target.position }], snap);
           }
           break;
         }
         case 'node.move': {
-          state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: command.id, position: snapPosition(command.position, snap) }], sizes, snap, collisions, mapBadges(state.nodes, state.resources, state.links).attached);
+          const target = find(command.id);
+          if (command.board && command.board !== boardOf(target)) { moveToBoard(target, knownBoard(command.board), command.position); break; }
+          if (!command.position) break;
+          moveOnBoards([{ id: command.id, position: snapPosition(command.position, snap) }], snap, collisions, mapBadges(state.nodes, state.resources, state.links).attached);
           break;
         }
         case 'node.attach': {
           const target = find(command.id);
           if (!target.resourceId) throw new Error('Only an item can be attached to a project');
-          if (command.projectId) project(command.projectId);
+          const owner = command.projectId ? project(command.projectId) : undefined;
+          // From another board it arrives beside the project's items, as Send to project places it.
+          if (owner && boardOf(owner) !== boardOf(target)) {
+            const positions = arrivalPlacement(state.nodes, target.id, [target.id], owner.id, footprint);
+            setBoard(target, boardOf(owner)); target.projectId = owner.id;
+            moveOnBoards([...positions].map(([id, position]) => ({ id, position })));
+            break;
+          }
           target.projectId = command.projectId ?? undefined;
           break;
         }
         case 'nodes.move': {
-          state.nodes = moveItems(state.nodes, state.resources, registry, command.positions, sizes, snap, collisions, mapBadges(state.nodes, state.resources, state.links).attached);
+          moveOnBoards(command.positions, snap, collisions, mapBadges(state.nodes, state.resources, state.links).attached);
           break;
         }
         case 'layout.repair': {
@@ -809,7 +886,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           const drawn = state.nodes.filter(node => members.has(node.id) && !isArchived(node, state.nodes) && !isOffMap(node, state.nodes));
           // Only the source's own members move: a to-do's attached items in other projects stay put.
           if (drawn.length) sendBlock(drawn, target, new Set(), false);
-          for (const node of state.nodes) if (members.has(node.id)) node.projectId = target.id;
+          for (const node of state.nodes) if (members.has(node.id)) { node.projectId = target.id; setBoard(node, boardOf(target)); }
           for (const task of state.todos) if (task.nodeIds.includes(source.id)) task.nodeIds = [...new Set(task.nodeIds.map(nodeId => nodeId === source.id ? target.id : nodeId))];
           state.nodes = archiveNode(state.nodes, source.id, new Date().toISOString());
           break;
@@ -848,18 +925,18 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           if (target.resourceId) {
             const obstacles = layoutFootprints(state.nodes.filter(node => node.id !== target.id), state.resources, registry, sizes);
             target.position = freePosition({ ...itemFootprint(target, state.resources, registry, sizes), ...snapPosition(target.position, snap) }, obstacles, ITEM_GAP, snap);
-          } else state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: target.id, position: snapPosition(target.position, snap) }], sizes, snap);
+          } else moveOnBoards([{ id: target.id, position: snapPosition(target.position, snap) }], snap);
           break;
         }
         case 'node.restore':
           state.nodes = restoreNode(state.nodes, command.id);
           if (!isDrawn(find(command.id), state.nodes)) break; // Returns to Undermap, where it was archived from, or stays hidden.
-          state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: command.id, position: find(command.id).position }], sizes, snap);
+          moveOnBoards([{ id: command.id, position: find(command.id).position }], snap);
           break;
         case 'node.complete': find(command.id).completedAt ??= new Date().toISOString(); touchNode(find(command.id)); break;
         case 'node.reopen':
           delete find(command.id).completedAt; delete find(command.id).todoDoneAt; touchNode(find(command.id));
-          state.nodes = moveItems(state.nodes, state.resources, registry, [{ id: command.id, position: find(command.id).position }], sizes, snap);
+          moveOnBoards([{ id: command.id, position: find(command.id).position }], snap);
           break;
         case 'node.delete': {
           const target = find(command.id);
@@ -926,8 +1003,11 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           if (entry.source === 'map') {
             // A move, as when dragging the item on the map: only a drop inside another project transfers it.
             if (command.projectId && command.projectId !== find(entry.nodeId!).projectId) applyToDraft(state, { type: 'node.attach', id: entry.nodeId!, projectId: command.projectId }, registry, layout);
-            applyToDraft(state, { type: 'node.move', id: entry.nodeId!, position: command.position }, registry, layout);
-          } else placeChecklist(entry, command.nodeId, command.resourceId, command.position, command.projectId);
+            const placed = find(entry.nodeId!);
+            if (placed.projectId && command.board && boardOf(placed) !== command.board) throw new Error('Move its project to this board first');
+            const loose = !placed.projectId && command.board;
+            applyToDraft(state, { type: 'node.move', id: entry.nodeId!, position: command.position, ...loose ? { board: command.board } : {} }, registry, layout);
+          } else placeChecklist(entry, command.nodeId, command.resourceId, command.position, command.projectId, command.board);
           break;
         }
         case 'todo.send': {
@@ -1032,6 +1112,25 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           const task = state.todos.find(task => task.id === command.id);
           if (task && !task.archivedAt) throw new Error('Archive the to-do before deleting it');
           state.todos = state.todos.filter(t => t.id !== command.id); break;
+        }
+        case 'board.save': {
+          const boards = [...boardList(state)], at = boards.findIndex(board => board.id === command.board.id);
+          if (at < 0 && boards.length >= BOARD_LIMIT) throw new Error(`At most ${BOARD_LIMIT} boards`);
+          const saved = { id: command.board.id, name: command.board.name, ...command.board.color ? { color: command.board.color.toLowerCase() } : {} };
+          if (at < 0) boards.push(saved); else boards[at] = saved;
+          state.boards = boards;
+          break;
+        }
+        case 'board.delete': {
+          const boards = boardList(state);
+          knownBoard(command.id);
+          if (boards.length === 1) throw new Error('The last board cannot be deleted');
+          const held = state.nodes.filter(node => !node.projectId && !node.archivedAt && boardOf(node) === command.id), unseen = held.filter(node => !isDrawn(node, state.nodes)).length;
+          const count = `${held.length} ${held.length === 1 ? 'item' : 'items'}`;
+          if (unseen) throw new Error(`This board holds ${count}, ${unseen < held.length ? 'some ' : ''}hidden or in Undermap. Move or archive ${held.length === 1 ? 'it' : 'them'} first`);
+          if (held.length) throw new Error('Move or archive its items first');
+          state.boards = boards.filter(board => board.id !== command.id);
+          break;
         }
         case 'view.set':
           if (command.view.mode !== 'workspace') {

@@ -18,6 +18,7 @@ import type { AgentCapability } from '../session-runtime/agent-plan.ts';
 import type { ProjectContext } from '../../src/agents/project-context.ts';
 import { isArchived, isOffMap } from '../../src/graph/archive.ts';
 import { findById } from '../../src/graph/lookup.ts';
+import { boardOf } from '../../src/graph/boards.ts';
 
 export interface ReviewResult { state: 'running' | 'complete' | 'failed'; markdown?: string; truncated?: boolean; startedAt?: string; endedAt?: string }
 const REVIEW_RESULT_BYTES = 1024 * 1024;
@@ -241,7 +242,7 @@ export class ReviewCoordinator {
       if (node ? isOffMap(node, state.nodes) : job.correlation.placed === true || job.input.arguments.reviewNodeId) throw removed();
       const later = run.loop?.from ? run.loop : undefined;
       const commands: WorkspaceCommand[] = node ? [{ type: 'item.update', id: run.nodeId, data }] : [
-        { type: 'item.create', id: run.nodeId, projectId: run.projectId, position: run.position, resource: { id: run.resourceId, schemaVersion: 1, pluginId: 'code.review', title: `${providerName(run.provider)} review · #${run.source.comparison.number}${later ? ` · round ${later.round}` : ''}`, data } },
+        { type: 'item.create', id: run.nodeId, projectId: run.projectId, ...run.projectId ? {} : { board: boardOf(findById(state.nodes, job.input.nodeId) ?? {}) }, position: run.position, resource: { id: run.resourceId, schemaVersion: 1, pluginId: 'code.review', title: `${providerName(run.provider)} review · #${run.source.comparison.number}${later ? ` · round ${later.round}` : ''}`, data } },
         { type: 'link.save', link: { id: randomUUID(), sourceId: later?.from ?? job.input.nodeId, targetId: run.nodeId, kind: 'reference', label: later ? `Round ${later.round}` : 'Review' } }];
       commands.push({ type: 'node.update', id: run.nodeId, activity: 'working', attention: 'none', summary: phaseSummary(phase, run.provider) });
       try { await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'system', id: 'reviews' }, commands }); await this.changed(); return; }

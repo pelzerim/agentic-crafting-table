@@ -405,7 +405,7 @@ async function main() {
         case 'subscribe': result = await workspace.setLayer(z.object({ layer: z.enum(['map', 'below']) }).strict().parse(args).layer); break;
         case 'diagnostics.cpuProfile': result = await workspace.call(method, z.object({ ms: z.number().int().min(1000).max(120_000) }).strict().parse(args)); break;
         case 'github.inbox.read': result = await workspace.call(method, z.object({ refresh: z.boolean().default(false), opened: z.boolean().default(false) }).strict().parse(args ?? {})); break;
-        case 'github.inbox.show': result = await workspace.call(method, z.object({ connectionId: z.string().min(1).max(200), key: z.string().min(1).max(400), position: z.object({ x: z.number().finite(), y: z.number().finite() }) }).strict().parse(args)); break;
+        case 'github.inbox.show': result = await workspace.call(method, z.object({ connectionId: z.string().min(1).max(200), key: z.string().min(1).max(400), position: z.object({ x: z.number().finite(), y: z.number().finite() }), board: z.string().min(1).max(200).optional() }).strict().parse(args)); break;
         case 'github.inbox.hide': result = await workspace.call(method, z.object({ key: z.string().min(1).max(400) }).strict().parse(args)); break;
         case 'github.inbox.seen': result = await workspace.call(method, z.object({ key: z.string().min(1).max(400), seen: z.boolean() }).strict().parse(args)); break;
         case 'reminders.save': result = await workspace.call(method, reminderSaveSchema.parse(args)); break;

@@ -14,6 +14,8 @@ export interface HistoryHost {
   refresh(): Promise<void>;
   notify(text: string): void;
   fail(message: string): void;
+  /** Shows the board a step lands on before it is reverted. */
+  focus?(step: UndoStep, direction: 'undo' | 'redo'): void;
 }
 
 /** The window's map undo and redo (MAP-34): each step is the receipt the service returned for the person's own commit. */
@@ -26,10 +28,10 @@ export function createMapHistory(host: () => HistoryHost) {
     if (active && result?.receipt) history.record({ label, ...result.receipt });
   };
   const step = async (direction: 'undo' | 'redo') => {
-    const { active, revert, refresh, notify, fail } = host(), next = history.peek(direction);
+    const { active, revert, refresh, notify, fail, focus } = host(), next = history.peek(direction);
     if (busy || !active()) return;
     if (!next) { notify(`Nothing to ${direction}`); return; }
-    busy = true;
+    busy = true; focus?.(next, direction);
     const recorded = history.recorded;
     try {
       let result: Awaited<ReturnType<HistoryHost['revert']>>;

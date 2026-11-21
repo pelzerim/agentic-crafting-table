@@ -12,7 +12,7 @@ const ring = (page: Page) => page.getByRole('form', { name: 'New item' });
 
 test('the setting is off by default and turned on in Settings → Map', async ({ visual: { page } }) => {
   await page.mouse.click(100, 650, { button: 'right' });
-  await expect(page.getByRole('menuitem')).toHaveText(['New item', 'New project', 'Open archive']);
+  await expect(page.getByRole('menuitem')).toHaveText(['New item', 'New project', 'New board…', 'Open archive']);
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('treeitem', { name: 'Map', exact: true }).click();

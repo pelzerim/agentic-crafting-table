@@ -22,6 +22,8 @@ export const WORKSPACE_SHORTCUTS = [
   { id: 'map.undo', label: 'Undo the last map change', key: 'z', primary: true, group: 'Map' },
   { id: 'map.redo', label: 'Redo', key: 'z', primary: true, shift: true, group: 'Map' },
   { id: 'map.redo', label: 'Redo', key: 'y', ctrl: true, platform: 'other', hidden: true, group: 'Map' },
+  { id: 'board.1', label: 'Switch board', key: '1', primary: true, display: '1–9', group: 'Map' },
+  ...(['2', '3', '4', '5', '6', '7', '8', '9'] as const).map(key => ({ id: `board.${key}` as const, label: 'Switch board', key, primary: true, hidden: true, group: 'Map' as const })),
   { id: 'map.zoomIn', label: 'Zoom in', key: '+', aliases: ['='], group: 'Map' },
   { id: 'map.zoomOut', label: 'Zoom out', key: '-', group: 'Map' },
   { id: 'map.zoomReset', label: 'Zoom to 100%', key: '0', group: 'Map' },

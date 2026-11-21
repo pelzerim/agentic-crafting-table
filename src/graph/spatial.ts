@@ -24,9 +24,10 @@ export const TAKEOVER_ICON_PX = 16;
  * shape then replaces the type icon, and card frames are dropped. From 16px up the shape sits in the corner. */
 export const attentionTakesOver = (size: number, zoom: number) => size * zoom < TAKEOVER_ICON_PX;
 
-export interface SpatialBox { id: string; x: number; y: number; width: number; height: number }
+/** `board` is set off the default board; boxes on different boards never touch. */
+export interface SpatialBox { id: string; x: number; y: number; width: number; height: number; board?: string }
 export function overlaps(a: SpatialBox, b: SpatialBox, gap = 16): boolean {
-  return Math.abs(a.x - b.x) < (a.width + b.width) / 2 + gap - .001 &&
+  return a.board === b.board && Math.abs(a.x - b.x) < (a.width + b.width) / 2 + gap - .001 &&
     Math.abs(a.y - b.y) < (a.height + b.height) / 2 + gap - .001;
 }
 
@@ -37,7 +38,7 @@ export type MapCollisions = typeof MAP_COLLISIONS[number];
 /** How far `boxes` can travel together along `delta` before touching an obstacle, sliding along
  * whatever they touch. An obstacle a box already overlaps does not hold that box back. */
 export function sweepBoxes(boxes: readonly SpatialBox[], delta: { x: number; y: number }, obstacles: readonly SpatialBox[], gap = 16) {
-  const pairs = boxes.flatMap(box => obstacles.filter(other => !overlaps(box, other, gap)).map(other => ({ box, other })));
+  const pairs = boxes.flatMap(box => obstacles.filter(other => other.board === box.board && !overlaps(box, other, gap)).map(other => ({ box, other })));
   let moved = { x: 0, y: 0 }, left = { ...delta };
   for (let pass = 0; pass < 3 && (left.x || left.y); pass++) {
     let first = 1, axis: 'x' | 'y' | undefined;
