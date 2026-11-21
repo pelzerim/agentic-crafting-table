@@ -5,7 +5,7 @@ import { agentActionRefusal, agentBlockerOverrideMessage, agentsMayNotActMessage
 import { settingsSchema } from './settings.ts';
 import { createPluginPackageRegistry } from '../../src/resource-plugins/builtins.ts';
 
-const previouslyExposed = ['linear.ticket.pulls', 'github.issue.pulls', 'agent.start', 'agent.resume', 'agent.reply', 'agent.context', 'agent.context.ack', 'agent.context.inject', 'agent.title', 'terminal.start', 'terminal.startup', 'terminal.input', 'session.read', 'skill.run', 'pr.comments', 'pr.review.options', 'pr.review.status', 'review.result', 'review.retry', 'review.findings', 'rollout.validation', 'pr.review.codex', 'pr.review.claude', 'pr.review.workflow', 'pr.architecture', 'resource.read', 'resource.actions', 'resource.action', 'resource.content', 'resource.context', 'resource.viewed', 'resource.opened', 'notion.page.comments', 'plot', 'github.rollout.autoDeploy', 'review.loop'];
+const previouslyExposed = ['linear.ticket.pulls', 'github.issue.pulls', 'agent.start', 'agent.resume', 'agent.reply', 'agent.context', 'agent.context.ack', 'agent.context.inject', 'agent.title', 'terminal.start', 'terminal.startup', 'terminal.input', 'session.read', 'skill.run', 'pr.comments', 'pr.review.options', 'pr.review.status', 'review.result', 'review.retry', 'review.findings', 'rollout.validation', 'pr.review.codex', 'pr.review.claude', 'pr.review.workflow', 'pr.architecture', 'resource.read', 'resource.actions', 'resource.action', 'resource.content', 'resource.context', 'resource.viewed', 'resource.opened', 'notion.page.comments', 'plot', 'map.undo', 'video.notes', 'video.explain', 'github.rollout.autoDeploy', 'review.loop'];
 
 test('the runtime vocabulary keeps every operation id agents and the renderer already use', () => {
   const ids = runtimeOperationDeclarations().map(declaration => declaration.id);
@@ -22,6 +22,7 @@ test('rollout validation is declared by the github.rollout package, not the host
 test('agent policies come from declarations: allow, human only, or a redirect per operation', () => {
   assert.equal(agentRuntimeRefusal({ action: 'agent.title', arguments: {} }), humanOnlyMessage);
   assert.equal(agentRuntimeRefusal({ action: 'plot', arguments: { operation: 'rename' } }), humanOnlyMessage);
+  assert.equal(agentRuntimeRefusal({ action: 'map.undo', arguments: { direction: 'undo' } }), humanOnlyMessage);
   assert.equal(agentRuntimeRefusal({ action: 'resource.read', arguments: {} }), undefined);
   for (const operation of ['options', 'list']) assert.equal(agentRuntimeRefusal({ action: 'rollout.validation', arguments: { operation } }), undefined);
   assert.equal(agentRuntimeRefusal({ action: 'rollout.validation', arguments: { operation: 'report' } }), 'Report rollout validations with workspace_report_validation.');
@@ -33,7 +34,7 @@ test('agent policies come from declarations: allow, human only, or a redirect pe
 test('an operation that acts for the person runs for an agent while the setting allows it, and is refused with the setting named while it does not', () => {
   assert.equal(settingsSchema.parse({}).agentsActForPerson, true);
   const acting: [string, string | undefined][] = [['rollout.validation', 'trigger'], ['rollout.validation', 'cancel'], ['rollout.validation', undefined], ['rollout.validation', 'constructor'],
-    ['review.findings', 'send'], ['review.findings', 'spawn'], ['review.findings', 'cancel'], ['review.loop', 'set'], ['pr.architecture', 'launch'], ['github.rollout.autoDeploy', 'set'], ['github.issue.pulls', 'add'], ['linear.ticket.pulls', 'add']];
+    ['review.findings', 'send'], ['review.findings', 'spawn'], ['review.findings', 'cancel'], ['review.loop', 'set'], ['pr.architecture', 'launch'], ['github.rollout.autoDeploy', 'set'], ['github.issue.pulls', 'add'], ['linear.ticket.pulls', 'add'], ['video.explain', undefined]];
   for (const [action, operation] of acting) {
     const request: { action: string; arguments: Record<string, string> } = { action, arguments: operation ? { operation } : {} };
     assert.equal(agentRuntimeRefusal(request), undefined, `${action} ${operation} with the setting at its default`);
@@ -45,6 +46,7 @@ test('an operation that acts for the person runs for an agent while the setting 
     assert.equal(agentRuntimeRefusal({ action: 'agent.title', arguments: {} }, undefined, allowed), humanOnlyMessage);
     assert.equal(agentRuntimeRefusal({ action: 'plot', arguments: { operation: 'rename' } }, undefined, allowed), humanOnlyMessage);
     assert.equal(agentRuntimeRefusal({ action: 'resource.opened', arguments: {} }, undefined, allowed), humanOnlyMessage);
+    assert.equal(agentRuntimeRefusal({ action: 'video.notes', arguments: {} }, undefined, allowed), humanOnlyMessage, 'an agent never sends the person\'s video notes');
     assert.equal(agentRuntimeRefusal({ action: 'review.loop', arguments: { operation: 'status' } }, undefined, allowed), undefined);
     for (const operation of ['show', 'hide']) assert.equal(agentRuntimeRefusal({ action: 'rollout.validation', arguments: { operation } }, undefined, allowed), humanOnlyMessage, `an agent never shows or hides a validation agent (${operation})`);
     assert.equal(agentRuntimeRefusal({ action: 'review.findings', arguments: { operation: 'mark' } }, undefined, allowed), humanOnlyMessage, 'only the person overrides whether a finding is fixed');

@@ -32,6 +32,8 @@ import textFileManifest from '../items/text-file/act-plugin.json' with { type: '
 import textFile from '../items/text-file/plugin.ts';
 import githubIssueManifest from '../items/github-issue/act-plugin.json' with { type: 'json' };
 import githubIssue from '../items/github-issue/plugin.ts';
+import videoManifest from '../items/video/act-plugin.json' with { type: 'json' };
+import video from '../items/video/plugin.ts';
 
 export const bundledPackages: readonly { manifest: unknown; module: PluginDefinitionsModule }[] = [
   { manifest: agentSessionManifest, module: agentSession },
@@ -50,4 +52,5 @@ export const bundledPackages: readonly { manifest: unknown; module: PluginDefini
   { manifest: noteManifest, module: note },
   { manifest: textFileManifest, module: textFile },
   { manifest: githubIssueManifest, module: githubIssue },
+  { manifest: videoManifest, module: video },
 ];

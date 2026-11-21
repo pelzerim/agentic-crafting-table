@@ -1,6 +1,7 @@
 /** A site whose pages an item view may show in the app, each in its own persistent session. `signIn` names the popups
- * that open as a small app window in that session, so a sign-in there signs the page in. */
-export interface EmbeddedSite { id: string; partition: string; allows(url: string): boolean; signIn?(url: string): boolean }
+ * that open as a small app window in that session, so a sign-in there signs the page in. `referrer` is sent with the
+ * item's own page load, for a site that refuses an embed that does not say which app shows it. */
+export interface EmbeddedSite { id: string; partition: string; allows(url: string): boolean; signIn?(url: string): boolean; referrer?: string }
 
 const httpsHost = (url: string, matches: (host: string) => boolean) => {
   let parsed: URL;
@@ -15,6 +16,8 @@ export const EMBEDDED_SITES: readonly EmbeddedSite[] = [
     id: 'claude', partition: 'persist:claude-artifacts', allows: url => httpsHost(url, claudeHost),
     signIn: url => httpsHost(url, host => host === 'accounts.google.com' || claudeHost(host)),
   },
+  // Video items play YouTube's privacy-enhanced embed page; nothing is kept after the app quits.
+  { id: 'youtube', partition: 'youtube-embeds', allows: url => httpsHost(url, host => host === 'www.youtube-nocookie.com'), referrer: 'https://dev.agentcraftingtable.desktop/' },
 ];
 
 export const embeddedSite = (id: unknown) => EMBEDDED_SITES.find(site => site.id === id);

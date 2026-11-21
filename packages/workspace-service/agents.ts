@@ -117,7 +117,7 @@ export class AgentCoordinator {
       }
       const readiness = await agentReadiness(this.sessions, state, { nodeId: node.id, sessionId }, sessionId => this.observations.agentObservation(sessionId), now);
       if (readiness !== 'idle') continue;
-      commands.push({ type: 'node.update', id: node.id, ...(prompted ? this.settled(waiting) : { activity: 'idle', summary: 'Ready for your next prompt' }) });
+      commands.push({ type: 'node.update', id: node.id, ...(prompted ? this.settled(waiting) : { activity: 'idle', summary: 'Ready for your next prompt', turnEndedAt: new Date(now()).toISOString() }) });
     }
     if (!commands.length) return;
     try { await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'system', id: 'agent-quiet' }, commands }); await this.changed(); }
@@ -158,10 +158,10 @@ export class AgentCoordinator {
     await this.sessions.runtime.call('sessions.inject', { sessionId: args.sessionId, instructions: guide.systemPrompt, context: guide.referenceContext });
     return { state: 'acknowledged' as const, message: 'Added to the conversation. Codex reads it with your next prompt.' };
   }
-  private async skillDirectory(projectId: string, requested?: string) {
-    const state = await this.control.read(), project = state.nodes.find(node => node.id === projectId && !node.resourceId && !node.projectId);
-    if (!project || isArchived(project, state.nodes)) throw new Error('Choose an available project for this skill');
-    const cwd = requested || project.workingDirectory || this.sessions.fallbackDirectory();
+  private async skillDirectory(projectId: string | undefined, requested?: string) {
+    const state = await this.control.read(), project = projectId === undefined ? undefined : state.nodes.find(node => node.id === projectId && !node.resourceId && !node.projectId);
+    if (projectId !== undefined && (!project || isArchived(project, state.nodes))) throw new Error('Choose an available project for this skill');
+    const cwd = requested || project?.workingDirectory || this.sessions.fallbackDirectory();
     try { if (cwd && isAbsolute(cwd) && statSync(cwd).isDirectory()) return realpathSync(cwd); } catch { /* Present a useful directory error below. */ }
     throw new Error('Select an existing working directory for this skill or its project');
   }
@@ -488,7 +488,7 @@ export class AgentCoordinator {
         : event.notificationType === 'idle_prompt' ? 'Agent waiting' : event.event === 'StopFailure' ? 'Agent hit an error' : undefined;
       // The line the agent ended its turn on stays on the node until the next prompt starts a turn.
       const lastLine = event.event === 'Stop' && !waitingSummary ? agentLastLine(redactSecrets(event.lastMessage ?? '')) ?? null : event.event === 'UserPromptSubmit' ? null : undefined;
-      const turnEndedAt = event.event === 'Stop' ? new Date(event.observedAt).toISOString() : undefined;
+      const turnEndedAt = event.event === 'Stop' || event.event === 'StopFailure' ? new Date(event.observedAt).toISOString() : undefined;
       const next = waitingSummary ? { activity: 'working', attention: 'none', summary: waitingSummary } as const : {
         activity: working ? 'working' : 'idle', attention: inputNeeded ? 'input' : event.event === 'StopFailure' ? 'error' : event.event === 'SessionEnd' ? node.attention : 'none', ...(attentionNote ? { attentionNote } : {}),
         summary: inputNeeded ? 'Waiting for your input' : working ? 'Claude is working' : event.event === 'StopFailure' ? 'Claude reported an error' : event.event === 'SessionEnd' ? 'Conversation closed' : 'Ready for your next prompt',

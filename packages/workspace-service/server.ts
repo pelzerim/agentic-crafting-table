@@ -1,4 +1,6 @@
 import { prComments } from './pr-comments.ts';
+import { videoNotes } from './video-notes.ts';
+import { explainInVideo } from './video-explain.ts';
 import { GitHubInbox } from './github-inbox.ts';
 import { GitHubClient } from '../provider-runtime/github.ts';
 import { githubTransport } from '../provider-runtime/github-transport.ts';
@@ -62,6 +64,7 @@ import { ActivitySummaries } from './activity-summaries.ts';
 import { AgentTitles } from './agent-titles.ts';
 import { AttachTitles } from './attach-titles.ts';
 import { Plots } from './plots.ts';
+import { MapUndo } from './map-undo.ts';
 import { ProjectSummaries } from './project-summaries.ts';
 import { Reminders } from './reminders.ts';
 import type { ReminderClockOptions } from './reminders.ts';
@@ -269,7 +272,14 @@ export async function startWorkspaceService(directory: string, registry?: Resour
     if (!state.nodes.some(node => node.id === context.nodeId && !node.resourceId)) throw new Error('Project not found');
     const result = await plots.run(context.nodeId, context.arguments); await broadcast(); return result;
   }, { requiresNode: false });
+  const mapUndo = new MapUndo(store, control, plots);
+  operation('map.undo', async context => { const result = mapUndo.run(context.arguments); await broadcast(); return result; }, { requiresNode: false });
   operation('pr.comments', context => lifecycle.execute(() => prComments(control, store, resources, terminals, context.nodeId, context.arguments)));
+  operation('video.notes', context => lifecycle.execute(() => videoNotes(control, store, terminals, context.nodeId, context.arguments)));
+  operation('video.explain', context => lifecycle.execute(() => explainInVideo(control, { store, sessions: terminals, skill: () => store.readSettings().value.videoSkill,
+    enabled: provider => (store.readSettings().value.agentProviders as Record<string, boolean>)[provider] !== false,
+    skills: input => agents ? agents.skills(input) : agentProvider(input.provider).skills(input.cwd ?? ''), skillPrompt: (provider, skill, text) => agentProvider(provider).skillPrompt(skill, text),
+    defaultModel: async provider => (await agentProvider(provider).models()).default, ...(agents ? { runSkill: (projectId, run) => agents.runSkill(projectId, run) } : {}) }, context.nodeId, context.arguments)));
   operation('pr.review.options', async () => reviews ? await reviews.options() : []);
   operation('pr.architecture', async context => {
     const input = z.object({ operation: z.enum(['options', 'prepare', 'status', 'launch']), requestId: z.string().uuid().optional() }).strict().parse(context.arguments);
