@@ -53,7 +53,7 @@ import { placeProjectLabels } from '../../../src/graph/label-placement.ts';
 import { clampItemViewPosition, clampItemViewSize, expandedItemBounds, filledItemView } from '../../../packages/core/item-views.ts';
 import type { ItemViewProfile, ItemViewSizes } from '../../../packages/core/item-views.ts';
 import { splitViewBounds } from './item-view-bounds.ts';
-import { MapWheelGestures } from './map-wheel.ts';
+import { MapWheelGestures, zoomAroundPointer } from './map-wheel.ts';
 import type { ItemViewBounds, ViewPlace, ViewSize } from './item-view-bounds.ts';
 import { useMapObstacles } from './use-map-obstacles.ts';
 import { BiomeGround, NeighborhoodField } from './neighborhood-field.tsx';
@@ -586,13 +586,21 @@ function MapCanvas(props: ProjectMapProps) {
   const viewport = useViewport();
   const lastZoom = useRef(viewport.zoom);
   const { setCenter, zoomTo, zoomIn, zoomOut, screenToFlowPosition, fitBounds, setViewport, getViewport } = useReactFlow();
-  // Two fingers on a trackpad pan the map; a pinch and a mouse wheel zoom it, as React Flow does on its own.
+  // Two fingers on a trackpad pan the map; a pinch, a mouse wheel and Command with either zoom it.
   const wheelPans = !itemResize.preview && !viewInteracting;
   useEffect(() => {
     const flow = container.current?.querySelector<HTMLElement>('.react-flow');
     if (!flow || !wheelPans) return;
     const gestures = new MapWheelGestures();
     const wheel = (event: WheelEvent) => {
+      // Command and the wheel zoom the map around the pointer, also over a card's own scrolling content, as in design
+      // tools; an open item view keeps its wheel.
+      if (event.metaKey && !event.ctrlKey && !(event.target as HTMLElement).closest('.item-view')) {
+        event.preventDefault(); event.stopPropagation();
+        const bounds = flow.getBoundingClientRect();
+        void setViewport(zoomAroundPointer(getViewport(), { x: event.clientX - bounds.left, y: event.clientY - bounds.top }, event, ZOOM_LEVELS));
+        return;
+      }
       if ((event.target as HTMLElement).closest('.nowheel')) return;
       if (gestures.classify(event) !== 'pan') return;
       event.preventDefault(); event.stopPropagation();

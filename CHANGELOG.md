@@ -3,6 +3,11 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Map
+- **Command + wheel zooms**: hold ⌘ and scroll with a mouse wheel or two fingers on a trackpad to zoom the map around the pointer, as in design tools, also over a card's scrolling content. Without ⌘, two fingers still pan. (#PR, @pmallol)
+
 ## 0.24.0 — 2026-11-17
 
 ### Agents
