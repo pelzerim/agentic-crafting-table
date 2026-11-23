@@ -594,11 +594,13 @@ function MapCanvas(props: ProjectMapProps) {
     const gestures = new MapWheelGestures();
     const wheel = (event: WheelEvent) => {
       // Command and the wheel zoom the map around the pointer, also over a card's own scrolling content, as in design
-      // tools; an open item view keeps its wheel.
-      if (event.metaKey && !event.ctrlKey && !(event.target as HTMLElement).closest('.item-view')) {
+      // tools. An open item view keeps its wheel because it sits outside .react-flow, so its events never reach here.
+      if (event.metaKey && !event.ctrlKey) {
         event.preventDefault(); event.stopPropagation();
-        const bounds = flow.getBoundingClientRect();
-        void setViewport(zoomAroundPointer(getViewport(), { x: event.clientX - bounds.left, y: event.clientY - bounds.top }, event, ZOOM_LEVELS));
+        const bounds = flow.getBoundingClientRect(), current = getViewport();
+        // A sideways-only scroll has nothing to zoom by, so it pans sideways as it does without Command.
+        if (event.deltaY === 0) { void setViewport({ ...current, x: current.x - event.deltaX }); return; }
+        void setViewport(zoomAroundPointer(current, { x: event.clientX - bounds.left, y: event.clientY - bounds.top }, event, ZOOM_LEVELS));
         return;
       }
       if ((event.target as HTMLElement).closest('.nowheel')) return;

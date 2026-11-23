@@ -6,7 +6,7 @@ their pull request and author.
 ## Unreleased
 
 ### Map
-- **Command + wheel zooms**: hold ⌘ and scroll with a mouse wheel or two fingers on a trackpad to zoom the map around the pointer, as in design tools, also over a card's scrolling content. Without ⌘, two fingers still pan. (#45, @pmallol)
+- **Command + wheel zooms**: hold ⌘ and scroll with a mouse wheel or two fingers on a trackpad to zoom the map around the pointer, as in design tools, also over a card's scrolling content. Without ⌘, two fingers still pan, and a sideways-only scroll pans sideways with ⌘ too. (#45, @pmallol)
 
 ## 0.24.0 — 2026-11-17
 

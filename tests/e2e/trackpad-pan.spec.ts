@@ -55,6 +55,13 @@ test('two fingers on a trackpad pan the map, a pinch, a mouse wheel and Command 
     expect(Math.abs((centre.y - inward.y) / inward.zoom - (centre.y - pinched.y) / pinched.zoom)).toBeLessThan(1);
     await trackpad(page, [{ metaKey: true, deltaY: 80 }]);
     await expect.poll(async () => (await camera(page)).zoom).toBeLessThan(inward.zoom);
+    await page.waitForTimeout(400);
+
+    // A sideways-only scroll with Command (two fingers sideways, or Command, Shift and a wheel) has nothing to zoom by,
+    // so it pans sideways as it does without Command, instead of being swallowed.
+    const outward = await camera(page);
+    await trackpad(page, [{ metaKey: true, deltaX: 30 }, { metaKey: true, deltaX: 20 }]);
+    await expect.poll(() => camera(page)).toEqual({ x: outward.x - 50, y: outward.y, zoom: outward.zoom });
   } finally {
     await exitWithoutShutdown(app);
     const client = await connectWorkspace(directory).catch(() => undefined);
