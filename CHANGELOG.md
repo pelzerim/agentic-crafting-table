@@ -6,7 +6,7 @@ their pull request and author.
 ## Unreleased
 
 ### Agents
-- **Prompt a new session from its start form**: the new agent form has an optional Prompt field. The session starts on that task with the project context, so there is no wait for the terminal to open before prompting. Command or Ctrl + Enter in the field starts the session. (#PR, @pmallol)
+- **Prompt a new session from its start form**: the new agent form has an optional Prompt field. The session starts on that task with the project context, so there is no wait for the terminal to open before prompting. Command or Ctrl + Enter in the field starts the session. (#46, @pmallol)
 
 ## 0.24.0 — 2026-11-17
 
