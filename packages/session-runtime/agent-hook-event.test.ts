@@ -134,6 +134,14 @@ test('the session start names its model, and a main-thread hook says whether it 
   assert.equal(hookFields({ session_id: native, hook_event_name: 'PreToolUse', tool_name: 'Read', cwd: '/repo/.claude/worktrees/x', agent_id: 'a1' }, native)?.worktree, undefined, 'a subagent in a worktree does not pen the item');
 });
 
+test('a hook that reports the effort level forwards it, and only a plain level', () => {
+  const native = 'native-1';
+  assert.deepEqual(hookFields({ session_id: native, hook_event_name: 'Stop', effort: { level: 'high' } }, native), { event: 'Stop', effort: 'high' });
+  assert.deepEqual(hookFields({ session_id: native, hook_event_name: 'Stop', effort: { level: 'xhigh' } }, native), { event: 'Stop', effort: 'xhigh' });
+  for (const effort of [{ level: 'High; rm -rf' }, { level: '' }, { level: 3 }, 'high', null]) assert.deepEqual(hookFields({ session_id: native, hook_event_name: 'Stop', effort }, native), { event: 'Stop' }, JSON.stringify(effort));
+  assert.equal(hookFields({ session_id: native, hook_event_name: 'SubagentStop', agent_id: 'a1', effort: { level: 'low' } }, native)?.effort, undefined, "a subagent's effort is not the item's");
+});
+
 test('Stop forwards the last assistant message, bounded; other events never carry text', () => {
   assert.deepEqual(hookFields({ session_id: native, hook_event_name: 'Stop', last_assistant_message: 'Done.\n\nPushed to main.' }, native), { event: 'Stop', lastMessage: 'Done.\n\nPushed to main.' });
   assert.equal(hookFields({ session_id: native, hook_event_name: 'Stop', last_assistant_message: 'x'.repeat(5000) }, native)!.lastMessage!.length, 2000);

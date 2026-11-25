@@ -152,6 +152,8 @@ function NativeTerminal({ sessionId, active, options }: { sessionId: string; act
   const [recordingRevision, refreshRecording] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false), [promptStatus, setPromptStatus] = useState<AgentPromptStatus>();
   const [promptError, setPromptError] = useState('');
+  const [launchLabel, setLaunchLabel] = useState(options.launchLabel);
+  useEffect(() => options.observeLaunchLabel?.(setLaunchLabel), [options.observeLaunchLabel]);
   const metadata = useRef(''), opening = useRef(true);
   const channel = useMemo(() => new NativeChannel(sessionId, setError), [sessionId]);
   useEffect(() => () => channel.dispose(), [channel]);
@@ -253,7 +255,7 @@ function NativeTerminal({ sessionId, active, options }: { sessionId: string; act
   const stopDisabled = busy || !session || !['starting', 'running'].includes(session.state) || !!session.stopRequestedAt;
   const toolbar = <div className="terminal-status">
       <span className="view-chip terminal-state" data-tone={state.tone}>{state.label}</span>
-      {options.launchLabel && <small className="terminal-launch" title="Launch provider and model; the native session may change its model">{options.launchLabel}</small>}
+      {launchLabel && <small className="terminal-launch" title={options.observeLaunchLabel ? 'Provider, model and effort this session runs on now' : 'Launch provider and model; the native session may change its model'}>{launchLabel}</small>}
       <span className="terminal-directory" title={session?.cwd}>{session?.cwd}</span>
       {truncated && <small title="This older session only retained its last output">Partial recording</small>}
       {skipped && !session?.recordingDeletedAt && <small title="Only the most recent output was replayed into this view. The full recording is kept.">Earlier output skipped</small>}
