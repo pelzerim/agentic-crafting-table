@@ -1,0 +1,386 @@
+import type { WorkspaceState } from './control.ts';
+import type { GraphLink } from '../../src/graph/graph.ts';
+import type { ItemMapSizes } from './item-map-sizes.ts';
+import type { ResourcePluginRegistry } from '../../src/resource-plugins/registry.ts';
+import { isDrawn } from '../../src/graph/archive.ts';
+import { needsMeIds } from '../../src/graph/atlas.ts';
+import { mapBadges } from '../../src/graph/badges.ts';
+import { freePosition, itemFootprint } from '../../src/graph/footprints.ts';
+import { ITEM_GAP, layoutFootprints } from '../../src/graph/movement.ts';
+import { PLOT_COLORS, PLOT_JOIN, PLOT_LEAVE, detectPlots, plotColor } from '../../src/graph/plots.ts';
+import type { PlotBox, PlotColor, PlotView } from '../../src/graph/plots.ts';
+import { plotMapOrder } from '../../src/graph/project-column.ts';
+import { overlaps } from '../../src/graph/spatial.ts';
+import type { SpatialBox } from '../../src/graph/spatial.ts';
+
+/** Inside a plot: MAP-13 clearance with room to spare, well under PLOT_JOIN. */
+export const TIDY_GAP = 24;
+/** Between the plots of a project: well over PLOT_LEAVE, so detection never merges them. */
+export const TIDY_GUTTER = 160;
+export const TIDY_FINISHED_DAYS = 3;
+const ROW_TOLERANCE = 24, DAY = 86_400_000;
+
+export interface TidyOptions { lineUp: boolean; spacePlots: boolean; colors: boolean; archive: boolean }
+/** One item to another plot of its project: an existing one, or a new plot by name. */
+export interface TidyRegroup { itemId: string; plotId?: string; newPlot?: string }
+type Position = { x: number; y: number };
+type Node = WorkspaceState['nodes'][number];
+export interface TidyInput {
+  state: Pick<WorkspaceState, 'nodes' | 'resources' | 'links'>;
+  registry: ResourcePluginRegistry;
+  sizes?: ItemMapSizes;
+  plots: readonly PlotView[];
+  /** The project to tidy; the whole board when absent. */
+  projectId?: string;
+  now: number;
+  /** Ticked regroup rows: layout and pins follow them. */
+  regroup?: readonly TidyRegroup[];
+  /** Ticked archive rows: they leave the layout. */
+  archived?: readonly string[];
+}
+export interface TidyPlan {
+  moves: { id: string; from: Position; to: Position }[];
+  colors: { plotId: string; from: PlotColor; to: PlotColor }[];
+  /** Pins written in the same batch; `new:<project>:<name>` is a plot Regroup creates. */
+  pins: { plotId: string; projectId: string; memberIds: string[] }[];
+  /** Finished items Tidy may archive. */
+  archives: string[];
+}
+
+export const newPlotKey = (projectId: string, name: string) => `new:${projectId}:${name}`;
+const top = (box: SpatialBox) => box.y - box.height / 2, left = (box: SpatialBox) => box.x - box.width / 2;
+const same = (a: Position, b: Position) => Math.abs(a.x - b.x) < .5 && Math.abs(a.y - b.y) < .5;
+
+/** Reading order: rows by top (within a small tolerance), then left to right. */
+export function readingOrder<T extends SpatialBox>(boxes: readonly T[]): T[] {
+  const sorted = [...boxes].sort((a, b) => top(a) - top(b) || left(a) - left(b) || a.id.localeCompare(b.id)), rows: T[][] = [];
+  for (const box of sorted) {
+    const row = rows.at(-1);
+    if (row && top(box) - top(row[0]) < ROW_TOLERANCE) row.push(box); else rows.push([box]);
+  }
+  return rows.flatMap(row => row.sort((a, b) => left(a) - left(b) || a.id.localeCompare(b.id)));
+}
+
+/** Top-left corners of a grid of `sizes` in order, columns as wide as their widest cell. */
+function grid(sizes: readonly { width: number; height: number }[], origin: Position, gap: number): Position[] {
+  const cols = Math.ceil(Math.sqrt(sizes.length)), widths: number[] = [], heights: number[] = [];
+  sizes.forEach((size, i) => { const c = i % cols, r = Math.floor(i / cols); widths[c] = Math.max(widths[c] ?? 0, size.width); heights[r] = Math.max(heights[r] ?? 0, size.height); });
+  const offset = (list: number[], index: number) => list.slice(0, index).reduce((sum, value) => sum + value + gap, 0);
+  return sizes.map((_, i) => ({ x: origin.x + offset(widths, i % cols), y: origin.y + offset(heights, Math.floor(i / cols)) }));
+}
+
+function bounds(boxes: readonly SpatialBox[]) {
+  const x0 = Math.min(...boxes.map(left)), y0 = Math.min(...boxes.map(top));
+  const x1 = Math.max(...boxes.map(box => box.x + box.width / 2)), y1 = Math.max(...boxes.map(box => box.y + box.height / 2));
+  return { x0, y0, width: x1 - x0, height: y1 - y0 };
+}
+
+const TIERS = new Map([['linear.ticket', 0], ['github.issue', 0], ['workspace.todo', 0], ['agent.session', 1], ['terminal.session', 1], ['github.pull-request', 2]]);
+/** An item type's level in a linked tree: tickets, then agents, then PRs, then reviews, artifacts and the rest. */
+export const tidyTier = (pluginId: string | undefined) => (pluginId === undefined ? undefined : TIERS.get(pluginId)) ?? 3;
+
+
+/** A plot's members anchored at its current top-left: linked members as trees growing right, each item's links in one
+ * column beside it, centred on them, with columns spread until no link line crosses another card; unlinked members in a grid underneath. */
+export function lineUp<T extends SpatialBox>(boxes: readonly T[], links: readonly GraphLink[] = [], tier: (id: string) => number = () => 0): T[] {
+  if (!boxes.length) return [];
+  const order = readingOrder(boxes), { x0, y0 } = bounds(boxes), rank = new Map(order.map((box, i) => [box.id, i]));
+  const near = new Map(order.map(box => [box.id, new Set<string>()]));
+  const linkedAt = new Map<string, number>();
+  links.forEach((link, i) => {
+    if (link.reveal || link.sourceId === link.targetId || !rank.has(link.sourceId) || !rank.has(link.targetId)) return;
+    near.get(link.sourceId)!.add(link.targetId); near.get(link.targetId)!.add(link.sourceId);
+    for (const key of [`${link.sourceId}\n${link.targetId}`, `${link.targetId}\n${link.sourceId}`]) if (!linkedAt.has(key)) linkedAt.set(key, i);
+  });
+  const byRank = (a: string, b: string) => rank.get(a)! - rank.get(b)!, byId = new Map(order.map(box => [box.id, box]));
+  const corners = new Map<string, Position>(), seen = new Set<string>();
+  let y = y0;
+  for (const start of order) {
+    if (seen.has(start.id) || !near.get(start.id)!.size) continue;
+    const members = [start.id];
+    for (let i = 0, found = new Set(members); i < members.length; i++) for (const id of near.get(members[i])!) if (!found.has(id)) { found.add(id); members.push(id); }
+    // A ticket is the root (else the most linked item, ties by id), each item hanging off its link one tier up, the first such link when several.
+    const t = tier, links_ = (id: string) => near.get(id)!.size;
+    const root = members.reduce((best, id) => t(id) < t(best) || (t(id) === t(best) && (links_(id) > links_(best) || (links_(id) === links_(best) && id < best))) ? id : best);
+    const parent = new Map<string, string>(), since = (a: string, b: string) => linkedAt.get(`${a}\n${b}`)!;
+    for (const id of members) {
+      const up = id === root ? [] : [...near.get(id)!].filter(other => t(other) < t(id));
+      if (up.length) parent.set(id, up.reduce((best, other) => t(other) > t(best) || (t(other) === t(best) && since(id, other) < since(id, best)) ? other : best));
+    }
+    const depthOf = (id: string): number | undefined => { let d = 0; for (let at: string | undefined = id; at !== root; d++) if (!(at = parent.get(at))) return undefined; return d; };
+    // Items whose chain stops short of the root join their nearest placed link, then the earliest, never by position.
+    for (let attached = new Set(members.filter(id => depthOf(id) !== undefined)); attached.size < members.length; attached = new Set(members.filter(id => depthOf(id) !== undefined))) {
+      let pick: [string, string] | undefined;
+      for (const id of members) if (!attached.has(id)) for (const other of near.get(id)!) if (attached.has(other) && (!pick || (depthOf(other)! - depthOf(pick[1])! || since(id, other) - since(...pick) || (id < pick[0] ? -1 : id > pick[0] ? 1 : 0)) < 0)) pick = [id, other];
+      parent.set(...pick!);
+    }
+    const children = new Map(members.map(id => [id, [] as string[]]));
+    for (const [kid, up] of parent) children.get(up)!.push(kid);
+    // Siblings keep their order by tier then on the map, except that siblings linked to each other stack next to each other.
+    for (const [id, kids] of children) {
+      const pool = kids.sort((a, b) => t(a) - t(b) || byRank(a, b)).splice(0), linkedIn = (kid: string) => pool.filter(other => near.get(kid)!.has(other)).length;
+      while (pool.length) { const last = kids.at(-1), next = last ? pool.findIndex(other => near.get(last)!.has(other)) : -1; kids.push(...pool.splice(next >= 0 ? next : Math.max(0, pool.findIndex(kid => linkedIn(kid) <= 1)), 1)); }
+      children.set(id, kids);
+    }
+    const queue = [root], depth = new Map([[root, 0]]);
+    for (let i = 0; i < queue.length; i++) for (const kid of children.get(queue[i])!) { depth.set(kid, depth.get(queue[i])! + 1); queue.push(kid); }
+    for (const id of queue) seen.add(id);
+    const tops = new Map<string, number>();
+    const place = (id: string, top: number): number => {
+      const height = byId.get(id)!.height, kids = children.get(id)!;
+      let below = top;
+      for (const kid of kids) below = place(kid, below) + TIDY_GAP;
+      const centre = (kid: string) => tops.get(kid)! + byId.get(kid)!.height / 2;
+      tops.set(id, kids.length ? Math.max(top, (centre(kids[0]) + centre(kids.at(-1)!)) / 2 - height / 2) : top);
+      return Math.max(tops.get(id)! + height, below - TIDY_GAP);
+    };
+    y = place(root, y) + TIDY_GAP;
+    const widths: number[] = [], columns: number[] = [x0];
+    for (const id of queue) widths[depth.get(id)!] = Math.max(widths[depth.get(id)!] ?? 0, byId.get(id)!.width);
+    for (let d = 1; d < widths.length; d++) columns[d] = columns[d - 1] + widths[d - 1] + TIDY_GAP;
+    for (const id of queue) corners.set(id, { x: columns[depth.get(id)!], y: tops.get(id)! });
+  }
+  const loose = order.filter(box => !corners.has(box.id));
+  grid(loose, { x: x0, y }, TIDY_GAP).forEach((corner, i) => corners.set(loose[i].id, corner));
+  return order.map(box => ({ ...box, x: corners.get(box.id)!.x + box.width / 2, y: corners.get(box.id)!.y + box.height / 2 }));
+}
+
+/** The spot nearest `box` that clears every obstacle; straight down when the nearest edges are all taken. */
+function clearSpot(box: SpatialBox, obstacles: readonly SpatialBox[], gap: number): Position {
+  if (!obstacles.some(other => overlaps(box, other, gap))) return { x: box.x, y: box.y };
+  const near = freePosition(box, obstacles, gap);
+  if (near && !obstacles.some(other => overlaps({ ...box, ...near }, other, gap))) return near;
+  let y = box.y;
+  for (const other of [...obstacles].sort((a, b) => a.y - b.y)) if (overlaps({ ...box, y }, other, gap)) y = other.y + (other.height + box.height) / 2 + gap;
+  return { x: box.x, y };
+}
+
+interface Block { key: string; boxes: SpatialBox[] }
+const blockBox = (block: Block, at?: Position): SpatialBox => {
+  const b = bounds(block.boxes), x0 = at?.x ?? b.x0, y0 = at?.y ?? b.y0;
+  return { id: block.key, x: x0 + b.width / 2, y: y0 + b.height / 2, width: b.width, height: b.height };
+};
+const shifted = (block: Block, to: SpatialBox) => {
+  const from = blockBox(block), dx = to.x - from.x, dy = to.y - from.y;
+  return block.boxes.map(box => ({ ...box, x: box.x + dx, y: box.y + dy }));
+};
+
+/** Blocks in reading order, except that a block linked to one already taken follows it, so linked plots pack side by side. */
+function linkedOrder<T extends { block: Block }>(order: readonly T[], links: readonly GraphLink[]): T[] {
+  const blockOf = new Map(order.flatMap((entry, i) => entry.block.boxes.map(box => [box.id, i] as const))), near = order.map(() => new Set<number>());
+  for (const link of links) {
+    const a = blockOf.get(link.sourceId), b = blockOf.get(link.targetId);
+    if (!link.reveal && a !== undefined && b !== undefined && a !== b) { near[a].add(b); near[b].add(a); }
+  }
+  const taken = new Set<number>(), out: T[] = [];
+  for (let start = 0; start < order.length; start++) {
+    if (taken.has(start)) continue;
+    taken.add(start);
+    for (const queue = [start]; queue.length;) {
+      const i = queue.shift()!; out.push(order[i]);
+      for (const j of [...near[i]].sort((a, b) => a - b)) if (!taken.has(j)) { taken.add(j); queue.push(j); }
+    }
+  }
+  return out;
+}
+
+/** Plots (and loose items) of one project, packed in reading order with linked plots side by side and even gutters, or kept where they are. */
+function arrange(blocks: readonly Block[], obstacles: readonly SpatialBox[], space: boolean, original: readonly SpatialBox[], links: readonly GraphLink[] = [], fixed: readonly Block[] = []): SpatialBox[] {
+  if (!blocks.length) return [];
+  if (!space) {
+    // Only reshaped plots can need room: each keeps its corner unless a member would come near something.
+    const placed: SpatialBox[] = [], current = blocks.flatMap(block => block.boxes);
+    for (const block of blocks) {
+      const others = [...obstacles, ...placed, ...current.filter(box => !block.boxes.some(own => own.id === box.id) && !placed.some(done => done.id === box.id))];
+      // A reshaped plot keeps a gutter from everything else, so no loose item or other plot joins it.
+      const gap = block.key.startsWith('item:') || !block.boxes.some(box => original.some(was => was.id === box.id && (was.x !== box.x || was.y !== box.y))) ? ITEM_GAP : TIDY_GUTTER;
+      const clear = !block.boxes.some(box => others.some(other => overlaps(box, other, gap)));
+      const at = clear ? blockBox(block) : { ...blockBox(block), ...clearSpot(blockBox(block), others, gap) };
+      placed.push(...shifted(block, at));
+    }
+    return placed;
+  }
+  const entries = blocks.map(block => ({ ...blockBox(block), block })), placed: SpatialBox[] = [];
+  // A plot linked to a locked plot sits right beside it, at the nearest clear spot.
+  const fixedOf = new Map(fixed.flatMap(block => block.boxes.map(box => [box.id, block] as const)));
+  // By key, not reading order: placing them changes reading order, and a second Tidy must place them the same.
+  for (const entry of [...entries].sort((a, b) => a.block.key.localeCompare(b.block.key))) {
+    const ids = new Set(entry.block.boxes.map(box => box.id)), count = new Map<Block, number>();
+    for (const link of links) if (!link.reveal) for (const [own, other] of [[link.sourceId, link.targetId], [link.targetId, link.sourceId]]) {
+      const anchor = ids.has(own) ? fixedOf.get(other) : undefined;
+      if (anchor) count.set(anchor, (count.get(anchor) ?? 0) + 1);
+    }
+    const anchor = [...count].sort(([a, m], [b, n]) => n - m || a.key.localeCompare(b.key))[0]?.[0];
+    if (!anchor) continue;
+    const by = blockBox(anchor), spot = clearSpot(blockBox(entry.block, { x: by.x + by.width / 2 + TIDY_GUTTER, y: top(by) }), [...obstacles, ...placed], TIDY_GUTTER);
+    placed.push(...shifted(entry.block, { ...blockBox(entry.block), ...spot }));
+  }
+  // Ordered after anchoring, so where an anchored plot lands never reorders the rest.
+  const anchored = new Set(placed.map(box => box.id)), order = linkedOrder(readingOrder(entries.filter(entry => !entry.block.boxes.some(box => anchored.has(box.id)))), links);
+  if (!order.length) return placed;
+  obstacles = [...obstacles, ...placed];
+  // Rows of the grid in reading order; an obstacle only pushes the rest of its row right, so a packed board packs the same again.
+  const cols = Math.ceil(Math.sqrt(order.length)), origin = { x: Math.min(...order.map(left)), y: Math.min(...order.map(top)) };
+  for (let first = 0, rowTop = origin.y; first < order.length; first += cols) {
+    const row = order.slice(first, first + cols);
+    let cursor = origin.x;
+    for (const entry of row) {
+      let at = blockBox(entry.block, { x: cursor, y: rowTop });
+      for (let hits = obstacles.filter(other => overlaps(at, other, TIDY_GUTTER)); hits.length; hits = obstacles.filter(other => overlaps(at, other, TIDY_GUTTER))) {
+        cursor = Math.min(...hits.map(other => other.x + other.width / 2)) + TIDY_GUTTER;
+        at = blockBox(entry.block, { x: cursor, y: rowTop });
+      }
+      placed.push(...shifted(entry.block, at));
+      cursor += at.width + TIDY_GUTTER;
+    }
+    rowTop += Math.max(...row.map(entry => entry.height)) + TIDY_GUTTER;
+  }
+  return placed;
+}
+
+/** Finished work Tidy may archive: done or closed more than TIDY_FINISHED_DAYS ago, never working, waiting in Needs me or in a locked plot. */
+export function finishedItems(nodes: readonly Node[], plots: readonly PlotView[], now: number, projectId?: string): string[] {
+  const needs = needsMeIds(nodes), locked = new Set(plots.filter(plot => plot.locked).flatMap(plot => plot.memberIds));
+  const old = (at?: string) => at !== undefined && now - Date.parse(at) > TIDY_FINISHED_DAYS * DAY;
+  return nodes.filter(node => node.resourceId && node.projectId && (projectId === undefined || node.projectId === projectId) && isDrawn(node, nodes)
+    && node.activity !== 'working' && !node.rework && !needs.has(node.id) && !locked.has(node.id)
+    && (old(node.completedAt) || (node.activity === 'complete' && old(node.activityAt)))).map(node => node.id).sort();
+}
+
+/** Duplicate plot colours within a project change, fewest first; a chosen colour or a locked plot never changes. */
+function plotColors(plots: readonly PlotView[], nodes: readonly Node[]): TidyPlan['colors'] {
+  const changes: TidyPlan['colors'] = [];
+  for (const projectId of [...new Set(plots.map(plot => plot.projectId))].sort()) {
+    const own = plots.filter(plot => plot.projectId === projectId), byId = new Map(own.map(plot => [plot.id, plot]));
+    const fixed = own.filter(plot => plot.chosenColor !== undefined || plot.locked), used = new Set(fixed.map(plotColor));
+    const rest = plotMapOrder(own.filter(plot => !fixed.includes(plot)), nodes).map(id => byId.get(id)!);
+    rest.forEach((plot, i) => {
+      if (!used.has(plot.color)) { used.add(plot.color); return; }
+      const later = new Set(rest.slice(i + 1).map(other => other.color)), free = PLOT_COLORS.find(color => !used.has(color) && !later.has(color));
+      if (!free) return;
+      used.add(free); changes.push({ plotId: plot.id, from: plot.color, to: free });
+    });
+  }
+  return changes;
+}
+
+/** What Tidy reads: the projects in scope, their plots, the items on the ground, and who belongs where once regroup rows apply. */
+function prepare(input: TidyInput) {
+  const { nodes, resources, links } = input.state, sizes = input.sizes ?? {}, registry = input.registry;
+  const badges = mapBadges(nodes, resources, links).attached, archived = new Set(input.archived ?? []);
+  const projects = nodes.filter(node => !node.resourceId && !node.projectId && isDrawn(node, nodes) && (input.projectId === undefined || node.id === input.projectId));
+  const scope = new Set(projects.map(project => project.id)), plots = input.plots.filter(plot => scope.has(plot.projectId));
+  const onGround = (node: Node) => Boolean(node.resourceId && node.projectId && scope.has(node.projectId) && isDrawn(node, nodes) && !badges.has(node.id) && !archived.has(node.id));
+  const footprint = (node: Node) => itemFootprint(node, resources, registry, sizes);
+  const groupOf = new Map<string, string>();
+  for (const plot of plots) if (!plot.locked) for (const id of plot.memberIds) groupOf.set(id, plot.id);
+  const lockedIds = new Set(plots.filter(plot => plot.locked).flatMap(plot => plot.memberIds));
+  const regrouped = new Map<string, string>();
+  for (const row of input.regroup ?? []) {
+    const node = nodes.find(candidate => candidate.id === row.itemId), target = row.plotId ?? (row.newPlot && node?.projectId ? newPlotKey(node.projectId, row.newPlot) : undefined);
+    const plot = row.plotId ? plots.find(candidate => candidate.id === row.plotId) : undefined;
+    if (!node || !target || lockedIds.has(node.id) || !onGround(node) || (row.plotId && (!plot || plot.locked || plot.projectId !== node.projectId))) continue;
+    groupOf.set(node.id, target); regrouped.set(node.id, target);
+  }
+  return { nodes, resources, links, sizes, registry, archived, projects, plots, onGround, footprint, groupOf, lockedIds, regrouped };
+}
+
+/** The whole Tidy plan: deterministic, and empty for a board Tidy just tidied. Plot membership never changes except by
+ * `regroup`; where detection could still split or merge a plot, its membership is pinned in the same batch. */
+export function planTidy(input: TidyInput, options: TidyOptions): TidyPlan {
+  const { nodes, resources, links, sizes, registry, projects, plots, onGround, footprint, groupOf, lockedIds, regrouped, archived } = prepare(input);
+  const planned = new Map<string, Position>(), pluginOf = new Map(resources.map(resource => [resource.id, resource.pluginId]));
+  const nodeById = new Map(nodes.map(node => [node.id, node])), tierOf = (id: string) => tidyTier(pluginOf.get(nodeById.get(id)?.resourceId ?? ''));
+  if (options.lineUp || options.spacePlots) {
+    const world = layoutFootprints(nodes, resources, registry, sizes);
+    const anchors = projects.map(project => ({ project, boxes: nodes.filter(node => node.projectId === project.id && onGround(node)).map(footprint) })).filter(entry => entry.boxes.length);
+    for (const { project, boxes } of anchors.sort((a, b) => { const ba = bounds(a.boxes), bb = bounds(b.boxes); return ba.y0 - bb.y0 || ba.x0 - bb.x0 || a.project.id.localeCompare(b.project.id); })) {
+      const free = boxes.filter(box => !lockedIds.has(box.id)), freeIds = new Set(free.map(box => box.id));
+      const groups = new Map<string, SpatialBox[]>();
+      for (const box of free) { const key = groupOf.get(box.id) ?? `item:${box.id}`; groups.set(key, [...groups.get(key) ?? [], box]); }
+      const blocks = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([key, members]) => ({ key, boxes: options.lineUp && !key.startsWith('item:') ? lineUp(members, links, tierOf) : members }));
+      const obstacles = world.filter(box => !freeIds.has(box.id) && !archived.has(box.id)).map(box => planned.has(box.id) ? { ...box, ...planned.get(box.id)! } : box);
+      const fixed = plots.filter(plot => plot.locked && plot.projectId === project.id).map(plot => ({ key: plot.id, boxes: obstacles.filter(box => plot.memberIds.includes(box.id)) })).filter(block => block.boxes.length);
+      for (const box of arrange(blocks, obstacles, options.spacePlots, free, links, fixed)) planned.set(box.id, { x: box.x, y: box.y });
+    }
+  }
+  const byId = new Map(nodes.map(node => [node.id, node]));
+  const moves = [...planned].flatMap(([id, to]) => { const from = byId.get(id)!.position; return same(from, to) ? [] : [{ id, from, to }]; }).sort((a, b) => a.id.localeCompare(b.id));
+  return { moves, colors: options.colors ? plotColors(plots, nodes) : [], pins: membershipPins(input, plots, groupOf, regrouped, planned, onGround), archives: options.archive ? finishedItems(nodes, plots, input.now, input.projectId) : [] };
+}
+
+/** Plots whose members detection would not find again at the planned layout get those members pinned. */
+function membershipPins(input: TidyInput, plots: readonly PlotView[], groupOf: ReadonlyMap<string, string>, regrouped: ReadonlyMap<string, string>, planned: ReadonlyMap<string, Position>, onGround: (node: Node) => boolean): TidyPlan['pins'] {
+  const { nodes, resources, links } = input.state, projectOf = new Map(nodes.map(node => [node.id, node.projectId]));
+  const expected = new Map<string, { projectId: string; memberIds: string[] }>();
+  for (const plot of plots) if (!plot.locked) expected.set(plot.id, { projectId: plot.projectId, memberIds: [] });
+  for (const [id, key] of groupOf) {
+    if (!onGround(nodes.find(node => node.id === id)!)) continue;
+    const entry = expected.get(key) ?? { projectId: projectOf.get(id)!, memberIds: [] };
+    entry.memberIds.push(id); expected.set(key, entry);
+  }
+  const boxes: PlotBox[] = nodes.filter(onGround).map(node => ({ ...itemFootprint(node, resources, input.registry, input.sizes), ...planned.get(node.id), projectId: node.projectId! }));
+  const pinned = [...expected].filter(([key]) => key.startsWith('new:') || [...regrouped.values()].includes(key));
+  const previous = [...expected].map(([id, entry]) => ({ id, projectId: entry.projectId, memberIds: entry.memberIds }));
+  const pins = [...plots.filter(plot => plot.pinnedMemberIds.length || plot.locked).map(plot => ({ plotId: plot.id, projectId: plot.projectId, memberIds: plot.locked ? plot.memberIds : plot.pinnedMemberIds.filter(id => groupOf.get(id) === plot.id), locked: plot.locked })),
+    ...pinned.map(([plotId, entry]) => ({ plotId, projectId: entry.projectId, memberIds: entry.memberIds }))];
+  let counter = 0;
+  const detected = new Map(detectPlots(boxes, previous, () => `detected:${counter++}`, links, pins).map(plot => [plot.id, plot.memberIds]));
+  const sameMembers = (a: readonly string[] = [], b: readonly string[]) => a.length === b.length && [...a].sort().every((id, i) => id === [...b].sort()[i]);
+  return [...expected].filter(([key, entry]) => entry.memberIds.length && (pinned.some(([id]) => id === key) || !sameMembers(detected.get(key), entry.memberIds)))
+    .map(([plotId, entry]) => ({ plotId, projectId: entry.projectId, memberIds: [...entry.memberIds].sort() })).sort((a, b) => a.plotId.localeCompare(b.plotId));
+}
+
+/** What applying `plan` leaves at the `final` map: items whose plot changed (with every member of the plots involved), and items a
+ * second Tidy would move again. Detection runs with the pins the apply writes; the plan is good when both are empty. */
+export function tidyDrift(input: TidyInput, options: TidyOptions, plan: TidyPlan, final: TidyInput['state']): { membership: string[]; unsettled: string[] } {
+  const { nodes, plots, onGround } = prepare(input), finalById = new Map(final.nodes.map(node => [node.id, node]));
+  const repinned = new Set(plan.pins.flatMap(pin => pin.memberIds)), planned = new Map(plan.pins.map(pin => [pin.plotId, pin.memberIds]));
+  const pins = [...plots.map(plot => ({ plotId: plot.id, projectId: plot.projectId, memberIds: [...new Set([...plot.pinnedMemberIds.filter(id => !repinned.has(id)), ...planned.get(plot.id) ?? []])], locked: plot.locked }))
+    .filter(pin => pin.memberIds.length || pin.locked), ...plan.pins.filter(pin => !plots.some(plot => plot.id === pin.plotId))];
+  const previous = plots.map(plot => ({ id: plot.id, projectId: plot.projectId, memberIds: plot.memberIds }));
+  const detect = (state: TidyInput['state']) => {
+    const byId = new Map(state.nodes.map(node => [node.id, node])), boxes: PlotBox[] = nodes.filter(onGround).map(node => ({ ...itemFootprint(byId.get(node.id) ?? node, state.resources, input.registry, input.sizes), projectId: node.projectId! }));
+    let counter = 0;
+    return detectPlots(boxes, previous, () => `detected:${counter++}`, state.links, pins);
+  };
+  // A plot is known by its id, or by its members when detection made it up.
+  const membership = (found: ReturnType<typeof detect>) => new Map(found.flatMap(plot => plot.memberIds.map(id => [id, { key: plot.id.startsWith('detected:') ? [...plot.memberIds].sort().join() : plot.id, members: plot.memberIds }] as const)));
+  const before = membership(detect(input.state)), after = membership(detect(final)), drift = new Set<string>();
+  for (const node of nodes.filter(onGround)) {
+    const was = before.get(node.id), now = after.get(node.id);
+    if (was?.key !== now?.key) for (const id of [node.id, ...was?.members ?? [], ...now?.members ?? []]) drift.add(id);
+  }
+  const moved = new Set(plan.moves.map(move => move.id)), views = new Map(plots.map(plot => [plot.id, plot]));
+  const settled = detect(final).map(plot => ({ ...views.get(plot.id) ?? { name: plot.id, source: 'local' as const, color: PLOT_COLORS[0], hidden: false }, ...plot,
+    pinnedMemberIds: pins.find(pin => pin.plotId === plot.id)?.memberIds.filter(id => plot.memberIds.includes(id)) ?? [] })) as PlotView[];
+  const again = planTidy({ ...input, state: { ...input.state, ...final }, plots: settled, regroup: [], archived: [] }, options);
+  return { membership: [...drift].sort(), unsettled: again.moves.map(move => move.id).filter(id => moved.has(id)) };
+}
+
+export const PLOT_DISTANCES = { join: PLOT_JOIN, leave: PLOT_LEAVE } as const;
+
+/** A 53-bit string hash (cyrb53): equal inputs give equal fingerprints in the window and the service. */
+function hash(text: string) {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
+/** What a preview read in its scope and planned; status and activity are left out so a busy board still tidies. */
+export function tidyFingerprint(input: TidyInput, plan: TidyPlan): string {
+  const { nodes, resources } = input.state;
+  const scope = new Set(nodes.filter(node => !node.resourceId && !node.projectId && isDrawn(node, nodes) && (input.projectId === undefined || node.id === input.projectId)).map(node => node.id));
+  const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id);
+  // Only items on the map: a window holds just its layer, without most Undermap items.
+  const items = nodes.filter(node => node.resourceId && node.projectId && scope.has(node.projectId) && isDrawn(node, nodes)).sort(byId).map(node => {
+    const box = itemFootprint(node, resources, input.registry, input.sizes ?? {});
+    return [node.id, box.x, box.y, box.width, box.height, node.projectId, Boolean(node.archivedAt), Boolean(node.belowAt), node.title, node.generatedTitle ?? null, Boolean(node.titleChosen)];
+  });
+  const projects = nodes.filter(node => scope.has(node.id)).sort(byId).map(node => [node.id, node.title, node.generatedTitle ?? null, Boolean(node.titleChosen)]);
+  const plots = input.plots.filter(plot => scope.has(plot.projectId)).sort(byId).map(plot => [plot.id, plot.projectId, [...plot.memberIds].sort(), [...plot.pinnedMemberIds].sort(), Boolean(plot.locked), plot.color, plot.chosenColor ?? null, plot.name, plot.source]);
+  const planned = { moves: plan.moves.map(move => [move.id, move.to.x, move.to.y]), colors: plan.colors.map(change => [change.plotId, change.to]), pins: plan.pins };
+  return hash(JSON.stringify([input.projectId ?? null, input.sizes ?? {}, projects, items, plots, planned]));
+}
