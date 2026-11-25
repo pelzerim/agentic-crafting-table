@@ -7,6 +7,8 @@ their pull request and author.
 
 ### Agents
 - **Current model and effort in the agent view**: the menu bar of an open Claude or Codex session names the model and effort level it runs on now, such as `claude · opus 5.5 high`, instead of the model chosen at launch. It follows `/model` at once. Claude reports `/effort` when the next turn ends; Codex's `/model` shows within 2 seconds. (#38, @timohuovinen)
+### Reviews
+- **Send picker**: a long agent title no longer pushes the picker's send button off its left edge; the label ends in an ellipsis and the tooltip shows the full name. (#41, @pmallol)
 
 ## 0.24.0 — 2026-11-17
 

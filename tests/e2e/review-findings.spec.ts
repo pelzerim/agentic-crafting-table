@@ -28,7 +28,9 @@ test('structured review findings: triage, send to idle and busy agents, fixed re
     async capture(_directory, requestId, source) { const cwd = join(directory, 'comparisons', requestId, 'repository'); await mkdir(cwd, { recursive: true }); return { ...source.comparison, baseSha: 'c'.repeat(40), changedFiles: ['file.ts'], diff: '+ review change', cwd, digest: requestId }; } };
   const runtime = { directory: join(directory, 'runtime'), executable: electronPath as unknown as string, entrypoint: resolve('dist/session-supervisor.cjs'), electronRuntime: true };
   const service = await startWorkspaceService(directory, undefined, runtime, { ...fixture, reviews: { 'github.pull-request': source }, reviewRuntime: { models: async () => ({ options: ['opus', 'gpt-6-astra'], default: 'opus' }), probe: async () => ({ executable: reviewer, version: 'scripted review fixture', structuredOutput: true }) } });
-  const agent = (id: string, x: number) => ({ type: 'item.add' as const, id, resourceId: `${id}-r`, pluginId: 'agent.session', title: `Claude · ${id}`, projectId: 'project', position: { x, y: 560 }, data: { provider: 'claude', sessionId: `${id}-session` } });
+  /** The docs agent is titled by a long first prompt, as real sessions are, so the picker's send button must ellipsize it. */
+  const LONG = ' — work on the billing docs on a new branch, in small commits, ending with a PR; do not push to main or deploy';
+  const agent = (id: string, x: number) => ({ type: 'item.add' as const, id, resourceId: `${id}-r`, pluginId: 'agent.session', title: `Claude · ${id}${id === 'docs' ? LONG : ''}`, projectId: 'project', position: { x, y: 560 }, data: { provider: 'claude', sessionId: `${id}-session` } });
   await service.control.dispatch({ commandId: 'setup', expectedRevision: 0, actor: { kind: 'user', id: 'fixture' }, commands: [
     { type: 'project.create', id: 'project', title: 'Billing', position: { x: 0, y: 0 } },
     { type: 'item.add', id: 'pr', resourceId: 'pr-resource', pluginId: 'github.pull-request', title: fixture.pull.title, data: { owner: 'fixture', repo: 'billing', number: 42 }, projectId: 'project', position: { x: 270, y: 160 } },
@@ -83,7 +85,12 @@ test('structured review findings: triage, send to idle and busy agents, fixed re
     await page.keyboard.press('Enter');
     await expect(picker.getByRole('radio')).toHaveCount(2);
     await expect(picker.getByRole('radio', { name: /Claude · docs/ })).toHaveAttribute('aria-checked', 'true');
-    await expect(picker.getByRole('button', { name: 'Queue for Claude · docs' })).toBeVisible();
+    const queue = picker.getByRole('button', { name: /^Queue for Claude · docs/ });
+    await expect(queue).toBeVisible(); await desk.screenshot({ path: 'test-results/pr/review-send-long-agent.png' });
+    await expect(queue).toHaveAttribute('title', `Queue for Claude · docs${LONG}`);
+    const [queueBox, pickerBox] = await Promise.all([queue.boundingBox(), picker.boundingBox()]);
+    expect(queueBox!.x).toBeGreaterThanOrEqual(pickerBox!.x); expect(queueBox!.x + queueBox!.width).toBeLessThanOrEqual(pickerBox!.x + pickerBox!.width);
+    await expect(picker.getByRole('button', { name: 'Preview message' })).toBeInViewport({ ratio: 1 });
     await picker.getByRole('radio', { name: /Claude · impl/ }).click();
     await expect(picker.getByRole('radio', { name: /Claude · impl/ })).toHaveAttribute('aria-checked', 'true');
     await expect(picker.getByRole('radio', { name: /Claude · docs/ })).toContainText('queued and delivered when it’s idle');
@@ -113,7 +120,7 @@ test('structured review findings: triage, send to idle and busy agents, fixed re
     await desk.getByRole('option', { name: /Readers match exact file names/ }).locator('input[type=checkbox]').check();
     await expect(desk.locator('.rd-split-main')).toHaveText('Send to Claude · impl'); await desk.locator('.rd-split-main').click();
     await picker.getByRole('radio', { name: /Claude · docs/ }).click();
-    await picker.getByRole('button', { name: 'Queue for Claude · docs' }).click();
+    await picker.getByRole('button', { name: /^Queue for Claude · docs/ }).click();
     await expect(desk.locator('.rd-toast.done')).toContainText('Queued F2 for Claude · docs');
     await expect(desk.getByRole('option', { name: /Readers match/ })).toContainText('Queued for Claude · docs');
     expect(await output('docs')).not.toContain('Fix only F2');
