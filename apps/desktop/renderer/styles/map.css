@@ -753,3 +753,28 @@
 .project-neighborhood-title[data-edge] .tier-counts {
   gap: 6px;
 }
+
+/* Tidy preview (MAP-35): where items would go, until Apply. */
+.map-tidy-ghosts {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+  overflow: hidden;
+  fill: none;
+  stroke: var(--act-accent);
+  stroke-width: 2;
+}
+
+.map-tidy-ghosts rect {
+  fill: var(--act-accent-bg);
+  fill-opacity: .5;
+  stroke-dasharray: 6 4;
+}
+
+.map-tidy-ghosts line {
+  stroke-opacity: .5;
+  stroke-dasharray: 2 4;
+}

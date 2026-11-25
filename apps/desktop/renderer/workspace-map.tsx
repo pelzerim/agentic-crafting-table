@@ -16,6 +16,8 @@ import { undermapColor } from '../../../src/graph/project-colors.ts';
 import { ConnectionEditor } from './connection-editor.tsx';
 import { ArchiveBrowser } from './archive-browser.tsx';
 import { useMapHistory } from './map-history.ts';
+import { TidyDialog } from './tidy-dialog.tsx';
+import type { TidyApply } from './tidy-dialog.tsx';
 import type { UndoToken } from './map-history.ts';
 import type { Receipt, UndoStep } from '../../../packages/core/map-undo.ts';
 import type { GraphLink, GraphNode } from '../../../src/graph/graph.ts';
@@ -352,6 +354,10 @@ export function WorkspaceMap() {
   const [todoUndo, setTodoUndo] = useState<TodoUndo>(), todoUndoNotice = useNotice(todoUndo, true);
   const [copiedUrls, setCopiedUrls] = useState<{ count: number }>(), copyNotice = useNotice(copiedUrls, true);
   const [undoNotice, setUndoNotice] = useState<{ text: string }>(), undoShown = useNotice(undoNotice, true);
+  const [tidyUndo, setTidyUndo] = useState<{ undo: UndoToken; moved: number }>(), tidyUndoNotice = useNotice(tidyUndo, true);
+  const [tidy, setTidy] = useState<{ projectId?: string; title: string; at: { x: number; y: number } }>(), [tidyGhosts, setTidyGhosts] = useState<{ id: string; position: { x: number; y: number } }[]>();
+  const [tidied, setTidied] = useState<string[]>();
+  useEffect(() => { if (!tidied) return; const timer = setTimeout(() => setTidied(undefined), 4000); return () => clearTimeout(timer); }, [tidied]);
   useNativeAnnouncement(removedLink, { title: 'Connection removed', body: 'Return to ACT to undo this change.' });
   const [openItemId, setOpenItemId] = useState<string>();
   const [firstRun, setFirstRun] = useState(readFirstRunActive);
@@ -926,6 +932,7 @@ export function WorkspaceMap() {
     if (id === 'delete-cancel') { setEditor(undefined); return; }
     if (id === 'delete-confirm' && selected?.resourceId) { run([{ type: 'node.archive', id: selected.id }, { type: 'node.delete', id: selected.id }]); return; }
     if (selected && (id === 'below' || id === 'surface')) { moveLayer([selected.id], id); return; }
+    if (id === 'tidy') { setEditor(undefined); setTidy({ ...selected && !selected.resourceId ? { projectId: selected.id, title: selected.title } : { title: 'the board' }, at: editor.screen }); return; }
     if (selected && ['complete', 'reopen', 'archive'].includes(id)) run([{ type: `node.${id}` as 'node.complete' | 'node.reopen' | 'node.archive', id: selected.id }], id === 'archive' ? 'Archive' : undefined);
   };
   const below = layer === 'below';
@@ -959,10 +966,23 @@ export function WorkspaceMap() {
     'rail.settings': () => { setSessionListView(undefined); setSettingsOpen(true); },
     'shortcuts.help': () => { setControlsOpen(old => !old); },
     // An open item view keeps its own keys; map undo is for the map.
-    'map.undo': () => { if (!snapshot || travelling || document.querySelector('.item-view:not([hidden])')) return false; void history.undo(); },
-    'map.redo': () => { if (!snapshot || travelling || document.querySelector('.item-view:not([hidden])')) return false; void history.redo(); },
+    'map.undo': () => { if (!snapshot || travelling || tidy || document.querySelector('.item-view:not([hidden])')) return false; void history.undo(); },
+    'map.redo': () => { if (!snapshot || travelling || tidy || document.querySelector('.item-view:not([hidden])')) return false; void history.redo(); },
   });
   /** Plot colour, name and lock changes are undo steps too, recorded from the receipt the service returns for the write. */
+  /** One Apply: the service refuses a stale preview and writes everything in one transaction; the step undoes as one. */
+  const applyTidy = async (request: TidyApply) => {
+    let moved = 0;
+    const undo = await history.trackStep('Tidy', async () => {
+      const result = await window.craftingTable.runtimeRun({ action: 'map.tidy', nodeId: request.projectId ?? 'board', arguments: { operation: 'apply', ...request } as never }) as { receipt?: Receipt; moved: string[] };
+      accept(await window.craftingTable.workspaceRead());
+      setTidied(result.moved.length ? result.moved : undefined);
+      moved = result.moved.length;
+      return result;
+    });
+    // Only this run's own step: a run that wrote nothing records none, and never offers an earlier Tidy.
+    setTidyUndo(undo ? { undo, moved } : undefined);
+  };
   const plotChange = (projectId: string, request: JsonObject) => {
     const run = () => window.craftingTable.runtimeRun({ action: 'plot', nodeId: projectId, arguments: request }) as Promise<{ receipt?: Receipt }>;
     const label = request.operation === 'color' ? 'Plot colour' : request.operation === 'rename' ? 'Plot rename' : request.operation === 'lock' ? request.locked ? 'Plot lock' : 'Plot unlock' : undefined;
@@ -973,7 +993,7 @@ export function WorkspaceMap() {
       onMarkSeen={acknowledge} keep={keep} onKeep={restore} onChromeCover={setChromeDocked} onOpened={opened} onView={viewed} onMute={below ? undefined : setMuted}
       mapCorner={settings.value.mapCorner} projectSummaries={projectSummaries} overview={overviewOpen} onOverview={open => { setOverviewOpen(open); if (open && atlasCorner) { rail.unpin('attention'); rail.close('attention'); } }}
       projectsPanel={view.projectsPanel} onProjectsPanel={patch => { const pruned = pruneOrder(patch), next = pruned && viewSchema.shape.projectsPanel.safeParse({ ...viewRef.current?.projectsPanel, ...pruned }); if (next?.success) saveView({ projectsPanel: next.data }); return Boolean(next?.success); }} undermapCount={layerGraph.belowCount} onTravel={to => { rail.clear(); void travel(to); }}
-      highlightedNodes={menuHighlight?.nodes ?? (below && foundBelow ? foundNodes : highlightedNodes)} highlightedLinks={menuHighlight?.links} menuFor={editor?.mode === 'menu' ? menuTargets : undefined} undermap={below ? undermapView : undefined}
+      highlightedNodes={menuHighlight?.nodes ?? (below && foundBelow ? foundNodes : tidied ?? highlightedNodes)} ghosts={below ? undefined : tidyGhosts} highlightedLinks={menuHighlight?.links} menuFor={editor?.mode === 'menu' ? menuTargets : undefined} undermap={below ? undermapView : undefined}
       attentionCounting={counting} offscreenAttention={settings.value.offscreenAttention} reviewOpenCounts={settings.value.reviewOpenCounts} sessionCracks={settings.value.sessionCracks} cardTags={settings.value.pullRequestCardLabels} itemMapSizes={settings.value.itemMapSizes} itemViews={settings.value.itemViews} viewBounds={view.itemViewBounds} onViewBounds={saveViewBounds} neighborhoodPadding={settings.value.neighborhoodPadding} neighborhoodAppearance={neighborhoodAppearance} dashboards={settings.value.mapDashboards} workingMark={settings.value.workingMark} plots={plots} plotMemberIds={plotMemberIds} onPlot={(projectId, request) => plotChange(projectId, request).then(() => undefined, error => { if (request.operation !== 'seen') setError(error.message); })} plotNaming={settings.value.summaries.plotNames} plotTargets={ids => snapshot ? moveTargets(snapshot.state, ids) : []} onMoveItems={moveToProject} onSendBelow={ids => moveLayer(ids, 'below')} hideImpliedLinks={settings.value.hideImpliedLinks} snap={settings.value.snapToGrid ? SNAP_PITCH : undefined} collisions={settings.value.mapCollisions} initialViewport={view.camera} onViewport={camera => { zoomRef.current = camera.zoom; saveView({ camera }); }} reveal={reveal} onRevealed={revealed => setReveal(current => current === revealed ? undefined : current)}
       onItemDrag={below ? undefined : (id, point) => todoOverlay.current?.drag(id, point)} onItemDrop={below ? undefined : (id, point) => todoOverlay.current?.drop(id, point) ?? false}
       onLink={below ? undefined : anchor => {
@@ -1078,10 +1098,14 @@ export function WorkspaceMap() {
     {unmuted && unmuteNotice.visible && <Toast tone="undo" title={`${unmuted.title} unmuted`} detail={unmuted.needs ? `${NEEDS_ME}: ${unmuted.needs}` : undefined}
       action={{ label: 'Undo', run: () => { const { id } = unmuted; setUnmuted(undefined); void apply([{ type: 'project.mute', id, muted: true }]).catch(error => setError(error.message)); } }}
       dismiss={() => setUnmuted(undefined)} dismissLabel="Dismiss undo" />}
+    {tidyUndo && tidyUndoNotice.visible && <Toast tone="undo" title={!tidyUndo.moved ? 'Tidy applied' : tidyUndo.moved === 1 ? 'Tidied 1 item' : `Tidied ${tidyUndo.moved} items`} detail="⌘Z also undoes it"
+      action={{ label: 'Undo', run: () => { const { undo } = tidyUndo; setTidyUndo(undefined); void history.undo(undo); } }} dismiss={() => setTidyUndo(undefined)} dismissLabel="Dismiss undo" />}
     {undoNotice && undoShown.visible && <Toast tone="done" title={undoNotice.text} dismiss={() => setUndoNotice(undefined)} />}
     {copiedUrls && copyNotice.visible && <Toast tone="done" title={copiedUrls.count === 1 ? 'URL copied' : `${copiedUrls.count} URLs copied`} dismiss={() => setCopiedUrls(undefined)} />}
     {shownError && snapshot && <Toast tone="error" title={shownError.message} details={shownError.details} dismiss={() => setError('')} dismissLabel="Dismiss error" />}
     </div>
+    {tidy && snapshot && !below && <TidyDialog seen={snapshot} registry={registry} sizes={settings?.value.itemMapSizes} projectId={tidy.projectId} title={tidy.title} at={tidy.at}
+      ai={Boolean(settings?.value.summaries.enabled)} onGhosts={setTidyGhosts} apply={applyTidy} close={() => setTidy(undefined)} />}
     {controlsOpen && <ControlsCard close={() => setControlsOpen(false)} />}
     {standupOpen && <StandupPanel close={() => setStandupOpen(false)} reveal={nodeId => revealNode(nodeId, 'map')} openUrl={url => { void window.craftingTable.openUrl(url).catch(error => setError(error.message)); }}
       onMap={nodeId => { const nodes = withUndermapRef.current?.nodes ?? [], node = nodes.find(candidate => candidate.id === nodeId); return Boolean(node && !isArchived(node, nodes)); }} />}
