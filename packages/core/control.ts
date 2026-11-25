@@ -55,6 +55,8 @@ const node = z.object({
   completedAt: z.iso.datetime().optional(),
   todoLabel: z.object({ title: z.string().min(1).max(48), sourceTitle: title }).optional(),
   generatedTitle: title.optional(),
+  /** The person named this item or project on the map; Tidy never renames it. */
+  titleChosen: z.literal(true).optional(),
   inTodoList: z.boolean().optional(), todoOrder: z.number().int().nonnegative().optional(),
   todoContext: todoContextText.optional(), todoContextBy: contextWriter.optional(), todoContextAt: z.iso.datetime().optional(),
   todoHorizon: z.enum(['next', 'later']).optional(), todoTouchedAt: z.iso.datetime().optional(), todoDoneAt: z.iso.datetime().optional(), todoTicketId: id.optional(),
@@ -570,7 +572,8 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
       switch (command.type) {
         case 'project.create': {
           createId(command.id);
-          const created = node.parse({ id: command.id, title: command.title, summary: command.summary, ...(command.workingDirectory !== undefined ? { workingDirectory: command.workingDirectory } : {}), ...(command.color ? { color: command.color.toLowerCase() } : {}), position: command.position ?? { x: 0, y: 0 } });
+          const created = node.parse({ id: command.id, title: command.title, summary: command.summary, ...(command.workingDirectory !== undefined ? { workingDirectory: command.workingDirectory } : {}), ...(command.color ? { color: command.color.toLowerCase() } : {}), position: command.position ?? { x: 0, y: 0 },
+            ...(actor?.kind === 'user' && actor.id === PERSON_ACTOR ? { titleChosen: true } : actor ? { generatedTitle: command.title } : {}) });
           const anchors = anchorsOf(command.near);
           place(created, anchors ? projectPlacement(state.nodes, footprint, anchors, footprint(created), command.position) : command.position, command.position);
           break;
@@ -696,6 +699,7 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
           }
           if ((['activity', 'attention', 'indicators'] as const).some(key => command[key] !== undefined && JSON.stringify(command[key]) !== JSON.stringify(target[key]))) target.activityAt = new Date().toISOString();
           if (command.title !== undefined && command.title !== target.title) touchNode(target);
+          if (command.title !== undefined && command.title !== target.title && actor?.kind === 'user' && actor.id === PERSON_ACTOR) target.titleChosen = true;
           for (const key of ['title', 'summary', 'workingDirectory', 'activity', 'attention', 'indicators'] as const) {
             if (command[key] !== undefined) Object.assign(target, { [key]: command[key] });
           }
@@ -898,9 +902,9 @@ function applyToDraft(state: WorkspaceState, command: WorkspaceCommand, registry
         }
         case 'node.title.generated': {
           const target = find(command.id), resource = state.resources.find(r => r.id === target.resourceId);
-          const plugin = resource && registry.get(resource.pluginId);
-          if (!plugin || !(plugin.activityTitle || plugin.attachTitle) || target.title !== command.sourceTitle) throw new Error('Title changed before the generated title was ready');
-          target.title = resource.title = target.generatedTitle = command.title; break;
+          const plugin = resource && registry.get(resource.pluginId), project = !target.resourceId && !target.projectId && !target.titleChosen;
+          if (!(project || (plugin && (plugin.activityTitle || plugin.attachTitle))) || target.title !== command.sourceTitle) throw new Error('Title changed before the generated title was ready');
+          target.title = target.generatedTitle = command.title; if (resource) resource.title = command.title; delete target.titleChosen; break;
         }
         case 'node.todo': {
           const target = find(command.id), resource = state.resources.find(r => r.id === target.resourceId);
