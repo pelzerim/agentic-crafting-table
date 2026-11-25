@@ -15,12 +15,12 @@ const camera = (page: Page) => page.locator('.react-flow__viewport').evaluate(el
   return { x: matrix.e, y: matrix.f, zoom: matrix.a };
 });
 /** Sends wheel events the way Chromium reports a trackpad: sideways movement, or wheelDeltaY of -3 × deltaY, and ctrlKey for a pinch. */
-const trackpad = (page: Page, events: { deltaX?: number; deltaY?: number; ctrlKey?: boolean }[]) => page.locator('.react-flow__pane').evaluate((pane, list) => {
+const trackpad = (page: Page, events: { deltaX?: number; deltaY?: number; ctrlKey?: boolean; metaKey?: boolean }[]) => page.locator('.react-flow__pane').evaluate((pane, list) => {
   const box = pane.getBoundingClientRect();
   for (const event of list) pane.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2, deltaMode: 0, deltaX: 0, deltaY: 0, ...event }));
 }, events);
 
-test('two fingers on a trackpad pan the map, a pinch and a mouse wheel zoom it', async () => {
+test('two fingers on a trackpad pan the map, a pinch, a mouse wheel and Command with two fingers zoom it', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'craft-trackpad-')), store = new SqliteStore(join(directory, 'workspace.sqlite'));
   try { await store.update(() => photoLibraryProject()); await store.writeView('desktop', { camera: { x: 0, y: 0, zoom: .8 } }); } finally { store.close(); }
   const app = await electron.launch({ args: ['.', '--force-device-scale-factor=1', ...scrollbarArgs], env: { ...process.env, ACT_TEST_DATA_DIR: directory, SHELL: '/bin/sh', TZ: 'UTC' } });
@@ -44,6 +44,24 @@ test('two fingers on a trackpad pan the map, a pinch and a mouse wheel zoom it',
 
     await trackpad(page, [{ ctrlKey: true, deltaY: 20 }]);
     await expect.poll(async () => (await camera(page)).zoom).toBeLessThan(zoomed.zoom);
+    await page.waitForTimeout(400);
+
+    // Command and two fingers zoom around the pointer instead of panning, in and out, as in design tools.
+    const pinched = await camera(page);
+    await trackpad(page, [{ metaKey: true, deltaX: 4, deltaY: -40 }, { metaKey: true, deltaY: -40 }]);
+    await expect.poll(async () => (await camera(page)).zoom).toBeGreaterThan(pinched.zoom);
+    const centre = { x: box.width / 2, y: box.height / 2 }, inward = await camera(page);
+    expect(Math.abs((centre.x - inward.x) / inward.zoom - (centre.x - pinched.x) / pinched.zoom)).toBeLessThan(1);
+    expect(Math.abs((centre.y - inward.y) / inward.zoom - (centre.y - pinched.y) / pinched.zoom)).toBeLessThan(1);
+    await trackpad(page, [{ metaKey: true, deltaY: 80 }]);
+    await expect.poll(async () => (await camera(page)).zoom).toBeLessThan(inward.zoom);
+    await page.waitForTimeout(400);
+
+    // A sideways-only scroll with Command (two fingers sideways, or Command, Shift and a wheel) has nothing to zoom by,
+    // so it pans sideways as it does without Command, instead of being swallowed.
+    const outward = await camera(page);
+    await trackpad(page, [{ metaKey: true, deltaX: 30 }, { metaKey: true, deltaX: 20 }]);
+    await expect.poll(() => camera(page)).toEqual({ x: outward.x - 50, y: outward.y, zoom: outward.zoom });
   } finally {
     await exitWithoutShutdown(app);
     const client = await connectWorkspace(directory).catch(() => undefined);

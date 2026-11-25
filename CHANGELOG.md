@@ -11,6 +11,8 @@ their pull request and author.
 - **Send picker**: a long agent title no longer pushes the picker's send button off its left edge; the label ends in an ellipsis and the tooltip shows the full name. (#41, @pmallol)
 ### Terminal
 - **Light mode text**: grey text that agents write in ANSI white, such as Claude Code's tool results and hints, is readable on the light terminal: faint text is darkened to a minimum contrast, while white bars and highlights keep their light colours. Reverse-video text gets the same contrast when the terminal draws without WebGL. (#44, @pmallol)
+### Map
+- **Command + wheel zooms**: hold ⌘ and scroll with a mouse wheel or two fingers on a trackpad to zoom the map around the pointer, as in design tools, also over a card's scrolling content. Without ⌘, two fingers still pan, and a sideways-only scroll pans sideways with ⌘ too. (#45, @pmallol)
 
 ## 0.24.0 — 2026-11-17
 

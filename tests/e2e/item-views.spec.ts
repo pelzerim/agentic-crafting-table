@@ -99,6 +99,11 @@ test('with an item open the board pans and zooms around it; the item stays put a
   const placed = (await view.boundingBox())!, start = await camera();
   await page.mouse.move(placed.x + placed.width / 2, placed.y + placed.height / 2); await page.mouse.wheel(0, 400);
   expect(await camera()).toEqual(start);
+  // Command and the wheel zoom the board (MAP-06), but never over the open item: it keeps its wheel.
+  await page.keyboard.down('Meta'); await page.mouse.wheel(0, -300); await page.keyboard.up('Meta');
+  await view.evaluate(element => element.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaMode: 0, deltaY: -40, metaKey: true })));
+  await page.waitForTimeout(200);
+  expect(await camera()).toEqual(start);
   const below = { x: placed.x + placed.width / 2, y: placed.y + placed.height + 25 };
   await page.mouse.move(below.x, below.y); await page.mouse.down(); await page.mouse.move(below.x - 200, below.y, { steps: 8 }); await page.mouse.up();
   await expect.poll(async () => Math.round((await camera()).x - start.x)).toBe(-200);
@@ -122,4 +127,24 @@ test('with an item open the board pans and zooms around it; the item stays put a
   expect(await camera()).toEqual(panned);
   await page.reload(); await expect(page.getByText('Desktop connected')).toBeVisible();
   await expect.poll(camera).toEqual(panned);
+});
+
+test('Command and the wheel zoom the board over a card\'s own scrolling text, which does not scroll', async ({ visual: { page } }) => {
+  await addItems(page);
+  const camera = () => page.locator('.react-flow__viewport').evaluate(element => { const matrix = new DOMMatrix(getComputedStyle(element).transform); return { x: matrix.e, y: matrix.f, zoom: matrix.a }; });
+  const note = page.locator('[data-item-id="note"]');
+  await note.getByRole('button', { name: /^\+ \d+ lines$/ }).click();
+  const face = note.locator('.paper-face.nowheel');
+  await expect(face).toHaveAttribute('data-scrolls', 'true');
+  expect(await face.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+  const box = (await face.boundingBox())!, start = await camera();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  // Without Command the wheel stays with the note: its text scrolls and the board does not move.
+  await page.mouse.wheel(0, 120);
+  await expect.poll(() => face.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+  expect(await camera()).toEqual(start);
+  await face.evaluate(element => { element.scrollTop = 0; });
+  await page.keyboard.down('Meta'); await page.mouse.wheel(0, -200); await page.keyboard.up('Meta');
+  await expect.poll(async () => (await camera()).zoom).toBeGreaterThan(start.zoom);
+  expect(await face.evaluate(element => element.scrollTop)).toBe(0);
 });
