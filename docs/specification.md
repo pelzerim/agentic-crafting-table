@@ -1979,7 +1979,11 @@ project first, then items and their linked subitems (for example PR â†’ review â
 note). Include identities, relationships, activity, done state and bounded source
 content. Deduplicate aliases, handle cycles deterministically, exclude archived
 items, and label missing/truncated/omitted content so it can be read through MCP.
-The creation form has no Task or Project brief override fields.
+The creation form has no Project brief override field. Its optional **Prompt** field is the
+session's first task: typed there, it is sent as the opening prompt with the project context,
+in place of the What next turn, so the person does not wait for the terminal to open before
+prompting. Command or Ctrl + Enter in the field starts the session. A provider that takes no
+first prompt refuses a start with one (AGENT-01b).
 Persist the exact delivered snapshot. Keep trusted, versioned host instructions
 separate from project facts and external material. Append through the provider's
 supported instruction mechanism without replacing its built-in instructions.

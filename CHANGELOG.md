@@ -13,6 +13,7 @@ their pull request and author.
 - **Light mode text**: grey text that agents write in ANSI white, such as Claude Code's tool results and hints, is readable on the light terminal: faint text is darkened to a minimum contrast, while white bars and highlights keep their light colours. Reverse-video text gets the same contrast when the terminal draws without WebGL. (#44, @pmallol)
 ### Map
 - **Command + wheel zooms**: hold ⌘ and scroll with a mouse wheel or two fingers on a trackpad to zoom the map around the pointer, as in design tools, also over a card's scrolling content. Without ⌘, two fingers still pan, and a sideways-only scroll pans sideways with ⌘ too. (#45, @pmallol)
+- **Prompt a new session from its start form**: the new agent form has an optional Prompt field. The session starts on that task with the project context, so there is no wait for the terminal to open before prompting. Command or Ctrl + Enter in the field starts the session. (#46, @pmallol)
 
 ## 0.24.0 — 2026-11-17
 
