@@ -93,7 +93,9 @@ function Fields({ fields, values, change, pluginId, focusField, directories, pro
   </label>);
 }
 
-export function InlineEditor({ editor, state, plugins, quickIds, capabilities, save, close, writeInPlace, ground, act }: { editor: Editor; state: WorkspaceState; plugins: PluginDescription[]; quickIds: string[]; capabilities: string[]; save(commands: WorkspaceCommand[]): Promise<void>; close(): void;
+export function InlineEditor({ editor, state, plugins, quickIds, capabilities, save, close, back: leave, writeInPlace, ground, act }: { editor: Editor; state: WorkspaceState; plugins: PluginDescription[]; quickIds: string[]; capabilities: string[]; save(commands: WorkspaceCommand[]): Promise<void>; close(): void;
+  /** Where Back leads from the first layer, when something else opened this form (the command menu, MAP-34). Without it Back from there closes. */
+  back?(): void;
   /** Paper types skip the form: the new tile opens on the map with the caret in it. */
   writeInPlace?(pluginId: string): void;
   /** A ring opened by right-clicking the ground also offers that ground's menu entries (MAP-31). */
@@ -169,7 +171,7 @@ export function InlineEditor({ editor, state, plugins, quickIds, capabilities, s
     const back = (event: MouseEvent | KeyboardEvent) => {
       if (event.type === 'keydown' && ((event as KeyboardEvent).key !== 'Escape' || (event.target as Element | null)?.closest?.('.act-combobox[data-open]'))) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      if (pending || locked) close(); else backToChoices();
+      if (pending || locked) close(); else if (leave && editor.initialType && type === editor.initialType) leave(); else backToChoices();
     };
     window.addEventListener('contextmenu', back, true); window.addEventListener('keydown', back, true);
     return () => { window.removeEventListener('contextmenu', back, true); window.removeEventListener('keydown', back, true); };
@@ -229,7 +231,7 @@ export function InlineEditor({ editor, state, plugins, quickIds, capabilities, s
     {type && <><div className="editor-heading" {...handle}><strong>{editor.mode === 'edit' ? editLabel : fromUrl ? 'From URL' : type ? plugin?.name ?? 'Project' : 'New item'}</strong>{editor.mode === 'edit' && <button type="button" aria-label="Close item form" onClick={close}><PixelGlyph name="close" /></button>}</div>
     <small className="placement-note">{type === 'project' ? 'New project' : project?.title ?? 'Floating · no project'}</small></>}
     {linkError && <p role="alert">{linkError}</p>}
-    {!type ? <ItemPicker choices={itemChoices(plugins, editor.projectId, !!skillPlugin && capabilities.includes('agent.create'))} quickIds={quickIds} panel={panel} select={select} close={close} ground={ground} act={act} /> : <>
+    {!type ? <ItemPicker choices={itemChoices(plugins, editor.projectId, !!skillPlugin && capabilities.includes('agent.create'))} quickIds={quickIds} panel={panel} select={select} close={close} back={leave} ground={ground} act={act} /> : <>
       <fieldset disabled={pending || locked}>
         {editor.mode === 'edit' && resource && <label>Project<select aria-label="Project membership" value={membership} onChange={event => setMembership(event.target.value)}><option value="">Floating · no project</option>{state.nodes.filter(node => !node.resourceId && !node.projectId && !isOffMap(node, state.nodes)).map(project => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label>}
         {editor.mode === 'edit' && providerTitle && <label>Name<input aria-label="Title" readOnly value={target?.title ?? ''} /><small>Title comes from the linked item.</small></label>}

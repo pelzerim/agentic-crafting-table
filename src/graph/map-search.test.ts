@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { GraphNode } from './graph.ts';
-import { recentOnMap, rememberOpened, searchMap } from './map-search.ts';
+import { recentOnMap, rememberOpened, searchMap, searchProjects } from './map-search.ts';
 
 const AT = '2026-11-02T00:00:00.000Z';
 const project = (id: string, title: string, extra: Partial<GraphNode> = {}): GraphNode => ({ id, title, position: { x: 0, y: 0 }, ...extra });
@@ -46,4 +46,12 @@ test('opening an item puts it first in the recent list, once, and the list keeps
   assert.deepEqual(rememberOpened(undefined, 'a'), ['a']);
   const long = Array.from({ length: 20 }, (_, index) => `n${index}`);
   assert.deepEqual(rememberOpened(long, 'new'), ['new', ...long.slice(0, 19)]);
+});
+
+test('finds projects on the map by every word of their title, leaving out projects below or archived', () => {
+  assert.deepEqual(searchProjects(nodes, 'bill'), [{ id: 'billing', title: 'Billing redesign' }]);
+  assert.deepEqual(searchProjects(nodes, 'work'), [], 'a project below the map is left out');
+  assert.deepEqual(searchProjects([...nodes, project('gone-project', 'Infra old', { archivedAt: AT })], 'infra').map(match => match.id), ['infra']);
+  assert.deepEqual(searchProjects(nodes, '  '), []);
+  assert.deepEqual(searchProjects(nodes, 'plan'), [], 'items never show up as projects');
 });

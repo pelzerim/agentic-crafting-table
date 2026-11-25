@@ -14,6 +14,8 @@ their pull request and author.
 ### Map
 - **Command + wheel zooms**: hold ⌘ and scroll with a mouse wheel or two fingers on a trackpad to zoom the map around the pointer, as in design tools, also over a card's scrolling content. Without ⌘, two fingers still pan, and a sideways-only scroll pans sideways with ⌘ too. (#45, @pmallol)
 - **Prompt a new session from its start form**: the new agent form has an optional Prompt field. The session starts on that task with the project context, so there is no wait for the terminal to open before prompting. Command or Ctrl + Enter in the field starts the session. (#46, @pmallol)
+### Map
+- **Command menu**: ⌘K opens one field to jump to an item or project, or run a command (New item, New project, Needs me, to-dos, Undermap, overview, zoom, Settings and more), each command with its key. Before you type it shows the items you opened last. ⌘F stays find only. Back from New item or New project returns to the menu, and both open where the menu stood. (#42, @pmallol)
 
 ## 0.24.0 — 2026-11-17
 
