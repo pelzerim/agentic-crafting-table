@@ -64,6 +64,7 @@ import { AgentTitles } from './agent-titles.ts';
 import { AttachTitles } from './attach-titles.ts';
 import { Plots } from './plots.ts';
 import { MapUndo } from './map-undo.ts';
+import { Tidy } from './tidy.ts';
 import { ProjectSummaries } from './project-summaries.ts';
 import { Reminders } from './reminders.ts';
 import type { ReminderClockOptions } from './reminders.ts';
@@ -273,6 +274,8 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   }, { requiresNode: false });
   const mapUndo = new MapUndo(store, control, plots);
   operation('map.undo', async context => { const result = mapUndo.run(context.arguments); await broadcast(); return result; }, { requiresNode: false });
+  const tidy = new Tidy(store, control, plots, () => plots.client);
+  operation('map.tidy', async context => { const result = await tidy.run(context.arguments); await broadcast(); return result; }, { requiresNode: false });
   operation('pr.comments', context => lifecycle.execute(() => prComments(control, store, resources, terminals, context.nodeId, context.arguments)));
   operation('video.notes', context => lifecycle.execute(() => videoNotes(control, store, terminals, context.nodeId, context.arguments)));
   operation('pr.review.options', async () => reviews ? await reviews.options() : []);

@@ -7,7 +7,7 @@ import type { GraphNode } from '../../src/graph/graph.ts';
 import { plotMapOrder } from '../../src/graph/project-column.ts';
 
 export type MenuScope = 'board' | 'neighborhood' | 'item' | 'project' | 'link';
-export type MenuActionId = 'open' | 'connect' | 'new-item' | 'new-project' | 'archive-browser' | 'edit' | 'complete' | 'reopen' | 'archive' | 'below' | 'surface' | 'remove-link' | 'make-blocking' | 'make-normal' | 'reverse-link' | 'open-web' | 'copy-url' | 'add-todo' | 'remove-todo' | 'auto-title' | 'move-plot' | 'plot-new' | 'plot-unpin' | `plot-pin:${string}` | 'plot-select' | 'plot-rename' | 'plot-auto' | 'plot-color' | 'plot-color-auto' | 'plot-hide' | 'plot-leave' | 'plot-below' | 'plot-lock' | `plot-merge:${string}` | 'project-into' | `project-into:${string}` | 'delete' | 'delete-cancel' | 'delete-confirm' | 'plots-toggle' | 'plots-unhide' | 'send-project' | 'context-show' | 'context-hide' | 'context-add' | 'context-clear' | 'archive-stale' | 'mute' | 'unmute' | 'settings' | 'size-default' | 'standup-report' | 'show-hidden' | 'hide-item' | `send:${string}` | `convert:${string}` | `plugin:${string}` | `field:${string}`;
+export type MenuActionId = 'open' | 'connect' | 'new-item' | 'new-project' | 'archive-browser' | 'edit' | 'complete' | 'reopen' | 'archive' | 'below' | 'surface' | 'remove-link' | 'make-blocking' | 'make-normal' | 'reverse-link' | 'open-web' | 'copy-url' | 'add-todo' | 'remove-todo' | 'auto-title' | 'move-plot' | 'plot-new' | 'plot-unpin' | `plot-pin:${string}` | 'plot-select' | 'plot-rename' | 'plot-auto' | 'plot-color' | 'plot-color-auto' | 'plot-hide' | 'plot-leave' | 'plot-below' | 'plot-lock' | `plot-merge:${string}` | 'project-into' | `project-into:${string}` | 'delete' | 'delete-cancel' | 'delete-confirm' | 'plots-toggle' | 'plots-unhide' | 'send-project' | 'context-show' | 'context-hide' | 'context-add' | 'context-clear' | 'archive-stale' | 'mute' | 'unmute' | 'settings' | 'size-default' | 'standup-report' | 'tidy' | 'show-hidden' | 'hide-item' | `send:${string}` | `convert:${string}` | `plugin:${string}` | `field:${string}`;
 /** One choice of a row: `swatch` is the colour it is drawn in. */
 export interface MenuRowChoice { value: string; label: string; swatch?: string; checked: boolean }
 /** `remote` marks actions that write to a provider (drawn with a remote glyph). An action with a `row` is a labelled
@@ -159,7 +159,7 @@ export function contextMenuActions(scope: MenuScope, completed = false, editLabe
     ];
   }
   if (scope === 'neighborhood') return [{ id: 'new-item', label: 'New item' }, ...(mute ? [{ ...mute, divider: true }] : [])];
-  if (scope === 'board') return [{ id: 'new-item', label: 'New item' }, { id: 'new-project', label: 'New project' }, { id: 'archive-browser', label: 'Open archive' }];
+  if (scope === 'board') return [{ id: 'new-item', label: 'New item' }, { id: 'new-project', label: 'New project' }, { id: 'tidy', label: 'Tidy…' }, { id: 'archive-browser', label: 'Open archive' }];
   const project = scope === 'project';
   // Items group their verbs: basics, provider actions, opening elsewhere, then map housekeeping.
   const sections: MenuAction[][] = [
@@ -174,6 +174,7 @@ export function contextMenuActions(scope: MenuScope, completed = false, editLabe
       ...(project ? [] : plot),
       ...(todo ? [{ id: todo.enabled ? 'remove-todo' as const : 'add-todo' as const, label: todo.enabled ? 'Remove from to-dos' : 'Turn into todo' }] : []),
       ...(autoTitle && !project ? [{ id: 'auto-title' as const, label: 'Auto-name from activity' }] : []),
+      ...(project ? [{ id: 'tidy' as const, label: 'Tidy…' }] : []),
       ...(plots && project ? [{ id: 'plots-toggle' as const, label: 'Show plots', checked: plots.shown }, ...(plots.hidden ? [{ id: 'plots-unhide' as const, label: `Show hidden plots (${plots.hidden})` }] : [])] : []),
       { id: completed ? 'reopen' : 'complete', label: completed ? 'Reopen' : 'Mark done' },
       ...(mute && project ? [mute] : []),

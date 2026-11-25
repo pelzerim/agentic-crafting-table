@@ -47,7 +47,7 @@ export class Plots {
   private store: SqliteStore;
   private control: WorkspaceControl;
   private clock: () => number;
-  private client: ActivitySummaryClient;
+  readonly client: ActivitySummaryClient;
   private changed: () => Promise<void>;
   private allowed: () => boolean;
   private timeoutMs: number;
