@@ -34,7 +34,7 @@ test('lookups on a frozen list find what a search finds, in list order, and sear
   assert.deepEqual(nodesOfResource(nodes, undefined), []);
 });
 
-test('a list that can still change is searched each time, so a lookup never misses a later change', () => {
+test('a lookup on a list that can still change never misses a later change', () => {
   const nodes: GraphNode[] = [{ id: 'a', title: 'A', resourceId: 'r', position: { x: 0, y: 0 } }];
   assert.equal(findById(nodes, 'a'), nodes[0]);
   nodes.push({ id: 'b', title: 'B', resourceId: 'r', position: { x: 1, y: 0 } });
@@ -42,4 +42,34 @@ test('a list that can still change is searched each time, so a lookup never miss
   assert.deepEqual(nodesOfResource(nodes, 'r').map(node => node.id), ['a', 'b']);
   nodes.splice(0, 1);
   assert.equal(findById(nodes, 'a'), undefined);
+});
+
+test('lookups on a list that can still change search it once, then answer from checked positions', () => {
+  const nodes = many(400);
+  Counted.visits = 0;
+  assert.equal(findById(nodes, 'node-7'), nodes[8]);
+  assert.equal(Counted.visits, nodes.length, 'the first lookup is a plain search: a list asked once is not indexed');
+  Counted.visits = 0;
+  for (const node of nodes) assert.equal(findById(nodes, node.id), node);
+  assert.equal(Counted.visits, 0, 'later lookups read positions');
+  assert.equal(findById(nodes, 'missing'), undefined);
+});
+
+test('a list changed in place after its positions were read still answers as a search would', () => {
+  const nodes = many(50);
+  findById(nodes, 'node-1'); findById(nodes, 'node-2');
+  const moved = nodes[10], replaced = { ...nodes[20], id: 'renamed' };
+  nodes.splice(10, 1); nodes.unshift(moved);
+  assert.equal(findById(nodes, moved.id), moved, 'an entry that moved is found where it is now');
+  for (const node of nodes) assert.equal(findById(nodes, node.id), nodes.find(entry => entry.id === node.id));
+  nodes[20] = replaced;
+  assert.equal(findById(nodes, 'renamed'), replaced, 'an entry put in place of another is found');
+  assert.equal(findById(nodes, 'node-18'), nodes.find(entry => entry.id === 'node-18'));
+  const added = { id: 'added', title: 'Added', position: { x: 0, y: 0 } };
+  nodes.push(added);
+  assert.equal(findById(nodes, 'added'), added);
+  nodes.length = 5;
+  assert.equal(findById(nodes, 'added'), undefined, 'an entry that left the list is not answered from memory');
+  assert.equal(findById(nodes, 'node-45'), undefined);
+  for (const node of nodes) assert.equal(findById(nodes, node.id), node);
 });

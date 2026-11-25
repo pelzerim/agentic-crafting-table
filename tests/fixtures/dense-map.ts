@@ -1,7 +1,7 @@
 import { stateSchema } from '../../packages/core/control.ts';
 
 /** Static provider records only: no credentials, processes or external calls. */
-export function denseMap(itemCount: 200 | 500) {
+export function denseMap(itemCount: 200 | 500 | 1500) {
   const nodes: Record<string, unknown>[] = [], resources: Record<string, unknown>[] = [], links: Record<string, unknown>[] = [];
   const members = itemCount / 10, rows = members / 5;
   for (let project = 0; project < 10; project++) {

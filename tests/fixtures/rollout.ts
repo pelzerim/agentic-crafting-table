@@ -25,8 +25,10 @@ export function rolloutFixture() {
   let approvalReply: (() => { status: number; body: unknown; headers?: Record<string, string> }) | undefined;
   const paths: string[] = [], accounts = [{ id: 'github-fixture', providerId: 'github', account: 'fixture-user', enabled: true, isDefault: true }];
   const connections = new ProviderConnections(() => accounts, [{ id: 'github', name: 'GitHub', setupHint: 'Fixture account', accounts: async () => [{ id: 'fixture-user', label: 'fixture-user', active: true, available: true, credentialSource: 'fixture' }] }]);
+  let held: Promise<void> | undefined;
   const transport = { async get(path: string, signal: AbortSignal) {
     signal.throwIfAborted(); paths.push(path);
+    if (held) await held;
     const query = new URL(`https://api.github.com${path}`).searchParams, page = Number(query.get('page') ?? 1), status = query.get('status');
     const other = Number(/\/actions\/runs\/(\d+)/.exec(path)?.[1]), blocker = other && other !== run.id ? other : undefined;
     if (queue.fail && (status || path.includes('/commits/') || blocker)) return { status: 502, body: null, headers: new Headers() };
@@ -50,6 +52,8 @@ export function rolloutFixture() {
   } };
   const client = new GitHubRolloutClient(transport, Date.now, { pulls: new Map(), durations: new Map() });
   return { client, transport, paths, accounts, connections, approvals, queue, replyToApproval(reply: typeof approvalReply) { approvalReply = reply; },
+    /** GitHub stops answering reads until the returned function is called. */
+    hold() { let release = () => {}; held = new Promise<void>(resolve => { release = resolve; }); return () => { held = undefined; release(); }; },
     get run() { return run; }, set run(value) { run = value; }, get jobs() { return jobs; }, set jobs(value) { jobs = value; },
     get gates() { return gates; }, set gates(value) { gates = value; }, set noRuns(value: boolean) { noRuns = value; },
     fail(status: number, extra: Record<string, string> = {}) { code = status; headers = extra; },

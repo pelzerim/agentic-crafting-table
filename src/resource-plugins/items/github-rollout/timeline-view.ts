@@ -279,10 +279,23 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
       (failure): ValidationAgents => ({ agents: 0, ready: 0, blocked: (failure as Error).message }));
     try { list = await services.runAction('rollout.validation', { operation: 'list' }) as unknown as ListData; }
     catch (failure) { if (!list) report((failure as Error).message); }
+    // Validations and events are drawn as soon as they are read; auto deploy and the connected agents follow.
+    render();
     await readAutoDeploy();
     agents = await connected;
   }
-  async function refreshAll(force = false) { await Promise.all([load(force), readList()]); render(); }
+  // The provider read and the local lists each draw when they arrive: validations and events never wait for GitHub.
+  async function refreshAll(force = false) { await Promise.all([load(force).then(() => render()), readList().then(() => render())]); }
+  /** What the app already has is drawn at once when the view opens; the read from GitHub replaces it when it answers. */
+  async function showSaved() {
+    if (snapshot) { render(); return; }
+    const current = generation;
+    const saved = await services.runAction('resource.read', { cachedOnly: true }).catch(() => null) as unknown as ResourceSnapshot | null;
+    if (disposed || !active || current !== generation || snapshot || !saved?.detail) return;
+    snapshot = saved;
+    header.freshness({ observedAt: saved.observedAt, stale: true, provider: 'GitHub' });
+    render();
+  }
   async function load(force = false) {
     if (!active || loading) return;
     loading = true; const current = generation; header.busy(true);
@@ -809,7 +822,7 @@ export function mountRolloutTimeline(container: HTMLElement, resource: ResourceR
     setActive(value) {
       if (active === value) return; active = value; generation++; clearTimeout(timer); clearInterval(listTimer); approvalWait?.stop();
       // The workspace pushes changes through update; the timer only covers a missed one.
-      if (value) { void refreshAll(); listTimer = setInterval(follow, 3000); }
+      if (value) { void showSaved(); void refreshAll(); listTimer = setInterval(follow, 3000); }
     },
     dispose() { disposed = true; generation++; clearTimeout(timer); clearInterval(listTimer); approvalWait?.stop(); closeMenu?.(); sizes.disconnect(); document.removeEventListener('keydown', railKey); header.dispose(); root.remove(); },
   };

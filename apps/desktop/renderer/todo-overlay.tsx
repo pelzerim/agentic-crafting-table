@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, DragEvent as ReactDragEvent, Ref } from 'react';
 import type { ViewState, WorkspaceCommand, WorkspaceState } from '../../../packages/core/control.ts';
 import { archiveTodo, attachTodo, contextTodo, detachTodo, moveTodo, renameTodo, sendTargets, sendTodo } from '../../../packages/core/todos.ts';
@@ -8,7 +8,9 @@ import type { TodoContextMode } from './todo-context.tsx';
 import { createPortal } from 'react-dom';
 import { CanvasMenu } from './canvas-menu.tsx';
 import { isArchived, isBelow, isOffMap } from '../../../src/graph/archive.ts';
-import { LATER_AGE_DAYS, NEXT_SOFT_LIMIT, inboxName, oldestTodo, todoList, untouchedDays, withoutMuted } from '../../../src/graph/todos.ts';
+import { LATER_AGE_DAYS, NEXT_SOFT_LIMIT, inboxName, oldestTodo, todoListOf, untouchedDays, withoutMuted } from '../../../src/graph/todos.ts';
+/** How long a closed list keeps its rows, so they do not vanish while the panel slides away. */
+const ROWS_AFTER_CLOSE_MS = 400;
 import type { TodoEntry, TodoHorizon, TodoList } from '../../../src/graph/todos.ts';
 import { placeRows, placementFor } from './todo-placement.ts';
 import type { Placement } from './todo-placement.ts';
@@ -45,8 +47,8 @@ export interface TodoOverlayHandle {
 }
 const LABELS: Record<Group, string> = { inbox: 'Assigned to you', next: 'Next', later: 'Later', done: 'Done' };
 const EDITING = 'input:not([type=checkbox]), textarea, select, [contenteditable=true], [data-inline-title] input';
-export function TodoOverlay({ state, registry, view, save, saveView, reveal, openWeb, onDragTodo, announce, doneArchiveDays, ref }: {
-  state: WorkspaceState; registry: ResourcePluginRegistry; view: ViewState;
+export function TodoOverlay({ state, entries: readEntries, registry, view, save, saveView, reveal, openWeb, onDragTodo, announce, doneArchiveDays, ref }: {
+  state: WorkspaceState; /** `todoEntries(state)`, read once by the caller for every surface that lists to-dos. */ entries: readonly TodoEntry[]; registry: ResourcePluginRegistry; view: ViewState;
   /** Resolves with the revision the commands were saved at, when known. */
   save(commands: WorkspaceCommand[]): Promise<number | void>; saveView(patch: Partial<ViewState>): void;
   reveal(id: string): void; openWeb?(nodeId: string): void; onDragTodo?(todo: { id: string; title: string; nodeId?: string } | undefined): void;
@@ -83,9 +85,10 @@ export function TodoOverlay({ state, registry, view, save, saveView, reveal, ope
   // A saved move stays placed until the list is drawn from a revision that has it, so nothing reads the old order in between.
   const landed = useRef(new Map<Placement, number>()), revision = useRef(state.revision);
   revision.current = state.revision;
-  const latest = () => placeRows(todoList(state), placed.current);
+  const read = useMemo(() => todoListOf(readEntries), [readEntries]);
+  const latest = () => placeRows(read, placed.current);
   // Saves and drop positions use the whole list; only the drawn rows leave muted projects out.
-  const live = withoutMuted(placeRows(todoList(state), placements), state.nodes), now = Date.now();
+  const live = withoutMuted(placeRows(read, placements), state.nodes), now = Date.now();
   // A drag draws the list as it was when the drag began, so nothing from elsewhere reflows it until the drop.
   const canonical = move?.rows ?? live;
   const all = [...canonical.inbox, ...canonical.next, ...canonical.later, ...canonical.done];
@@ -399,7 +402,11 @@ export function TodoOverlay({ state, registry, view, save, saveView, reveal, ope
   };
   const inboxLabel = inboxName(canonical.inbox), label = (group: Group) => group === 'inbox' ? inboxLabel : LABELS[group];
   const heading = (group: Group, count: number, extra?: React.ReactNode) => <h3 className="todo-group-heading">{label(group)}<span className="todo-group-count">{count}</span>{extra}</h3>;
-  const next = shown('next'), laterRows = shown('later'), doneRows = shown('done'), inboxRows = shown('inbox');
+  // Rows are drawn while the list can be seen: a closed list keeps its counts and badge, and draws its rows again when it opens.
+  const [rowsDrawn, setRowsDrawn] = useState(open);
+  useEffect(() => { if (open) { setRowsDrawn(true); return; } const timer = setTimeout(() => setRowsDrawn(false), ROWS_AFTER_CLOSE_MS); return () => clearTimeout(timer); }, [open]);
+  const visible = open || rowsDrawn || Boolean(move);
+  const next = visible ? shown('next') : [], laterRows = visible ? shown('later') : [], doneRows = visible ? shown('done') : [], inboxRows = visible ? shown('inbox') : [];
   const stale = canonical.later.filter(entry => untouchedDays(entry, now) >= LATER_AGE_DAYS);
   // The badge counts tickets waiting in the inbox to be taken; tickets marked Not for me are not in the inbox.
   const waiting = live.inbox.length;
@@ -440,7 +447,7 @@ export function TodoOverlay({ state, registry, view, save, saveView, reveal, ope
           <section className="todo-group" data-group="next" aria-label={LABELS.next} data-drop-group={move?.target?.group === 'next' || undefined} {...dropZone('next')}>
             {heading('next', canonical.next.length)}
             {rows('next', next)}
-            {!next.length && <p className="todo-hint">Drag something here, or press N on a row.</p>}
+            {!canonical.next.length && <p className="todo-hint">Drag something here, or press N on a row.</p>}
             {canonical.next.length > NEXT_SOFT_LIMIT && <p className="todo-limit" role="status">Next is getting long.<button type="button" disabled={pending} onClick={() => { const oldest = oldestTodo(canonical.next); if (oldest) void moveTo(oldest, 'later', 0); }}>Move the oldest to Later</button></p>}
           </section>
           <section className="todo-group" data-group="later" aria-label={LABELS.later} data-drop-group={move?.target?.group === 'later' || undefined} {...dropZone('later')}>
@@ -449,7 +456,7 @@ export function TodoOverlay({ state, registry, view, save, saveView, reveal, ope
               cancelCollapse(); setMenu({ id: '_later', screen: { x: box.left - (host?.left ?? 0), y: box.bottom - (host?.top ?? 0) } });
             }}><PixelGlyph name="more" /></button>)}
             {rows('later', laterRows)}
-            {!laterRows.length && <p className="todo-hint">Nothing for later.</p>}
+            {!canonical.later.length && <p className="todo-hint">Nothing for later.</p>}
           </section>
           <section className="todo-group" data-group="done" aria-label={LABELS.done} data-drop-group={move?.target?.group === 'done' || undefined} {...dropZone('done')}>
             {heading('done', canonical.done.length, canonical.done.length > 0 && <button type="button" className="todo-group-fold" tabIndex={open ? 0 : -1} aria-expanded={doneOpen} aria-label={`${doneOpen ? 'Fold' : 'Show'} ${canonical.done.length} done`} onClick={() => setDoneOpen(value => !value)}>{doneOpen ? 'Fold' : 'Show'}</button>)}

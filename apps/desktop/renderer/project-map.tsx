@@ -828,8 +828,9 @@ function MapCanvas(props: ProjectMapProps) {
     const shapes = props.plots.flatMap(plot => {
       const members = plot.memberIds.flatMap(id => byId.get(id) ?? []), field = fields.get(plot.projectId);
       if (members.length < (plot.pinnedMemberIds.length ? 1 : PLOT_MIN_LINKED) || !field || mutedProjects.has(plot.projectId)) return [];
-      const key = `${members.map(box => `${box.x},${box.y},${box.width},${box.height}`).join(';')}`, cached = plotCache.current.get(plot.id);
-      if (cached && cached.key === key && cached.field === field && cached.shape.plot === plot) { next.set(plot.id, cached); return [cached.shape]; }
+      // What the patch and its sign are drawn from: the plot's own content, not the object a new snapshot rebuilt it as.
+      const key = `${JSON.stringify(plot)}|${members.map(box => `${box.x},${box.y},${box.width},${box.height}`).join(';')}`, cached = plotCache.current.get(plot.id);
+      if (cached && cached.key === key && cached.field === field) { next.set(plot.id, cached); return [cached.shape]; }
       computed = true;
       const parts = plotPatches(members.map(box => ({ id: box.item.id, projectId: plot.projectId, x: box.x, y: box.y, width: box.width, height: box.height })));
       const outlines = parts.map(part => neighborhoodContours(part, PLOT_PADDING, PLOT_CELL)[0]), paths = ['', ''];
@@ -985,7 +986,7 @@ function MapCanvas(props: ProjectMapProps) {
   const impliedKey = useMemo(() => props.hideImpliedLinks === false ? '' : drawable.explicit.map(link => `${link.id} ${link.sourceId} ${link.targetId} ${link.kind} ${link.reveal ?? ''}`).join('\n'), [drawable, props.hideImpliedLinks]);
   const implied = useMemo(() => impliedKey ? impliedLinks(drawable.explicit) : NO_LINKS, [impliedKey]);
   const scheme = useColorScheme(), ink = MAP_INK[scheme];
-  const edges = useMemo(() => {
+  const edgesBuilt = useMemo(() => {
     const { visible, quietOf, explicit } = drawable;
     // A hover or implied link is drawn only while an end is hovered, focused, selected or open, or the link itself is hovered, focused or highlighted.
     const revealed = new Set([hovered, keyboardFocused, focus, hoveredEdge, focusedEdge, ...selection, ...props.highlightedLinks ?? [], ...props.menuFor ?? []].filter(id => id !== undefined));
@@ -1002,6 +1003,21 @@ function MapCanvas(props: ProjectMapProps) {
       && [projectOf(link.sourceId), projectOf(link.targetId)].some(project => project && perProject.get(project)! > DENSE_PROJECT_LINKS);
     return explicit.map(link => ({ id: link.id, source: link.sourceId, target: link.targetId, type: 'direct', selectable: true, focusable: true, interactionWidth: 24, ...(quietOf(link.sourceId) ?? quietOf(link.targetId) ? { zIndex: -2 } : {}), markerEnd: link.kind === 'context' ? { type: MarkerType.ArrowClosed, color: ink.arrow, width: 22, height: 22 } : undefined, ...(link.kind === 'blocks' ? { data: { stop: true } } : {}), className: `explicit-edge ${link.kind}-edge ${link.kind === 'blocks' && blocking.resolved.get(link.id) ? 'blocks-resolved ' : ''}${shown.has(link.id) ? '' : 'link-concealed '}${emphasized ? emphasized.has(link.id) ? 'connection-active' : 'connection-muted' : inspection ? [link.id, link.sourceId, link.targetId].includes(inspection) ? 'connection-active' : 'connection-muted' : resting(link) ? 'connection-resting' : ''}`, ariaLabel: link.kind === 'blocks' ? `Blocking: ${visible.get(link.sourceId)?.title} blocks ${visible.get(link.targetId)?.title}${blocking.resolved.get(link.id) ? ' (resolved)' : ''}` : `${link.kind === 'context' ? 'Context' : 'Related'}: ${visible.get(link.sourceId)?.title} to ${visible.get(link.targetId)?.title}` }));
   }, [blocking, drawable, implied, hovered, keyboardFocused, hoveredEdge, focusedEdge, focus, inspected?.id, props.highlightedLinks, props.menuFor, selection, ink]);
+  // A snapshot rebuilds every edge although few change. The flow library and each drawn edge compare by identity, so an edge
+  // that reads the same keeps its object, and the list keeps its array when no edge changed.
+  const edgesKept = useRef<{ list: typeof edgesBuilt; text: Map<string, string> }>(undefined);
+  const edges = useMemo(() => {
+    const kept = edgesKept.current, before = kept && new Map(kept.list.map(edge => [edge.id, edge])), text = new Map<string, string>();
+    let same = kept?.list.length === edgesBuilt.length;
+    const list = edgesBuilt.map((edge, index) => {
+      const read = JSON.stringify(edge), old = kept?.text.get(edge.id) === read ? before!.get(edge.id) : undefined;
+      text.set(edge.id, read);
+      if (!old || old !== kept!.list[index]) same = false;
+      return old ?? edge;
+    });
+    edgesKept.current = { list: same ? kept!.list : list, text };
+    return edgesKept.current.list;
+  }, [edgesBuilt]);
   const settledAtlas = useRef<{ projects: AtlasProjectEntry[]; items: AtlasItemEntry[] }>(undefined);
   // The Atlas follows committed layout only; drag and resize previews keep the last one.
   const atlas = useMemo(() => {
@@ -1461,9 +1477,10 @@ function MapCanvas(props: ProjectMapProps) {
       const rect = container.current!.getBoundingClientRect();
       props.onBadge?.(noteId, { screen: { x: event.clientX - rect.left, y: event.clientY - rect.top }, position: screenToFlowPosition({ x: event.clientX, y: event.clientY }) }, menu);
     } });
-  // The parent passes a new Undermap callback each render; a stable one keeps panning from redrawing every card.
-  const { sendBelow } = useStableHandlers({ sendBelow: (ids: string[]) => props.onSendBelow?.(ids) }), canSendBelow = Boolean(props.onSendBelow);
-  const detailContext = useMemo(() => ({ ...actions, renderDetail: props.renderDetail, renderNode: props.renderNode, markSeen: props.onMarkSeen, keep: props.onKeep, sendBelow: canSendBelow ? sendBelow : undefined }), [actions, props.renderDetail, props.renderNode, props.onMarkSeen, props.onKeep, canSendBelow]);
+  // Every card reads this context, so a handler the host builds anew on each render must not change it: the card calls the newest one through a ref.
+  const sendBelowNow = useRef(props.onSendBelow); sendBelowNow.current = props.onSendBelow;
+  const sendsBelow = Boolean(props.onSendBelow);
+  const detailContext = useMemo(() => ({ ...actions, renderDetail: props.renderDetail, renderNode: props.renderNode, markSeen: props.onMarkSeen, keep: props.onKeep, sendBelow: sendsBelow ? (ids: string[]) => sendBelowNow.current?.(ids) : undefined }), [actions, props.renderDetail, props.renderNode, props.onMarkSeen, props.onKeep, sendsBelow]);
   const coverHandlers = useStableHandlers({
     enter: (id: string, event: React.PointerEvent) => { if (!focus && !drag && !linkDrag && !marqueeRef.current) mute.enter(id, event.buttons); },
     leave: (id: string) => mute.leave(id),

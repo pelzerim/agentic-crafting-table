@@ -97,7 +97,7 @@ for (const itemCount of [200, 500] as const) test(`map performance: ${itemCount}
     // A dense fixture must still retain exact item/link counts after repeated writes.
     const saved = (await page.evaluate(() => window.craftingTable.workspaceRead())).state;
     expect(saved.nodes).toHaveLength(itemCount + 10); expect(saved.links).toEqual(fixture.links);
-    expect(saved.nodes.find(node => node.id === 'item-0')).toEqual({ ...before.nodes.find(node => node.id === 'item-0'), title: 'Visible update 11' });
+    expect(saved.nodes.find(node => node.id === 'item-0')).toEqual({ ...before.nodes.find(node => node.id === 'item-0'), title: 'Visible update 11', titleChosen: true });
     // Real drag into an occupied slot must remain responsive and commit its preview.
     const zoom = page.getByRole('slider', { name: 'Map zoom' }); await zoom.focus(); await page.keyboard.press('Home');
     await page.getByRole('article', { name: 'Project 1', exact: true }).click();

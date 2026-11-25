@@ -129,17 +129,6 @@ function PluginDetail({ resource, registry, active, nodeId, onOpen, onShow, onEd
         await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: state.revision, actor: { kind: 'user', id: 'desktop' }, commands: [{ type: 'item.update', id: nodeId, data: patchedData(record.data, patch) }] });
         return true;
       },
-      observeData: listener => {
-        let disposed = false, cursor = -1;
-        const receive = (snapshot: WorkspaceSnapshot) => {
-          if (disposed || snapshot.cursor < cursor) return; cursor = snapshot.cursor;
-          const record = snapshot.state.resources.find(candidate => candidate.id === snapshot.state.nodes.find(node => node.id === nodeId)?.resourceId);
-          if (record) listener(record.data);
-        };
-        const off = window.craftingTable.onWorkspace(receive);
-        void window.craftingTable.workspaceRead().then(receive).catch(() => {});
-        return () => { disposed = true; off(); };
-      },
       viewState: () => viewStore.read(nodeId),
       saveViewState: patch => viewStore.save(nodeId, patch),
       copyUrl: url => window.craftingTable.copyUrl(url),
@@ -1045,7 +1034,7 @@ export function WorkspaceMap() {
     <ToolRail below={below} settings={settingsOpen} actions={actionsOpen || standupOpen} />
     {snapshot && view && <NeedsMeTool items={attention} muted={mutedAttention} counting={counting} state={withUndermap ?? snapshot.state} highlight={setAttentionHighlight} size={view.attentionPanel ?? {}} onSize={size => saveView({ attentionPanel: size })}
       reveal={nodeId => revealNode(nodeId, 'centred')} locate={nodeId => revealNode(nodeId, 'map')} dismiss={acknowledge} openWeb={openOnWeb} unavailable={setError} />}
-    {snapshot && view && plugins && <TodoOverlay ref={todoOverlay} state={snapshot.state} registry={registry} view={view} save={applyAt} saveView={saveView} reveal={nodeId => revealNode(nodeId, 'map')} onDragTodo={setTodoDrag}
+    {snapshot && view && plugins && <TodoOverlay ref={todoOverlay} state={snapshot.state} entries={todoEntries} registry={registry} view={view} save={applyAt} saveView={saveView} reveal={nodeId => revealNode(nodeId, 'map')} onDragTodo={setTodoDrag}
       openWeb={nodeId => { if (!openOnWeb(nodeId)) return; if (needsMeIds(snapshotRef.current?.state.nodes ?? []).has(nodeId)) acknowledge(nodeId); }}
       announce={setTodoUndo} doneArchiveDays={doneArchiveDays(pluginSettings['workspace.todo']?.doneArchiveDays)} />}
     {snapshot && view && <RemindersTool reminders={snapshot.reminders} size={view.remindersPanel ?? {}} onSize={size => saveView({ remindersPanel: size })} />}
