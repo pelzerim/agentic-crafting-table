@@ -6,13 +6,13 @@ import { pluginSettingsValues } from '../../src/resource-plugins/describe.client
 import { githubPullRequest } from '../../src/resource-plugins/items/github-pull-request/definition.ts';
 
 test('context lists contain only local actions and keep creation off objects', () => {
-  assert.deepEqual(contextMenuActions('board').map(a => a.label), ['New item', 'New project', 'Open archive']);
+  assert.deepEqual(contextMenuActions('board').map(a => a.label), ['New item', 'New project', 'Tidy…', 'Open archive']);
   assert.deepEqual(contextMenuActions('neighborhood').map(a => a.label), ['New item']);
   assert.deepEqual(contextMenuActions('link').map(a => a.label), ['Remove connection']);
-  assert.deepEqual(contextMenuActions('project').map(a => a.label), ['Project settings…', 'Mark done', 'Send project to Undermap']);
+  assert.deepEqual(contextMenuActions('project').map(a => a.label), ['Project settings…', 'Tidy…', 'Mark done', 'Send project to Undermap']);
   assert.deepEqual(contextMenuActions('item').map(a => a.label), ['Open', 'Connect to…', 'Settings', 'Mark done', 'Send to Undermap']);
   assert.deepEqual(contextMenuActions('item', true, 'Edit note…').map(a => a.label), ['Open', 'Connect to…', 'Settings', 'Reopen', 'Send to Undermap']);
-  assert.equal(contextMenuActions('project', true)[1].id, 'reopen');
+  assert.equal(contextMenuActions('project', true)[2].id, 'reopen');
   assert.ok(contextMenuActions('item').every(action => !action.destructive));
   assert.equal(contextMenuActions('item')[2].divider, true, 'the basic verbs form their own group');
 });
@@ -197,10 +197,10 @@ test('the to-do list row keeps Send to project', () => {
 
 test('a project offers Mute above Send project to Undermap, and Unmute while muted; never in Undermap or on items', () => {
   const menu = (scope: 'project' | 'item' | 'neighborhood', mute: ReturnType<typeof muteProjectAction>, below?: object) => contextMenuActions(scope, false, undefined, [], undefined, below, undefined, false, undefined, undefined, mute).map(action => action.label);
-  assert.deepEqual(menu('project', muteProjectAction(false)), ['Project settings…', 'Mark done', 'Mute project', 'Send project to Undermap']);
-  assert.deepEqual(menu('project', muteProjectAction(false, 2)), ['Project settings…', 'Mark done', 'Mute project (Needs me: 2)', 'Send project to Undermap']);
+  assert.deepEqual(menu('project', muteProjectAction(false)), ['Project settings…', 'Tidy…', 'Mark done', 'Mute project', 'Send project to Undermap']);
+  assert.deepEqual(menu('project', muteProjectAction(false, 2)), ['Project settings…', 'Tidy…', 'Mark done', 'Mute project (Needs me: 2)', 'Send project to Undermap']);
   assert.equal(muteProjectAction(false, 1).label, 'Mute project (Needs me: 1)');
-  assert.deepEqual(menu('project', muteProjectAction(true, 2)), ['Project settings…', 'Mark done', 'Unmute project', 'Send project to Undermap']);
+  assert.deepEqual(menu('project', muteProjectAction(true, 2)), ['Project settings…', 'Tidy…', 'Mark done', 'Unmute project', 'Send project to Undermap']);
   assert.deepEqual([muteProjectAction(false).id, muteProjectAction(true).id], ['mute', 'unmute']);
   assert.deepEqual(menu('neighborhood', muteProjectAction(false)), ['New item', 'Mute project']);
   assert.ok(!menu('item', muteProjectAction(false)).some(label => /mute/i.test(label)));
@@ -340,7 +340,7 @@ test('a saved menu never changes projects, boards, connections or Undermap menus
   const menu = (scope: Parameters<typeof contextMenuActions>[0], below?: object, saved?: typeof custom) => contextMenuActions(scope, false, undefined, [], undefined, below, undefined, false, undefined, undefined, undefined, [], saved);
   for (const scope of ['project', 'board', 'neighborhood', 'link'] as const) assert.deepEqual(menu(scope, undefined, custom), menu(scope));
   assert.deepEqual(menu('item', {}, custom), menu('item', {}));
-  assert.deepEqual(menu('project').map(action => [action.id, Boolean(action.divider)]), [['edit', false], ['complete', true], ['below', false]]);
+  assert.deepEqual(menu('project').map(action => [action.id, Boolean(action.divider)]), [['edit', false], ['tidy', true], ['complete', false], ['below', false]]);
 });
 
 test('every item type lists its possible menu entries, one per slot, with its separators, for Settings', () => {
