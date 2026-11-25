@@ -189,7 +189,7 @@ export interface ResourcePluginDefinition {
   /** Omit for provider-created outputs that should not appear in Add item. */
   /** `hotkey` picks the type with one letter while the creation ring is open. */
   /** `titleFromPath` names a data field holding a path: a new item whose name is left empty is called after that path's last part. */
-  creation?: { label: string; shortLabel?: string; hotkey?: string; labelByField?: { field: string; labels: Readonly<Record<string, string>> }; titleLabel?: string; mode?: 'fields' | 'url'; urlFallback?: boolean; group?: 'url'; urlPlaceholder?: string; requires?: 'runtime'; action?: string; fields?: ResourceFields; resume?: boolean; titleFromPath?: string };
+  creation?: { label: string; shortLabel?: string; hotkey?: string; labelByField?: { field: string; labels: Readonly<Record<string, string>> }; titleLabel?: string; mode?: 'fields' | 'url'; urlFallback?: boolean; fileFallback?: boolean; group?: 'url'; urlPlaceholder?: string; requires?: 'runtime'; action?: string; fields?: ResourceFields; resume?: boolean; titleFromPath?: string };
   matchInput?: (input: string) => ResourceDraft | undefined;
   /** Stable provider identity within one connection. Runs only in the trusted
    * backend registry; omitted from the serialized renderer/MCP description. */
@@ -356,6 +356,9 @@ export interface RelatedResourceItem {
   resource?: ResourceRecord; parentResourceId?: string;
 }
 
+/** A page `mountWebPage` shows. `media` reads and moves the first video the page plays; it rejects before the page has loaded. */
+export interface EmbeddedWebPage { dispose(): void; media?: { time(): Promise<number | undefined>; seek(seconds: number): Promise<void> } }
+
 export interface ResourceViewServices {
   observePreferences?(listener: (preferences: JsonObject) => void): () => void;
   copyUrl?(url: string): Promise<unknown>;
@@ -370,8 +373,11 @@ export interface ResourceViewServices {
   showOnMap?(nodeId: string): void;
   /** Open the host's existing edit form for this item, using shared commands. */
   editResource?(): void;
-  /** Saves fields into this item's data with the shared item.update command; null removes a field. */
-  saveData?(patch: JsonObject): Promise<void>;
+  /** Saves fields into this item's data with the shared item.update command; null removes a field. With `expect`, it saves
+   * only while those fields still hold these values (null for absent) and otherwise saves nothing and resolves false. */
+  saveData?(patch: JsonObject, expect?: JsonObject): Promise<boolean | void>;
+  /** This item's saved data now and after each change. */
+  observeData?(listener: (data: JsonObject) => void): () => void;
   /** What the host keeps of this item's view layout, such as a folded panel. It survives reload and restart and,
    * unlike saveData, never changes the item, so it never invalidates the provider's cached read. */
   viewState?(): Readonly<Record<string, string | number | boolean>>;
@@ -389,7 +395,7 @@ export interface ResourceViewServices {
   openUrl?(url: string): void;
   /** Shows a page of a site the host embeds (such as `claude`) inside `container`, in that site's own signed-in
    * session; new windows open in the browser. Undefined for a site the host does not embed; absent where it embeds none. */
-  mountWebPage?(container: HTMLElement, options: { site: string; url: string }): { dispose(): void } | undefined;
+  mountWebPage?(container: HTMLElement, options: { site: string; url: string }): EmbeddedWebPage | undefined;
   /** The host owns session lifetime; disposing the view only detaches its UI. */
   attachTerminal(sessionId: string, container: HTMLElement, options?: NativeTerminalOptions): { dispose(): void; setActive?(active: boolean): void };
   /** Controls other packages add to this type's views (RendererHost.contributeViews). */
