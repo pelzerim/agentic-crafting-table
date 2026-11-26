@@ -6,7 +6,7 @@ their pull request and author.
 ## Unreleased
 
 ### Agents
-- **Find in an agent session with Ctrl+F**: on Linux and Windows Ctrl+F opens the find bar in a Claude, Codex or other agent session, and Ctrl+Shift+F does in any terminal; a shell keeps Ctrl+F. In the bar ↓ and ↑ step to the next and previous match as Enter and Shift+Enter do, and F3, ⌘G and Ctrl+G go to the next match, with Shift to the previous one. The terminal scrolls to each match, so a long conversation can be searched back through its scrollback. (#?, @timohuovinen)
+- **Find in an agent session with Ctrl+F**: on Linux and Windows Ctrl+F opens the find bar in a Claude, Codex or other agent session, and Ctrl+Shift+F does in any terminal; a shell keeps Ctrl+F. In the bar ↓ and ↑ step to the next and previous match as Enter and Shift+Enter do, and F3, ⌘G and Ctrl+G go to the next match, with Shift to the previous one. The terminal scrolls to each match, so a long conversation can be searched back through its scrollback. (#48, @timohuovinen)
 
 ## 0.25.0 — 2026-11-25
 
