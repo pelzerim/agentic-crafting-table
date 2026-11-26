@@ -171,6 +171,10 @@ test('search in the Undermap bar lists matches and flies to an item in a collaps
     await travel(page, 'below');
     const field = page.getByRole('combobox', { name: 'Find in Undermap' });
     await expect(field).toBeVisible(); await expect(field).not.toBeFocused();
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+f' : 'Control+f');
+    await expect(field).toBeFocused();
+    await expect(page.getByRole('combobox', { name: 'Find on map' }), 'below, find searches the Undermap only').toHaveCount(0);
+    await field.blur();
     await page.keyboard.press('/');
     await expect(field).toBeFocused();
     await page.keyboard.type('rate limiter 4');

@@ -70,6 +70,16 @@ test('the find bar wears the map colours, not the Undermap ones, in the dark and
   }
 });
 
+test('the platform find key, Ctrl+F off macOS, opens the find bar on the map', async ({ visual: { page } }) => {
+  const find = page.getByRole('combobox', { name: 'Find on map' });
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+f' : 'Control+f');
+  await expect(find).toBeFocused();
+  await expect(find).toHaveAttribute('placeholder', /Find an item/);
+  if (process.platform !== 'darwin') await expect(page.locator('.map-find-bar')).toContainText('Ctrl+F');
+  await page.keyboard.press('Escape');
+  await expect(find).toHaveCount(0);
+});
+
 test('the find bar takes the keyboard: arrows choose, Enter opens, Escape closes it without opening anything', async ({ visual: { page } }) => {
   const find = page.getByRole('combobox', { name: 'Find on map' }), area = page.locator('.map-area');
   await page.keyboard.press('Meta+f');

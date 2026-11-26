@@ -42,6 +42,10 @@ test('the keyboard layer covers hotbar slots, Needs me, Undermap, Settings, zoom
   assert.equal(press('m'), 'map.overview'); assert.equal(press('M', true), 'project.mute', 'Shift+M is its own gesture, not the overview');
   assert.equal(shortcutKey('project.mute'), '⇧M');
   assert.equal(matchWorkspaceShortcut({ ...key, key: 'f', metaKey: true }), 'map.find', 'Cmd+F on the map finds an item; a focused terminal keeps its own find');
+  assert.equal(matchWorkspaceShortcut({ ...key, key: 'f', ctrlKey: true }, false), 'map.find', 'Ctrl+F finds on the map or the Undermap off macOS');
+  assert.equal(matchWorkspaceShortcut({ ...key, key: 'f', metaKey: true }, false), 'map.find', 'the Super key still finds off macOS');
+  assert.equal(matchWorkspaceShortcut({ ...key, key: 'f', ctrlKey: true }, true), undefined, 'Ctrl+F on macOS stays free');
+  assert.equal(shortcutKey('map.find', false), 'Ctrl+F'); assert.equal(shortcutKey('map.find', true), '⌘F');
   // Views keys work while a view has focus, so a view may reuse a map gesture.
   const keys = WORKSPACE_SHORTCUTS.flatMap(binding => [binding.key, ...('aliases' in binding ? binding.aliases : [])].map(value => `${binding.group === 'Views' ? 'view:' : ''}${'meta' in binding && binding.meta ? 'meta+' : ''}${'primary' in binding ? 'primary+' : ''}${'ctrl' in binding ? 'ctrl+' : ''}${'shift' in binding && binding.shift ? 'shift+' : ''}${value}`));
   assert.equal(new Set(keys).size, keys.length, 'one action per gesture');

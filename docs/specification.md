@@ -151,7 +151,7 @@ session sent below loses its cracks, and gets them back when it returns to the m
 decoration only: it never raises attention, changes counts or moves the card. The cracks go
 when the session works again.
 
-**MAP-33 — Find an item.** ⌘F on the map (not in a focused terminal, which keeps its
+**MAP-33 — Find an item.** ⌘F (Ctrl+F off macOS, where ⌘F, the Super key, works too) on the map (not in a focused terminal, which keeps its
 own find) opens a find bar at the bottom centre in the Undermap find field's shape,
 focused, in the map's colours for the current light or dark theme. Before anything is
 typed it lists, under "Recently opened", the items on the map the person opened last,
@@ -160,7 +160,7 @@ hidden, whose title and project title hold every word, titles that start with th
 first, eight at a time with a count of the rest; each row shows the title and its
 project. Arrows and Enter or a click pick one: the bar closes, the map slides to the item
 at the current zoom and only then opens it, and Escape then closes the view as usual. Escape or leaving the field
-closes the bar without opening anything. On the Undermap ⌘F focuses its own find field.
+closes the bar without opening anything. On the Undermap the same key focuses its own find field.
 
 **MAP-34 — Command menu.** ⌘K (a workspace shortcut, ignored in text fields and terminals) opens
 the command menu: a panel at the top centre over a faint scrim, with one focused field. Before
