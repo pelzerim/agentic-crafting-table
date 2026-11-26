@@ -4,10 +4,11 @@ import type { Terminal } from '@xterm/xterm';
 import { ItemIcon } from './icons.tsx';
 import { useColorScheme } from './color-scheme.ts';
 import { FIND_DECORATIONS } from './terminal-theme.ts';
+import { findStep, isFindKey } from './terminal-keys.ts';
 
 export interface TerminalFindRequest { query: string; request: number }
 
-/** ⌘F inside a terminal: every match is highlighted, the active one stands out. */
+/** ⌘F (Ctrl+F in an agent, Ctrl+Shift+F elsewhere) inside a terminal: every match is highlighted, the active one stands out. */
 export function TerminalFind({ terminal, search, find, setQuery, close }: { terminal: Terminal; search: SearchAddon; find: TerminalFindRequest; setQuery(query: string): void; close(): void }) {
   const input = useRef<HTMLInputElement>(null);
   const [results, setResults] = useState<{ index: number; count: number }>();
@@ -22,16 +23,17 @@ export function TerminalFind({ terminal, search, find, setQuery, close }: { term
   const count = !find.query || !results ? '' : !results.count ? 'No results' : results.index < 0 ? `${results.count}+ matches` : `${results.index + 1} of ${results.count}`;
   return <div className="terminal-find" role="search" aria-label="Find in terminal" data-owns-escape=""
     onKeyDown={event => {
-      const key = event.key.toLowerCase(), plain = !event.ctrlKey && !event.altKey;
+      // Enter and the arrows on a button keep their own meaning; F3 and Find Next work anywhere in the bar.
+      const direction = findStep(event), inField = event.target === input.current;
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
-      else if (event.key === 'Enter' && plain && !event.metaKey && event.target === input.current || key === 'g' && plain && event.metaKey) { event.preventDefault(); event.stopPropagation(); step(event.shiftKey); }
-      else if (key === 'f' && plain && event.metaKey && !event.shiftKey) { event.preventDefault(); event.stopPropagation(); input.current?.focus(); input.current?.select(); }
+      else if (direction && (inField || !['Enter', 'ArrowUp', 'ArrowDown'].includes(event.key))) { event.preventDefault(); event.stopPropagation(); step(direction === 'previous'); }
+      else if (isFindKey(event, true)) { event.preventDefault(); event.stopPropagation(); input.current?.focus(); input.current?.select(); }
     }}>
     <input ref={input} type="search" aria-label="Find in terminal" placeholder="Find" spellCheck={false} autoComplete="off" value={find.query}
       onChange={event => setQuery(event.target.value)} />
     <output aria-live="polite">{count}</output>
-    <button type="button" aria-label="Previous match" title="Previous match (⇧↵)" disabled={!results?.count} onClick={() => step(true)}>↑</button>
-    <button type="button" aria-label="Next match" title="Next match (↵)" disabled={!results?.count} onClick={() => step(false)}>↓</button>
+    <button type="button" aria-label="Previous match" title="Previous match (⇧↵ or ↑)" disabled={!results?.count} onClick={() => step(true)}>↑</button>
+    <button type="button" aria-label="Next match" title="Next match (↵ or ↓)" disabled={!results?.count} onClick={() => step(false)}>↓</button>
     <button type="button" aria-label="Close find" title="Close (esc)" onClick={close}><ItemIcon icon="x" /></button>
   </div>;
 }

@@ -2,12 +2,32 @@ import type { Terminal } from '@xterm/xterm';
 
 const CMD_LINE_KEYS: Record<string, string> = { Backspace: '\x15', ArrowLeft: '\x01', ArrowRight: '\x05' };
 
+const isMac = () => typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
+type Keys = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>;
+
+/** ⌘F opens find. Elsewhere Ctrl+Shift+F does in every terminal and Ctrl+F in an agent; a shell keeps Ctrl+F (forward a character). */
+export function isFindKey(event: Keys, agent: boolean, mac = isMac()) {
+  if (event.altKey || event.key.toLowerCase() !== 'f') return false;
+  if (event.metaKey && !event.ctrlKey && !event.shiftKey) return true;
+  return !mac && event.ctrlKey && !event.metaKey && (event.shiftKey || agent);
+}
+
+/** A key in the find bar that moves to the next or previous match: Enter, ↓ and ↑, F3, and ⌘G (also Ctrl+G off macOS); Shift goes back. */
+export function findStep(event: Keys, mac = isMac()): 'next' | 'previous' | undefined {
+  const { key, ctrlKey, metaKey, altKey, shiftKey } = event;
+  if (altKey) return;
+  const back = shiftKey ? 'previous' : 'next';
+  if (!ctrlKey && !metaKey && (key === 'Enter' || key === 'F3')) return back;
+  if (!ctrlKey && !metaKey && !shiftKey && (key === 'ArrowDown' || key === 'ArrowUp')) return key === 'ArrowUp' ? 'previous' : 'next';
+  if (key.toLowerCase() === 'g' && (metaKey ? !ctrlKey : ctrlKey && !mac)) return back;
+}
+
 /** Agents interpret the modified key themselves. Shell line editors receive a
  * bracketed newline so neither line executes until ordinary Enter. */
 export function terminalKey(terminal: Pick<Terminal, 'options' | 'paste' | 'input' | 'hasSelection'> & { modes: Pick<Terminal['modes'], 'bracketedPasteMode' | 'mouseTrackingMode'> }, event: KeyboardEvent, agent = false, find?: () => void, browserPaste = false, cut?: () => boolean) {
   // An IME composition keeps every key.
   if (event.isComposing || event.keyCode === 229) return true;
-  if (event.key === 'f' && event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+  if (isFindKey(event, agent)) {
     event.preventDefault(); event.stopPropagation();
     if (event.type === 'keydown') find?.();
     return false;
