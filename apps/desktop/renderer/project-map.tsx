@@ -53,7 +53,7 @@ import { placeProjectLabels } from '../../../src/graph/label-placement.ts';
 import { clampItemViewPosition, clampItemViewSize, expandedItemBounds, filledItemView } from '../../../packages/core/item-views.ts';
 import type { ItemViewProfile, ItemViewSizes } from '../../../packages/core/item-views.ts';
 import { splitViewBounds } from './item-view-bounds.ts';
-import { MapWheelGestures } from './map-wheel.ts';
+import { MapWheelGestures, zoomAroundPointer } from './map-wheel.ts';
 import type { ItemViewBounds, ViewPlace, ViewSize } from './item-view-bounds.ts';
 import { useMapObstacles } from './use-map-obstacles.ts';
 import { BiomeGround, NeighborhoodField } from './neighborhood-field.tsx';
@@ -152,6 +152,8 @@ export interface ProjectMapProps {
   onRevealed?(reveal: NonNullable<ProjectMapProps['reveal']>): void;
   /** Transient external inspection; never changes selection, layout or read state. */
   highlightedNodes?: readonly string[];
+  /** Where a Tidy preview would put items (MAP-35), drawn as outlines; nothing moves until Apply. */
+  ghosts?: readonly { id: string; position: { x: number; y: number } }[];
   /** Connections to emphasize alongside highlighted nodes; the rest are muted. */
   highlightedLinks?: readonly string[];
   /** The items or link whose menu is open; hover links at them stay drawn meanwhile. */
@@ -601,13 +603,23 @@ function MapCanvas(props: ProjectMapProps) {
   const viewport = useViewport();
   const lastZoom = useRef(viewport.zoom);
   const { setCenter, zoomTo, zoomIn, zoomOut, screenToFlowPosition, fitBounds, setViewport, getViewport } = useReactFlow();
-  // Two fingers on a trackpad pan the map; a pinch and a mouse wheel zoom it, as React Flow does on its own.
+  // Two fingers on a trackpad pan the map; a pinch, a mouse wheel and Command with either zoom it.
   const wheelPans = !itemResize.preview && !viewInteracting;
   useEffect(() => {
     const flow = container.current?.querySelector<HTMLElement>('.react-flow');
     if (!flow || !wheelPans) return;
     const gestures = new MapWheelGestures();
     const wheel = (event: WheelEvent) => {
+      // Command and the wheel zoom the map around the pointer, also over a card's own scrolling content, as in design
+      // tools. An open item view keeps its wheel because it sits outside .react-flow, so its events never reach here.
+      if (event.metaKey && !event.ctrlKey) {
+        event.preventDefault(); event.stopPropagation();
+        const bounds = flow.getBoundingClientRect(), current = getViewport();
+        // A sideways-only scroll has nothing to zoom by, so it pans sideways as it does without Command.
+        if (event.deltaY === 0) { void setViewport({ ...current, x: current.x - event.deltaX }); return; }
+        void setViewport(zoomAroundPointer(current, { x: event.clientX - bounds.left, y: event.clientY - bounds.top }, event, ZOOM_LEVELS));
+        return;
+      }
       if ((event.target as HTMLElement).closest('.nowheel')) return;
       if (gestures.classify(event) !== 'pan') return;
       event.preventDefault(); event.stopPropagation();
@@ -816,8 +828,9 @@ function MapCanvas(props: ProjectMapProps) {
     const shapes = props.plots.flatMap(plot => {
       const members = plot.memberIds.flatMap(id => byId.get(id) ?? []), field = fields.get(plot.projectId);
       if (members.length < (plot.pinnedMemberIds.length ? 1 : PLOT_MIN_LINKED) || !field || mutedProjects.has(plot.projectId)) return [];
-      const key = `${members.map(box => `${box.x},${box.y},${box.width},${box.height}`).join(';')}`, cached = plotCache.current.get(plot.id);
-      if (cached && cached.key === key && cached.field === field && cached.shape.plot === plot) { next.set(plot.id, cached); return [cached.shape]; }
+      // What the patch and its sign are drawn from: the plot's own content, not the object a new snapshot rebuilt it as.
+      const key = `${JSON.stringify(plot)}|${members.map(box => `${box.x},${box.y},${box.width},${box.height}`).join(';')}`, cached = plotCache.current.get(plot.id);
+      if (cached && cached.key === key && cached.field === field) { next.set(plot.id, cached); return [cached.shape]; }
       computed = true;
       const parts = plotPatches(members.map(box => ({ id: box.item.id, projectId: plot.projectId, x: box.x, y: box.y, width: box.width, height: box.height })));
       const outlines = parts.map(part => neighborhoodContours(part, PLOT_PADDING, PLOT_CELL)[0]), paths = ['', ''];
@@ -973,7 +986,7 @@ function MapCanvas(props: ProjectMapProps) {
   const impliedKey = useMemo(() => props.hideImpliedLinks === false ? '' : drawable.explicit.map(link => `${link.id} ${link.sourceId} ${link.targetId} ${link.kind} ${link.reveal ?? ''}`).join('\n'), [drawable, props.hideImpliedLinks]);
   const implied = useMemo(() => impliedKey ? impliedLinks(drawable.explicit) : NO_LINKS, [impliedKey]);
   const scheme = useColorScheme(), ink = MAP_INK[scheme];
-  const edges = useMemo(() => {
+  const edgesBuilt = useMemo(() => {
     const { visible, quietOf, explicit } = drawable;
     // A hover or implied link is drawn only while an end is hovered, focused, selected or open, or the link itself is hovered, focused or highlighted.
     const revealed = new Set([hovered, keyboardFocused, focus, hoveredEdge, focusedEdge, ...selection, ...props.highlightedLinks ?? [], ...props.menuFor ?? []].filter(id => id !== undefined));
@@ -990,6 +1003,21 @@ function MapCanvas(props: ProjectMapProps) {
       && [projectOf(link.sourceId), projectOf(link.targetId)].some(project => project && perProject.get(project)! > DENSE_PROJECT_LINKS);
     return explicit.map(link => ({ id: link.id, source: link.sourceId, target: link.targetId, type: 'direct', selectable: true, focusable: true, interactionWidth: 24, ...(quietOf(link.sourceId) ?? quietOf(link.targetId) ? { zIndex: -2 } : {}), markerEnd: link.kind === 'context' ? { type: MarkerType.ArrowClosed, color: ink.arrow, width: 22, height: 22 } : undefined, ...(link.kind === 'blocks' ? { data: { stop: true } } : {}), className: `explicit-edge ${link.kind}-edge ${link.kind === 'blocks' && blocking.resolved.get(link.id) ? 'blocks-resolved ' : ''}${shown.has(link.id) ? '' : 'link-concealed '}${emphasized ? emphasized.has(link.id) ? 'connection-active' : 'connection-muted' : inspection ? [link.id, link.sourceId, link.targetId].includes(inspection) ? 'connection-active' : 'connection-muted' : resting(link) ? 'connection-resting' : ''}`, ariaLabel: link.kind === 'blocks' ? `Blocking: ${visible.get(link.sourceId)?.title} blocks ${visible.get(link.targetId)?.title}${blocking.resolved.get(link.id) ? ' (resolved)' : ''}` : `${link.kind === 'context' ? 'Context' : 'Related'}: ${visible.get(link.sourceId)?.title} to ${visible.get(link.targetId)?.title}` }));
   }, [blocking, drawable, implied, hovered, keyboardFocused, hoveredEdge, focusedEdge, focus, inspected?.id, props.highlightedLinks, props.menuFor, selection, ink]);
+  // A snapshot rebuilds every edge although few change. The flow library and each drawn edge compare by identity, so an edge
+  // that reads the same keeps its object, and the list keeps its array when no edge changed.
+  const edgesKept = useRef<{ list: typeof edgesBuilt; text: Map<string, string> }>(undefined);
+  const edges = useMemo(() => {
+    const kept = edgesKept.current, before = kept && new Map(kept.list.map(edge => [edge.id, edge])), text = new Map<string, string>();
+    let same = kept?.list.length === edgesBuilt.length;
+    const list = edgesBuilt.map((edge, index) => {
+      const read = JSON.stringify(edge), old = kept?.text.get(edge.id) === read ? before!.get(edge.id) : undefined;
+      text.set(edge.id, read);
+      if (!old || old !== kept!.list[index]) same = false;
+      return old ?? edge;
+    });
+    edgesKept.current = { list: same ? kept!.list : list, text };
+    return edgesKept.current.list;
+  }, [edgesBuilt]);
   const settledAtlas = useRef<{ projects: AtlasProjectEntry[]; items: AtlasItemEntry[] }>(undefined);
   // The Atlas follows committed layout only; drag and resize previews keep the last one.
   const atlas = useMemo(() => {
@@ -1449,9 +1477,10 @@ function MapCanvas(props: ProjectMapProps) {
       const rect = container.current!.getBoundingClientRect();
       props.onBadge?.(noteId, { screen: { x: event.clientX - rect.left, y: event.clientY - rect.top }, position: screenToFlowPosition({ x: event.clientX, y: event.clientY }) }, menu);
     } });
-  // The parent passes a new Undermap callback each render; a stable one keeps panning from redrawing every card.
-  const { sendBelow } = useStableHandlers({ sendBelow: (ids: string[]) => props.onSendBelow?.(ids) }), canSendBelow = Boolean(props.onSendBelow);
-  const detailContext = useMemo(() => ({ ...actions, renderDetail: props.renderDetail, renderNode: props.renderNode, markSeen: props.onMarkSeen, keep: props.onKeep, sendBelow: canSendBelow ? sendBelow : undefined }), [actions, props.renderDetail, props.renderNode, props.onMarkSeen, props.onKeep, canSendBelow]);
+  // Every card reads this context, so a handler the host builds anew on each render must not change it: the card calls the newest one through a ref.
+  const sendBelowNow = useRef(props.onSendBelow); sendBelowNow.current = props.onSendBelow;
+  const sendsBelow = Boolean(props.onSendBelow);
+  const detailContext = useMemo(() => ({ ...actions, renderDetail: props.renderDetail, renderNode: props.renderNode, markSeen: props.onMarkSeen, keep: props.onKeep, sendBelow: sendsBelow ? (ids: string[]) => sendBelowNow.current?.(ids) : undefined }), [actions, props.renderDetail, props.renderNode, props.onMarkSeen, props.onKeep, sendsBelow]);
   const coverHandlers = useStableHandlers({
     enter: (id: string, event: React.PointerEvent) => { if (!focus && !drag && !linkDrag && !marqueeRef.current) mute.enter(id, event.buttons); },
     leave: (id: string) => mute.leave(id),
@@ -1683,6 +1712,12 @@ function MapCanvas(props: ProjectMapProps) {
       const w = node.width! * viewport.zoom + 12, h = node.height! * viewport.zoom + 12, corner = Math.min(14, w / 3, h / 3);
       return <path key={node.id} data-map-highlight={node.id} d={`M${x},${y + corner}v-${corner}h${corner} M${x + w - corner},${y}h${corner}v${corner} M${x + w},${y + h - corner}v${corner}h-${corner} M${x + corner},${y + h}h-${corner}v-${corner}`} />;
     })}</svg>
+    {props.ghosts && props.ghosts.length > 0 && <svg className="map-tidy-ghosts" aria-label={`Tidy preview: ${props.ghosts.length} ${props.ghosts.length === 1 ? 'item moves' : 'items move'}`} role="img">{props.ghosts.map(ghost => {
+      const node = nodes.find(candidate => candidate.id === ghost.id);
+      if (!node || node.hidden) return null;
+      const w = node.width! * viewport.zoom, h = node.height! * viewport.zoom, x = (ghost.position.x - node.width! / 2) * viewport.zoom + viewport.x, y = (ghost.position.y - node.height! / 2) * viewport.zoom + viewport.y;
+      return <g key={ghost.id} data-tidy-ghost={ghost.id}><line x1={node.position.x * viewport.zoom + viewport.x} y1={node.position.y * viewport.zoom + viewport.y} x2={x + w / 2} y2={y + h / 2} /><rect x={x} y={y} width={w} height={h} /></g>;
+    })}</svg>}
     {itemViews.map(view => <div key={view.id} className="item-view" data-item-view={view.id} data-returning={view.id !== focus && !view.hidden || undefined} data-dragging={viewInteracting && viewGesture.current?.mode === 'move' && view.id === focus} data-resizing={viewInteracting && viewGesture.current?.mode === 'resize' && view.id === focus} hidden={view.hidden}
       style={{ left: view.position.x, top: view.position.y, width: view.data.width * view.data.scale, height: view.data.height * view.data.scale }}>
       <Card data={view.data} />

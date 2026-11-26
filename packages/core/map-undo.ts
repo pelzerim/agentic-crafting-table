@@ -15,8 +15,9 @@ export const UNDO_ACTOR = { kind: 'user', id: 'map-undo' } as const;
 type Position = { x: number; y: number };
 type Link = WorkspaceState['links'][number];
 type ItemSize = NonNullable<WorkspaceState['nodes'][number]['mapSize']>;
-/** `size` is the resolved preset, `mapSize` the one the item itself holds (absent while it follows the default). */
-export interface ItemSnap { position: Position; projectId: string | null; size?: ItemSize; mapSize?: ItemSize; mapDimensions?: { width: number; height: number }; archived: boolean }
+/** `size` is the resolved preset, `mapSize` the one the item itself holds (absent while it follows the default).
+ * `title` and `machineTitle` are recorded only by a step that renames items (`SnapContext.titles`). */
+export interface ItemSnap { position: Position; projectId: string | null; size?: ItemSize; mapSize?: ItemSize; mapDimensions?: { width: number; height: number }; archived: boolean; title?: string; machineTitle?: boolean }
 /** The plot fields a step can change; `name` is absent while the plot shows its local name. */
 export interface PlotSnap { id: string; projectId: string; name?: string; generated: boolean; color: string; chosenColor?: string; pinnedMemberIds: string[]; locked: boolean; lockPinnedIds?: string[] }
 export interface UndoStep {
@@ -48,17 +49,18 @@ export interface Reversal {
   reverted: number;
   skipped: number;
 }
-const ITEM_FIELDS = ['position', 'projectId', 'size', 'mapSize', 'mapDimensions', 'archived'] as const;
+const ITEM_FIELDS = ['position', 'projectId', 'size', 'mapSize', 'mapDimensions', 'archived', 'title'] as const;
 const PLOT_FIELDS = ['projectId', 'name', 'generated', 'color', 'chosenColor', 'pinnedMemberIds', 'locked', 'lockPinnedIds'] as const;
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const near = (a: Position | undefined, b: Position) => a !== undefined && Math.abs(a.x - b.x) < .5 && Math.abs(a.y - b.y) < .5;
 
-export interface SnapContext { registry: ResourcePluginRegistry; sizes?: ItemMapSizes }
+/** `titles` records each item's title too, for a step that renames. */
+export interface SnapContext { registry: ResourcePluginRegistry; sizes?: ItemMapSizes; titles?: boolean }
 export function itemSnap(node: WorkspaceState['nodes'][number], state: Pick<WorkspaceState, 'resources'>, context: SnapContext): ItemSnap {
   const record = node.resourceId ? state.resources.find(resource => resource.id === node.resourceId) : undefined;
   const size = record && !node.mapDimensions ? resolveMapSize(node, record, context.registry.get(record.pluginId), context.sizes).size as ItemSize : undefined;
   return { position: node.position, projectId: node.projectId ?? null, ...size ? { size } : {}, ...node.mapSize && !node.mapDimensions ? { mapSize: node.mapSize } : {}, ...node.mapDimensions ? { mapDimensions: node.mapDimensions } : {},
-    archived: Boolean(node.archivedAt) };
+    archived: Boolean(node.archivedAt), ...context.titles ? { title: node.title, machineTitle: node.generatedTitle === node.title } : {} };
 }
 export function plotSnap(plot: PlotView): PlotSnap {
   return { id: plot.id, projectId: plot.projectId, ...plot.source === 'local' ? {} : { name: plot.name }, generated: plot.source === 'generated', color: plot.color,
@@ -129,8 +131,11 @@ export function clearMapSizes<T extends Pick<WorkspaceState, 'nodes'>>(state: T,
   return { ...state, nodes: state.nodes.map(node => clear.has(node.id) && node.mapSize ? (({ mapSize: _, ...rest }) => rest)(node) : node) };
 }
 
+/** A step that recorded titles compares them on the current map too. */
+export const recordsTitles = (step: Pick<UndoStep, 'items'>) => step.items.some(change => change.before.title !== undefined);
+
 /** Item fields an undo guards and restores together. */
-const GROUPS = { position: ['position'], projectId: ['projectId'], size: ['size', 'mapSize', 'mapDimensions'], archived: ['archived'] } as const satisfies Record<string, readonly (keyof ItemSnap)[]>;
+const GROUPS = { position: ['position'], projectId: ['projectId'], size: ['size', 'mapSize', 'mapDimensions'], archived: ['archived'], title: ['title', 'machineTitle'] } as const satisfies Record<string, readonly (keyof ItemSnap)[]>;
 type Group = keyof typeof GROUPS;
 const GROUP_NAMES = Object.keys(GROUPS) as Group[];
 /** Groups that place an item on the map, where it could land on another item. */
@@ -140,10 +145,10 @@ type Footprints = (state: Pick<WorkspaceState, 'nodes' | 'resources'>) => Spatia
 /** Undo or redo of a step on the current map: per-field guards, and items outside it are never pushed. */
 export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'nodes' | 'resources' | 'links'>, currentPlots: readonly PlotSnap[], context: SnapContext, direction: 'undo' | 'redo',
   simulate: (commands: WorkspaceCommand[]) => Pick<WorkspaceState, 'nodes' | 'resources'>, footprints: Footprints): Reversal {
-  const back = direction === 'undo', nodes = new Map(current.nodes.map(node => [node.id, node]));
+  const back = direction === 'undo', nodes = new Map(current.nodes.map(node => [node.id, node])), snaps = { ...context, titles: recordsTitles(step) };
   const eligible = new Map<string, Set<Group>>(), skipped = new Set<string>();
   for (const change of step.items) {
-    const from = back ? change.after : change.before, node = nodes.get(change.id), now = node && itemSnap(node, current, context);
+    const from = back ? change.after : change.before, node = nodes.get(change.id), now = node && itemSnap(node, current, snaps);
     const changed = GROUP_NAMES.filter(group => GROUPS[group].some(field => !same(change.before[field], change.after[field])));
     const ok = now ? changed.filter(group => GROUPS[group].every(field => same(now[field], from[field]))) : [];
     if (ok.length < changed.length) skipped.add(change.id);
@@ -174,7 +179,7 @@ export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'node
   // Projects before their items: an item cannot be restored while its project is still archived.
   const projectsFirst = (a: string, b: string) => Number(Boolean(nodes.get(a)?.resourceId)) - Number(Boolean(nodes.get(b)?.resourceId));
   const build = (only?: ReadonlySet<string>) => {
-    const restore: string[] = [], attach: WorkspaceCommand[] = [], resize: WorkspaceCommand[] = [], archive: WorkspaceCommand[] = [];
+    const restore: string[] = [], attach: WorkspaceCommand[] = [], resize: WorkspaceCommand[] = [], titles: WorkspaceCommand[] = [], archive: WorkspaceCommand[] = [];
     const positions: { id: string; position: Position }[] = [];
     for (const [id, groups] of eligible) {
       if (only && !only.has(id)) continue;
@@ -182,10 +187,11 @@ export function planReversal(step: UndoStep, current: Pick<WorkspaceState, 'node
       if (groups.has('archived')) { if (to.archived) archive.push({ type: 'node.archive', id }); else restore.push(id); }
       if (groups.has('projectId')) attach.push({ type: 'node.attach', id, projectId: to.projectId });
       if (groups.has('size')) resize.push(to.mapDimensions ? { type: 'node.resize', id, dimensions: to.mapDimensions, position: groups.has('position') ? to.position : node.position } : { type: 'node.resize', id, size: to.size });
+      if (groups.has('title') && to.title !== undefined) titles.push(to.machineTitle && to.title.length <= 48 ? { type: 'node.title.generated', id, title: to.title, sourceTitle: node.title } : { type: 'node.update', id, title: to.title });
       if (groups.has('position') && !exact.has(id)) positions.push({ id, position: to.position });
     }
     // One restore for the whole group, so placement sees each project with its returning items.
-    return [...restore.length ? [{ type: 'nodes.action' as const, ids: restore, action: 'restore' as const }] : [], ...attach, ...resize, ...positions.length ? [{ type: 'nodes.move' as const, positions }] : [], ...archive];
+    return [...restore.length ? [{ type: 'nodes.action' as const, ids: restore, action: 'restore' as const }] : [], ...attach, ...resize, ...titles, ...positions.length ? [{ type: 'nodes.move' as const, positions }] : [], ...archive];
   };
   // An item goes back onto what it overlapped only while every one of those is in place or placed with it.
   const anchored = new Set((step.anchors ?? []).filter(anchor => near(nodes.get(anchor.id)?.position, anchor.position)).map(anchor => anchor.id));

@@ -65,14 +65,14 @@ below.
 | MAP-03 | In overview and neighborhood views, omit the central project bubble. Keep the same floating **Project: NAME** title horizontally centered above the neighborhood field. Center its text and status counts, with project actions accessible alongside. Use readable screen-space text at every zoom level and keep the title behind item content. If the cap or title extends offscreen, keep the title reachable at the visible viewport edge without moving the map. Omit derived project connection lines at every zoom; the pixel field expresses membership. The title supports opening, group dragging and project actions in both views. Preserve saved project anchors and member positions. Zoom transitions must not move members, rewrite saved positions or alter outline geometry. |
 | MAP-04 | Each project has a dynamic, padded pixel field following the rounded convex enclosure of all visible member footprints, drawn as a **spline hull**: long straight runs between distant members bow gently outward into curves, while single items and compact groups keep their rounded hull. The curve stays convex, never self-intersects, always contains the full padding around every member, and changes continuously while a member is dragged. Use **B · Broad steps**: four broad fading shades of large square pixels, **24 world pixels** by default, with **no stroked outline**. Fade inward from the logical edge across 96 world pixels by default; keep the center solid. Pixel size, fade distance and optional edge scattering are configurable (SETTINGS-09). Derive the enclosure from full detailed member footprints, ignoring the saved project anchor except for empty projects. Recenter and grow live when members move/add/remove, retaining other positions. Default minimum logical clearance is one large item width; preserve SETTINGS-03 padding and membership/attachment hit tests independently of visual opacity. Use a stable world grid and deterministic scattered cells, with no camera-dependent rerasterization or idle motion. During dragging, the field follows the member immediately; other geometry/material changes use a short shading transition, skipped for reduced motion. Keep the field behind titles, connections and items in all zoom levels and expanded-item views; remove the separate focus-view outline frame. Attachment feedback brightens the field without adding a stroke. Bound render complexity for extreme spreads using integer multiples of the chosen pixel size. This supersedes the earlier visible pixel-stepped stroke. The logical enclosure is stepped on the same world grid as the default 24-pixel fill (whole multiples of it for very large projects), so **the visible field decides membership**: at the default pixel size a point is inside a project exactly when its cell is painted. Creation, attachment, owned-item transfer previews and drops, the Atlas and far-zoom dashboards all use this smoothed field; an item dropped outside the drawn field does not join (beyond the floating-attachment reach). |
 | MAP-05 | All map levels share world-space positions. Zooming changes camera and presentation, not saved layout. Expanded surfaces may move independently in screen space (MAP-19). Transitions preserve orientation, with no radial redistribution or jump on returning to overview. |
-| MAP-06 | Mouse wheel zooms around the pointer. On a trackpad, two fingers pan the map and a pinch zooms around the pointer; a two-finger gesture keeps panning until it pauses. Empty-space dragging pans the entire scene, including project outlines and members. Terminal/document scrolling remains native when the pointer is inside expanded content. A press on an item that slips up to 6 screen pixels before the release is still a click: it opens the item and neither drags it nor pans the map. Further than that it drags the item; in Undermap, where items cannot be dragged, a press on an item never pans. |
+| MAP-06 | Mouse wheel zooms around the pointer. On a trackpad, two fingers pan the map and a pinch zooms around the pointer; a two-finger gesture keeps panning until it pauses. With Command (⌘) held, the wheel and two fingers zoom around the pointer, as in design tools, also over a card's own scrolling content; a sideways-only scroll with Command still pans sideways, and an open item view keeps its wheel. Empty-space dragging pans the entire scene, including project outlines and members. Terminal/document scrolling remains native when the pointer is inside expanded content. A press on an item that slips up to 6 screen pixels before the release is still a click: it opens the item and neither drags it nor pans the map. Further than that it drags the item; in Undermap, where items cannot be dragged, a press on an item never pans. |
 | MAP-07 | A very small zoom bar in the bottom-left corner of the map, right of the tool rail (hidden while the project column or the Atlas overview unfolds), shows current position and transition markers. Using this slider zooms around the center of the visible map canvas: keep the world point currently at that center fixed on screen while changing scale, adjusting camera translation accordingly. Apply this to slider clicks, dragging and keyboard changes, in both zoom directions and after panning or resizing. The slider is a pixel control (square thumb) with a live percentage readout that resets to 100% on click; there are no step buttons, the − / + / 0 keys step and reset the zoom; the slider announces its value as a percentage. Each tier threshold carries a small glyph instead of a text label (board, icon, card) whose tooltip names it (“65% · Icons below”). The icon glyph appears only while dashboards are off: with dashboards on there is no icon band (MAP-23), so the bar shows the dashboard and close-card glyphs only. A mint tick marks the project dashboard threshold (MAP-23) while dashboards are on, with the accessible name and tooltip “Dashboards below N%”. |
 | MAP-08 | Grab any collapsed item surface to move it, regardless of activity. Distinguish click from drag with a movement threshold. Buttons, link handles, terminal input and text selection keep their own behavior. A press anywhere on a card's visible face (middle, words, badges, the working mark, every edge and corner) moves the item once it passes the click slip, at every zoom and whether the drag is slow, fast, hesitant or follows a hover; it never pans the map. That holds while an earlier move is still saving (the new drag starts from where that move left the map) and while a closed view is still flying back to its card. Only real controls in the card keep the press: buttons and the completion box, fields and text being edited, links, inner regions that scroll, the + link tab where it is drawn and the resize grip. Dragging an expanded item's menu bar (except controls) moves only its open view (MAP-19). |
 | MAP-09 | Moving a project moves its members by the same delta, preserving their offsets, links and identities. Moving an individual member moves only that member. Panning never changes world positions or membership. |
 | MAP-10 | Double-clicking empty map space opens the circular New item picker (MAP-16) at the cursor without zooming the map. Outside a neighborhood, the board's right-click menu offers **New item**, **New project** and **Open archive**; inside a neighborhood, it offers only **New item**: New item opens the same circular picker; New project opens the project form directly at the clicked map location. Remove the persistent **+ New project** button. A single empty-space click does not open a form. An item's or project's menu opens at the pointer but never covers that card's title row: it moves just below the row, or above it when there is no room below. Dismiss an ordinary context menu on another right-click, an outside click or Escape; the circular picker uses the layer navigation in MAP-16. Inside an outline the item belongs to that project; outside it is floating. Projects can also be created at a chosen map position. Double-clicking items, controls or expanded content retains their own interaction and must not open the map picker. After type selection, inline creation forms can be dragged by their heading, preserving field values and the original map placement; keep the form within the canvas. |
 | MAP-11 | Place the plus/connection handle on the right edge at the vertical center of each collapsed item, including compact and done states: a 16 px pixel button straddling the edge outside the content, shown on hover or keyboard focus, so it never covers status text. The resize grip is a 12 px corner tab with a three-step pixel stair in soft ink, shown on hover, focus and selection. Drag an item's plus/connection handle to another item to connect them, or to empty space to open the same circular picker and create a connected item inline (MAP-16), retaining the source item and drop location. Show validation failures before committing a new item or edge. Pressing Enter or Space on the focused + opens an endpoint-only connection picker with the same automatic relationship policy. No side panel is needed. |
 | MAP-12 | A floating item dropped in/near a project shows an attachment preview and joins it on release. Dragging an owned item inside another project's neighborhood shows **Move to NAME** and highlights that destination; releasing transfers only that item. Resolve overlapping areas by nearest center, with a stable ID tie-break. Use neighborhoods from the start of the drag for target selection so a source outline growing with its member or displaced destination items cannot steal the drop. Keep live outline/collision previews. Empty-space drops retain current membership; Item settings still allows explicit detachment. Commit membership and placement atomically, preserving IDs, resources, links, content, session history and running processes. Project/group drags never transfer membership. |
-| MAP-13 | Detailed map items do not overlap at maximum zoom. Placement/drag operations resolve collisions while keeping the held item under the original grab point, including the first movement across the drag threshold. Preview displacement during dragging and commit the held and displaced positions atomically on drop, retaining the preview until the operation settles; a conflict/error visibly reverts it. Use 20 world pixels of clearance between detailed item footprints. Project movement preserves member offsets. Apply the same rules to keyboard and agent/MCP moves; reject conflicting fixed positions in a multi-item request. Reserve sufficient detailed footprints so zooming itself does not rearrange the map. Expanded focus content is a camera/view projection, not a giant persisted layout rectangle. For older overlapping layouts, provide an explicit Settings → Map → **Clear overlaps** action using the same shared placement rules; it runs immediately after an inline confirmation. Preserve already-clear items, metadata, links and archived positions; do not rearrange saved layouts automatically on startup or zoom. Clear overlaps is undoable (MAP-34). |
+| MAP-13 | Detailed map items do not overlap at maximum zoom. Placement/drag operations resolve collisions while keeping the held item under the original grab point, including the first movement across the drag threshold. Preview displacement during dragging and commit the held and displaced positions atomically on drop, retaining the preview until the operation settles; a conflict/error visibly reverts it. Use 20 world pixels of clearance between detailed item footprints. Project movement preserves member offsets. Apply the same rules to keyboard and agent/MCP moves; reject conflicting fixed positions in a multi-item request. Reserve sufficient detailed footprints so zooming itself does not rearrange the map. Expanded focus content is a camera/view projection, not a giant persisted layout rectangle. For older overlapping layouts, provide an explicit Settings → Map → **Clear overlaps** action using the same shared placement rules; it runs immediately after an inline confirmation. Preserve already-clear items, metadata, links and archived positions; do not rearrange saved layouts automatically on startup or zoom. Tidy (MAP-35) keeps the same clearance, and both are undoable (MAP-34). |
 | MAP-14 | Creating any item or project reserves its full detailed footprint and places it in the nearest free space to the requested location. Existing items keep their positions. This rule applies to UI, MCP and provider-created items, including several creations in one transaction. **Agent placement.** An agent that creates an item or project does not have to choose coordinates: `position` is optional for agents. Without one the item lands in context, beside an anchor: the first node it links to that is on the map, otherwise the agent's own node; with neither, among the members of the project it names, at the nearest free spot to their centre (an empty project's own spot). Beside means the right-hand column starting on the anchor's row, filled downward, then the row below the anchor, then the nearest free spot, so several items created together form a tidy column and nothing else moves. An item with no `projectId` joins its anchor's project; a named project wins, and an anchor outside it does not count. A new project lands clear of every other project's neighborhood, beside the agent's project. A position an agent does give is kept only within reach of that context (one neighborhood padding from the destination project's members, or from the anchor of a floating item); a farther one is placed as if none was given. An anchor or project that is archived or in Undermap never counts, so the item stays on the visible map. With no context at all a position is still required and is used as given. Positions from people, the desktop app and providers are never replaced. **One node per project for an agent.** When an agent's `item.add` or `item.create` names a resource that already has a node on the map (not archived, not in Undermap) in the project the new item would join, or floating when it would float, no second node is created: the command succeeds against that node, its `links` are saved on that node, later commands of the same batch that name the requested id act on that node, and the result's `alreadyOnMap` names it (`requestedId`, `nodeId`). The same resource in another project still gets its own alias, and people, the desktop app and providers create aliases exactly as before. |
 | MAP-15 | Show a grab cursor over the empty board, changing to grabbing during a pan. Show a pointing-hand cursor over item/project bubbles to indicate they open on click; switch to grabbing during an actual item drag. Use the normal arrow elsewhere. Keep native text-entry, terminal, resize and control cursors within expanded content. Cursor changes must not change the existing click-versus-drag behavior. |
 | MAP-16 | The New item type picker is a circle of individual pixel bubbles around the opening cursor position, each with a readable label and type icon. Bubbles read as raised UI above the map (opaque raised fill, top-left bevel, 2 px hard shadow) so map cards never show through them; the interaction layer itself stays transparent. While the ring is open, a transparent interaction layer shields all map items and connections, including gaps between choices: no background hover preview, highlight, tooltip or connector control. Clicking outside dismisses without activating the item underneath; map interaction resumes afterward. Keep the ring compact around an empty amber pixel bubble with a dashed edge at its center, visually distinct as an unfinished item; omit explanatory copy and the close X. Hovering a type or navigating to it with the keyboard transitions the center into a small preview using that type's icon, color, compact label and relative size. Initial focus alone keeps the blank draft. Leaving the choice returns the center to its unfinished appearance; All and pagination remain navigation rather than item previews. Previewing does not select, fetch, launch or create anything. Keep the center fixed as its local size/color/content transitions quickly; reduced motion settles immediately. Selecting grows this currently visible seed into the form. On opening, animate that center from zero size, then grow and spread the choices outward from the same center into their final ring positions with a quick, lightly staggered ease-out. Use scale/translation/opacity without bounce, camera movement or layout changes. Layer changes spread the new choices from the existing center. Reduced motion shows the final layout immediately; opening animations must not prevent dismissal or keyboard selection. Inside a project, omit Project from both layers without changing saved shortcut preferences. Its first layer contains the quick choices configured in Settings (SETTINGS-04), plus **All** only while non-project item types remain outside those choices. Project alone does not keep All visible; the board menu still provides New project. Selecting All replaces the quick-choice bubbles with another circular layer containing all remaining available item types; do not repeat the quick choices or show both layers at once. A right-click in that layer returns to the quick-choice layer. Another right-click closes the picker; a right-click from the initial layer closes it immediately. Consume these right-clicks without opening another context menu. Escape provides the same back/close sequence, and choices are keyboard accessible. Selecting a type grows the center bubble into its inline creation form, centered at that visual seed and clamped inside the canvas. Keep the original requested world position, project/connection context and collision-safe placement. The form has no close X; Back/right-click/Escape returns to choices, followed by another right-click/Escape to close. Editing existing items retains its normal close control. Merely opening, changing layers or dismissing the picker creates nothing. Keep the bubbles reachable near canvas edges without changing the requested world position; show an explicit empty state if All has no remaining choices. |
@@ -161,6 +161,28 @@ first, eight at a time with a count of the rest; each row shows the title and it
 project. Arrows and Enter or a click pick one: the bar closes, the map slides to the item
 at the current zoom and only then opens it, and Escape then closes the view as usual. Escape or leaving the field
 closes the bar without opening anything. On the Undermap ⌘F focuses its own find field.
+
+**MAP-34 — Command menu.** ⌘K (a workspace shortcut, ignored in text fields and terminals) opens
+the command menu: a panel at the top centre over a faint scrim, with one focused field. Before
+anything is typed it lists, under "Recently opened", up to five items from `view.recentItems`
+still on the map, then every command. Typing lists, in this order and each under its heading, the
+items on the map that hold every word (as MAP-33 finds them), the projects on the map whose title
+holds every word, and the commands whose name holds every word. Commands are the creations a
+person starts most (**New item…** opens the item picker and **New project…** the project form, each where
+the menu panel stood: the form's top centre at the panel's, the ring centred just below the panel's top; the new
+item lands on the map under that point) and the map and app actions of the shortcut registry, each with its
+key: Needs me, to-dos, reminders, GitHub inbox, Actions while shown, Undermap and back, map
+overview, find on map, zoom, Settings and Controls. Rail panels are named **Toggle …**, as their key closes a
+panel held open. On the Undermap the creations are not listed. Keys that only work inside an open view and
+the menu itself are not commands. Arrows move through every row across headings, Enter or a
+click picks one, and the menu closes before the pick runs: an item flies there and opens as in
+MAP-33, a project flies there and selects it, a command runs as its key would. A command that cannot run in the current state (its key is declined) reopens
+the menu with the query and the line "“<command>” can’t run here." Going back from the first layer of a form the menu opened (Escape or a right-click on
+**New project…**'s form or **New item…**'s picker) closes it and reopens the menu with the query kept;
+a created item or project closes both. Escape, ⌘K again
+or a click outside closes the menu without running anything, and Enter or Escape that ends an IME composition
+stays with the IME; with nothing matching it says so
+and Enter does nothing. ⌘F stays find only (MAP-33).
 
 **MAP-19 — Independent expanded-view movement.** Drag anywhere on the expanded item's menu bar (including status, directory, provider/model text and empty space; excluding buttons and other interactive controls)
 to move its open view in screen space, without moving or resizing the map bubble,
@@ -614,7 +636,7 @@ count the hotbar slots from the top and act as a click on that slot: **1** Needs
 from the rail's slot list (`rail-slots.ts`), so a slot added there takes the next
 number (nine at most; **0** resets zoom). **N** and **,** still act on the Needs me
 and Settings slots. **T** toggles the
-to-do list, **U** travels to Undermap and back, **/** focuses the Undermap's find field while below (MAP-18), **+ / − / 0** zoom in,
+to-do list, **U** travels to Undermap and back, **/** focuses the Undermap's find field while below (MAP-18), **⌘K** opens the command menu (MAP-34), **+ / − / 0** zoom in,
 out and to 100%, and **?** opens a Controls card that lists every
 key from the same registry (Escape closes it). Keys an item view handles while it has
 focus are listed there under Views: **[** folds or shows a rollout's jobs rail, and **⌘E**
@@ -977,7 +999,7 @@ naming.
 **MAP-34 — Undo and redo on the map.** ⌘Z (Ctrl+Z off macOS) undoes the last map change made in
 this window; ⌘⇧Z (Ctrl+Shift+Z, or Ctrl+Y off macOS) redoes it. A step is a move (drag, keys or
 several items at once, including a drop into a project), a resize, a plot's colour, name or lock, an archive
-(undone by restoring), a removed connection or **Clear overlaps** (MAP-13). A
+(undone by restoring), a removed connection, **Clear overlaps** (MAP-13) or a whole Tidy run (MAP-35). A
 step is the service's receipt for the person's own commit: every item it changed, so neighbours a drop
 displaced go back too (for those, only their position; an item whose project changed, such as a to-do's
 attached note, counts in full). Permanent delete, text edits, settings and changes
@@ -989,7 +1011,9 @@ since stays there. A part that can no longer be put back (its project archived, 
 skipped, and an item is never put back into a project archived since. Archiving a project again (redo of its archive, undo of its restore) runs only while it holds the same items as when it was archived, so it never hides an item added since. Undoing **Clear overlaps** puts an
 item back exactly onto the items it overlapped while every one of them is still where the step found it
 or goes back with it; if one moved since, the item stays. A step that pins items into a plot also holds the
-plots it emptied, so undo brings back their name and pins, archived members' pins included. Anything
+plots it emptied, so undo brings back their name and pins, archived members' pins included; a Tidy step
+likewise, and it also holds the names it gave, so undo puts back the machine names they replaced unless
+someone renamed the item since. Anything
 changed since (by an agent, another window or the person) stays and the notice says so: “Undid move · 2
 items changed since, left in place”. Redo replays only what the undo put back. When nothing can revert the
 notice says so and the step is dropped. One undo or redo is one transaction and one revision. History lives in
@@ -997,6 +1021,47 @@ the window's memory, 50 steps, and a new change clears redo. The keys act only w
 never while typing in a field, note or terminal, while a dialog or menu is open, or while an item's full
 view is open. Undo is not shown on the Undermap. Known limit: undo compares values: if a later write
 leaves a field at the same value the step left, undo treats it as unchanged.
+
+**MAP-35 — Tidy.** **Tidy…** in the ground's menu tidies the whole board; in a project's menu, that
+project. A dialog offers: **Line up items inside each plot** (on), **Space out the plots** (on), **Give
+plots their own colours** (on), **Archive finished work** (off), **Rename from context** (off) and
+**Regroup by context** (off). Its preview draws where each item would land as outlines on the map and
+lists renames, regroups and archives, each with a tick. **Apply** sends exactly the ticked rows as one
+transaction, one revision and one undo step (MAP-34); **Cancel** or Esc changes nothing. Apply carries a
+fingerprint of what the preview read in its scope: item places, sizes, projects, plots and names, plot
+colours, pins and locks, and the item size settings. If any of that changed, Apply is refused, the preview
+is recomputed from the new map and the dialog says so; status, activity and attention changes never refuse
+it. Nothing is ever half applied. After Apply the moved items are highlighted for about 4 seconds as
+feedback to that action. Its notice offers **Undo** for that run, the same step ⌘Z undoes.
+
+*Layout.* Pure and deterministic: the same map gives the same plan, and a tidied map plans nothing.
+Inside a plot, members form an even grid in reading order (rows by top, then left to right), anchored at
+the plot's top-left, with MAP-13 clearance. Linked items in a plot line up instead as a tree, left to right from the
+ticket: its agents beside it, their PRs beside them, then reviews and artifacts, each column one gap from
+the last and widened until no link crosses a card. Plots linked to each other are placed side by side. A project's plots keep their reading order with even gutters
+wider than the plot leave distance. Plot membership never changes unless Regroup is ticked: where the new
+layout would let detection (MAP-24) find other plots, the members are pinned in the same apply, and a
+reshaped plot keeps a plot gutter from items outside it. Apply checks detection on the map the moves really
+reach (solid collisions included): a move that would change any plot's members is dropped. Locked
+plots are untouched, and items without a project stay where they are.
+
+*Colours.* Only plots sharing a colour within one project change, as few as possible; a colour the person
+chose and locked plots never change.
+
+*Archive.* Rows are items finished more than 3 days ago; never a working item, one in Needs me or one in
+a locked plot. A row whose item got busy after the preview is skipped and counted; it never refuses Apply.
+Archived items can be restored from the archive or by undo.
+
+*Rename and Regroup* use the same tool-free title helper as AI titles, need AI features on, and never run
+for agents or MCP. Rename suggests names for agent sessions, plots and projects, never for names a
+provider owns. A title the person types, or gives a project they create, is marked as **chosen by the
+person**; a name with no mark counts as chosen unless it still equals the last machine title. A project an
+agent or MCP creates starts with a machine name. A chosen name is never
+suggested, and a row is ticked by default only when the current name is provably machine made. A name
+Tidy applies is a machine name, so a later Tidy may rename it again. Regroup asks once per project, only
+moves items between plots of that project, and never moves a locked plot's members. One Tidy run sends at
+most 12 AI requests across the board, three at a time; when that runs out, the preview says some
+suggestions were skipped.
 
 **MAP-25 — Mute a project.** (Night.) Mute is a **display
 preference on one project**. It changes what the app shows and announces and almost
@@ -2010,7 +2075,11 @@ project first, then items and their linked subitems (for example PR → review �
 note). Include identities, relationships, activity, done state and bounded source
 content. Deduplicate aliases, handle cycles deterministically, exclude archived
 items, and label missing/truncated/omitted content so it can be read through MCP.
-The creation form has no Task or Project brief override fields.
+The creation form has no Project brief override field. Its optional **Prompt** field is the
+session's first task: typed there, it is sent as the opening prompt with the project context,
+in place of the What next turn, so the person does not wait for the terminal to open before
+prompting. Command or Ctrl + Enter in the field starts the session. A provider that takes no
+first prompt refuses a start with one (AGENT-01b).
 Persist the exact delivered snapshot. Keep trusted, versioned host instructions
 separate from project facts and external material. Append through the provider's
 supported instruction mechanism without replacing its built-in instructions.
@@ -2073,6 +2142,18 @@ that leaves such an item ends it, because a conversation with no transcript cann
 A failure shows as an error on the item.
 Codex refuses to open a conversation that is live in another process and asks to close it
 there, so `/resume` of a Codex item that is still running changes nothing until that item stops.
+
+**AGENT-04b — The model it runs on now.** The expanded agent view's menu bar names the provider, then the model
+and effort level the session runs on now, such as `claude · opus 5.5 high` or `codex · gpt-6.2-sol medium`, and
+follows `/model` and `/effort` typed in its terminal. A Claude model ID reads as its family and version
+(`claude-opus-5-5` → `opus 5.5`); other IDs show as the CLI names them. The item keeps them as `currentModel` and
+`currentEffort`; `model` stays the launch choice, which a resume uses. Until the CLI reports a model, the launch
+model stands in, and a conversation resumed with its own model (`native`) names none. Claude reports its model
+on SessionStart and PostModelSwitch, so `/model` shows at once; it reports the effort level only on Stop, so
+`/effort` shows when the next turn ends, and a new process shows the last known level until then. Codex's terminal
+tells the table's app-server connection nothing when `/model` changes the model or effort, so the table reads the
+thread on each status change and every 2 seconds while the session runs. Only a plain model ID and level leave
+the CLI.
 
 **AGENT-05 — Guide/context updates.** Queue newly connected context and outdated
 guide updates for the next supported input/turn boundary, deduplicated by identity

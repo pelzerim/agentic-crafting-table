@@ -332,6 +332,8 @@ export interface MountedResourceView {
 export interface AgentPromptStatus { state: 'none' | 'queued' | 'acknowledged' | 'unavailable'; message: string }
 export interface NativeTerminalOptions {
   resume?(): Promise<void>; resumeLabel?: string; resumeWhenStopped?: boolean; launchLabel?: string;
+  /** Replaces `launchLabel` as it changes, such as the model and effort an agent runs on now (AGENT-04b). Returns the unsubscribe. */
+  observeLaunchLabel?(listener: (label: string) => void): () => void;
   /** Opening a view of an ended session starts a new one through `resume` instead of replaying the old output.
    * An archived session or one whose recording was deleted stays as it is; `resume` remains the explicit start. */
   startWhenStopped?: boolean;
@@ -364,6 +366,8 @@ export interface ResourceViewServices {
   revealFile?(path: string): Promise<unknown>;
   /** Current direct links across aliases, excluding archived items. No provider fetch. */
   observeRelated?(listener: (items: RelatedResourceItem[]) => void): () => void;
+  /** This item's saved data each time it changes, starting with the current one. Absent outside the expanded view. */
+  observeData?(listener: (data: JsonObject) => void): () => void;
   openResource(resourceId: string): void;
   /** Closes the view, flies the map to an item the view just put on it and selects it. */
   showOnMap?(nodeId: string): void;
@@ -372,8 +376,6 @@ export interface ResourceViewServices {
   /** Saves fields into this item's data with the shared item.update command; null removes a field. With `expect`, it saves
    * only while those fields still hold these values (null for absent) and otherwise saves nothing and resolves false. */
   saveData?(patch: JsonObject, expect?: JsonObject): Promise<boolean | void>;
-  /** This item's saved data now and after each change. */
-  observeData?(listener: (data: JsonObject) => void): () => void;
   /** What the host keeps of this item's view layout, such as a folded panel. It survives reload and restart and,
    * unlike saveData, never changes the item, so it never invalidates the provider's cached read. */
   viewState?(): Readonly<Record<string, string | number | boolean>>;

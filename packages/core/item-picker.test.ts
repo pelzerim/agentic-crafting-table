@@ -67,8 +67,8 @@ test('URL choices collapse into From URL and legacy shortcuts keep order without
 test('the ground ring offers every ground menu entry but New item, and Project only once', () => {
   const quick = (ids: string[]) => itemChoiceLayers(itemChoices(createResourcePluginRegistry().describe()), ids).quick;
   const board = contextMenuActions('board');
-  assert.deepEqual(groundRingChoices(board, quick(DEFAULT_QUICK_ITEMS)).map(choice => choice.id), ['archive-browser']);
-  assert.deepEqual(groundRingChoices(board, quick(['agent.session'])).map(choice => [choice.id, Boolean(choice.menuAction)]), [['project', false], ['archive-browser', true]]);
+  assert.deepEqual(groundRingChoices(board, quick(DEFAULT_QUICK_ITEMS)).map(choice => choice.id), ['tidy', 'archive-browser']);
+  assert.deepEqual(groundRingChoices(board, quick(['agent.session'])).map(choice => [choice.id, Boolean(choice.menuAction)]), [['project', false], ['tidy', true], ['archive-browser', true]]);
   const mute = muteProjectAction(false, 2), [muted] = groundRingChoices(contextMenuActions('neighborhood', false, undefined, [], undefined, undefined, undefined, false, undefined, undefined, mute), []);
   assert.deepEqual([muted!.id, muted!.name, muted!.shortLabel, muted!.menuAction], ['mute', 'Mute project (Needs me: 2)', 'Mute project', true]);
   assert.equal(groundRingChoices([muteProjectAction(true)], [])[0]?.id, 'unmute');

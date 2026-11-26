@@ -29,6 +29,7 @@ export const WORKSPACE_SHORTCUTS = [
   { id: 'view.closeSeen', label: 'Close and mark seen', key: 'e', meta: true, display: '⌘E', group: 'Views' },
   { id: 'terminal.find', label: 'Find in terminal', key: 'f', meta: true, display: '⌘F', group: 'Views' },
   { id: 'settings.open', label: 'Settings', key: ',', group: 'App' },
+  { id: 'command.menu', label: 'Command menu', key: 'k', meta: true, display: '⌘K', group: 'App' },
   { id: 'shortcuts.help', label: 'Controls', key: '?', group: 'App' },
   { id: 'sheet.close', label: 'Close sheet or menu', key: 'Escape', display: 'esc', group: 'Sheets' },
 ] as const satisfies readonly ShortcutBinding[];
@@ -70,9 +71,19 @@ export const shortcutsPaused = () => Boolean(document.querySelector(`.inline-edi
 
 /** These are app-view shortcuts, never native/global keys. Inputs and modal/drag
  * scopes retain their keys; handlers can additionally return false to decline. */
-export function useWorkspaceShortcuts(handlers: Partial<Record<ShortcutId, () => void | boolean>>) {
+type ShortcutHandlers = Partial<Record<ShortcutId, () => void | boolean>>;
+const mounted = new Set<{ current: ShortcutHandlers }>();
+
+/** Runs a workspace action as its key would, for the command menu. False when no mounted view takes it. */
+export function runWorkspaceShortcut(id: ShortcutId) {
+  for (const handlers of mounted) { const handler = handlers.current[id]; if (handler && handler() !== false) return true; }
+  return false;
+}
+
+export function useWorkspaceShortcuts(handlers: ShortcutHandlers) {
   const latest = useRef(handlers); latest.current = handlers;
   useEffect(() => {
+    mounted.add(latest);
     const keydown = (event: KeyboardEvent) => {
       const id = matchWorkspaceShortcut(event), handler = id && latest.current[id];
       if (!handler) return;
@@ -83,6 +94,6 @@ export function useWorkspaceShortcuts(handlers: Partial<Record<ShortcutId, () =>
       event.preventDefault(); event.stopPropagation();
     };
     window.addEventListener('keydown', keydown);
-    return () => window.removeEventListener('keydown', keydown);
+    return () => { mounted.delete(latest); window.removeEventListener('keydown', keydown); };
   }, []);
 }

@@ -9,6 +9,7 @@ import type { WorkspaceControl, WorkspaceCommand } from '../core/control.ts';
 import type { RuntimeOptions } from '../session-runtime/client.ts';
 import type { ConversationSwitch, SessionSnapshot } from '../session-runtime/protocol.ts';
 import { canonical } from '../core/control.ts';
+import { EFFORT } from '../session-runtime/protocol.ts';
 import { readAgentPlan } from '../session-runtime/agent-plan.ts';
 import type { HostedLaunch } from '../session-runtime/agent-plan.ts';
 import { agentProvider } from './agent-providers.ts';
@@ -36,7 +37,7 @@ const NOTED = ['SubagentStart', 'PreCompact', 'PostCompact', 'PostToolUseFailure
 const hookSchema = z.object({ nodeId: z.string().min(1), processSessionId: z.string().uuid(), nativeSessionId: z.string().uuid(),
   switched: z.object({ kind: z.enum(['new', 'fork', 'resume']), nativeSessionId: z.string().uuid() }).optional(), endReason: z.string().max(200).optional(),
   observedAt: z.number().int().positive(), event: z.enum(['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PermissionRequest', 'Notification', 'Stop', 'StopFailure', 'SessionEnd', 'SubagentStop', 'SubagentToolUse', 'SubagentToolStart', 'TeammateIdle', ...NOTED]),
-  lastMessage: z.string().max(2000).optional(), taskId: z.string().min(1).max(200).optional(), model: z.string().min(1).max(200).optional(), previousModel: z.string().min(1).max(200).optional(), interrupt: z.boolean().optional(), worktree: z.boolean().optional(),
+  lastMessage: z.string().max(2000).optional(), taskId: z.string().min(1).max(200).optional(), model: z.string().min(1).max(200).optional(), previousModel: z.string().min(1).max(200).optional(), effort: z.string().regex(EFFORT).optional(), interrupt: z.boolean().optional(), worktree: z.boolean().optional(),
   notificationType: z.string().optional(), toolName: z.string().optional(), recipient: z.string().min(1).max(64).optional(), agentId: z.string().min(1).max(200).optional(), teammate: z.string().min(1).max(200).optional(),
   backgroundTasks: z.array(z.object({ id: z.string().min(1).max(200), type: z.string().max(100), status: z.string().max(100).optional(), name: z.string().min(1).max(64).optional() })).max(100).optional(),
   launched: z.object({ id: z.string().min(1).max(200), kind: z.literal('subagent') }).optional(),
@@ -436,6 +437,19 @@ export class AgentCoordinator {
     }
     throw new Error('Agent status changed concurrently; a newer observation will reconcile it');
   }
+  /** The model and effort the session runs on now, for its view's header (AGENT-04b). Written only when a value differs. */
+  private async runsOn(event: HookEvent) {
+    const model = event.event === 'SessionStart' || event.event === 'PostModelSwitch' ? event.model : undefined;
+    if (!model && !event.effort) return;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const state = await this.control.read(), node = findById(state.nodes, event.nodeId), resource = findById(state.resources, node?.resourceId);
+      if (!node || !resource || resource.data.sessionId !== event.processSessionId || resource.data.nativeSessionId !== event.nativeSessionId || resource.data.provider !== 'claude') return;
+      const data = { ...resource.data, ...(model ? { currentModel: model } : {}), ...(event.effort ? { currentEffort: event.effort } : {}) };
+      if (canonical(data) === canonical(resource.data)) return;
+      try { await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'provider', id: event.processSessionId }, commands: [{ type: 'item.update', id: node.id, data }] }); await this.changed(); return; }
+      catch (error) { if ((error as { code?: string }).code !== 'REVISION_CONFLICT') throw error; }
+    }
+  }
   /** Every hook may change what the item's sheep is told (AGENT-07e); the node is written only when a value differs. */
   async hook(input: unknown) {
     const event = hookSchema.parse(input);
@@ -443,6 +457,7 @@ export class AgentCoordinator {
     // The process lives on, so this is not the item's conversation closing.
     if (event.event === 'SessionEnd' && ['clear', 'resume'].includes(event.endReason ?? '')) { this.moved.add(event.processSessionId); return {}; }
     if (event.switched) { void this.followSwitch(event.nodeId, event.processSessionId, event.switched); return {}; }
+    await this.runsOn(event);
     const noted = (NOTED as readonly string[]).includes(event.event), result = noted ? {} : await this.observed(event);
     const happened = event.event === 'PostToolUseFailure' && !event.interrupt ? 'stumble' : event.event === 'PermissionDenied' ? 'bump' : undefined;
     for (let attempt = 0; attempt < 3 && !('ignored' in result); attempt++) {

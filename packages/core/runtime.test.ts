@@ -5,7 +5,7 @@ import { agentActionRefusal, agentBlockerOverrideMessage, agentsMayNotActMessage
 import { settingsSchema } from './settings.ts';
 import { createPluginPackageRegistry } from '../../src/resource-plugins/builtins.ts';
 
-const previouslyExposed = ['linear.ticket.pulls', 'github.issue.pulls', 'agent.start', 'agent.resume', 'agent.reply', 'agent.context', 'agent.context.ack', 'agent.context.inject', 'agent.title', 'terminal.start', 'terminal.startup', 'terminal.input', 'session.read', 'skill.run', 'pr.comments', 'pr.review.options', 'pr.review.status', 'review.result', 'review.retry', 'review.findings', 'rollout.validation', 'pr.review.codex', 'pr.review.claude', 'pr.review.workflow', 'pr.architecture', 'resource.read', 'resource.actions', 'resource.action', 'resource.content', 'resource.context', 'resource.viewed', 'resource.opened', 'notion.page.comments', 'plot', 'map.undo', 'video.notes', 'video.explain', 'github.rollout.autoDeploy', 'review.loop'];
+const previouslyExposed = ['linear.ticket.pulls', 'github.issue.pulls', 'agent.start', 'agent.resume', 'agent.reply', 'agent.context', 'agent.context.ack', 'agent.context.inject', 'agent.title', 'terminal.start', 'terminal.startup', 'terminal.input', 'session.read', 'skill.run', 'pr.comments', 'pr.review.options', 'pr.review.status', 'review.result', 'review.retry', 'review.findings', 'rollout.validation', 'pr.review.codex', 'pr.review.claude', 'pr.review.workflow', 'pr.architecture', 'resource.read', 'resource.actions', 'resource.action', 'resource.content', 'resource.context', 'resource.viewed', 'resource.opened', 'notion.page.comments', 'plot', 'map.undo', 'map.tidy', 'video.notes', 'video.explain', 'github.rollout.autoDeploy', 'review.loop'];
 
 test('the runtime vocabulary keeps every operation id agents and the renderer already use', () => {
   const ids = runtimeOperationDeclarations().map(declaration => declaration.id);
@@ -23,6 +23,7 @@ test('agent policies come from declarations: allow, human only, or a redirect pe
   assert.equal(agentRuntimeRefusal({ action: 'agent.title', arguments: {} }), humanOnlyMessage);
   assert.equal(agentRuntimeRefusal({ action: 'plot', arguments: { operation: 'rename' } }), humanOnlyMessage);
   assert.equal(agentRuntimeRefusal({ action: 'map.undo', arguments: { direction: 'undo' } }), humanOnlyMessage);
+  assert.equal(agentRuntimeRefusal({ action: 'map.tidy', arguments: { operation: 'apply' } }), humanOnlyMessage);
   assert.equal(agentRuntimeRefusal({ action: 'resource.read', arguments: {} }), undefined);
   for (const operation of ['options', 'list']) assert.equal(agentRuntimeRefusal({ action: 'rollout.validation', arguments: { operation } }), undefined);
   assert.equal(agentRuntimeRefusal({ action: 'rollout.validation', arguments: { operation: 'report' } }), 'Report rollout validations with workspace_report_validation.');

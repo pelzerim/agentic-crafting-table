@@ -213,7 +213,7 @@ test('to-do titles edit in place, preserve state, cancel or retain invalid draft
   await mapInput.press('Enter');
   await expect(task).toHaveAttribute('aria-label', 'Verify billing changes');
   // An edit is a touch: the to-do's age starts over (TODO-12).
-  expect((await read(page)).nodes.find(item => item.id === 'task')).toEqual({ ...node, title: 'Verify billing changes', todoTouchedAt: expect.any(String) });
+  expect((await read(page)).nodes.find(item => item.id === 'task')).toEqual({ ...node, title: 'Verify billing changes', titleChosen: true, todoTouchedAt: expect.any(String) });
   expect((await read(page)).links).toEqual(before.links);
   await page.getByRole('button', { name: /Keep to-dos open|Close to-dos/ }).hover();
   const row = overlay.locator('[data-todo-id="map:task"]');

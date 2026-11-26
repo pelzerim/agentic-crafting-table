@@ -3,7 +3,8 @@
 
 /** 24 looks a second: the pictures of the marks stay 125, 167, 250 or 500 ms, which is 3, 4, 6 or 12 looks, so each mark keeps an even pace. */
 const TICK_MS = 1000 / 24;
-/** How often the clock looks for new marks while it holds none. */
+/** How often the clock looks for new marks while it holds none, and how often it reads the map's animations again while it
+ * holds some: listing every animation of a large map costs milliseconds, too much for each of the 24 looks a second. */
 const IDLE_MS = 250;
 /** A mark moves on the look nearest to its change, so it can arrive early. This much more puts it past the jump for certain. */
 const PAST_JUMP_MS = 0.01;
@@ -45,11 +46,11 @@ export function nextPicture(animation: Animation, time: number, known?: Pick<Hel
 /** Counts `elapsed` milliseconds for every running mark and moves those whose picture is due. Returns how many marks run.
  * Rate 0 ends the per-frame work. Unlike `pause()`, it leaves the play state with the stylesheet, which pauses marks
  * behind an open item and in a muted project: those report `paused` and stay where they are. */
-export function stepMarks(area: Element, elapsed: number) {
+export function stepMarks(area: Element, elapsed: number, animations: readonly Animation[] = area.getAnimations({ subtree: true })) {
   // Reading an animation's state flushes style, so read every mark before moving any.
   const moves: (() => void)[] = [];
   let running = 0;
-  for (const animation of area.getAnimations({ subtree: true })) {
+  for (const animation of animations) {
     const mark = held.get(animation);
     if (mark === false || animation.playState !== 'running') continue;
     if (mark && (mark.owed += elapsed) < mark.due - TICK_MS / 2) { running++; continue; }
@@ -68,11 +69,18 @@ export function stepMarks(area: Element, elapsed: number) {
 
 export function startMarkClock(area: Element) {
   let last = performance.now(), timer: ReturnType<typeof setTimeout>;
+  // The animations as last listed. A mark that left the map stops running and is skipped; a new one is held from the next listing.
+  let listed: readonly Animation[] = [], listedAt = -Infinity;
   const look = () => {
     const now = performance.now();
     let running = 0;
     // The next look is set in every case, so one failed look does not stop the clock.
-    try { if (!document.hidden) running = stepMarks(area, now - last); } finally { last = now; timer = setTimeout(look, running ? TICK_MS : IDLE_MS); }
+    try {
+      if (!document.hidden) {
+        if (now - listedAt >= IDLE_MS) { listed = area.getAnimations({ subtree: true }); listedAt = now; }
+        running = stepMarks(area, now - last, listed);
+      }
+    } finally { last = now; timer = setTimeout(look, running ? TICK_MS : IDLE_MS); }
   };
   timer = setTimeout(look, TICK_MS);
   return () => clearTimeout(timer);

@@ -217,6 +217,8 @@
 .review-desk .rd-manifest .rd-v b{font-weight:650}.review-desk .rd-manifest .rd-v span{color:var(--rf-dim)}
 .review-desk .rd-preview{margin:10px 16px 0;max-height:220px;overflow:auto;padding:10px 12px;background:var(--rf-sunken);border:1px solid var(--rf-line);font:var(--act-fs-ui)/1.5 var(--rd-mono);color:var(--rf-dim);white-space:pre-wrap;overflow-wrap:anywhere}
 .review-desk .rd-pop-foot{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:12px 16px 14px}
+.review-desk .rd-pop-foot>*{flex-shrink:0}.review-desk .rd-pop-foot>.rd-pop-send{flex-shrink:1;min-width:0}
+.review-desk .rd-pop-send-label{overflow:hidden;text-overflow:ellipsis}
 .review-desk .rd-preview-link,.review-desk .rd-foot-note{margin-right:auto;color:var(--rf-dim)}
 .review-desk .rd-foot-note{font-size:var(--act-fs-ui);color:var(--rf-faint)}
 .review-desk .rd-pop-error{margin:8px 16px 0;font-size:var(--act-fs-ui);color:var(--rf-bad);white-space:pre-wrap}

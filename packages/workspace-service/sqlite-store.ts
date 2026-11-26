@@ -676,6 +676,21 @@ export class SqliteStore implements WorkspaceStore, ValidatorStore {
       return true;
     });
   }
+  /** Tidy's plot changes in one transaction: assigned colours, pins (new plots created) and machine names. */
+  writeTidyPlots(change: { colors: ReadonlyMap<string, string>; pins: readonly { plotId: string; projectId: string; memberIds: readonly string[]; create: boolean }[]; names: ReadonlyMap<string, string> }, now: number) {
+    this.transaction(() => {
+      const color = this.db.prepare('UPDATE plots SET color = ? WHERE id = ?');
+      for (const [id, value] of change.colors) color.run(value, id);
+      for (const pin of change.pins) {
+        if (!pin.create) { this.pinInPlot(pin.plotId, pin.memberIds); continue; }
+        this.unpinEverywhere(pin.memberIds);
+        const members = JSON.stringify([...new Set(pin.memberIds)].sort());
+        this.db.prepare('INSERT INTO plots(id, project_id, member_ids, active, changed_at, pinned_member_ids) VALUES (?, ?, ?, 1, ?, ?)').run(pin.plotId, pin.projectId, members, now, members);
+      }
+      const name = this.db.prepare('UPDATE plots SET name = ?, generated = 1 WHERE id = ? AND (name IS NULL OR generated = 1)');
+      for (const [id, value] of change.names) name.run(value, id);
+    });
+  }
   /** Puts back the plot fields an undo or redo names; `create` recreates a plot a redo brings back, `remove` drops plots an undo takes away. */
   restorePlots(patches: readonly PlotPatch[], remove: readonly string[], now: number) {
     this.transaction(() => {

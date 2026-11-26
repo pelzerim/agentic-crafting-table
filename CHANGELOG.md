@@ -3,15 +3,32 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
-## Unreleased
+## 0.25.0 — 2026-11-25
+
+### Agents
+- **Current model and effort in the agent view**: the menu bar of an open Claude or Codex session names the model and effort level it runs on now, such as `claude · opus 5.5 high`, instead of the model chosen at launch. It follows `/model` at once. Claude reports `/effort` when the next turn ends; Codex's `/model` shows within 2 seconds. (#38, @timohuovinen)
+- **Prompt a new session from its start form**: the new agent form has an optional Prompt field. The session starts on that task with the project context, so there is no wait for the terminal to open before prompting. Command or Ctrl + Enter in the field starts the session. (#46, @pmallol)
 
 ### Map
+- **Command + wheel zooms**: hold ⌘ and scroll with a mouse wheel or two fingers on a trackpad to zoom the map around the pointer, as in design tools, also over a card's scrolling content. Without ⌘, two fingers still pan, and a sideways-only scroll pans sideways with ⌘ too. (#45, @pmallol)
+- **Command menu**: ⌘K opens one field to jump to an item or project, or run a command (New item, New project, Needs me, to-dos, Undermap, overview, zoom, Settings and more), each command with its key. Before you type it shows the items you opened last. ⌘F stays find only. Back from New item or New project returns to the menu, and both open where the menu stood. (#42, @pmallol)
 - **Undo and redo on the map**: ⌘Z undoes the last move, resize, archive, removed connection, plot colour, name or lock, or Clear overlaps in this window, and ⌘⇧Z redoes it (Ctrl+Z and Ctrl+Shift+Z or Ctrl+Y elsewhere). Neighbours a drop pushed aside go back too. Anything an agent or another window changed since stays where it is, and the notice says how many. (#39, @shiini2)
+- **Tidy…**: the ground's menu tidies the board, a project's menu tidies that project. Line up items inside plots, space the plots out and give each plot its own colour, with a preview on the map before anything moves. Linked items line up left to right from the ticket: its agents beside it, their PRs beside them, then reviews and artifacts, each column one gap from the last. Plots linked to each other are placed side by side. Archiving finished work and AI renames and regrouping are optional. Apply is one step, undone from its notice or with ⌘Z. (#34, @shiini2)
 
 ### Items
 - **Videos**: paste or drop a video file (.mp4, .mov, .m4v or .webm) or a YouTube link on the map and it becomes a Video item that plays inside its view, with seeking. The app only plays files a Video item on the map points to. YouTube videos play through YouTube's privacy-enhanced embed. YouTube links already on the map become Video items too. **Play in background** in a video's header keeps it playing after the item closes; only one video plays in the background at a time. **Notes** beside the player keep your thoughts while you watch: **Add time** stamps the current time, clicking a stamp jumps there, and **Send to agent ▸** sends the notes to an agent linked to the video. (#39, @shiini2)
 - **Drop an item on a plot to add it**: dropping an item on a plot's coloured area adds it to that plot, a locked plot too. Before, a locked plot only took items through Move to plot. (#39, @shiini2)
 - **Explain in video**: choose a video skill in Settings → Agents → Explain in video, and a pull request's right-click menu offers **Explain in video**, which starts an agent session beside it that runs the skill on the PR. An agent session's menu offers **Explain what you built in video**, which asks that agent to run the skill on its own work. The agent adds the finished MP4 to the map as a Video item. (#40, @shiini2)
+
+### Terminal
+- **Light mode text**: grey text that agents write in ANSI white, such as Claude Code's tool results and hints, is readable on the light terminal: faint text is darkened to a minimum contrast, while white bars and highlights keep their light colours. Reverse-video text gets the same contrast when the terminal draws without WebGL. (#44, @pmallol)
+
+### Reviews
+- **Send picker**: a long agent title no longer pushes the picker's send button off its left edge; the label ends in an ellipsis and the tooltip shows the full name. (#41, @pmallol)
+
+### Performance
+- **A large map no longer stalls**: a change to one item redraws that card, not every card, plot and line; map animations are listed four times a second instead of on every frame; to-do entries are read once per change and drawn only while the list is open.
+- **Rollouts open at once**: an opened rollout shows what the app already has while it reads the newest state.
 
 ## 0.24.0 — 2026-11-17
 

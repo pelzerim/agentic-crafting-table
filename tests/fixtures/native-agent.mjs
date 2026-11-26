@@ -150,6 +150,9 @@ for await (const line of lines) {
   // A slash command's dialog: shown after the turn ended, with no main-thread hook once it is answered.
   // The hooks Claude Code sends, in order, when `/clear` moves its process to a new conversation.
   if (line === 'clear-command') { await hook('SessionEnd', { reason: 'clear' }); const next = randomUUID(); await hook('SessionStart', { session_id: next, source: 'clear' }); conversationId = next; console.log('CONVERSATION_CLEARED'); continue; }
+  // What Claude Code sends for `/model`. `/effort` sends no hook: the next turn's Stop reports the level.
+  if (line.startsWith('model-command:')) { const to = line.slice('model-command:'.length); await hook('PostModelSwitch', { from_model: 'claude-opus-5-5', to_model: to, requested_model: to, source: 'command' }); console.log('MODEL_SWITCHED'); continue; }
+  if (line.startsWith('effort-turn:')) { await hook('Stop', { effort: { level: line.slice('effort-turn:'.length) } }); console.log('EFFORT_REPORTED'); continue; }
   if (line === 'permission-after-stop') { await hook('Notification', { notification_type: 'permission_prompt' }); console.log('PERMISSION_DIALOG'); continue; }
   if (line === 'subagent-tool') { await hook('PostToolUse', { agent_id: 'fixture-fork', tool_name: 'Read' }); console.log('SUBAGENT_TOOL'); continue; }
   if (line === 'wait-for-input') { await hook('PermissionRequest'); console.log('WAITING_FOR_INPUT'); continue; }

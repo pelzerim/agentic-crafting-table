@@ -1,5 +1,6 @@
 import * as z from 'zod/v4';
 import type { ConversationSwitch, NativeAgentState } from './protocol.ts';
+import { EFFORT } from './protocol.ts';
 export const codexThreadStatus = z.object({ type: z.enum(['idle', 'active', 'systemError', 'notLoaded']), activeFlags: z.array(z.string()).optional() });
 const notice = z.object({ threadId: z.string(), status: codexThreadStatus });
 type ThreadStatus = z.infer<typeof codexThreadStatus>;
@@ -44,4 +45,12 @@ export function codexSwitch(event: { method: string; params?: unknown }, nativeI
 export function codexInput(event: { method: string; params?: unknown }, nativeId: string): NativeAgentState['input'] {
   const parsed = notice.safeParse(event.params);
   return parsed.success && parsed.data.threadId === nativeId ? nativeInput(parsed.data.status) : undefined;
+}
+const runsOn = z.object({ thread: z.object({ model: z.string().min(1).max(100).nullish().catch(undefined), reasoningEffort: z.string().regex(EFFORT).nullish().catch(undefined) }) });
+/** The model and effort a thread runs on now, from `thread/read`; undefined for an answer that is not a thread (AGENT-04b). */
+export function threadRunsOn(response: unknown): { model?: string; effort?: string } | undefined {
+  const parsed = runsOn.safeParse(response);
+  if (!parsed.success) return undefined;
+  const { model, reasoningEffort } = parsed.data.thread;
+  return { ...(model ? { model } : {}), ...(reasoningEffort ? { effort: reasoningEffort } : {}) };
 }

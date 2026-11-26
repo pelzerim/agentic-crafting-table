@@ -30,5 +30,6 @@ export const agentSession = defineResourcePlugin({
     provider: { label: 'Provider', kind: 'select', options: ['claude', 'codex', 'opencode', 'pi', 'gemini', 'grok'], optionsSource: 'agent.providers', optionLabels: providerLabels, optionBrands: { claude: 'claude', codex: 'codex', opencode: 'opencode', pi: 'pi', gemini: 'gemini', grok: 'grok' }, default: 'claude', required: true },
     cwd: { label: 'Working directory', kind: 'directory', fromProject: 'workingDirectory', description: 'Defaults to the project, global default or most recent folder.' },
     model: { label: 'Model', kind: 'select', options: ['opus', 'fable', 'sonnet', 'haiku'], optionsSource: 'agent.models', optionLabels: modelLabels, dependsOn: 'provider', default: 'opus', required: true },
+    task: { label: 'Prompt (optional)', kind: 'text', multiline: true, rows: 3, placeholder: 'What should the agent do first? Leave empty for a What next list.', description: 'Command or Ctrl + Enter starts the session.' },
   } },
 });

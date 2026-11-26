@@ -100,8 +100,10 @@ export function todoEntries(workspace: TodoSource): TodoEntry[] {
 }
 const ordered = (items: TodoEntry[]) => items.sort((a, b) => (a.todoOrder ?? Infinity) - (b.todoOrder ?? Infinity));
 /** The list by when (TODO-12): untaken tickets, Next and Later in their manual order, and Done with the latest first. */
-export function todoList(workspace: TodoSource) {
-  const entries = todoEntries(workspace), open = (horizon: TodoHorizon) => ordered(entries.filter(entry => entry.horizon === horizon && !entry.completed));
+export function todoList(workspace: TodoSource) { return todoListOf(todoEntries(workspace)); }
+/** The list grouped from entries already read, for a caller that keeps them between renders. */
+export function todoListOf(entries: readonly TodoEntry[]) {
+  const open = (horizon: TodoHorizon) => ordered(entries.filter(entry => entry.horizon === horizon && !entry.completed));
   return { inbox: ordered(entries.filter(entry => entry.horizon === 'inbox' && !entry.dismissed)), next: open('next'), later: open('later'),
     done: entries.filter(entry => entry.horizon !== 'inbox' && entry.completed).sort((a, b) => doneTime(b) - doneTime(a)) };
 }

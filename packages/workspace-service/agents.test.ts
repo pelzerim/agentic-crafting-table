@@ -43,6 +43,32 @@ test('Claude completed turns become unread once; replay, session closure and res
   } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test('the model and effort a Claude session runs on now are kept on its item (AGENT-04b)', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'craft-agent-model-'));
+  const store = new SqliteStore(join(directory, 'workspace.sqlite')), control = new WorkspaceControl(store);
+  try {
+    const processSessionId = randomUUID(), nativeSessionId = randomUUID();
+    await control.apply({ type: 'item.add', id: 'agent', resourceId: 'conversation', pluginId: 'agent.session', title: 'Claude', position: { x: 0, y: 0 }, data: { provider: 'claude', model: 'opus', sessionId: processSessionId, nativeSessionId, currentEffort: 'max' } }, 0);
+    const coordinator = new AgentCoordinator(directory, {} as any, control, {} as any, { prepare: async () => ({}) } as any, async () => {}, store);
+    let at = 0;
+    const hook = async (event: string, extra: Record<string, string> = {}) => { await coordinator.hook({ nodeId: 'agent', processSessionId, nativeSessionId, observedAt: ++at, event, ...extra }); return (await control.read()).resources[0].data; };
+    let data = await hook('SessionStart', { model: 'claude-opus-5-5' });
+    assert.equal(data.currentModel, 'claude-opus-5-5');
+    assert.equal(data.currentEffort, 'max', 'SessionStart names no effort, and compaction sends one too: the last level stands until a Stop reports one');
+    assert.equal(data.model, 'opus', 'the launch choice stays for resume');
+    data = await hook('Stop', { effort: 'high' });
+    assert.deepEqual([data.currentModel, data.currentEffort], ['claude-opus-5-5', 'high']);
+    data = await hook('PostModelSwitch', { model: 'claude-fable-5-2', previousModel: 'claude-opus-5-5' });
+    assert.deepEqual([data.currentModel, data.currentEffort], ['claude-fable-5-2', 'high']);
+    const dispatch = control.dispatch.bind(control), updates: unknown[] = [];
+    control.dispatch = (async (batch: { commands: { type: string }[] }) => { updates.push(...batch.commands.filter(command => command.type === 'item.update')); return dispatch(batch as never); }) as typeof control.dispatch;
+    await hook('Stop', { effort: 'high' });
+    assert.deepEqual(updates, [], 'an unchanged report writes nothing');
+    await coordinator.hook({ nodeId: 'agent', processSessionId: randomUUID(), nativeSessionId, observedAt: ++at, event: 'Stop', effort: 'low' });
+    assert.equal((await control.read()).resources[0].data.currentEffort, 'high', "an old process's report is not this item's");
+  } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('each Claude hook that needs me says why in a short note', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'craft-agent-notes-'));
   const store = new SqliteStore(join(directory, 'workspace.sqlite')), control = new WorkspaceControl(store);

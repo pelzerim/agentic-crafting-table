@@ -107,6 +107,34 @@ test('Rollout imports a job URL, syncs map approval/failure/completion, renders 
   } finally { await app.close(); await service.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test('a rollout opened again shows what the app already has at once, while GitHub is still being read', async () => {
+  test.setTimeout(60_000);
+  const directory = await mkdtemp(join(tmpdir(), 'craft-rollout-reopen-')), providers = rolloutFixture();
+  const service = await startWorkspaceService(directory, undefined, undefined, providers);
+  const app = await electron.launch({ args: ['.', ...scrollbarArgs], env: { ...process.env, ACT_TEST_DATA_DIR: directory } });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole('button', { name: 'Create your first project' }).click();
+    await page.getByLabel('Title', { exact: true }).fill('Billing release'); await page.getByRole('button', { name: 'Create project', exact: true }).click();
+    await openProjectPicker(page, 'Billing release'); await page.getByRole('button', { name: 'From URL', exact: true }).click();
+    await page.getByLabel('Item URL').fill('https://github.com/fixture/web/actions/runs/101/job/202');
+    await page.getByRole('button', { name: 'Watch rollout', exact: true }).click();
+    const node = await expect.poll(async () => (await service.control.read()).nodes.find(n => n.resourceId)).toBeTruthy().then(async () => (await service.control.read()).nodes.find(n => n.resourceId)!);
+    const card = page.locator(`[data-item-id="${node.id}"]`);
+    await expect(card.locator('[data-indicator="rollout-state"]')).toHaveAttribute('aria-label', 'Ongoing');
+    // The saved copy is older than a minute and GitHub does not answer: the first open after a restart, or a slow network.
+    const db = new DatabaseSync(service.store.file); db.exec('UPDATE resource_cache SET checked_at=0'); db.close();
+    const release = providers.hold();
+    try {
+      await card.click();
+      await expect(page.locator('.rollout-state')).toHaveText('Ongoing', { timeout: 2000 });
+      await page.getByRole('button', { name: 'Show the jobs rail', exact: true }).click();
+      await expect(page.getByRole('list', { name: 'Rollout jobs' }).getByRole('listitem')).toHaveCount(3, { timeout: 2000 });
+    } finally { release(); }
+    await expect(page.locator('.rollout-state')).toHaveText('Ongoing');
+  } finally { await exitWithoutShutdown(app); await service.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test('right-click Approve > Confirm approves the confirmed gates without opening the rollout', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'craft-rollout-menu-')), providers = rolloutFixture();
   providers.run.status = 'waiting'; providers.jobs[1].status = 'waiting';

@@ -99,6 +99,14 @@ test('a new change clears redo, and an undo files the step it undid', () => {
   assert.equal(history.peek('redo'), undefined);
 });
 
+test('a title the person types is marked chosen; a service rename is not', async () => {
+  const { send } = await board();
+  const renamed = (await send([{ type: 'node.update', id: 'acme', title: 'Acme web' }])).state;
+  assert.equal(renamed.nodes.find(node => node.id === 'acme')!.titleChosen, true);
+  const byService = (await send([{ type: 'node.update', id: 'a', title: 'Tidied' }], { kind: 'user', id: 'tidy' } as never)).state;
+  assert.equal(byService.nodes.find(node => node.id === 'a')!.titleChosen, undefined);
+});
+
 test('with solid collisions an item that cannot reach its old spot is skipped, and redo stays consistent', async () => {
   const { send, edit, revert } = await board('solid');
   const step = await edit([{ type: 'nodes.move', positions: [{ id: 'a', position: { x: 0, y: 900 } }, { id: 'b', position: { x: 300, y: 900 } }] }]);

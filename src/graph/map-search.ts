@@ -26,6 +26,20 @@ export function searchMap(nodes: readonly GraphNode[], query: string, limit = 8)
     .slice(0, limit).map(({ match }) => match);
 }
 
+export interface ProjectMatch { id: string; title: string }
+
+/** Projects on the map (not below or archived) whose title holds every word of the query; titles that start with it lead. */
+export function searchProjects(nodes: readonly GraphNode[], query: string, limit = 8): ProjectMatch[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const start = words.join(' ');
+  return nodes
+    .filter(node => !node.resourceId && !node.hiddenAt && !isOffMap(node, nodes) && words.every(word => node.title.toLowerCase().includes(word)))
+    .map((node, order) => ({ match: { id: node.id, title: node.title }, order, leads: node.title.toLowerCase().startsWith(start) }))
+    .sort((a, b) => Number(b.leads) - Number(a.leads) || a.order - b.order)
+    .slice(0, limit).map(({ match }) => match);
+}
+
 /** The recently opened items that are still on the map, most recent first. */
 export function recentOnMap(nodes: readonly GraphNode[], recent: readonly string[], limit = 8): MapMatch[] {
   const onMap = new Map(itemsOnMap(nodes).map(match => [match.id, match]));
