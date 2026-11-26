@@ -45,7 +45,7 @@ const codexModelChoice = staleWhileRefreshing<ModelChoice>(async () => {
   return { options, default: latestSolModel(options) ?? models.find(model => model.isDefault)?.model ?? options[0] };
 });
 export const agentProviders: Readonly<Record<string, AgentProvider>> = {
-  claude: { name: 'Claude', probe: probeClaude, prepare: (input, settings) => prepareClaude({ ...input, settings: settings.claude }), discover: discoverClaudeSessions, resolve: resolveClaudeSession, releaseFork: stopClaudeBackground, followConversation,
+  claude: { name: 'Claude', probe: probeClaude, prepare: (input, settings) => prepareClaude({ ...input, settings: settings.claude, thinking: settings.agentThinking }), discover: discoverClaudeSessions, resolve: resolveClaudeSession, releaseFork: stopClaudeBackground, followConversation,
     async models() { return { options: ['opus', 'fable', 'sonnet', 'haiku'], default: 'opus' }; },
     skills: discoverClaudeSkills, skillPrompt: (skill, text) => '/' + skill.name + (text ? ' ' + text : '') },
   codex: { name: 'Codex', probe: probeCodex, prepare: input => prepareCodex(input), discover: (state, query, _offset, cursor) => discoverCodexSessions(state, query, cursor), resolve: resolveCodexSession,
@@ -59,7 +59,7 @@ export function agentProvider(id: unknown = 'claude') {
 /** A CLI the table runs in a plain terminal: no saved-conversation list, skills catalog or status channel. */
 function terminalAgentProvider(id: TerminalAgentId): AgentProvider {
   const name = terminalAgentSpecs[id].name;
-  return { name, probe: () => probeTerminalAgent(id), prepare: input => prepareTerminalAgent(id, input),
+  return { name, probe: () => probeTerminalAgent(id), prepare: (input, settings) => prepareTerminalAgent(id, input, settings.agentThinking),
     async discover() { throw new Error(`Continue is not available for ${name}. Start a new session.`); },
     async resolve() { throw new Error(`Continue is not available for ${name}. Start a new session.`); },
     // The CLI's own configuration picks the model; another can be chosen inside the CLI.

@@ -6,6 +6,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import * as z from 'zod/v4';
 import { canonical } from '../core/control.ts';
+import type { AppSettings } from '../core/settings.ts';
 import { creationConnections, creationNear, requestConnections } from '../core/resource-creation.ts';
 import { findExecutable, sessionPath } from '../platform/shell.ts';
 import { readAgentPlan, RECOVERY_PROMPT } from './agent-plan.ts';
@@ -34,6 +35,7 @@ interface LaunchParts {
   nativeSessionId?: string;
   resumed: boolean;
   model: string;
+  thinking: AppSettings['agentThinking'];
   mcp: { command: string; args: string[]; env: Record<string, string> };
 }
 interface TerminalAgentSpec {
@@ -81,7 +83,7 @@ export const terminalAgentSpecs: Readonly<Record<TerminalAgentId, TerminalAgentS
       // Gemini has no flag that appends to its system prompt (GEMINI_SYSTEM_MD replaces it), so a new conversation reads the guide first.
       ...(parts.prompt || !parts.resumed ? ['--prompt-interactive', parts.resumed ? parts.prompt! : [parts.guide, parts.prompt ?? CLAUDE_ORIENTATION_PROMPT].join('\n\n')] : [])],
     bindings: parts => ({ GEMINI_CLI_SYSTEM_DEFAULTS_PATH: join(parts.launchDirectory, 'gemini-settings.json') }),
-    files: parts => ({ 'gemini-settings.json': JSON.stringify({ mcpServers: { crafting_table: parts.mcp } }, null, 2) }),
+    files: parts => ({ 'gemini-settings.json': JSON.stringify({ mcpServers: { crafting_table: parts.mcp }, ui: { inlineThinkingMode: parts.thinking === 'expanded' ? 'full' : 'off' } }, null, 2) }),
   },
   // Grok Build reads MCP servers only from its own and the project's config files, which the table does not write.
   grok: {
@@ -112,7 +114,7 @@ export function probeTerminalAgent(id: TerminalAgentId): Promise<AgentCapability
 
 const fieldsSchema = z.object({ cwd: z.string().min(1, 'Select a working directory for this session or its project').max(4096), model: z.string().trim().min(1).max(200).default(CLI_DEFAULT_MODEL), task: z.string().max(32_000).default('') });
 /** Only the host builds this plan. User text reaches the CLI as one argv entry and is never interpolated into a shell. */
-export function prepareTerminalAgent(id: TerminalAgentId, input: AgentPreparation): PreparedSession {
+export function prepareTerminalAgent(id: TerminalAgentId, input: AgentPreparation, thinking: AppSettings['agentThinking'] = 'collapsed'): PreparedSession {
   const spec = terminalAgentSpecs[id], { request, state, runtime, capability } = input;
   const source = JSON.parse(JSON.stringify(input.originRequest ? { request: input.originRequest } : { request, ...(input.resumeNodeId ? { resumeNodeId: input.resumeNodeId } : {}), ...(input.continueWork ? { continueWork: true } : {}), ...(input.blank ? { blank: true } : {}) }));
   const saved = readAgentPlan(input.directory, request.requestId);
@@ -135,7 +137,7 @@ export function prepareTerminalAgent(id: TerminalAgentId, input: AgentPreparatio
     : { projectSummary: 'A floating agent on your table.', toolContext: buildAgentToolContext(binding), systemPrompt: buildAgentToolContext(binding).prompt, initialPrompt: fields.task ? `Workspace context\nA floating agent with no project.\n\nYour task\n${fields.task}` : '' };
   const prompt = input.skill?.prompt ?? (resumed ? opening : context.initialPrompt || undefined);
   const launchDirectory = join(input.directory, 'agent-launches', request.requestId), runtimeDirectory = dirname(runtime.entrypoint);
-  const parts: LaunchParts = { launchDirectory, guide: context.systemPrompt, prompt: input.blank ? undefined : prompt, nativeSessionId, resumed: Boolean(resumed), model: fields.model,
+  const parts: LaunchParts = { launchDirectory, guide: context.systemPrompt, prompt: input.blank ? undefined : prompt, nativeSessionId, resumed: Boolean(resumed), model: fields.model, thinking,
     mcp: { command: runtime.executable, args: [join(runtimeDirectory, 'mcp-bridge.cjs')], env: {
       ...(runtime.electronRuntime ? { ELECTRON_RUN_AS_NODE: '1' } : {}), ACT_DATA_DIR: input.directory, ACT_NODE_ID: nodeId, ACT_WORKSPACE_ID: workspaceId, ...(projectId ? { ACT_PROJECT_ID: projectId } : {}) } } };
   const data = { ...(resumed?.data ?? {}), sessionId: request.requestId, ...(nativeSessionId ? { nativeSessionId } : {}), provider: id, workspaceId, cwd, model: fields.model,

@@ -49,7 +49,16 @@ test('Codex creation uses native models, context/MCP, live attachment and same-c
     const saved = JSON.parse(await readFile(join(repo, 'native-codex.json'), 'utf8'));
     expect(saved.context[0].role).toBe('developer'); expect(saved.context[0].content[0].text).toContain('Keep the map in sync');
     expect(saved.context[1].role).toBe('user'); expect(saved.context[1].content[0].text).toContain('NATIVE_CODEX_BRIEF');
-    await expect(page.locator('.xterm-helper-textarea')).toBeFocused(); await page.keyboard.type('sync\n');
+    await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
+    await page.keyboard.type('sy');
+    const thinking = page.getByRole('button', { name: 'Thinking details', exact: true });
+    await thinking.click();
+    await expect(page.locator('.xterm-accessibility')).toContainText('NATIVE_TRANSCRIPT:open');
+    await page.screenshot({ path: 'test-results/pr/agent-thinking-details.png' });
+    await thinking.click();
+    await expect(page.locator('.xterm-accessibility')).toContainText('NATIVE_TRANSCRIPT:closed');
+    await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
+    await page.keyboard.type('nc\n');
     await expect(page.locator('.xterm-accessibility')).toContainText('MCP_SYNC_DONE');
     expect((await read()).nodes.find(node => node.id === 'codex-result')?.projectId).toBe(node.projectId);
     await expect(page.locator('.terminal-error')).toHaveCount(0);
@@ -90,6 +99,7 @@ test('Codex creation uses native models, context/MCP, live attachment and same-c
     await page.getByRole('article', { name: 'Native Codex', exact: true }).click();
     await stopSession(page);
     await expect(page.locator('.native-terminal')).toHaveAttribute('data-session-state', 'exited');
+    await expect(page.getByRole('button', { name: 'Thinking details', exact: true })).toBeDisabled();
     await expect(page.locator('.xterm-accessibility')).toContainText(`NATIVE_READY:${nativeId}`);
     await page.getByRole('button', { name: 'Agent session menu' }).click();
     await expect(page.getByRole('menuitem', { name: 'Add system prompt' })).toBeDisabled();

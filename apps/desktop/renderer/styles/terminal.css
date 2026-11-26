@@ -52,6 +52,27 @@
   flex-shrink: 0;
 }
 
+.terminal-status .terminal-thinking {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  padding: 0;
+}
+
+.terminal-thinking-help {
+  position: fixed;
+  position-area: block-end span-inline-start;
+  position-try-fallbacks: flip-block, flip-inline;
+  width: min(260px, calc(100vw - 16px));
+  margin: 0;
+  padding: var(--act-sp-3);
+  border: 1px solid var(--act-line-accent);
+  background: var(--act-panel);
+  color: var(--act-ink);
+  font-size: var(--act-fs-ui);
+  white-space: normal;
+}
+
 .terminal-error {
   color: var(--act-invalid-ink);
   font-size: var(--act-fs-ui);

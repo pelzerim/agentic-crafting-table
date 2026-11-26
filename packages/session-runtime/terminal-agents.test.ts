@@ -66,9 +66,11 @@ test('Gemini reads the guide in its first prompt, gets the table tools from syst
   const settings = JSON.parse(await readFile(plan.launch.bindings!.GEMINI_CLI_SYSTEM_DEFAULTS_PATH!, 'utf8'));
   assert.deepEqual(settings.mcpServers.crafting_table.args, ['/Example App/dist/mcp-bridge.cjs']);
   assert.equal(settings.mcpServers.crafting_table.env.ACT_PROJECT_ID, 'project');
+  assert.equal(settings.ui.inlineThinkingMode, 'off');
   await applyAll(control, plan.commands);
-  const resumed = prepareTerminalAgent('gemini', { request: { ...input, requestId: randomUUID(), data: {} }, state: await control.read(), directory, runtime, capability, resumeNodeId: input.nodeId });
+  const resumed = prepareTerminalAgent('gemini', { request: { ...input, requestId: randomUUID(), data: {} }, state: await control.read(), directory, runtime, capability, resumeNodeId: input.nodeId }, 'expanded');
   assert.deepEqual(resumed.launch.args, ['--resume', input.requestId]);
+  assert.equal(JSON.parse(await readFile(resumed.launch.bindings!.GEMINI_CLI_SYSTEM_DEFAULTS_PATH!, 'utf8')).ui.inlineThinkingMode, 'full');
   const recovered = prepareTerminalAgent('gemini', { request: { ...input, requestId: randomUUID(), data: {} }, state: await control.read(), directory, runtime, capability, resumeNodeId: input.nodeId, continueWork: true });
   assert.equal(recovered.launch.args.at(-2), '--prompt-interactive');
 }));

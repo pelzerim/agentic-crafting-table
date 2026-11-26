@@ -58,6 +58,12 @@ function RightClickSelect({ value, change }: { value: AppSettings['terminal']['r
 function LaunchArguments({ value, change }: { value: string; change(value: string): void }) {
   return <textarea {...useRowControl()} rows={5} value={value} placeholder={'--effort\nhigh\n--verbose'} onChange={event => change(event.target.value)} />;
 }
+function AgentThinkingSelect({ value, change }: { value: AppSettings['agentThinking']; change(value: AppSettings['agentThinking']): void }) {
+  return <select {...useRowControl()} value={value} onChange={event => change(event.target.value === 'expanded' ? 'expanded' : 'collapsed')}>
+    <option value="collapsed">Collapsed</option>
+    <option value="expanded">Expanded</option>
+  </select>;
+}
 const DASHBOARD_SECTION_CHOICES: [keyof DashboardSections, string][] = [['needsYou', 'Needs me'], ['working', 'Working'], ['todos', 'To-dos'], ['plots', 'Plots'], ['pipelines', 'Pull requests'], ['tallies', 'Tickets']];
 const percent = (value: number) => `${Math.round(value * 100)}%`, pixels = (value: number) => `${value} px`;
 
@@ -127,6 +133,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
   const [itemMapSizes, setItemMapSizes] = useState<AppSettings['itemMapSizes']>({});
   const [conversation, setConversation] = useState<AppSettings['pullRequestConversation']>({ comments: true, threads: true, reviewBodies: true, bots: false, activity: false }), [cardLabels, setCardLabels] = useState(false);
   const [agentProviders, setAgentProviders] = useState<AppSettings['agentProviders']>({ ...DEFAULT_AGENT_PROVIDERS });
+  const [agentThinking, setAgentThinking] = useState<AppSettings['agentThinking']>('collapsed');
   const [warnBeforeClosing, setWarnBeforeClosing] = useState(true), [agentsActForPerson, setAgentsActForPerson] = useState(true), [doubleClickOpensWeb, setDoubleClickOpensWeb] = useState(false), [snapToGrid, setSnapToGrid] = useState(false), [groundRightClickRing, setGroundRightClickRing] = useState(false), [offscreenAttention, setOffscreenAttention] = useState(false), [reviewOpenCounts, setReviewOpenCounts] = useState(false), [sessionCracks, setSessionCracks] = useState(false), [mapCorner, setMapCorner] = useState<AppSettings['mapCorner']>('projects'), [mapCollisions, setMapCollisions] = useState<AppSettings['mapCollisions']>('shove'), [appearance, setAppearance] = useState<AppSettings['appearance']>('system'), [itemDelete, setItemDelete] = useState(false), [autoReview, setAutoReview] = useState<AppSettings['autoReview']>({ enabled: false, agents: ['claude'] }), [mapPlots, setMapPlots] = useState(true), [hideImpliedLinks, setHideImpliedLinks] = useState(true);
   const [itemViews, setItemViews] = useState<AppSettings['itemViews']>({});
   const [pluginSettings, setPluginSettings] = useState<AppSettings['plugins']>({}), pluginPages = useMemo(() => pluginSettingsPages(plugins), [plugins]);
@@ -145,7 +152,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
       if (!mounted) return;
       setWarnBeforeClosing(snapshot.value.warnBeforeClosing); setAgentsActForPerson(snapshot.value.agentsActForPerson); setConversation(snapshot.value.pullRequestConversation); setCardLabels(snapshot.value.pullRequestCardLabels); setDiagnostics(snapshot.value.diagnostics); setItemViews(snapshot.value.itemViews); setItemMapSizes(snapshot.value.itemMapSizes); setPluginSettings(snapshot.value.plugins);
       setNeighborhood(snapshot.value.neighborhoodAppearance); setBelowAnimation(snapshot.value.belowAnimation); setUndermapLayout(snapshot.value.undermapLayout); setWorkingMark(snapshot.value.workingMark); setMapDashboards(snapshot.value.mapDashboards); setMapPlots(snapshot.value.mapPlots); setHideImpliedLinks(snapshot.value.hideImpliedLinks); setDoubleClickOpensWeb(snapshot.value.doubleClickOpensWeb); setSnapToGrid(snapshot.value.snapToGrid); setGroundRightClickRing(snapshot.value.groundRightClickRing); setOffscreenAttention(snapshot.value.offscreenAttention); setReviewOpenCounts(snapshot.value.reviewOpenCounts); setSessionCracks(snapshot.value.sessionCracks); setMapCorner(snapshot.value.mapCorner); setMapCollisions(snapshot.value.mapCollisions); setAppearance(snapshot.value.appearance); setItemDelete(snapshot.value.itemDelete); setAutoReview(snapshot.value.autoReview); setTerminal(snapshot.value.terminal);
-      setAgentProviders(snapshot.value.agentProviders); setAutoMode(snapshot.value.claude.autoMode); setNotifications(snapshot.value.notifications);
+      setAgentProviders(snapshot.value.agentProviders); setAgentThinking(snapshot.value.agentThinking); setAutoMode(snapshot.value.claude.autoMode); setNotifications(snapshot.value.notifications);
       setQuickIds(snapshot.value.quickItemTypes); setMenus(snapshot.value.menus); setDefaultDirectory(snapshot.value.defaultWorkingDirectory); setSummaries(snapshot.value.summaries); setPadding(String(snapshot.value.neighborhoodPadding)); setSaved(snapshot); setRemote(snapshot.value.claude.remoteControl); setAwake(snapshot.value.keepAwake); setWorkAwake(snapshot.value.keepAwakeWhileWorking); setUpdateCheck(snapshot.value.updates.check); setArgumentsText(snapshot.value.claude.arguments.join('\n'));
     }).catch(error => { if (mounted) setError(error.message); });
     return () => { mounted = false; };
@@ -153,7 +160,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
   const limited = Boolean(summaries && (summaries.enabled || summaries.agentTitles || summaries.attachTitles || summaries.plotNames || summaries.projectSummaries || (STANDUP_ENABLED && summaries.standupDigests)));
   const claude = { remoteControl: remote, autoMode, arguments: argumentsText.split(/\r?\n/).map(value => value.trim()).filter(Boolean) };
   const permission = claudePermissionSettings(claude);
-  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, agentsActForPerson, pullRequestConversation: conversation, pullRequestCardLabels: cardLabels, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, groundRightClickRing, offscreenAttention, reviewOpenCounts, sessionCracks, mapCorner, mapCollisions, appearance, itemDelete, autoReview, terminal, keepAwake: awake, keepAwakeWhileWorking: workAwake, claude, agentProviders, updates: { check: updateCheck } };
+  const draft = saved && { ...saved.value, notifications, warnBeforeClosing, agentsActForPerson, pullRequestConversation: conversation, pullRequestCardLabels: cardLabels, itemViews, itemMapSizes, menus, plugins: pluginSettings, diagnostics: diagnostics!, quickItemTypes: quickIds, defaultWorkingDirectory: defaultDirectory.trim(), summaries: summaries!, neighborhoodPadding: Number(padding), neighborhoodAppearance: neighborhood, belowAnimation, undermapLayout, workingMark, mapDashboards, mapPlots, hideImpliedLinks, doubleClickOpensWeb, snapToGrid, groundRightClickRing, offscreenAttention, reviewOpenCounts, sessionCracks, mapCorner, mapCollisions, appearance, itemDelete, autoReview, terminal, keepAwake: awake, keepAwakeWhileWorking: workAwake, claude, agentProviders, agentThinking, updates: { check: updateCheck } };
   const changes = useMemo(() => saved ? draftChanges(saved.value, draft!, pluginPages) : [], [saved, JSON.stringify(draft)]);
   const dirty = changes.length > 0, [discarding, setDiscarding] = useState(false);
   const requestClose = () => { if (dirty) setDiscarding(true); else close(); };
@@ -201,7 +208,13 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
           </SettingRow>
         </SettingsSection>
       </SettingsPage>
-      <SettingsPage id="Agents" title="Agents" description="The agent CLIs a session can run. Select one in the sidebar to turn it on or off and to configure its sizes and options." hidden={section !== 'Agents'} />
+      <SettingsPage id="Agents" title="Agents" description="The agent CLIs a session can run. Select one in the sidebar to turn it on or off and to configure its sizes and options." hidden={section !== 'Agents'}>
+        <SettingsSection label="Session display">
+          <SettingRow label="Default thinking details" description="Controls display for new and resumed Claude and Gemini sessions. The agent keeps its configured reasoning effort.">
+            <AgentThinkingSelect value={agentThinking} change={setAgentThinking} />
+          </SettingRow>
+        </SettingsSection>
+      </SettingsPage>
       <ItemViewSettings advanced={advanced} toggleAdvanced={toggleAdvanced} mapSizes={itemMapSizes} changeMap={setItemMapSizes} selected={section} plugins={plugins} sizes={itemViews} change={setItemViews}
         disconnected={providerId => providerId && !saved.value.connections.some(connection => connection.providerId === providerId && connection.enabled) ? providers.find(provider => provider.id === providerId)?.name : undefined}
         pluginSettings={pluginSettings} changePluginSettings={(owner, value) => setPluginSettings(current => ({ ...current, [owner]: value }))}

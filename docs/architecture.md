@@ -1242,6 +1242,12 @@ interactive CLI; authentication and first-use confirmation remain in that CLI. T
 user-level auto-connect default cannot silently reconnect it. Global Claude settings
 and managed policy are not modified.
 
+The agent frame's Thinking details control sends the CLI's control key through
+the same PTY input path used by the terminal. When the control depends on a
+CLI menu or focus, it can show the native steps. The display default becomes
+Claude's per-launch verbose preference or Gemini's per-launch system default.
+Claude's launch settings also request available thinking summaries.
+
 The desktop owns Electron's scoped [display sleep blocker](https://www.electronjs.org/docs/latest/api/power-save-blocker),
 releasing it on disable or quit without editing system preferences. Shell PATH
 resolution happens before the supervisor accepts launches, with a bounded login

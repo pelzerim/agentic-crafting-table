@@ -1964,6 +1964,16 @@ direct **Stop session** at the far right. Stopping a running agent whose turn is
 Claude? The current turn is lost…” with **Keep running** focused and **Stop**); idle
 agents and shells stop at once (VIEW-05). The dropdown supports keyboard
 navigation, Escape and outside-click dismissal.
+The **Thinking details** icon in the agent frame acts on the live CLI. It opens
+or closes the Claude (Ctrl+O) and Codex (Ctrl+T) transcripts, toggles thinking
+in Pi (Ctrl+T), opens the command palette for OpenCode's thinking toggle, or
+shows the native steps for Gemini and Grok. The terminal stays attached and
+keeps its input draft. Stopped sessions keep their recorded screen.
+**Settings → Agents → Default thinking details** sets the initial display for
+new and resumed Claude and Gemini sessions. The default is Collapsed.
+The agent keeps its configured reasoning effort in either display mode.
+Other CLIs start with their own display settings. Existing CLI overrides and
+managed policy still apply.
 Omit redundant "Native Claude session" labels and stacked control bars. Fit every terminal row,
 including the last prompt line, within the available content area after resizing.
 Ctrl/Cmd +/− adjusts the focused terminal's font size only; Ctrl/Cmd 0 resets it.

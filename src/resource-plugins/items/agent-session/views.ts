@@ -8,7 +8,7 @@ export const agentViews: ResourcePluginViews = {
     let requestId: string | undefined, promptRequestId: string | undefined;
     const terminal = services.attachTerminal(String(resource.data.sessionId), container, {
       launchLabel: agentModelLabel(resource.data), observeLaunchLabel: services.observeData && (listener => services.observeData!(data => listener(agentModelLabel(data)))),
-      agentMenu: true, nativePaste: resource.data.provider === 'codex', selectionCut: resource.data.provider === 'claude' ? 'end-included' : 'end-excluded', agentName: providerLabels[String(resource.data.provider)],
+      agentMenu: true, agentProvider: String(resource.data.provider), nativePaste: resource.data.provider === 'codex', selectionCut: resource.data.provider === 'claude' ? 'end-included' : 'end-excluded', agentName: providerLabels[String(resource.data.provider)],
       prompt: ['claude', 'codex'].includes(String(resource.data.provider)) ? async operation => {
         if (operation === 'queue') promptRequestId ??= crypto.randomUUID();
         const status = await services.runAction('agent.context.inject', { operation, sessionId: String(resource.data.sessionId), ...(operation === 'queue' ? { requestId: promptRequestId! } : {}) }) as unknown as AgentPromptStatus;
