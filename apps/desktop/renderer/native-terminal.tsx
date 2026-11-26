@@ -1,5 +1,5 @@
 import { sessionInputChunks } from '../../../packages/session-runtime/input-chunks.ts';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createPortal } from 'react-dom';
 import type { SessionRecord, SessionSnapshot } from '../../../packages/session-runtime/protocol.ts';
@@ -12,6 +12,8 @@ import { stopNeedsConfirm } from './session-stop.ts';
 import { sessionChip } from '../../../src/resource-plugins/state-chips.ts';
 import { ErrorBoundary, PanelError, rootErrorOptions } from './error-screen.tsx';
 import type { AgentPromptStatus, NativeTerminalOptions } from '../../../src/resource-plugins/types.ts';
+import type { AgentProviderId } from '../../../packages/core/settings.ts';
+import { PixelGlyph } from './ui/pixel-glyph.tsx';
 
 /** Recent output for a fresh view, sized to the scrollback it can keep; older output is skipped. */
 const replayTail = () => replayTailBytes(terminalPreferences().scrollback);
@@ -144,6 +146,30 @@ function SessionMenu({ open, setOpen, resume, resumeDisabled, prompt, promptDisa
   </>;
 }
 
+const thinkingControls: Record<AgentProviderId, { key?: string; hint: string }> = {
+  claude: { key: '\x0f', hint: 'Toggle Claude’s transcript (Ctrl+O)' },
+  codex: { key: '\x14', hint: 'Toggle Codex’s transcript (Ctrl+T)' },
+  pi: { key: '\x14', hint: 'Toggle thinking blocks in Pi (Ctrl+T)' },
+  opencode: { key: '\x10', hint: 'Open OpenCode commands (Ctrl+P), then choose Toggle thinking' },
+  gemini: { hint: 'In Gemini, open /settings and set Inline Thinking to Full or Off.' },
+  grok: { hint: 'In Grok, press Tab to focus scrollback, then press Ctrl+E to toggle thinking blocks.' },
+};
+
+function ThinkingControl({ provider, disabled, send }: { provider: string; disabled: boolean; send(key: string): void }) {
+  const popoverId = useId();
+  const control = Object.hasOwn(thinkingControls, provider) ? thinkingControls[provider as AgentProviderId] : undefined;
+  if (!control) return null;
+  const key = control.key;
+  return <>
+    <button type="button" className="terminal-thinking nodrag" aria-label="Thinking details" title={control.hint}
+      disabled={disabled} popoverTarget={key ? undefined : popoverId}
+      onClick={key ? event => { event.stopPropagation(); send(key); } : undefined}>
+      <PixelGlyph name="file" size={12} />
+    </button>
+    {!key && <div id={popoverId} popover="auto" className="terminal-thinking-help" data-shortcuts="off">{control.hint}</div>}
+  </>;
+}
+
 function NativeTerminal({ sessionId, active, options }: { sessionId: string; active: boolean; options: TerminalOptions & { toolbar?: HTMLElement } }) {
   useLayoutEffect(() => { performanceMetrics.record('terminal.commit', 1); });
   const [session, setSession] = useState<SessionRecord>(), [error, setError] = useState(''), [readError, setReadError] = useState(''), [truncated, setTruncated] = useState(false);
@@ -153,6 +179,7 @@ function NativeTerminal({ sessionId, active, options }: { sessionId: string; act
   const [menuOpen, setMenuOpen] = useState(false), [promptStatus, setPromptStatus] = useState<AgentPromptStatus>();
   const [promptError, setPromptError] = useState('');
   const [launchLabel, setLaunchLabel] = useState(options.launchLabel);
+  const terminalContent = useRef<HTMLDivElement>(null);
   useEffect(() => options.observeLaunchLabel?.(setLaunchLabel), [options.observeLaunchLabel]);
   const metadata = useRef(''), opening = useRef(true);
   const channel = useMemo(() => new NativeChannel(sessionId, setError), [sessionId]);
@@ -273,6 +300,9 @@ function NativeTerminal({ sessionId, active, options }: { sessionId: string; act
         <span className="terminal-stop-divider" aria-hidden="true" />
         <button className="session-stop" aria-busy={busy || undefined} disabled={stopDisabled} onClick={() => { void requestStop(); }}>Stop session</button>
       </>}
+      {options.agentProvider && <ThinkingControl provider={options.agentProvider}
+        disabled={session?.state !== 'running' || !!session.stopRequestedAt || !!session.readOnly || session.displayThroughSequence !== undefined}
+        send={key => { channel.write(key); terminalContent.current?.querySelector('textarea')?.focus({ preventScroll: true }); }} />}
     </div>;
   return <div className="native-terminal" data-session-state={session?.state ?? 'connecting'}>
     {options.toolbar ? active && createPortal(toolbar, options.toolbar) : toolbar}
@@ -282,7 +312,7 @@ function NativeTerminal({ sessionId, active, options }: { sessionId: string; act
     </div>}
     {(error || readError || promptError) && <div className="terminal-error" role="alert">{error || readError || promptError}</div>}
     {promptStatus && ['queued', 'acknowledged'].includes(promptStatus.state) && <div className="terminal-prompt-status" role="status">{promptStatus.message}</div>}
-    <div className="terminal-content" aria-busy={replaying || undefined}><TerminalSurface channel={channel} active={active} nativeShiftEnter={options.agentMenu} nativePaste={options.nativePaste} selectionCut={options.selectionCut} readOnly={Boolean(session?.readOnly) || session?.state !== 'running'} /></div>
+    <div ref={terminalContent} className="terminal-content" aria-busy={replaying || undefined}><TerminalSurface channel={channel} active={active} nativeShiftEnter={options.agentMenu} nativePaste={options.nativePaste} selectionCut={options.selectionCut} readOnly={Boolean(session?.readOnly) || session?.state !== 'running'} /></div>
   </div>;
 }
 

@@ -47,7 +47,7 @@ export async function stopClaudeBackground(id: string) {
 }
 
 export const claudeCreateFields = z.object({ provider: z.literal('claude').default('claude'), cwd: z.string().min(1, 'Select a working directory for this session or its project').max(4096), model: z.string().trim().min(1).max(100).default('opus'), task: z.string().trim().max(32_000).default(''), summary: z.string().max(4000).optional() });
-export interface ClaudePreparation extends AgentPreparation { settings?: AppSettings['claude'] }
+export interface ClaudePreparation extends AgentPreparation { settings?: AppSettings['claude']; thinking?: AppSettings['agentThinking'] }
 
 /** Only the host builds this plan. User text is never interpolated into a shell. */
 export function prepareClaude(input: ClaudePreparation): PreparedSession {
@@ -98,8 +98,12 @@ export function prepareClaude(input: ClaudePreparation): PreparedSession {
   if (launchSettings.remoteControl && capability.remoteControl === false) throw new Error('This Claude Code version does not support Remote Control. Update Claude or turn it off in Settings.');
   const permission = claudePermissionSettings(launchSettings);
   if (permission.mode === 'auto' && capability.autoMode === false) throw new Error('This Claude Code version does not support Auto mode. Update Claude or turn off Auto mode in Settings → Agents → Claude.');
+  const verbose = input.thinking === 'expanded' && !permission.arguments.includes('--verbose') ? ['--verbose'] : [];
+  const customSettings = permission.arguments.some(argument => argument === '--settings' || argument.startsWith('--settings='));
+  const sessionSettings = { showThinkingSummaries: true, ...(!launchSettings.remoteControl && { disableRemoteControl: true }) };
+  const settingsArgs = launchSettings.remoteControl && customSettings ? [] : ['--settings', JSON.stringify(sessionSettings)];
   const args = [resumed || input.native ? '--resume' : '--session-id', nativeSessionId, ...(fields.model === 'native' ? [] : ['--model', fields.model]), '--append-system-prompt', context.systemPrompt,
-    '--system-prompt-snapshot', 'off', '--mcp-config', mcpConfig, '--plugin-dir', join(launchDirectory, 'plugin'), '--allowedTools', 'mcp__crafting_table', ...permission.arguments, '--permission-mode', permission.mode, ...(launchSettings.remoteControl ? ['--remote-control'] : ['--settings', JSON.stringify({ disableRemoteControl: true })])];
+    '--system-prompt-snapshot', 'off', '--mcp-config', mcpConfig, '--plugin-dir', join(launchDirectory, 'plugin'), '--allowedTools', 'mcp__crafting_table', ...permission.arguments, '--permission-mode', permission.mode, ...verbose, ...settingsArgs, ...(launchSettings.remoteControl ? ['--remote-control'] : [])];
   if (!resumed && !input.native && !input.blank) args.push('--', input.skill?.prompt ?? input.hosted?.prompt ?? launchContext.initialPrompt);
   if (resumed && input.continueWork) args.push('--', RECOVERY_PROMPT);
   // Host provenance never overrides the session identity fields that follow.

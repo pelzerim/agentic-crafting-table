@@ -188,6 +188,7 @@ export const settingsSchema = z.object({
   defaultWorkingDirectory: z.string().max(4096).default(''),
   quickItemTypes: z.array(z.string().min(1).max(200)).max(MAX_QUICK_ITEMS).refine(ids => new Set(ids).size === ids.length, 'Choose each type only once').default(DEFAULT_QUICK_ITEMS),
   agentProviders: agentProvidersSchema,
+  agentThinking: z.enum(['collapsed', 'expanded']).default('collapsed'),
   claude: z.object({ remoteControl: z.boolean().default(true), autoMode: z.boolean().default(true), arguments: agentArgumentsSchema.default([]) }).default({ remoteControl: true, autoMode: true, arguments: [] }),
   summaries: z.object({
     enabled: z.boolean().default(false), model: z.string().trim().min(1).max(100).default('haiku'),

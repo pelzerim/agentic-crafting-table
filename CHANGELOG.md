@@ -3,6 +3,12 @@
 Releases are Git tags (`vX.Y.Z`); `npm run update` moves a checkout to the newest one. Entries contributed by others name
 their pull request and author.
 
+## Unreleased
+
+### Agents
+
+- **Thinking details**: open native thinking controls from the agent session header. Pick the default for new and resumed Claude and Gemini sessions in Settings → Agents. (@timohuovinen)
+
 ## 0.25.0 — 2026-11-25
 
 ### Agents

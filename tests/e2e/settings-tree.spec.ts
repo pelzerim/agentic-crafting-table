@@ -3,6 +3,20 @@ import { test, capture, resize } from './visual-fixture.ts';
 import { showAdvanced } from './settings-helpers.ts';
 import { STANDUP_ENABLED } from '../../packages/core/standup.ts';
 
+test('agent thinking details default can be changed and saved', async ({ visual: { page } }) => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: 'Settings' });
+  await settings.getByRole('treeitem', { name: 'Agents', exact: true }).locator(':scope > .settings-tree-row').click();
+  const visibility = settings.getByLabel('Default thinking details', { exact: true });
+  await expect(visibility).toHaveValue('collapsed');
+  await visibility.selectOption('expanded');
+  await page.screenshot({ path: 'test-results/pr/agent-thinking-settings.png' });
+  await settings.getByRole('button', { name: 'Save settings' }).click();
+  await expect(settings).toBeHidden();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(visibility).toHaveValue('expanded');
+});
+
 test('settings tree selects nested item pages, supports keyboard navigation and keeps invalid drafts reachable', async ({ visual: { page, app } }) => {
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Settings' }), tree = dialog.getByRole('tree', { name: 'Settings', exact: true });

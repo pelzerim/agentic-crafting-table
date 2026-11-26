@@ -338,6 +338,7 @@ export interface NativeTerminalOptions {
    * An archived session or one whose recording was deleted stays as it is; `resume` remains the explicit start. */
   startWhenStopped?: boolean;
   agentMenu?: boolean;
+  agentProvider?: string;
   /** The agent gets clipboard text and images through the terminal instead of reading the clipboard itself on Ctrl+V. */
   nativePaste?: boolean;
   /** The agent deletes its own mouse selection on Backspace, so the cut key can remove what it copies.

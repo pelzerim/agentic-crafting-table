@@ -101,7 +101,19 @@ if (args.includes('app-server')) {
   socket.on('close', () => process.exit(0));
   // Real Codex asks for bracketed paste; only the paste journey needs it here.
   if (process.env.CODEX_FIXTURE_INPUT_LOG) process.stdout.write('\x1b[?2004h');
-  process.stdin.setRawMode?.(true); process.stdin.resume(); let line = '';
-  process.stdin.on('data', data => { if (process.env.CODEX_FIXTURE_INPUT_LOG) appendFileSync(process.env.CODEX_FIXTURE_INPUT_LOG, data); for (const char of String(data)) { if (char === '\r' || char === '\n') { if (line === 'exit') process.exit(0); socket.send(JSON.stringify({ method: 'fixture/input', params: { data: line } })); process.stdout.write('NATIVE_INPUT:' + line + '\r\n'); line = ''; } else line += char; } });
+  process.stdin.setRawMode?.(true); process.stdin.resume(); let line = '', transcript = false;
+  process.stdin.on('data', data => {
+    if (process.env.CODEX_FIXTURE_INPUT_LOG) appendFileSync(process.env.CODEX_FIXTURE_INPUT_LOG, data);
+    for (const char of String(data)) {
+      if (char === '\x14') {
+        transcript = !transcript;
+        process.stdout.write(transcript ? 'NATIVE_TRANSCRIPT:open\r\n' : 'NATIVE_TRANSCRIPT:closed\r\n');
+      } else if (char === '\r' || char === '\n') {
+        if (line === 'exit') process.exit(0);
+        socket.send(JSON.stringify({ method: 'fixture/input', params: { data: line } }));
+        process.stdout.write('NATIVE_INPUT:' + line + '\r\n'); line = '';
+      } else line += char;
+    }
+  });
   process.on('SIGTERM', () => process.exit(0));
 }
