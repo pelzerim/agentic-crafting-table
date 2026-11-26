@@ -1971,6 +1971,7 @@ shows the native steps for Gemini and Grok. The terminal stays attached and
 keeps its input draft. Stopped sessions keep their recorded screen.
 **Settings → Agents → Default thinking details** sets the initial display for
 new and resumed Claude and Gemini sessions. The default is Collapsed.
+The agent keeps its configured reasoning effort in either display mode.
 Other CLIs start with their own display settings. Existing CLI overrides and
 managed policy still apply.
 Omit redundant "Native Claude session" labels and stacked control bars. Fit every terminal row,

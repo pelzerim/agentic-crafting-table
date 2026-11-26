@@ -30,7 +30,7 @@ test('Claude plans keep native arguments, trusted guide and project brief separa
     const configured = prepareClaude({ request: { ...request, requestId: randomUUID() }, state: await control.read(), directory, runtime, capability, settings: { remoteControl: false, autoMode: false, arguments: ['--effort', 'high', '--verbose'] } });
     assert.equal(configured.launch.args[configured.launch.args.indexOf('--permission-mode') + 1], 'default');
     assert.ok(!configured.launch.args.includes('--remote-control'));
-    assert.deepEqual(JSON.parse(configured.launch.args[configured.launch.args.indexOf('--settings') + 1]), { disableRemoteControl: true, showThinkingSummaries: true });
+    assert.deepEqual(JSON.parse(configured.launch.args[configured.launch.args.indexOf('--settings') + 1]), { disableRemoteControl: true, showThinkingSummaries: true, verbose: false });
     assert.equal(configured.launch.args[configured.launch.args.indexOf('--effort') + 1], 'high');
 
     assert.equal(plan.launch.executable, capability.executable);
@@ -52,10 +52,12 @@ test('Claude plans keep native arguments, trusted guide and project brief separa
     for (const event of ['SubagentStart', 'PreCompact', 'PostCompact', 'PostToolUseFailure', 'PermissionDenied', 'TaskCreated', 'TaskCompleted', 'PostModelSwitch']) assert.deepEqual(hooks.hooks[event]?.[0].hooks[0].args, hooks.hooks.Stop[0].hooks[0].args, `${event} reaches the table`);
     assert.deepEqual(Object.keys(hooks.hooks).filter(event => hooks.hooks[event][0].hooks[0].async), ['PostToolUse'], 'a late PreToolUse could clear the permission prompt that follows it');
     assert.equal(hooks.hooks.WorktreeCreate, undefined, 'that hook would have to create the worktree itself'); assert.equal(hooks.hooks.WorktreeRemove, undefined);
-    assert.deepEqual(JSON.parse(args[args.indexOf('--settings') + 1]), { showThinkingSummaries: true });
+    assert.deepEqual(JSON.parse(args[args.indexOf('--settings') + 1]), { showThinkingSummaries: true, verbose: false });
     assert.ok(!args.includes('--verbose')); assert.ok(!args.includes('--dangerously-skip-permissions'));
-    const expanded = prepareClaude({ request: { ...request, requestId: randomUUID() }, state: await control.read(), directory, runtime, capability, thinking: 'expanded' });
+    const expanded = prepareClaude({ request: { ...request, requestId: randomUUID() }, state: await control.read(), directory, runtime, capability,
+      thinking: 'expanded', settings: { ...settingsSchema.parse({}).claude, arguments: ['--effort', 'high'] } });
     assert.ok(expanded.launch.args.slice(0, expanded.launch.args.indexOf('--')).includes('--verbose'));
+    assert.equal(expanded.launch.args[expanded.launch.args.indexOf('--effort') + 1], 'high');
     assert.deepEqual(prepareClaude({ request, state: await control.read(), directory, runtime, capability, settings: { remoteControl: false, autoMode: false, arguments: ['--verbose'] } }), plan, 'retry retains the original argv despite settings changes');
     const legacy = prepareClaude({ request: { ...request, requestId: randomUUID() }, state: await control.read(), directory, runtime, capability, settings: { remoteControl: true, autoMode: true, arguments: ['--permission-mode=plan', '--verbose'] } });
     assert.equal(legacy.launch.args[legacy.launch.args.indexOf('--permission-mode') + 1], 'plan');

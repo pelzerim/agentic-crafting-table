@@ -98,9 +98,10 @@ export function prepareClaude(input: ClaudePreparation): PreparedSession {
   if (launchSettings.remoteControl && capability.remoteControl === false) throw new Error('This Claude Code version does not support Remote Control. Update Claude or turn it off in Settings.');
   const permission = claudePermissionSettings(launchSettings);
   if (permission.mode === 'auto' && capability.autoMode === false) throw new Error('This Claude Code version does not support Auto mode. Update Claude or turn off Auto mode in Settings → Agents → Claude.');
-  const verbose = input.thinking === 'expanded' && !permission.arguments.includes('--verbose') ? ['--verbose'] : [];
+  const expanded = input.thinking === 'expanded';
+  const verbose = expanded && !permission.arguments.includes('--verbose') ? ['--verbose'] : [];
   const customSettings = permission.arguments.some(argument => argument === '--settings' || argument.startsWith('--settings='));
-  const sessionSettings = { showThinkingSummaries: true, ...(!launchSettings.remoteControl && { disableRemoteControl: true }) };
+  const sessionSettings = { showThinkingSummaries: true, ...(!expanded && { verbose: false }), ...(!launchSettings.remoteControl && { disableRemoteControl: true }) };
   const settingsArgs = launchSettings.remoteControl && customSettings ? [] : ['--settings', JSON.stringify(sessionSettings)];
   const args = [resumed || input.native ? '--resume' : '--session-id', nativeSessionId, ...(fields.model === 'native' ? [] : ['--model', fields.model]), '--append-system-prompt', context.systemPrompt,
     '--system-prompt-snapshot', 'off', '--mcp-config', mcpConfig, '--plugin-dir', join(launchDirectory, 'plugin'), '--allowedTools', 'mcp__crafting_table', ...permission.arguments, '--permission-mode', permission.mode, ...verbose, ...settingsArgs, ...(launchSettings.remoteControl ? ['--remote-control'] : [])];

@@ -7,7 +7,7 @@ their pull request and author.
 
 ### Agents
 
-- **Thinking details**: open native thinking controls from the agent session header. Pick the default for new and resumed Claude and Gemini sessions in Settings → Agents. (@timohuovinen)
+- **Thinking details**: open native thinking controls from the agent session header. Pick the default for new and resumed Claude and Gemini sessions in Settings → Agents. (#49, @timohuovinen)
 
 ## 0.25.0 — 2026-11-25
 

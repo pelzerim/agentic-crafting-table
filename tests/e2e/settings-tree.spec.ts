@@ -9,8 +9,8 @@ test('agent thinking details default can be changed and saved', async ({ visual:
   await settings.getByRole('treeitem', { name: 'Agents', exact: true }).locator(':scope > .settings-tree-row').click();
   const visibility = settings.getByLabel('Default thinking details', { exact: true });
   await expect(visibility).toHaveValue('collapsed');
-  await visibility.selectOption('expanded');
   await page.screenshot({ path: 'test-results/pr/agent-thinking-settings.png' });
+  await visibility.selectOption('expanded');
   await settings.getByRole('button', { name: 'Save settings' }).click();
   await expect(settings).toBeHidden();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();

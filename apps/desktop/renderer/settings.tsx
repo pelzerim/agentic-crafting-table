@@ -210,7 +210,7 @@ export function Settings({ startGuide, close, providers, plugins, openArchive, c
       </SettingsPage>
       <SettingsPage id="Agents" title="Agents" description="The agent CLIs a session can run. Select one in the sidebar to turn it on or off and to configure its sizes and options." hidden={section !== 'Agents'}>
         <SettingsSection label="Session display">
-          <SettingRow label="Default thinking details" description="Applies to new and resumed Claude and Gemini sessions. Other agents use their native defaults.">
+          <SettingRow label="Default thinking details" description="Controls display for new and resumed Claude and Gemini sessions. The agent keeps its configured reasoning effort.">
             <AgentThinkingSelect value={agentThinking} change={setAgentThinking} />
           </SettingRow>
         </SettingsSection>
