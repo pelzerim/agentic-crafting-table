@@ -21,6 +21,7 @@ import type { SqliteStore } from './sqlite-store.ts';
 import { realpathSync, statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { skillListSchema, skillRunSchema } from '../core/skills.ts';
+import type { SkillRun } from '../core/skills.ts';
 import { isArchived, isBelow } from '../../src/graph/archive.ts';
 import { agentReadiness, isPermissionPrompt } from './rollout-validation.ts';
 import { BACKGROUND_STALE_MS, backgroundSummary, outstanding, teammateKey } from './agent-background.ts';
@@ -170,7 +171,8 @@ export class AgentCoordinator {
     const request = skillListSchema.parse(input), cwd = await this.skillDirectory(request.projectId, request.cwd);
     return agentProvider(request.provider).skills(cwd);
   }
-  async runSkill(projectId: string, input: unknown) {
+  /** `builtIn` names a host-built task (never from MCP): the arguments are its whole opening prompt, with no skill lookup. */
+  async runSkill(projectId: string, input: unknown, builtIn?: string) {
     const args = skillRunSchema.parse(input);
     const original: ResourceCreate = { requestId: args.requestId, nodeId: args.nodeId, resourceId: args.resourceId, expectedRevision: args.expectedRevision, projectId,
       pluginId: 'agent.session', title: 'Skill run', position: args.position, ...(args.connection ? { connection: args.connection } : {}), data: { provider: args.provider, model: args.model, skillId: args.skillId, arguments: args.arguments, ...(args.cwd ? { cwd: args.cwd } : {}) } };
@@ -182,17 +184,20 @@ export class AgentCoordinator {
         if (canonical(saved.source) !== source) throw new Error('Skill launch ID was reused with different input');
         return this.sessions.launchPrepared(saved);
       }
-      const provider = agentProvider(args.provider), cwd = await this.skillDirectory(projectId, args.cwd), catalog = await provider.skills(cwd);
-      const selected = catalog.skills.find(skill => skill.id === args.skillId);
-      if (!selected) throw new Error('This skill is no longer available in this folder. Refresh the skill list.');
-      if (selected.unavailable) throw new Error(selected.unavailable);
+      const provider = agentProvider(args.provider), cwd = await this.skillDirectory(projectId, args.cwd);
+      const invocation = builtIn ? { id: args.skillId, name: builtIn, prompt: args.arguments } : await this.skillInvocation(provider, cwd, args);
       const capability = await provider.probe(), state = await this.control.read();
-      return this.sessions.launchPrepared(provider.prepare({ request: { ...original, title: selected.name, data: { ...original.data, cwd } }, originRequest: original,
-        state, directory: this.directory, runtime: this.options, capability,
-        skill: { id: selected.id, name: selected.name, prompt: provider.skillPrompt(selected, args.arguments) },
+      return this.sessions.launchPrepared(provider.prepare({ request: { ...original, title: invocation.name, data: { ...original.data, cwd } }, originRequest: original,
+        state, directory: this.directory, runtime: this.options, capability, skill: invocation,
       }, this.observations.readSettings().value));
     })().finally(() => this.skillRuns.delete(args.requestId));
     this.skillRuns.set(args.requestId, { source, promise }); return promise;
+  }
+  private async skillInvocation(provider: ReturnType<typeof agentProvider>, cwd: string, args: SkillRun) {
+    const catalog = await provider.skills(cwd), selected = catalog.skills.find(skill => skill.id === args.skillId);
+    if (!selected) throw new Error('This skill is no longer available in this folder. Refresh the skill list.');
+    if (selected.unavailable) throw new Error(selected.unavailable);
+    return { id: selected.id, name: selected.name, prompt: provider.skillPrompt(selected, args.arguments) };
   }
   /** A start from the form, MCP or another first-party service: a provider turned off in Settings is refused (AGENT-01b).
    * Resuming an item already on the table is not a start, and a conversation the CLI moved to follows it (AGENT-04a). */

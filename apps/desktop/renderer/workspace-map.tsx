@@ -121,13 +121,14 @@ function PluginDetail({ resource, registry, active, nodeId, onOpen, onShow, onEd
   useEffect(() => {
     const view = views.mount('detail', container.current!, resource, {
       editResource: () => editRef.current(),
-      saveData: async (patch, expect) => {
-        const { state } = await window.craftingTable.workspaceRead(), record = state.resources.find(candidate => candidate.id === state.nodes.find(node => node.id === nodeId)?.resourceId);
-        if (!record) throw new Error('This item is no longer on the map.');
-        if (expect && Object.entries(expect).some(([key, value]) => JSON.stringify(record.data[key] ?? null) !== JSON.stringify(value))) return false;
-        // The revision guard refuses the write if anything changed since this read.
-        await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: state.revision, actor: { kind: 'user', id: 'desktop' }, commands: [{ type: 'item.update', id: nodeId, data: patchedData(record.data, patch) }] });
-        return true;
+      saveData: async patch => {
+        // A write elsewhere moves the revision: reread and patch the newest data, so the latest edit wins.
+        for (let attempt = 0; ; attempt++) {
+          const { state } = await window.craftingTable.workspaceRead(), record = state.resources.find(candidate => candidate.id === state.nodes.find(node => node.id === nodeId)?.resourceId);
+          if (!record) throw new Error('This item is no longer on the map.');
+          try { await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: state.revision, actor: { kind: 'user', id: 'desktop' }, commands: [{ type: 'item.update', id: nodeId, data: patchedData(record.data, patch) }] }); return; }
+          catch (error) { if ((error as { code?: string }).code !== 'REVISION_CONFLICT' || attempt >= 4) throw error; await new Promise(done => setTimeout(done, 75 * (attempt + 1))); }
+        }
       },
       viewState: () => viewStore.read(nodeId),
       saveViewState: patch => viewStore.save(nodeId, patch),
@@ -752,7 +753,7 @@ export function WorkspaceMap() {
   const selectedResource = resources?.find(resource => resource.id === selected?.resourceId);
   const selectedPlugin = plugins?.find(plugin => plugin.id === selectedResource?.pluginId);
   const pluginSettings = pluginSettingsValues(plugins ?? [], settings?.value.plugins);
-  const menuApp = { videoSkill: Boolean(settings?.value.videoSkill.skillId), videoLaunch: Boolean(settings?.value.videoSkill.skillId && settings.value.agentProviders[settings.value.videoSkill.provider]) };
+  const menuApp = { videoLaunch: Boolean(settings?.value.agentProviders[settings.value.videoSkill.provider]) };
   const scope = selectedLink ? 'link' : selected ? selected.resourceId ? 'item' : 'project' : editor?.projectId ? 'neighborhood' : 'board';
   const belowMenu = (node?: GraphNode) => layer === 'below' ? { blocker: node && snapshot ? surfaceBlocker(node, snapshot.state.nodes) : undefined } : undefined;
   /** The item's web page: what Open on … opens and Copy URL copies. */

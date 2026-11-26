@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { SqliteStore } from './sqlite-store.ts';
 import { WorkspaceControl } from '../core/control.ts';
 import { videoNotes } from './video-notes.ts';
-import { explainInVideo, pullRequestVideoRun, PR_VIDEO_LINE, SESSION_VIDEO_REQUEST } from './video-explain.ts';
+import { BUILT_IN_VIDEO, explainInVideo, pullRequestVideoRun, PR_VIDEO_LINE, SESSION_VIDEO_REQUEST, videoSkillFolder } from './video-explain.ts';
 import type { VideoExplainHost } from './video-explain.ts';
 import type { VideoSkill } from '../core/settings.ts';
 import type { ProjectSkillCatalog, SkillRun } from '../core/skills.ts';
@@ -17,27 +17,27 @@ import { AgentCoordinator } from './agents.ts';
 
 interface Fixture {
   control: WorkspaceControl; host: VideoExplainHost; skill: { value: VideoSkill }; off: Set<string>; dead: Set<string>; sessions: SessionCoordinator; inputs: string[]; failInput: { next: boolean }; failLaunch: { code?: string };
-  launches: { projectId: string; run: SkillRun }[]; discovery: { during?: () => Promise<unknown> }; apply(commands: any[]): Promise<unknown>;
+  launches: { projectId: string; run: SkillRun; builtIn?: string }[]; discovery: { during?: () => Promise<unknown> }; apply(commands: any[]): Promise<unknown>;
 }
 async function fixture(run: (context: Fixture) => Promise<void>) {
   const directory = mkdtempSync(join(tmpdir(), 'act-video-explain-')), store = new SqliteStore(join(directory, 'workspace.sqlite')), control = new WorkspaceControl(store);
   const apply = async (commands: any[]) => control.dispatch({ commandId: randomUUID(), expectedRevision: (await control.read()).revision, actor: { kind: 'user', id: 'fixture' }, commands });
-  const inputs: string[] = [], launches: { projectId: string; run: SkillRun }[] = [], off = new Set<string>(), dead = new Set<string>(), failInput = { next: false }, failLaunch: Fixture['failLaunch'] = {}, discovery: Fixture['discovery'] = {};
+  const inputs: string[] = [], launches: Fixture['launches'] = [], off = new Set<string>(), dead = new Set<string>(), failInput = { next: false }, failLaunch: Fixture['failLaunch'] = {}, discovery: Fixture['discovery'] = {};
   const skill = { value: { provider: 'claude', skillId: '/default-folder/demo-video', name: 'demo-video' } as VideoSkill };
   const sessions = { runtime: { call: async (method: string, args: any) => {
     if (method === 'sessions.read') return { session: { state: dead.has(args.sessionId) ? 'exited' : 'running', nodeId: args.sessionId === 'session-fixture' ? 'agent' : String(args.sessionId).slice('session-'.length), cwd: '/work/codex-folder' } };
     if (failInput.next) { failInput.next = false; throw new Error('The session runtime stopped answering'); }
     inputs.push(args.data);
   } } } as unknown as SessionCoordinator;
-  const host: VideoExplainHost = { store, sessions, skill: () => skill.value, enabled: provider => !off.has(provider), defaultModel: async () => 'gpt-default',
+  const host: VideoExplainHost = { store, sessions, skill: () => skill.value, builtIn: '/app/video-skill', enabled: provider => !off.has(provider), defaultModel: async () => 'gpt-default',
     skills: async ({ provider, projectId, cwd }): Promise<ProjectSkillCatalog> => {
       await discovery.during?.();
       const folder = projectId ? `/work/${projectId}` : cwd!;
       return { cwd: folder, warnings: [], skills: provider === 'codex' || projectId ? [{ id: `${folder}/demo-video/SKILL.md`, name: 'demo-video', description: '' }] : [] };
     },
     skillPrompt: (provider, selected, text) => `${provider === 'codex' ? '$' : '/'}${selected.name} ${text}`,
-    runSkill: async (projectId, run) => {
-      launches.push({ projectId, run });
+    runSkill: async (projectId, run, builtIn) => {
+      launches.push({ projectId, run, ...(builtIn ? { builtIn } : {}) });
       if (failLaunch.code) { const code = failLaunch.code; delete failLaunch.code; throw Object.assign(new Error('The supervisor did not answer'), { code }); }
       await apply([{ type: 'item.create', id: run.nodeId, resource: { id: run.resourceId, pluginId: 'agent.session', schemaVersion: 1, title: 'Video', data: { provider: run.provider, sessionId: `session-${run.nodeId}` } }, position: run.position },
         { type: 'node.update', id: run.nodeId, activity: 'unknown' }]);
@@ -144,10 +144,32 @@ test('a session is prompted with its own provider’s skill once per request, ne
   await apply([{ type: 'node.update', id: 'agent', activity: 'idle' }]);
   skill.value = { provider: 'claude', skillId: 'other-video', name: 'other-video' };
   await assert.rejects(explainInVideo(control, host, 'agent', { requestId: randomUUID() }), /Codex has no other-video skill/);
-  skill.value = { provider: 'claude', skillId: '', name: '' };
-  await assert.rejects(explainInVideo(control, host, 'agent', { requestId: randomUUID() }), /Choose a video skill in Settings/);
-  await assert.rejects(explainInVideo(control, host, 'pr', { requestId: randomUUID() }), /Choose a video skill in Settings/);
   assert.equal(inputs.length, 2);
+}));
+
+test('a session flagged for a decision is still asked, but never over an open permission prompt or question', () => fixture(async ({ control, host, inputs, apply }) => {
+  for (const attentionNote of ['Agent needs permission', 'Agent asked a question']) {
+    await apply([{ type: 'node.update', id: 'agent', attention: 'input', attentionNote }]);
+    await assert.rejects(explainInVideo(control, host, 'agent', { requestId: randomUUID() }), /ready for a new prompt/, attentionNote);
+  }
+  await apply([{ type: 'node.update', id: 'agent', attention: 'input', attentionNote: 'Design needs your call' }]);
+  assert.deepEqual(await explainInVideo(control, host, 'agent', { requestId: randomUUID() }), { sent: true });
+  assert.equal(inputs.length, 2);
+}));
+
+test('with no skill chosen, a pull request launches the built-in video task and a session is asked to explain its own work', () => fixture(async ({ control, host, skill, inputs, launches }) => {
+  skill.value = { provider: 'claude', skillId: '', name: '' };
+  await explainInVideo(control, host, 'pr', { requestId: randomUUID() });
+  const [{ run, builtIn }] = launches;
+  assert.equal(builtIn, 'Explain in video');
+  assert.equal(run.skillId, BUILT_IN_VIDEO);
+  assert.equal(run.cwd, undefined, 'the project folder is used');
+  for (const part of ['https://github.com/acme/billing/pull/42', 'Read "/app/video-skill/SKILL.md"', 'what the pull request changes', 'one diagram', 'risk', 'pluginId "workspace.video"', '"otherId": "pr"', 'Never open'])
+    assert.ok(run.arguments.includes(part), part);
+  assert.deepEqual(await explainInVideo(control, host, 'agent', { requestId: randomUUID() }), { sent: true });
+  for (const part of ['explains this session', 'Read "/app/video-skill/SKILL.md"', 'overall goal', 'what you built', 'latest changes', 'key decisions and why', '"agent": true'])
+    assert.ok(inputs[0].includes(part), part);
+  assert.ok(existsSync(join(videoSkillFolder(resolve('dist/workspace-service.cjs')), 'SKILL.md')), 'the repository holds the built-in skill');
 }));
 
 test('a session prompt holds the session until the agent ends a turn after it, so a lost reply is never typed twice', () => fixture(async ({ control, host, inputs, failInput, apply }) => {

@@ -58,7 +58,7 @@ test('notes on a video start hidden, keep what was typed across closing the item
   expect(await page.evaluate(async () => (await window.craftingTable.workspaceRead()).state.resources.find(resource => resource.id === 'clip-r')?.data.notesPending)).toBeUndefined();
 });
 
-test('an open notes panel follows notes saved elsewhere and never replaces them unseen', async ({ visual: { page } }) => {
+test('an open notes panel follows notes saved elsewhere, and a draft typed meanwhile saves over them', async ({ visual: { page } }) => {
   const source = 'https://www.youtube.com/watch?v=ddddddddddd', notesTo = (notes: string) => ({ type: 'item.update', id: 'clip', data: { source, notes } });
   await apply(page, [{ type: 'item.add', id: 'clip', resourceId: 'clip-r', pluginId: 'workspace.video', title: 'clip', data: { source, notes: 'First' }, projectId: 'billing', position: { x: 650, y: 620 } }]);
   await page.locator('.map-card[data-item-id="clip"]').click();
@@ -69,14 +69,15 @@ test('an open notes panel follows notes saved elsewhere and never replaces them 
   await apply(page, [notesTo('From another window')]);
   await expect(notes).toHaveValue('From another window');
 
-  // Typing that started from older notes keeps the draft here and leaves the newer saved notes alone.
+  // Notes saved elsewhere while the person types: the latest edit wins, with no conflict to resolve.
   await page.evaluate(async command => {
     const area = document.querySelector<HTMLTextAreaElement>('.video-notes-text')!;
     area.value += ' and mine'; area.dispatchEvent(new Event('input'));
     const { state } = await window.craftingTable.workspaceRead();
     await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: state.revision, actor: { kind: 'user', id: 'test' }, commands: [command as never] });
   }, notesTo('Newer elsewhere'));
-  await expect(page.locator('.video-notes .pr-comment-feedback')).toHaveText(/saved notes changed elsewhere/);
-  expect(await saved()).toBe('Newer elsewhere');
+  await expect.poll(saved).toBe('From another window and mine');
   await expect(notes).toHaveValue('From another window and mine');
+  await expect(page.locator('.video-notes .pr-comment-feedback')).not.toHaveText(/elsewhere|could not be saved/);
+  await expect(page.getByRole('button', { name: 'Keep my draft' })).toHaveCount(0);
 });

@@ -169,3 +169,6 @@ export function orderAttention(items: readonly AttentionItem[], time: AttentionO
   const waited = (a: AttentionItem, b: AttentionItem) => a.since === b.since ? 0 : !a.since ? 1 : !b.since ? -1 : (a.since < b.since ? -1 : 1) * flip;
   return [...items].sort((a, b) => rank(a) - rank(b) || waited(a, b) || order.indexOf(a.reasons[0]) - order.indexOf(b.reasons[0]) || a.node.title.localeCompare(b.node.title) || a.identity.localeCompare(b.identity));
 }
+const OPEN_PROMPT = new Set(['Agent needs permission', 'Agent asked a question']);
+/** Only a prompt open in an agent's terminal holds it; a flag the agent raised for a decision does not. */
+export const awaitingAnswer = (item: { attention: string; attentionNote?: string }) => item.attention === 'input' && (!item.attentionNote || OPEN_PROMPT.has(item.attentionNote));

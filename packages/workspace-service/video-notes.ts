@@ -1,4 +1,5 @@
 import { FROM_TABLE, prompting as sending, promptAgent } from './agent-prompt.ts';
+import { awaitingAnswer } from '../../src/graph/attention.ts';
 import * as z from 'zod/v4';
 import { createHash, randomUUID } from 'node:crypto';
 import { HEAD_ATTEMPTS, applyAtHead } from './apply-at-head.ts';
@@ -37,7 +38,7 @@ export async function videoNotes(control: WorkspaceControl, store: SqliteStore, 
   if (fingerprintOf(notes) !== args.fingerprint) throw new Error(CHANGED);
   const target = relatedResourceItems(state, nodeId, control.registry).find(r => r.nodeId === args.targetNodeId && r.resource?.pluginId === 'agent.session');
   if (!target || !sessions || target.resource?.data.sessionId !== args.sessionId) throw new Error('Choose a connected, running agent.');
-  if (target.activity !== 'idle' || target.attention === 'input' || sending.has(args.sessionId)) throw new Error('Wait until the agent is ready for a new prompt.');
+  if (target.activity !== 'idle' || awaitingAnswer(target) || sending.has(args.sessionId)) throw new Error('Wait until the agent is ready for a new prompt.');
   sending.add(args.sessionId);
   try {
     const current = await sessions.runtime.call<SessionSnapshot>('sessions.read', { sessionId: args.sessionId, after: Number.MAX_SAFE_INTEGER });
@@ -47,7 +48,7 @@ export async function videoNotes(control: WorkspaceControl, store: SqliteStore, 
     const fresh = await control.read(), data = findById(fresh.resources, resource.id)?.data;
     if (!data || data.notes !== notes) throw new Error(CHANGED);
     const stillLinked = relatedResourceItems(fresh, nodeId, control.registry).find(r => r.nodeId === target.nodeId);
-    if (stillLinked?.resource?.data.sessionId !== args.sessionId || stillLinked.activity !== 'idle' || stillLinked.attention === 'input') throw new Error('The agent changed. Send the notes again.');
+    if (stillLinked?.resource?.data.sessionId !== args.sessionId || stillLinked.activity !== 'idle' || awaitingAnswer(stillLinked)) throw new Error('The agent changed. Send the notes again.');
     const pending = pendingNotesSends(data.notesPending), held = pending[args.sessionId];
     const reuse = held?.targetNodeId === args.targetNodeId && held.fingerprint === args.fingerprint;
     const requestId = reuse ? held.requestId : args.requestId;

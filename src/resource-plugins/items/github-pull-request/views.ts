@@ -1,3 +1,4 @@
+import { awaitingAnswer } from '../../../graph/attention.ts';
 import { commentKey, commentVersion, commentUrl } from './comment-state.ts';
 import { reviewDeskItem } from './desk.ts';
 import { findingGlyph, reviewGlyph } from '../code-review/desk.ts';
@@ -209,7 +210,7 @@ export const githubPullRequestViews: ResourcePluginViews = {
         row.agents.hidden = agents.length < 2;
         row.fix.hidden = !agents.length;
         const target = agents.find(item => item.nodeId === row.agents.value);
-        row.fix.disabled = row.fix.dataset.sent === 'true' || row.fix.dataset.sending === 'true' || !target || target.activity !== 'idle' || target.attention === 'input' || !target.resource?.data.sessionId;
+        row.fix.disabled = row.fix.dataset.sent === 'true' || row.fix.dataset.sending === 'true' || !target || target.activity !== 'idle' || awaitingAnswer(target) || !target.resource?.data.sessionId;
         row.fix.title = row.fix.disabled ? 'The connected agent must be ready for a new prompt' : `Send fix request to ${target?.title}`;
       }
     }

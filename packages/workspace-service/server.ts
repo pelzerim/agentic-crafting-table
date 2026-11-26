@@ -1,6 +1,6 @@
 import { prComments } from './pr-comments.ts';
 import { videoNotes } from './video-notes.ts';
-import { explainInVideo } from './video-explain.ts';
+import { explainInVideo, videoSkillFolder } from './video-explain.ts';
 import { GitHubInbox } from './github-inbox.ts';
 import { GitHubClient } from '../provider-runtime/github.ts';
 import { githubTransport } from '../provider-runtime/github-transport.ts';
@@ -279,10 +279,10 @@ export async function startWorkspaceService(directory: string, registry?: Resour
   operation('map.tidy', async context => { const result = await tidy.run(context.arguments); await broadcast(); return result; }, { requiresNode: false });
   operation('pr.comments', context => lifecycle.execute(() => prComments(control, store, resources, terminals, context.nodeId, context.arguments)));
   operation('video.notes', context => lifecycle.execute(() => videoNotes(control, store, terminals, context.nodeId, context.arguments)));
-  operation('video.explain', context => lifecycle.execute(() => explainInVideo(control, { store, sessions: terminals, skill: () => store.readSettings().value.videoSkill,
+  operation('video.explain', context => lifecycle.execute(() => explainInVideo(control, { store, sessions: terminals, skill: () => store.readSettings().value.videoSkill, builtIn: videoSkillFolder(process.argv[1]),
     enabled: provider => (store.readSettings().value.agentProviders as Record<string, boolean>)[provider] !== false,
     skills: input => agents ? agents.skills(input) : agentProvider(input.provider).skills(input.cwd ?? ''), skillPrompt: (provider, skill, text) => agentProvider(provider).skillPrompt(skill, text),
-    defaultModel: async provider => (await agentProvider(provider).models()).default, ...(agents ? { runSkill: (projectId, run) => agents.runSkill(projectId, run) } : {}) }, context.nodeId, context.arguments)));
+    defaultModel: async provider => (await agentProvider(provider).models()).default, ...(agents ? { runSkill: (projectId, run, builtIn) => agents.runSkill(projectId, run, builtIn) } : {}) }, context.nodeId, context.arguments)));
   operation('pr.review.options', async () => reviews ? await reviews.options() : []);
   operation('pr.architecture', async context => {
     const input = z.object({ operation: z.enum(['options', 'prepare', 'status', 'launch']), requestId: z.string().uuid().optional() }).strict().parse(context.arguments);

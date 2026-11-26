@@ -24,11 +24,11 @@ const until = async (ready: () => unknown) => { for (let turn = 0; turn < 500 &&
 const deferred = <T>() => { let resolve!: (value: T) => void, reject!: (error: Error) => void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 
 function panel(notes: string) {
-  const saves: { patch: JsonObject; expect?: JsonObject; done: ReturnType<typeof deferred<boolean>> }[] = [], actions: ReturnType<typeof deferred<void>>[] = [], inputs: JsonObject[] = [];
+  const saves: { patch: JsonObject; done: ReturnType<typeof deferred<void>> }[] = [], actions: ReturnType<typeof deferred<void>>[] = [], inputs: JsonObject[] = [];
   let observe!: (data: JsonObject) => void;
   const time = { next: deferred<number | undefined>() };
   const view = mountVideoNotes(document, { id: 'clip-r', pluginId: 'workspace.video', schemaVersion: 1, title: 'clip', data: { source: 'https://youtu.be/dQw4w9WgXcQ', notes } } as never, {
-    saveData: (patch: JsonObject, expect?: JsonObject) => { const done = deferred<boolean>(); saves.push({ patch, expect, done }); return done.promise; },
+    saveData: (patch: JsonObject) => { const done = deferred<void>(); saves.push({ patch, done }); return done.promise; },
     observeData: (listener: (data: JsonObject) => void) => { observe = listener; return () => {}; },
     observeRelated: (listener: (items: unknown[]) => void) => { listener([{ nodeId: 'agent', title: 'Listener', summary: '', activity: 'idle', attention: 'none', typeName: 'Agent', resource: { pluginId: 'agent.session', data: { sessionId: 's1' } } }]); return () => {}; },
     runAction: (_action: string, input: JsonObject) => { const done = deferred<void>(); actions.push(done); inputs.push(input); return done.promise; },
@@ -59,23 +59,20 @@ test('drafts whose queued saves fail stay on screen, and the panel never reports
   assert.equal(notes.text.value, 'Start one two');
 });
 
-test('after notes change elsewhere no queued save replaces them until the person chooses', async () => {
+test('notes saved elsewhere while the person types never hold their draft back: the latest edit wins', async () => {
   const notes = panel('Start');
   notes.type(' one'); void notes.view.flush();
-  notes.type(' two'); void notes.view.flush();
+  notes.type(' two'); const closing = notes.view.flush();
   notes.observe({ notes: 'Newer elsewhere' });
   await settle();
-  assert.deepEqual(notes.saves[0].expect, { notes: 'Start' });
-  notes.saves[0].done.resolve(false);
-  await settle(); await settle();
-  assert.equal(notes.saves.length, 1, 'the second draft is never written');
-  assert.match(notes.feedback(), /changed elsewhere/);
-  notes.type(' three');
-  assert.equal(await notes.view.flush(), false);
-  assert.equal(notes.saves.length, 1, 'typing does not resume autosave');
-  notes.button('Keep my draft').onclick!();
-  await settle();
-  assert.deepEqual([notes.saves[1].patch.notes, notes.saves[1].expect], ['Start one two three', { notes: 'Newer elsewhere' }]);
+  notes.saves[0].done.resolve();
+  await until(() => notes.saves[1]);
+  assert.equal(notes.saves[1].patch.notes, 'Start one two');
+  notes.saves[1].done.resolve();
+  assert.equal(await closing, true);
+  assert.equal(notes.text.value, 'Start one two');
+  assert.doesNotMatch(notes.feedback(), /elsewhere|could not/);
+  assert.equal(notes.button('Keep my draft'), undefined, 'no conflict choice exists');
 });
 
 test('while a send waits for the agent the draft cannot change, and Sent records the draft the agent got', async () => {

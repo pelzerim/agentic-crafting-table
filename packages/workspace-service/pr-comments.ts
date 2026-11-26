@@ -1,4 +1,5 @@
 import { FROM_TABLE, promptAgent } from './agent-prompt.ts';
+import { awaitingAnswer } from '../../src/graph/attention.ts';
 import * as z from 'zod/v4';
 import { commentReceiptFingerprint, commentDigest } from '../../src/resource-plugins/items/github-pull-request/presentation.ts';
 import type { WorkspaceControl } from '../core/control.ts';
@@ -53,7 +54,7 @@ export async function prComments(control: WorkspaceControl, store: SqliteStore, 
   const requestId = z.string().uuid().parse(args.requestId), sessionId = z.string().min(1).parse(args.sessionId);
   const target = relatedResourceItems(state, nodeId, control.registry).find(r => r.nodeId === args.targetNodeId && r.resource?.pluginId === 'agent.session');
   if (!target || !sessions || target.resource?.data.sessionId !== sessionId) throw new Error('Choose a connected, running agent.');
-  if (target.activity !== 'idle' || target.attention === 'input') throw new Error('Wait until the agent is ready for a new prompt.');
+  if (target.activity !== 'idle' || awaitingAnswer(target)) throw new Error('Wait until the agent is ready for a new prompt.');
   const current = await sessions.runtime.call<SessionSnapshot>('sessions.read', { sessionId, after: Number.MAX_SAFE_INTEGER });
   if (findById(state.nodes, current.session.nodeId)?.resourceId !== target.resource.id) throw new Error('The process belongs to a different agent.');
   if (current.session.native && current.session.native.status !== 'idle') throw new Error('Wait until the agent is ready for a new prompt.');
@@ -62,7 +63,7 @@ export async function prComments(control: WorkspaceControl, store: SqliteStore, 
   const freshResource = findById(fresh.resources, resource.id);
   if (!freshResource || JSON.stringify([freshResource.connectionId, freshResource.data.owner, freshResource.data.repo, freshResource.data.number]) !== fingerprint) throw new Error('The source PR changed. Reopen the comment.');
   const stillLinked = relatedResourceItems(fresh, nodeId, control.registry).find(r => r.nodeId === target.nodeId);
-  if (stillLinked?.resource?.data.sessionId !== sessionId || stillLinked.activity !== 'idle' || stillLinked.attention === 'input') throw new Error('The agent changed. Reopen the comment action.');
+  if (stillLinked?.resource?.data.sessionId !== sessionId || stillLinked.activity !== 'idle' || awaitingAnswer(stillLinked)) throw new Error('The agent changed. Reopen the comment action.');
   const job = store.enqueueJob(`comment-fix:${requestId}`, { action: 'pr.comments', nodeId, arguments: { ...args } });
   if (job.state === 'succeeded') return { sent: true };
   if (job.state !== 'queued') throw new Error('Delivery could not be confirmed. Check the agent before sending again.');

@@ -20,7 +20,7 @@ export const githubPullRequest = defineResourcePlugin({
   { id: 'architecture', label: 'Explain architecture', children: [
     { id: 'architecture.explain', label: 'Claude', description: 'Read-only analysis · publishes one private claude.ai artifact' },
   ] }, { id: 'video', label: 'Explain in video', when: { app: 'videoLaunch' }, children: [
-    { id: 'video.explain', label: 'Video skill', description: 'Runs the skill chosen in Settings → Agents in a new session' },
+    { id: 'video.explain', label: 'Narrated video', description: 'Starts an agent beside this pull request that makes a short video of it' },
   ] }, { id: 'merge', label: 'Merge', children: [], choices: { load: 'pr.merge.options', apply: 'pr.merge', loadingLabel: 'Checking merge options…', irreversible: true, pickConfirms: true } },
     { id: 'autoDeploy', label: 'Auto deploy', children: [], choices: { load: 'options', apply: 'set', runtime: AUTO_DEPLOY_OPERATION, loadingLabel: 'Checking auto deploy…' } },
     { id: 'state', label: 'Change state', children: [], choices: { load: 'pr.state.options', apply: 'pr.state', loadingLabel: 'Checking the pull request…' } },

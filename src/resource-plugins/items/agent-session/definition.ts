@@ -18,8 +18,8 @@ export const agentSession = defineResourcePlugin({
   preferredView: 'focus',
   view: { variants: { field: 'provider', options: { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode', pi: 'Pi', gemini: 'Gemini', grok: 'Grok' } } },
   acceptsContext: true,
-  contextMenu: [{ id: 'video', label: 'Explain what you built in video', when: { app: 'videoSkill' }, children: [
-    { id: 'video.explain', label: 'Video skill', description: 'Asks this session to run the skill chosen in Settings → Agents' },
+  contextMenu: [{ id: 'video', label: 'Explain what you built in video', children: [
+    { id: 'video.explain', label: 'Narrated video', description: 'Asks this session to make a short video of its work and add it to the map' },
   ] }],
   activityTitle: { defaults: ['Claude session', 'Codex session', 'OpenCode session', 'Pi session', 'Gemini session', 'Grok session'] },
   fields: {
