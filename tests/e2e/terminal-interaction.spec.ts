@@ -134,7 +134,7 @@ test('Shift+Enter in a real zsh prompt inserts a second command line without exe
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
-test('the platform find key opens find; the arrows, F3 and Find Next step through matches', async ({ visual: { page } }) => {
+test('the platform find key opens find; Enter, numpad Enter, the arrows, F3 and Find Next step through matches', async ({ visual: { page } }) => {
   await openTerminal(page);
   const mac = process.platform === 'darwin';
   await page.keyboard.press(mac ? 'Meta+f' : 'Control+Shift+F');
@@ -146,6 +146,10 @@ test('the platform find key opens find; the arrows, F3 and Find Next step throug
   await page.keyboard.press('ArrowUp'); await expect(count).toHaveText('1 of 3');
   await page.keyboard.press('F3'); await expect(count).toHaveText('2 of 3');
   await page.keyboard.press('Shift+F3'); await expect(count).toHaveText('1 of 3');
+  await page.keyboard.press('Enter'); await expect(count).toHaveText('2 of 3');
+  await page.keyboard.press('NumpadEnter'); await expect(count).toHaveText('3 of 3');
+  await page.keyboard.press('Shift+NumpadEnter'); await expect(count).toHaveText('2 of 3');
+  await page.keyboard.press('ArrowUp'); await expect(count).toHaveText('1 of 3');
   await page.keyboard.press(mac ? 'Meta+g' : 'Control+g'); await expect(count).toHaveText('2 of 3');
   await page.keyboard.press(mac ? 'Meta+Shift+G' : 'Control+Shift+G'); await expect(count).toHaveText('1 of 3');
   await page.screenshot({ path: 'test-results/pr/terminal-find.png' });
