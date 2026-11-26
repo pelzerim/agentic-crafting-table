@@ -352,7 +352,7 @@ export interface NativeTerminalOptions {
 
 export interface RelatedResourceItem {
   nodeId: string; title: string; summary: string; activity: 'working' | 'idle' | 'complete' | 'unknown';
-  attention: 'none' | 'input' | 'review' | 'error'; typeName: string;
+  attention: 'none' | 'input' | 'review' | 'error'; attentionNote?: string; typeName: string;
   resource?: ResourceRecord; parentResourceId?: string;
 }
 
@@ -373,9 +373,8 @@ export interface ResourceViewServices {
   showOnMap?(nodeId: string): void;
   /** Open the host's existing edit form for this item, using shared commands. */
   editResource?(): void;
-  /** Saves fields into this item's data with the shared item.update command; null removes a field. With `expect`, it saves
-   * only while those fields still hold these values (null for absent) and otherwise saves nothing and resolves false. */
-  saveData?(patch: JsonObject, expect?: JsonObject): Promise<boolean | void>;
+  /** Saves fields into this item's data with the shared item.update command, onto its latest data; null removes a field. */
+  saveData?(patch: JsonObject): Promise<void>;
   /** What the host keeps of this item's view layout, such as a folded panel. It survives reload and restart and,
    * unlike saveData, never changes the item, so it never invalidates the provider's cached read. */
   viewState?(): Readonly<Record<string, string | number | boolean>>;
@@ -406,7 +405,7 @@ export interface ResourcePreview { byline?: string; updatedAt?: string; facts: {
 export interface ResourcePluginViews {
   /** Reads only saved local state (cached snapshots, receipts), never the provider. */
   preview?(resource: ResourceRecord, services: Pick<ResourceViewServices, 'runAction'>, signal: AbortSignal): Promise<ResourcePreview>;
-  runContextAction?(actionId: string, resource: ResourceRecord, services: Pick<ResourceViewServices, 'runAction'>, signal: AbortSignal): Promise<{ nodeId?: string }>;
+  runContextAction?(actionId: string, resource: ResourceRecord, services: Pick<ResourceViewServices, 'runAction'>, signal: AbortSignal): Promise<{ nodeId?: string; detail?: string }>;
   /** Changes outside this identity update the outer card without remounting a live view. */
   identity?(resource: ResourceRecord): string;
   mountDetail(
@@ -423,6 +422,8 @@ export interface ResourcePluginViews {
   ): MountedResourceView;
 }
 
+/** App settings a menu group may depend on: `videoLaunch` holds while the video agent's provider is on. */
+export type MenuAppSetting = 'videoLaunch';
 export interface ResourceMenuGroup {
   id: string; label: string;
   /** `runs` makes an entry start the named children of this group together, each as if it had been picked. */
@@ -434,8 +435,9 @@ export interface ResourceMenuGroup {
   /** With `runtime`, load/apply are operations of that workspace runtime action
    * instead of provider resource actions. */
   choices?: ChoiceSource;
-  /** Shown only while the boolean `settings.plugins[plugin][setting]` (or its declared default) is true. */
-  when?: { plugin: string; setting: string };
+  /** Shown only while the boolean `settings.plugins[plugin][setting]` (or its declared default) is true, or while the
+   * named app setting is chosen. */
+  when?: { plugin: string; setting: string } | { app: MenuAppSetting };
 }
 
 /** `irreversible` lists Cancel first with focus and asks again before applying a picked option.

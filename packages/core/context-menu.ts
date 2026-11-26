@@ -1,4 +1,4 @@
-import type { ChoiceConfirm, ChoiceHighlight, ChoiceSource, JsonObject, ResourceFields, ResourceMenuGroup } from '../../src/resource-plugins/types.ts';
+import type { ChoiceConfirm, ChoiceHighlight, ChoiceSource, JsonObject, MenuAppSetting, ResourceFields, ResourceMenuGroup } from '../../src/resource-plugins/types.ts';
 import { plotPalette } from '../../src/graph/plot-palette.ts';
 import { isPlotColor } from '../../src/graph/plots.ts';
 import { isHexColor } from '../../src/graph/colors.ts';
@@ -258,9 +258,9 @@ export function itemPlotActions(nodes: readonly Pick<GraphNode, 'id' | 'projectI
   return [moveToPlotAction(targets), ...shared ? [removeFromPlotAction()] : []];
 }
 
-/** Groups whose `when` package setting is not on are left out; `settings` has defaults filled in. */
-export function enabledMenuGroups(groups: readonly ResourceMenuGroup[] = [], settings: Readonly<Record<string, JsonObject>> = {}): ResourceMenuGroup[] {
-  return groups.filter(group => !group.when || settings[group.when.plugin]?.[group.when.setting] === true);
+/** Groups whose `when` package setting is not on, or whose app setting is not chosen, are left out; `settings` has defaults filled in. */
+export function enabledMenuGroups(groups: readonly ResourceMenuGroup[] = [], settings: Readonly<Record<string, JsonObject>> = {}, app: Readonly<Partial<Record<MenuAppSetting, boolean>>> = {}): ResourceMenuGroup[] {
+  return groups.filter(group => !group.when || ('app' in group.when ? app[group.when.app] === true : settings[group.when.plugin]?.[group.when.setting] === true));
 }
 
 /** A plot's signpost menu (MAP-24). Name automatically needs Name plots on. With the plot's colors it offers

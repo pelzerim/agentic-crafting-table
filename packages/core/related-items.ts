@@ -17,7 +17,7 @@ export function relatedResourceItems(graph: WorkspaceState, nodeId: string, regi
     const key = node.resourceId ?? node.id; if (seen.has(key)) continue; seen.add(key);
     const definition = resource && registry.get(resource.pluginId), parentField = definition?.context?.parentField;
     const parent = parentField && nodes.get(String(resource?.data[parentField]));
-    result.push({ nodeId: node.id, title: node.title, summary: node.summary, activity: node.activity, attention: node.attention,
+    result.push({ nodeId: node.id, title: node.title, summary: node.summary, activity: node.activity, attention: node.attention, attentionNote: node.attentionNote,
       typeName: definition?.name ?? (resource ? resource.pluginId : 'Project'), resource, parentResourceId: parent ? parent.resourceId : undefined });
   }
   return result;

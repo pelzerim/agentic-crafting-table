@@ -11,7 +11,7 @@ const ICONS: Partial<Record<MenuActionId, string>> = {
   open: 'open', connect: 'link', 'open-web': 'external', 'copy-url': 'copy', edit: 'settings', settings: 'settings', 'add-todo': 'square-check', 'remove-todo': 'square', 'auto-title': 'sparkles',
   complete: 'seen', reopen: 'refresh', below: 'undermap', surface: 'open', archive: 'archive', 'archive-browser': 'archive', 'new-item': 'plus', 'new-project': 'project',
   'remove-link': 'unlink', 'plot-auto': 'sparkles', 'make-blocking': 'link', 'make-normal': 'link', 'reverse-link': 'link', 'send-project': 'project', 'project-into': 'project', 'move-plot': 'sprout', 'plot-unpin': 'minus',
-  'context-show': 'message-square', 'context-hide': 'message-square', 'context-add': 'message-square', 'standup-report': 'file-text', tidy: 'grid',
+  'context-show': 'message-square', 'context-hide': 'message-square', 'context-add': 'message-square', 'standup-report': 'file-text', tidy: 'grid', 'plugin:video': 'video',
 };
 /** Top-level rows lead with a 16px glyph; provider actions pick theirs from the action. */
 /** What a person sees and would send, apart from each choice's fresh request id. */

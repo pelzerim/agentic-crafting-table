@@ -55,7 +55,7 @@ port, and reserves stdout for protocol messages, following the
 | Declared | For an agent |
 | --- | --- |
 | nothing, or `allow` | runs |
-| `actsForPerson` (merge, update branch, pull request state and title tag, approve a deployment, save a text file; starting or stopping an auto deploy, a review loop, a validation, Explain architecture; sending review findings to an agent or cancelling that; adding linked pull requests) | runs while Settings → General → **Agents may act for you** is on (the default); refused with a message naming the setting while it is off |
+| `actsForPerson` (merge, update branch, pull request state and title tag, approve a deployment, save a text file; starting or stopping an auto deploy, a review loop, a validation, Explain architecture, Explain in video; sending review findings to an agent or cancelling that; adding linked pull requests) | runs while Settings → General → **Agents may act for you** is on (the default); refused with a message naming the setting while it is off |
 | `humanOnly` (rename an agent, record an item as opened, plot edits, mute, hide, show or hide a validation agent, override whether a review finding is fixed) | always refused |
 | a redirect | refused with the name of the tool to use instead |
 

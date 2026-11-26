@@ -21,6 +21,7 @@ import type { SqliteStore } from './sqlite-store.ts';
 import { realpathSync, statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { skillListSchema, skillRunSchema } from '../core/skills.ts';
+import type { SkillRun } from '../core/skills.ts';
 import { isArchived, isBelow } from '../../src/graph/archive.ts';
 import { agentReadiness, isPermissionPrompt } from './rollout-validation.ts';
 import { BACKGROUND_STALE_MS, backgroundSummary, outstanding, teammateKey } from './agent-background.ts';
@@ -118,7 +119,7 @@ export class AgentCoordinator {
       }
       const readiness = await agentReadiness(this.sessions, state, { nodeId: node.id, sessionId }, sessionId => this.observations.agentObservation(sessionId), now);
       if (readiness !== 'idle') continue;
-      commands.push({ type: 'node.update', id: node.id, ...(prompted ? this.settled(waiting) : { activity: 'idle', summary: 'Ready for your next prompt' }) });
+      commands.push({ type: 'node.update', id: node.id, ...(prompted ? this.settled(waiting) : { activity: 'idle', summary: 'Ready for your next prompt', turnEndedAt: new Date(now()).toISOString() }) });
     }
     if (!commands.length) return;
     try { await this.control.dispatch({ commandId: randomUUID(), expectedRevision: state.revision, actor: { kind: 'system', id: 'agent-quiet' }, commands }); await this.changed(); }
@@ -159,10 +160,10 @@ export class AgentCoordinator {
     await this.sessions.runtime.call('sessions.inject', { sessionId: args.sessionId, instructions: guide.systemPrompt, context: guide.referenceContext });
     return { state: 'acknowledged' as const, message: 'Added to the conversation. Codex reads it with your next prompt.' };
   }
-  private async skillDirectory(projectId: string, requested?: string) {
-    const state = await this.control.read(), project = state.nodes.find(node => node.id === projectId && !node.resourceId && !node.projectId);
-    if (!project || isArchived(project, state.nodes)) throw new Error('Choose an available project for this skill');
-    const cwd = requested || project.workingDirectory || this.sessions.fallbackDirectory();
+  private async skillDirectory(projectId: string | undefined, requested?: string) {
+    const state = await this.control.read(), project = projectId === undefined ? undefined : state.nodes.find(node => node.id === projectId && !node.resourceId && !node.projectId);
+    if (projectId !== undefined && (!project || isArchived(project, state.nodes))) throw new Error('Choose an available project for this skill');
+    const cwd = requested || project?.workingDirectory || this.sessions.fallbackDirectory();
     try { if (cwd && isAbsolute(cwd) && statSync(cwd).isDirectory()) return realpathSync(cwd); } catch { /* Present a useful directory error below. */ }
     throw new Error('Select an existing working directory for this skill or its project');
   }
@@ -170,7 +171,8 @@ export class AgentCoordinator {
     const request = skillListSchema.parse(input), cwd = await this.skillDirectory(request.projectId, request.cwd);
     return agentProvider(request.provider).skills(cwd);
   }
-  async runSkill(projectId: string, input: unknown) {
+  /** `builtIn` names a host-built task (never from MCP): the arguments are its whole opening prompt, with no skill lookup. */
+  async runSkill(projectId: string, input: unknown, builtIn?: string) {
     const args = skillRunSchema.parse(input);
     const original: ResourceCreate = { requestId: args.requestId, nodeId: args.nodeId, resourceId: args.resourceId, expectedRevision: args.expectedRevision, projectId,
       pluginId: 'agent.session', title: 'Skill run', position: args.position, ...(args.connection ? { connection: args.connection } : {}), data: { provider: args.provider, model: args.model, skillId: args.skillId, arguments: args.arguments, ...(args.cwd ? { cwd: args.cwd } : {}) } };
@@ -182,17 +184,20 @@ export class AgentCoordinator {
         if (canonical(saved.source) !== source) throw new Error('Skill launch ID was reused with different input');
         return this.sessions.launchPrepared(saved);
       }
-      const provider = agentProvider(args.provider), cwd = await this.skillDirectory(projectId, args.cwd), catalog = await provider.skills(cwd);
-      const selected = catalog.skills.find(skill => skill.id === args.skillId);
-      if (!selected) throw new Error('This skill is no longer available in this folder. Refresh the skill list.');
-      if (selected.unavailable) throw new Error(selected.unavailable);
+      const provider = agentProvider(args.provider), cwd = await this.skillDirectory(projectId, args.cwd);
+      const invocation = builtIn ? { id: args.skillId, name: builtIn, prompt: args.arguments } : await this.skillInvocation(provider, cwd, args);
       const capability = await provider.probe(), state = await this.control.read();
-      return this.sessions.launchPrepared(provider.prepare({ request: { ...original, title: selected.name, data: { ...original.data, cwd } }, originRequest: original,
-        state, directory: this.directory, runtime: this.options, capability,
-        skill: { id: selected.id, name: selected.name, prompt: provider.skillPrompt(selected, args.arguments) },
+      return this.sessions.launchPrepared(provider.prepare({ request: { ...original, title: invocation.name, data: { ...original.data, cwd } }, originRequest: original,
+        state, directory: this.directory, runtime: this.options, capability, skill: invocation,
       }, this.observations.readSettings().value));
     })().finally(() => this.skillRuns.delete(args.requestId));
     this.skillRuns.set(args.requestId, { source, promise }); return promise;
+  }
+  private async skillInvocation(provider: ReturnType<typeof agentProvider>, cwd: string, args: SkillRun) {
+    const catalog = await provider.skills(cwd), selected = catalog.skills.find(skill => skill.id === args.skillId);
+    if (!selected) throw new Error('This skill is no longer available in this folder. Refresh the skill list.');
+    if (selected.unavailable) throw new Error(selected.unavailable);
+    return { id: selected.id, name: selected.name, prompt: provider.skillPrompt(selected, args.arguments) };
   }
   /** A start from the form, MCP or another first-party service: a provider turned off in Settings is refused (AGENT-01b).
    * Resuming an item already on the table is not a start, and a conversation the CLI moved to follows it (AGENT-04a). */
@@ -503,7 +508,7 @@ export class AgentCoordinator {
         : event.notificationType === 'idle_prompt' ? 'Agent waiting' : event.event === 'StopFailure' ? 'Agent hit an error' : undefined;
       // The line the agent ended its turn on stays on the node until the next prompt starts a turn.
       const lastLine = event.event === 'Stop' && !waitingSummary ? agentLastLine(redactSecrets(event.lastMessage ?? '')) ?? null : event.event === 'UserPromptSubmit' ? null : undefined;
-      const turnEndedAt = event.event === 'Stop' ? new Date(event.observedAt).toISOString() : undefined;
+      const turnEndedAt = event.event === 'Stop' || event.event === 'StopFailure' ? new Date(event.observedAt).toISOString() : undefined;
       const next = waitingSummary ? { activity: 'working', attention: 'none', summary: waitingSummary } as const : {
         activity: working ? 'working' : 'idle', attention: inputNeeded ? 'input' : event.event === 'StopFailure' ? 'error' : event.event === 'SessionEnd' ? node.attention : 'none', ...(attentionNote ? { attentionNote } : {}),
         summary: inputNeeded ? 'Waiting for your input' : working ? 'Claude is working' : event.event === 'StopFailure' ? 'Claude reported an error' : event.event === 'SessionEnd' ? 'Conversation closed' : 'Ready for your next prompt',

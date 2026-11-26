@@ -19,13 +19,13 @@ test('context lists contain only local actions and keep creation off objects', (
 
 test('plugin review submenus appear only on items and keep lifecycle actions intact', () => {
   const actions = contextMenuActions('item', false, undefined, githubPullRequest.contextMenu);
-  assert.deepEqual(actions.map(action => action.label), ['Open', 'Connect to…', 'Trigger review', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', 'Settings', 'Mark done', 'Send to Undermap']);
+  assert.deepEqual(actions.map(action => action.label), ['Open', 'Connect to…', 'Trigger review', 'Review loop', 'Explain architecture', 'Explain in video', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', 'Settings', 'Mark done', 'Send to Undermap']);
   assert.deepEqual(actions[3].choices, { load: 'options', apply: 'set', runtime: 'review.loop', loadingLabel: 'Checking the review loop…' });
   assert.deepEqual(actions[4].children?.map(action => [action.id, action.label]), [['plugin:architecture.explain', 'Claude']]);
-  assert.deepEqual(actions[5].choices, { load: 'pr.merge.options', apply: 'pr.merge', loadingLabel: 'Checking merge options…', irreversible: true, pickConfirms: true });
-  assert.deepEqual(actions[6].choices, { load: 'options', apply: 'set', runtime: 'github.rollout.autoDeploy', loadingLabel: 'Checking auto deploy…' });
-  assert.deepEqual(actions[7].choices, { load: 'pr.state.options', apply: 'pr.state', loadingLabel: 'Checking the pull request…' });
-  assert.deepEqual(actions[8].choices, { load: 'pr.showShip.options', apply: 'pr.showShip', loadingLabel: 'Checking the title…' });
+  assert.deepEqual(actions[6].choices, { load: 'pr.merge.options', apply: 'pr.merge', loadingLabel: 'Checking merge options…', irreversible: true, pickConfirms: true });
+  assert.deepEqual(actions[7].choices, { load: 'options', apply: 'set', runtime: 'github.rollout.autoDeploy', loadingLabel: 'Checking auto deploy…' });
+  assert.deepEqual(actions[8].choices, { load: 'pr.state.options', apply: 'pr.state', loadingLabel: 'Checking the pull request…' });
+  assert.deepEqual(actions[9].choices, { load: 'pr.showShip.options', apply: 'pr.showShip', loadingLabel: 'Checking the title…' });
   assert.deepEqual(actions[2].children?.map(action => [action.id, action.label]), [['plugin:review.claude', 'Claude'], ['plugin:review.codex', 'Codex'], ['plugin:review.both', 'Claude + Codex'], ['plugin:review.workflow', '/review']]);
   for (const scope of ['board', 'neighborhood', 'project', 'link'] as const) assert.ok(contextMenuActions(scope, false, undefined, githubPullRequest.contextMenu).every(action => !action.children));
 });
@@ -265,10 +265,10 @@ test('the default layout holds a separator at each default group boundary and dr
   assert.deepEqual(itemMenuEntries({ name: 'Note' }), [{ id: 'open', label: 'Open' }, { id: 'connect', label: 'Connect to…' }, { id: '---', label: 'Separator', separator: true }, { id: 'edit', label: 'Settings' },
     { id: '---', label: 'Separator', separator: true }, { id: 'send-project', label: 'Move to project' }, { id: 'move-plot', label: 'Move to plot' }, { id: 'plot-unpin', label: 'Remove from plot' }, { id: 'complete', label: 'Mark done / Reopen' }, { id: 'below', label: 'Send to Undermap' }]);
   const layout = itemMenuEntries({ ...githubPullRequest, todoSupport: {}, activityTitle: {} }).map(entry => entry.id);
-  assert.deepEqual(layout, ['open', 'connect', '---', 'plugin:review', 'plugin:reviewLoop', 'plugin:architecture', 'plugin:merge', 'plugin:autoDeploy', 'plugin:state', 'plugin:showShip', '---', 'open-web', 'copy-url', 'edit', '---', 'send-project', 'move-plot', 'plot-unpin', 'add-todo', 'auto-title', 'complete', 'below']);
+  assert.deepEqual(layout, ['open', 'connect', '---', 'plugin:review', 'plugin:reviewLoop', 'plugin:architecture', 'plugin:video', 'plugin:merge', 'plugin:autoDeploy', 'plugin:state', 'plugin:showShip', '---', 'open-web', 'copy-url', 'edit', '---', 'send-project', 'move-plot', 'plot-unpin', 'add-todo', 'auto-title', 'complete', 'below']);
   assert.deepEqual(prMenu().map(action => [action.label, Boolean(action.divider)]), [
     ['Open', false], ['Connect to…', false],
-    ['Trigger review', true], ['Review loop', false], ['Explain architecture', false], ['Merge…', false], ['Auto deploy', false], ['Change state', false], ['Show/Ship', false],
+    ['Trigger review', true], ['Review loop', false], ['Explain architecture', false], ['Explain in video', false], ['Merge…', false], ['Auto deploy', false], ['Change state', false], ['Show/Ship', false],
     ['Open on GitHub', true], ['Copy URL', false], ['Settings', false],
     ['Move to project', true], ['Turn into todo', false], ['Auto-name from activity', false], ['Mark done', false], ['Send to Undermap', false],
   ]);
@@ -288,7 +288,7 @@ test('an item menu follows the saved layout: entries and separators where the us
   const moved = prMenu({ layout: ['copy-url', 'open', 'connect', '---', ...ids.filter(id => !['copy-url', 'open', 'connect'].includes(id))] });
   assert.deepEqual(moved.map(action => [action.label, Boolean(action.divider)]), [
     ['Copy URL', false], ['Open', false], ['Connect to…', false],
-    ['Trigger review', true], ['Review loop', false], ['Explain architecture', false], ['Merge…', false], ['Auto deploy', false], ['Change state', false], ['Show/Ship', false], ['Open on GitHub', false], ['Settings', false],
+    ['Trigger review', true], ['Review loop', false], ['Explain architecture', false], ['Explain in video', false], ['Merge…', false], ['Auto deploy', false], ['Change state', false], ['Show/Ship', false], ['Open on GitHub', false], ['Settings', false],
     ['Move to project', false], ['Turn into todo', false], ['Auto-name from activity', false], ['Mark done', false], ['Send to Undermap', false],
   ], 'only the saved separator is drawn');
   assert.deepEqual(moved.find(action => action.id === 'plugin:review')?.children, prMenu().find(action => action.id === 'plugin:review')?.children, 'a submenu keeps its inner order');
@@ -323,14 +323,14 @@ test('an earlier saved order converts to a layout with the separators it used to
   assert.deepEqual(prMenu({ order }).map(action => [action.label, Boolean(action.divider)]), [
     ['Copy URL', false],
     ['Open', true], ['Connect to…', false],
-    ['Trigger review', true], ['Review loop', false], ['Explain architecture', false], ['Merge…', false], ['Auto deploy', false], ['Change state', false], ['Show/Ship', false],
+    ['Trigger review', true], ['Review loop', false], ['Explain architecture', false], ['Explain in video', false], ['Merge…', false], ['Auto deploy', false], ['Change state', false], ['Show/Ship', false],
     ['Open on GitHub', true], ['Settings', false],
     ['Move to project', true], ['Turn into todo', false], ['Auto-name from activity', false], ['Mark done', false], ['Send to Undermap', false],
   ]);
   const mixed = contextMenuActions('item', false, undefined, [], undefined, undefined, undefined, false, undefined, undefined, undefined, [], { order: ['open', 'below', 'connect'] });
   assert.deepEqual(mixed.map(action => [action.id, Boolean(action.divider)]), [['open', false], ['below', true], ['connect', true], ['settings', true], ['complete', true]]);
   const type = { ...githubPullRequest, todoSupport: {}, activityTitle: {} }, converted = itemMenuEntries(type, { order }).map(entry => entry.id);
-  assert.deepEqual(converted, ['copy-url', '---', 'open', 'connect', '---', 'plugin:review', 'plugin:reviewLoop', 'plugin:architecture', 'plugin:merge', 'plugin:autoDeploy', 'plugin:state', 'plugin:showShip', '---', 'open-web', 'edit', '---', 'send-project', 'move-plot', 'plot-unpin', 'add-todo', 'auto-title', 'complete', 'below']);
+  assert.deepEqual(converted, ['copy-url', '---', 'open', 'connect', '---', 'plugin:review', 'plugin:reviewLoop', 'plugin:architecture', 'plugin:video', 'plugin:merge', 'plugin:autoDeploy', 'plugin:state', 'plugin:showShip', '---', 'open-web', 'edit', '---', 'send-project', 'move-plot', 'plot-unpin', 'add-todo', 'auto-title', 'complete', 'below']);
   assert.deepEqual(prMenu({ layout: converted }), prMenu({ order }), 'saved in the new shape, it draws the same menu');
   assert.deepEqual(itemMenuEntries({ name: 'Note' }, { order: ['below', 'open'] }).map(entry => entry.id), ['below', '---', 'open', 'connect', '---', 'edit', '---', 'send-project', 'move-plot', 'plot-unpin', 'complete']);
 });
@@ -346,7 +346,7 @@ test('a saved menu never changes projects, boards, connections or Undermap menus
 test('every item type lists its possible menu entries, one per slot, with its separators, for Settings', () => {
   const labels = (rows: ReturnType<typeof itemMenuEntries>) => rows.filter(row => !row.separator).map(row => row.label);
   assert.deepEqual(labels(itemMenuEntries(githubPullRequest)),
-    ['Open', 'Connect to…', 'Trigger review', 'Review loop', 'Explain architecture', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', 'Open on GitHub', 'Copy URL', 'Settings', 'Move to project', 'Move to plot', 'Remove from plot', 'Mark done / Reopen', 'Send to Undermap']);
+    ['Open', 'Connect to…', 'Trigger review', 'Review loop', 'Explain architecture', 'Explain in video', 'Merge…', 'Auto deploy', 'Change state', 'Show/Ship', 'Open on GitHub', 'Copy URL', 'Settings', 'Move to project', 'Move to plot', 'Remove from plot', 'Mark done / Reopen', 'Send to Undermap']);
   const everything = itemMenuEntries({ name: 'Web link', generatedTitle: true, webLink: { label: 'Open in browser' }, todoSupport: {}, activityTitle: {}, creation: { urlFallback: true }, contextMenu: [{ id: 'tags', label: 'Tags', children: [], when: { plugin: 'acme', setting: 'on' } }] });
   assert.deepEqual(everything.map(entry => [entry.id, entry.label]), [['open', 'Open'], ['connect', 'Connect to…'], ['---', 'Separator'], ['plugin:tags', 'Tags'], ['---', 'Separator'], ['open-web', 'Open in browser'], ['copy-url', 'Copy URL'], ['convert', 'Convert to a specific type'], ['edit', 'Settings'],
     ['---', 'Separator'], ['send-project', 'Move to project'], ['move-plot', 'Move to plot'], ['plot-unpin', 'Remove from plot'], ['add-todo', 'Turn into todo / Remove from to-dos'], ['auto-title', 'Auto-name from activity'], ['complete', 'Mark done / Reopen'], ['below', 'Send to Undermap']]);
@@ -413,13 +413,13 @@ test('a hidden slot leaves the single item menu with all its variants and its su
 
 test('separators next to hidden entries fold: never a doubled, leading or trailing line', () => {
   const lines = (custom: Parameters<typeof contextMenuActions>[12]) => prMenu(custom).map(action => [action.label, Boolean(action.divider)]);
-  assert.deepEqual(lines({ hidden: ['plugin:review', 'plugin:reviewLoop', 'plugin:architecture', 'plugin:merge', 'plugin:autoDeploy', 'plugin:state', 'plugin:showShip'] }), [
+  assert.deepEqual(lines({ hidden: ['plugin:review', 'plugin:reviewLoop', 'plugin:architecture', 'plugin:video', 'plugin:merge', 'plugin:autoDeploy', 'plugin:state', 'plugin:showShip'] }), [
     ['Open', false], ['Connect to…', false],
     ['Open on GitHub', true], ['Copy URL', false], ['Settings', false],
     ['Move to project', true], ['Turn into todo', false], ['Auto-name from activity', false], ['Mark done', false], ['Send to Undermap', false],
   ], 'a wholly hidden group leaves one line');
   assert.deepEqual(lines({ hidden: ['open', 'connect', 'send-project', 'add-todo', 'auto-title', 'complete', 'below'] }), [
-    ['Trigger review', false], ['Review loop', false], ['Explain architecture', false], ['Merge…', false], ['Auto deploy', false], ['Change state', false], ['Show/Ship', false],
+    ['Trigger review', false], ['Review loop', false], ['Explain architecture', false], ['Explain in video', false], ['Merge…', false], ['Auto deploy', false], ['Change state', false], ['Show/Ship', false],
     ['Open on GitHub', true], ['Copy URL', false], ['Settings', false],
   ], 'no line above the first or below the last entry');
   assert.deepEqual(drawnMenuLayout(['open', '---', 'edit', '---', 'copy-url', '---', 'below'], ['edit', 'copy-url']), ['open', '---', 'below']);

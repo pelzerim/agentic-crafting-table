@@ -92,6 +92,12 @@
       "dist/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "apps/desktop/video-skill",
+        "to": "video-skill"
+      }
+    ],
     "asarUnpack": [
       "node_modules/node-pty/**/*"
     ],

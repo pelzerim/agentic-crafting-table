@@ -36,7 +36,7 @@ export class PluginPackageRegistry {
         const used = [...group.children.map(child => child.id), ...(group.choices && !group.choices.runtime ? [group.choices.load, group.choices.apply] : [])];
         const unknown = difference(used, actions);
         if (unknown.length) throw new Error(`Plugin ${manifest.id} menu ${group.id} uses undeclared actions: ${unknown.join(', ')}`);
-        if (group.when && group.when.plugin !== manifest.id) throw new Error(`Plugin ${manifest.id} menu ${group.id} depends on another package's settings`);
+        if (group.when && 'plugin' in group.when && group.when.plugin !== manifest.id) throw new Error(`Plugin ${manifest.id} menu ${group.id} depends on another package's settings`);
       }
     }
     sameIds(manifest.id, 'settings presets', contributes.settingsPresets, (module.settingsPresets ?? []).map(preset => preset.id));

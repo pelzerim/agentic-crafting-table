@@ -121,13 +121,14 @@ function PluginDetail({ resource, registry, active, nodeId, onOpen, onShow, onEd
   useEffect(() => {
     const view = views.mount('detail', container.current!, resource, {
       editResource: () => editRef.current(),
-      saveData: async (patch, expect) => {
-        const { state } = await window.craftingTable.workspaceRead(), record = state.resources.find(candidate => candidate.id === state.nodes.find(node => node.id === nodeId)?.resourceId);
-        if (!record) throw new Error('This item is no longer on the map.');
-        if (expect && Object.entries(expect).some(([key, value]) => JSON.stringify(record.data[key] ?? null) !== JSON.stringify(value))) return false;
-        // The revision guard refuses the write if anything changed since this read.
-        await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: state.revision, actor: { kind: 'user', id: 'desktop' }, commands: [{ type: 'item.update', id: nodeId, data: patchedData(record.data, patch) }] });
-        return true;
+      saveData: async patch => {
+        // A write elsewhere moves the revision: reread and patch the newest data, so the latest edit wins.
+        for (let attempt = 0; ; attempt++) {
+          const { state } = await window.craftingTable.workspaceRead(), record = state.resources.find(candidate => candidate.id === state.nodes.find(node => node.id === nodeId)?.resourceId);
+          if (!record) throw new Error('This item is no longer on the map.');
+          try { await window.craftingTable.workspaceApply({ commandId: crypto.randomUUID(), expectedRevision: state.revision, actor: { kind: 'user', id: 'desktop' }, commands: [{ type: 'item.update', id: nodeId, data: patchedData(record.data, patch) }] }); return; }
+          catch (error) { if ((error as { code?: string }).code !== 'REVISION_CONFLICT' || attempt >= 4) throw error; await new Promise(done => setTimeout(done, 75 * (attempt + 1))); }
+        }
       },
       viewState: () => viewStore.read(nodeId),
       saveViewState: patch => viewStore.save(nodeId, patch),
@@ -752,6 +753,7 @@ export function WorkspaceMap() {
   const selectedResource = resources?.find(resource => resource.id === selected?.resourceId);
   const selectedPlugin = plugins?.find(plugin => plugin.id === selectedResource?.pluginId);
   const pluginSettings = pluginSettingsValues(plugins ?? [], settings?.value.plugins);
+  const menuApp = { videoLaunch: Boolean(settings?.value.agentProviders[settings.value.videoSkill.provider]) };
   const scope = selectedLink ? 'link' : selected ? selected.resourceId ? 'item' : 'project' : editor?.projectId ? 'neighborhood' : 'board';
   const belowMenu = (node?: GraphNode) => layer === 'below' ? { blocker: node && snapshot ? surfaceBlocker(node, snapshot.state.nodes) : undefined } : undefined;
   /** The item's web page: what Open on … opens and Copy URL copies. */
@@ -785,7 +787,7 @@ export function WorkspaceMap() {
   const shownPartner = editor?.mode === 'menu' && layer === 'map' && selected?.resourceId && snapshot ? hiddenPartner(snapshot.state.nodes, snapshot.state.links, selected.id) : undefined;
   const visibility = { ...(shownPartner ? { show: shownPartner.hideLabel } : {}), ...(selected?.hideLabel && !selected.hiddenAt ? { hide: selected.hideLabel } : {}) };
   const sizeDefault = editor?.mode === 'menu' && layer === 'map' && selected && snapshot && settings ? sizeAsDefault(selected, snapshot.state.nodes, snapshot.state.resources, registry, settings.value.itemMapSizes) : undefined;
-  const singleActions = selectedLink ? linkMenuActions(selectedLink.kind, linkEnds?.[0]?.title ?? 'Unavailable item', linkEnds?.[1]?.title ?? 'Unavailable item') : contextMenuActions(scope, Boolean(selected?.completedAt), itemEditLabel(selectedPlugin), enabledMenuGroups(selectedPlugin?.contextMenu, pluginSettings), selectedPlugin?.todoSupport ? { enabled: Boolean(selected?.inTodoList) } : undefined, belowMenu(selected), web, Boolean(selectedPlugin?.activityTitle && settings?.value.summaries.agentTitles),
+  const singleActions = selectedLink ? linkMenuActions(selectedLink.kind, linkEnds?.[0]?.title ?? 'Unavailable item', linkEnds?.[1]?.title ?? 'Unavailable item') : contextMenuActions(scope, Boolean(selected?.completedAt), itemEditLabel(selectedPlugin), enabledMenuGroups(selectedPlugin?.contextMenu, pluginSettings, menuApp), selectedPlugin?.todoSupport ? { enabled: Boolean(selected?.inTodoList) } : undefined, belowMenu(selected), web, Boolean(selectedPlugin?.activityTitle && settings?.value.summaries.agentTitles),
     scope === 'project' && selected && layer === 'map' && settings?.value.mapPlots ? { shown: !snapshot?.plots?.hiddenProjects.includes(selected.id), hidden: snapshot?.plots?.list.filter(plot => plot.projectId === selected.id && plot.hidden).length ?? 0 } : undefined,
     move ?? projectInto,
     muteTarget && snapshot ? muteProjectAction(Boolean(muteTarget.mutedAt), attentionCounts(attentionItems(snapshot.state.nodes, muteTarget.id), counting).needsMe) : undefined,
@@ -795,7 +797,7 @@ export function WorkspaceMap() {
     layer === 'map' && selected && selectedResource ? fieldMenuActions(selectedPlugin?.fields, selectedResource.data, { display: badged.attached.has(selected.id) || selectedResource.data.display === 'badge' ? 'badge' : 'note' }) : [], plotEntries);
   const menuActions = selectedItems.length > 1 ? sharedContextMenuActions(selectedItems.map(node => {
     const resource = resources?.find(r => r.id === node.resourceId), plugin = plugins?.find(p => p.id === resource?.pluginId);
-    return contextMenuActions(node.resourceId ? 'item' : 'project', Boolean(node.completedAt), undefined, enabledMenuGroups(plugin?.contextMenu, pluginSettings), plugin?.todoSupport ? { enabled: Boolean(node.inTodoList) } : undefined, belowMenu(node), webPage(resource), false, undefined, move, undefined, [], {}, undefined, {}, [], plotEntries);
+    return contextMenuActions(node.resourceId ? 'item' : 'project', Boolean(node.completedAt), undefined, enabledMenuGroups(plugin?.contextMenu, pluginSettings, menuApp), plugin?.todoSupport ? { enabled: Boolean(node.inTodoList) } : undefined, belowMenu(node), webPage(resource), false, undefined, move, undefined, [], {}, undefined, {}, [], plotEntries);
   })) : !selectedLink && selected?.resourceId && settings?.value.itemDelete ? [...singleActions, deleteItemAction()] : singleActions;
   /** One command moves the block; then the map flies to the lead as Show on map does, keeping the moved items selected and closed. */
   const moveToProject = (ids: string[], projectId: string | null, plot?: { id: string; from: string }) => {

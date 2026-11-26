@@ -61,6 +61,9 @@ test('native skill launches inherit context, preserve exact invocation on retry 
       const resumed = provider.prepare({ request: { requestId: randomUUID(), nodeId: input.nodeId, resourceId: input.resourceId, expectedRevision: (await control.read()).revision, pluginId: 'agent.session', title: 'inspect', position: input.position, data: {} }, state: await control.read(), directory, runtime, capability: await provider.probe(), resumeNodeId: input.nodeId }, settingsSchema.parse({}));
       assert.equal(id === 'claude' ? resumed.launch.args.includes('--') : Boolean(resumed.launch.native?.initialPrompt), false, 'resume never invokes the selected skill again');
       assert.deepEqual((resumed.commands[0] as any).data.skill, data.skill);
+      const builtIn = { ...input, requestId: randomUUID(), nodeId: randomUUID(), resourceId: randomUUID(), expectedRevision: (await control.read()).revision, skillId: 'built-in:video', connection: undefined };
+      await agents.runSkill('project', builtIn, 'Explain in video');
+      assert.equal(id === 'claude' ? latest!.launch.args.at(-1) : latest!.launch.native?.initialPrompt, builtIn.arguments, 'a built-in task is the whole prompt, with no skill lookup');
     }
     await control.apply({ type: 'node.archive', id: 'project' }, (await control.read()).revision);
     await assert.rejects(agents.skills({ projectId: 'project', provider: 'claude' }), /available project/);

@@ -1,9 +1,14 @@
 import { providerLabels } from '../../../agents/display-names.ts';
 import { agentModelLabel } from '../../../agents/model-label.ts';
 import type { AgentPromptStatus, ResourcePluginViews } from '../../types.ts';
+import { runVideoExplainAction } from '../video/explain.ts';
 
 export const agentViews: ResourcePluginViews = {
   identity: resource => String(resource.data.sessionId),
+  runContextAction: async (actionId, _resource, services, signal) => {
+    if (actionId !== 'video.explain') throw new Error('Unknown agent action');
+    return runVideoExplainAction(services, signal);
+  },
   mountDetail(container, resource, services) {
     let requestId: string | undefined, promptRequestId: string | undefined;
     const terminal = services.attachTerminal(String(resource.data.sessionId), container, {

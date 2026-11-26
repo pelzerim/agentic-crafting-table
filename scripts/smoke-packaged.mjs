@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, mkdir, writeFile } from 'node:fs/promises';
 import { spawn, execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -27,6 +28,8 @@ try {
   } finally { clearTimeout(timeout); }
   const result = JSON.parse(await readFile(report, 'utf8'));
   assert.equal(result.packaged, true);
+  const resources = process.platform === 'darwin' ? join(dirname(dirname(executable)), 'Resources') : join(dirname(executable), 'resources');
+  assert.ok(existsSync(join(resources, 'video-skill', 'SKILL.md')), 'The built-in video skill ships as a folder outside app.asar');
   assert.equal(result.savedSessions.sessions[0].id, savedId);
   assert.equal(result.savedSessions.sessions[0].title, 'Packaged saved conversation');
   assert.equal(result.runtimeNode, result.versions.node);

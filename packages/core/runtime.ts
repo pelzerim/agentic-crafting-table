@@ -24,6 +24,8 @@ export const hostRuntimeOperations: readonly RuntimeOperationDeclaration[] = [
   { id: 'map.tidy', agentPolicy: 'humanOnly' },
   // Notes are the person's words: an agent never sends them, whatever the setting.
   { id: 'video.notes', agentPolicy: 'humanOnly' },
+  // Spends a model run and prompts an agent on a person's behalf.
+  { id: 'video.explain', agentPolicy: 'actsForPerson' },
 ];
 
 /** Host operations followed by every bundled package's declared operations. */

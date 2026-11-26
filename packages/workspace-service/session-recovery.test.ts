@@ -63,6 +63,20 @@ async function fixture(count = 2) {
   };
 }
 
+test('an uncertain agent launch is not started by recovery once its provider is turned off and no process exists', async () => {
+  const f = await fixture(0), launch: LaunchRequest = { requestId: 'agent-launch', sessionId: 'agent-session', nodeId: 'agent', workspaceId: 'local:fixture', executable: '/bin/sh', args: [], cwd: f.directory, cols: 100, rows: 30 };
+  try {
+    await f.control.apply({ type: 'item.add', id: 'agent', resourceId: 'agent-resource', pluginId: 'agent.session', title: 'Codex', position: { x: 0, y: 0 }, data: { provider: 'codex', sessionId: 'agent-session' } }, (await f.control.read()).revision);
+    const job = f.store.enqueueJob('agent-launch', { action: 'agent.create', nodeId: 'agent', arguments: { launch } });
+    f.store.transitionJob(f.store.transitionJob(job.id, 'queued', 'running').id, 'running', 'outcome-unknown', { error: 'The supervisor did not answer' });
+    const settings = f.store.readSettings();
+    f.store.writeSettings({ expectedRevision: settings.revision, value: { ...settings.value, agentProviders: { ...settings.value.agentProviders, codex: false } } });
+    await within(f.coordinator().recover());
+    assert.deepEqual(f.calls, [], 'nothing starts');
+    assert.equal(f.states()[0], 'failed');
+  } finally { await f.close(); }
+});
+
 test('a status an agent set on its item stands until the native status changes', async () => {
   const f = await fixture(1), coordinator = f.coordinator(), update = (session: unknown) => (coordinator as unknown as { updateSession(session: unknown): Promise<boolean> }).updateSession(session);
   try {

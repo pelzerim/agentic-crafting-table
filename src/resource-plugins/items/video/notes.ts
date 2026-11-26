@@ -1,3 +1,4 @@
+import { awaitingAnswer } from '../../../graph/attention.ts';
 import type { JsonObject, RelatedResourceItem, ResourceRecord, ResourceViewServices } from '../../types.ts';
 import { formatWhen } from '../../format-when.ts';
 import { VIDEO_NOTES_LIMIT } from './source.ts';
@@ -23,31 +24,27 @@ export function mountVideoNotes(document: Document, resource: ResourceRecord, se
   const panel = element('section', '', 'video-notes'), text = element('textarea', '', 'video-notes-text'), controls = element('div', '', 'pr-comment-controls');
   const addTime = element('button', 'Add time'), agents = element('select'), send = element('button', 'Send to agent ▸');
   const stamps = element('ul', '', 'video-notes-stamps'), feedback = element('small', '', 'pr-comment-feedback'), clear = element('button', 'Clear');
-  const resolve = element('div', '', 'pr-comment-controls'), keep = element('button', 'Keep my draft'), useSaved = element('button', 'Use saved notes');
   panel.setAttribute('aria-label', 'Video notes');
-  for (const button of [addTime, send, clear, keep, useSaved]) button.type = 'button';
+  for (const button of [addTime, send, clear]) button.type = 'button';
   text.maxLength = VIDEO_NOTES_LIMIT; text.setAttribute('aria-label', 'Notes'); text.placeholder = 'Type while you watch. Add time puts [mm:ss] at the cursor.';
   text.value = notesOf(resource.data);
   agents.setAttribute('aria-label', 'Agent for notes'); clear.hidden = true;
   feedback.setAttribute('role', 'status');
   controls.append(addTime, agents, send, clear);
-  resolve.hidden = true; resolve.append(keep, useSaved);
-  panel.append(text, controls, feedback, resolve, stamps);
+  panel.append(text, controls, feedback, stamps);
 
-  // `confirmed` is the notes known saved; `queuedText` the newest draft handed to a save; `latest` the item's notes as last observed.
-  let confirmed = text.value, queuedText: string | undefined = text.value, latest = text.value, conflict = false;
+  // `confirmed` is the notes known saved; `queuedText` the newest draft handed to a save.
+  let confirmed = text.value, queuedText: string | undefined = text.value;
   let sent: Sent | undefined, sending = false, sends = 0, queued = 0, timer: ReturnType<typeof setTimeout> | undefined;
   let related: RelatedResourceItem[] = [], offRelated: (() => void) | undefined, observed: JsonObject | undefined = resource.data;
-  const showConflict = () => { resolve.hidden = !conflict; if (conflict) feedback.textContent = 'The saved notes changed elsewhere. Keep your draft or use the saved notes.'; };
-  // One save at a time, each reading the item's latest revision. A notes save writes only over the notes known saved, and none runs after a conflict.
+  // One save at a time, each reading the item's latest revision; the latest edit wins.
   let chain: Promise<boolean> = Promise.resolve(true);
   const save = (patch: JsonObject, notes?: string) => {
     queued++;
     return chain = chain.then(async () => {
       let ok = false;
       try {
-        if (notes !== undefined && conflict) return false;
-        if (await services.saveData?.(patch, notes !== undefined ? { notes: confirmed || null } : undefined) === false) { conflict = true; showConflict(); return false; }
+        await services.saveData?.(patch);
         if (notes !== undefined) confirmed = notes;
         // What was observed before this write is older than it.
         observed = undefined;
@@ -63,9 +60,8 @@ export function mountVideoNotes(document: Document, resource: ResourceRecord, se
   // Resolves true once the draft on screen is saved.
   const flush = (): Promise<boolean> => {
     clearTimeout(timer); timer = undefined;
-    if (conflict) { showConflict(); return Promise.resolve(false); }
     if (text.value !== queuedText) { const value = queuedText = text.value; void save({ notes: value || null }, value); }
-    return chain.then(() => !conflict && text.value === confirmed);
+    return chain.then(() => text.value === confirmed);
   };
   const showSent = () => {
     panel.dataset.sent = String(Boolean(sent)); clear.hidden = !sent;
@@ -86,15 +82,15 @@ export function mountVideoNotes(document: Document, resource: ResourceRecord, se
     agents.replaceChildren(...linked.map(item => { const option = element('option', item.title); option.value = item.nodeId; return option; }));
     if (linked.some(item => item.nodeId === selected)) agents.value = selected;
     agents.hidden = linked.length < 2; send.hidden = !linked.length;
-    const target = linked.find(item => item.nodeId === agents.value), ready = target && target.activity === 'idle' && target.attention !== 'input' && Boolean(target.resource?.data.sessionId);
+    const target = linked.find(item => item.nodeId === agents.value), ready = target && target.activity === 'idle' && !awaitingAnswer(target) && Boolean(target.resource?.data.sessionId);
     send.disabled = sending || Boolean(sent) || !ready || !text.value.trim(); addTime.disabled = clear.disabled = sending;
     send.title = sent ? 'Sent. Edit the notes to send them again.' : !ready ? 'Wait until the agent is ready for a new prompt.' : !text.value.trim() ? 'Write some notes first' : `Send these notes to ${target.title}`;
   };
   // An editor with no unsaved typing shows the item's latest notes.
-  const idle = () => !sending && !queued && !conflict && timer === undefined && text.value === confirmed;
+  const idle = () => !sending && !queued && timer === undefined && text.value === confirmed;
   const take = (notes: string) => { const at = Math.min(text.selectionStart, notes.length); text.value = confirmed = queuedText = notes; text.setSelectionRange(at, at); };
   const adopt = async (data: JsonObject) => {
-    const notes = latest = notesOf(data);
+    const notes = notesOf(data);
     if (!idle()) return;
     const next = await sentFor(data.notesSent, notes);
     if (!idle() || observed !== data) return;
@@ -104,7 +100,7 @@ export function mountVideoNotes(document: Document, resource: ResourceRecord, se
   };
   const changed = () => {
     if (sent) { sent = undefined; feedback.textContent = ''; void save({ notesSent: null }); }
-    clearTimeout(timer); timer = conflict ? undefined : setTimeout(() => void flush(), 500);
+    clearTimeout(timer); timer = setTimeout(() => void flush(), 500);
     showSent(); renderStamps(); updateAgents();
   };
   text.oninput = changed;
@@ -139,8 +135,6 @@ export function mountVideoNotes(document: Document, resource: ResourceRecord, se
     clearTimeout(timer); timer = undefined; text.value = queuedText = ''; sent = undefined; feedback.textContent = '';
     void save({ notes: null, notesSent: null, notesPending: null }, ''); showSent(); renderStamps(); updateAgents(); text.focus();
   };
-  keep.onclick = () => { conflict = false; confirmed = latest; feedback.textContent = ''; showConflict(); void flush(); };
-  useSaved.onclick = () => { conflict = false; feedback.textContent = ''; showConflict(); take(latest); renderStamps(); updateAgents(); };
   showSent(); renderStamps(); updateAgents();
   const offData = services.observeData?.(data => { observed = data; void adopt(data); });
   void adopt(resource.data);

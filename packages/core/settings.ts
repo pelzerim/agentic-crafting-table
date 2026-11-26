@@ -134,6 +134,11 @@ export const agentProvidersSchema = z.object({
 }).default(() => ({ ...DEFAULT_AGENT_PROVIDERS }));
 /** The enabled providers in start-form order. */
 export function enabledAgentProviders(settings: Pick<AppSettings, 'agentProviders'>): AgentProviderId[] { return AGENT_PROVIDER_IDS.filter(id => settings.agentProviders[id]); }
+/** The skill Explain in video runs (VIDEO-EXPLAIN); an empty `skillId` hides its menu entries. */
+export const videoSkillSchema = z.object({
+  provider: z.enum(AGENT_PROVIDER_IDS).default('claude'), skillId: z.string().max(4096).default(''), name: z.string().max(200).default(''),
+}).default({ provider: 'claude', skillId: '', name: '' });
+export type VideoSkill = z.infer<typeof videoSkillSchema>;
 export const settingsSchema = z.object({
   notifications: notificationSettingsSchema,
   connections: providerConnectionsSchema,
@@ -188,6 +193,7 @@ export const settingsSchema = z.object({
   defaultWorkingDirectory: z.string().max(4096).default(''),
   quickItemTypes: z.array(z.string().min(1).max(200)).max(MAX_QUICK_ITEMS).refine(ids => new Set(ids).size === ids.length, 'Choose each type only once').default(DEFAULT_QUICK_ITEMS),
   agentProviders: agentProvidersSchema,
+  videoSkill: videoSkillSchema,
   claude: z.object({ remoteControl: z.boolean().default(true), autoMode: z.boolean().default(true), arguments: agentArgumentsSchema.default([]) }).default({ remoteControl: true, autoMode: true, arguments: [] }),
   summaries: z.object({
     enabled: z.boolean().default(false), model: z.string().trim().min(1).max(100).default('haiku'),

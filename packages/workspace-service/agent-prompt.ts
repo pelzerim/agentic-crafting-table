@@ -1,6 +1,9 @@
 import { sessionInputChunks } from '../session-runtime/input-chunks.ts';
 import type { SessionCoordinator } from './sessions.ts';
 
+/** Sessions a prompt is being typed into, from its readiness check to Enter: a second would interleave with it. */
+export const prompting = new Set<string>();
+
 /** The typed line every prompt from the table opens with, ahead of what it asks for. */
 export const FROM_TABLE = 'I asked for this from the Agentic Crafting Table.';
 

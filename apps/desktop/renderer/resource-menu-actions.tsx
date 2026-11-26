@@ -7,7 +7,7 @@ import { useNotice } from './use-notice.ts';
 import { Toast } from './ui/notice.tsx';
 
 /** `confirming` is the expected state a change shows until the provider confirms it ("Merged · confirming"). */
-interface ActionNotice { originNodeId: string; key: string; title: string; pending: boolean; nodeId?: string; mutation?: boolean; confirming?: string }
+interface ActionNotice { originNodeId: string; key: string; title: string; pending: boolean; nodeId?: string; mutation?: boolean; confirming?: string; detail?: string }
 export function useResourceMenuActions(registry: ResourcePluginRegistry, onError: (message: string) => void) {
   const views = useMemo(() => createResourceViews(registry), [registry]);
   const pending = useRef(new Map<string, AbortController>());
@@ -23,7 +23,7 @@ export function useResourceMenuActions(registry: ResourcePluginRegistry, onError
     void views.runContextAction(structuredClone(resource), actionId, {
       runAction: (action, input) => window.craftingTable.runtimeRun({ action: action as 'agent.resume', nodeId, arguments: input ?? {} }) as ReturnType<ResourceViewServices['runAction']>,
     }, controller.signal).then(result => {
-      if (!controller.signal.aborted) setNotices(old => old.map(notice => notice.key === key ? { ...notice, pending: false, nodeId: result.nodeId } : notice));
+      if (!controller.signal.aborted) setNotices(old => old.map(notice => notice.key === key ? { ...notice, pending: false, nodeId: result.nodeId, ...(result.detail ? { detail: result.detail } : {}) } : notice));
     }).catch(error => {
       if (!controller.signal.aborted) { dismiss(key); onError(`${title}: ${error.message ?? String(error)}`); }
     }).finally(() => { pending.current.delete(key); });
@@ -42,7 +42,7 @@ export function useResourceMenuActions(registry: ResourcePluginRegistry, onError
 }
 
 export function ResourceActionNotice({ notice, open, dismiss }: { notice: ActionNotice; open(id: string): void; dismiss(): void }) {
-  const detail = notice.mutation ? notice.pending ? 'Updating…' : notice.confirming ?? 'Status updated' : notice.pending ? 'Starting…' : 'Added to the map';
+  const detail = notice.mutation ? notice.pending ? 'Updating…' : notice.confirming ?? 'Status updated' : notice.pending ? 'Starting…' : notice.detail ?? 'Added to the map';
   useNativeAnnouncement(notice, { title: notice.title, body: detail, nodeId: notice.nodeId ?? notice.originNodeId });
   const visibility = useNotice(notice, !notice.pending);
   useEffect(() => { if (!visibility.visible) dismiss(); }, [visibility.visible, dismiss]);
