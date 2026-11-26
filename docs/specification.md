@@ -1968,10 +1968,15 @@ Omit redundant "Native Claude session" labels and stacked control bars. Fit ever
 including the last prompt line, within the available content area after resizing.
 Ctrl/Cmd +/− adjusts the focused terminal's font size only; Ctrl/Cmd 0 resets it.
 **Cut** (Ctrl+X, ⌘X on macOS) works in every editable input. Text fields cut as usual. In a terminal the editable text is the line on the cursor's row: a selection there is copied and removed by arrow keys and Backspace, in a shell or an agent; a selection elsewhere is copied only, as is any selection in a read-only session or a full-screen program that is not an agent. An agent's own mouse selection is removed the same way, by Backspace. With no selection the key goes to the process. **⌘F** never reaches the process: it opens a find bar at the terminal's top right
-(or refocuses it, prefilled with a one-line selection). Typing highlights every match,
-case-insensitive, with a “2 of 5” or “No results” count; Enter or ⌘G steps forward,
-Shift+Enter or ⇧⌘G back, and Esc closes it, clears the highlights and returns focus to
-the terminal. A full-screen CLI can only be searched on its visible screen.
+(or refocuses it, prefilled with a one-line selection). Off macOS, **Ctrl+F** does the same in an
+agent session (Claude, Codex and the other agent CLIs) and **Ctrl+Shift+F** in every terminal; a
+shell keeps Ctrl+F, its forward-a-character key, and on macOS Ctrl+F always reaches the process.
+Typing highlights every match, case-insensitive, with a “2 of 5” or “No results” count, and
+scrolls the terminal to the active match, in the scrollback too. In the field Enter or ↓ steps
+forward and Shift+Enter or ↑ back; anywhere in the bar F3 or ⌘G (also Ctrl+G off macOS) steps
+forward and the same key with Shift back. Esc closes it, clears the highlights and returns focus to
+the terminal. Find covers only the scrollback the terminal keeps (SETTINGS-TERMINAL),
+and a full-screen CLI only its visible screen.
 Shift+Enter inserts a line break without submitting; ordinary Enter keeps the
 CLI’s submit behavior. Agent views send distinct Shift+Enter (CSI-u) for the
 native CLI to interpret. Plain terminals use a bracketed newline when supported,

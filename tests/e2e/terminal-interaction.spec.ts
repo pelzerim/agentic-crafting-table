@@ -134,6 +134,26 @@ test('Shift+Enter in a real zsh prompt inserts a second command line without exe
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
+test('the platform find key opens find; the arrows, F3 and Find Next step through matches', async ({ visual: { page } }) => {
+  await openTerminal(page);
+  const mac = process.platform === 'darwin';
+  await page.keyboard.press(mac ? 'Meta+f' : 'Control+Shift+F');
+  const bar = page.getByRole('search', { name: 'Find in terminal' }), field = bar.getByRole('searchbox', { name: 'Find in terminal' }), count = bar.locator('output');
+  await expect(field).toBeFocused();
+  await page.keyboard.type('billing');
+  await expect(count).toHaveText('1 of 3');
+  await page.keyboard.press('ArrowDown'); await expect(count).toHaveText('2 of 3');
+  await page.keyboard.press('ArrowUp'); await expect(count).toHaveText('1 of 3');
+  await page.keyboard.press('F3'); await expect(count).toHaveText('2 of 3');
+  await page.keyboard.press('Shift+F3'); await expect(count).toHaveText('1 of 3');
+  await page.keyboard.press(mac ? 'Meta+g' : 'Control+g'); await expect(count).toHaveText('2 of 3');
+  await page.keyboard.press(mac ? 'Meta+Shift+G' : 'Control+Shift+G'); await expect(count).toHaveText('1 of 3');
+  await page.screenshot({ path: 'test-results/pr/terminal-find.png' });
+  await page.keyboard.press('Escape');
+  await expect(bar).toHaveCount(0);
+  await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
+});
+
 test('⌘F finds text in the terminal: it counts matches, Enter steps through them and Esc hands focus back', async ({ visual: { page } }) => {
   await openTerminal(page);
   await page.keyboard.press('Meta+f');

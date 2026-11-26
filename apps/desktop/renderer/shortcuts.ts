@@ -27,7 +27,7 @@ export const WORKSPACE_SHORTCUTS = [
   { id: 'map.zoomReset', label: 'Zoom to 100%', key: '0', group: 'Map' },
   { id: 'rollout.jobsRail', label: 'Fold the rollout jobs rail', key: '[', group: 'Views' },
   { id: 'view.closeSeen', label: 'Close and mark seen', key: 'e', meta: true, display: '⌘E', group: 'Views' },
-  { id: 'terminal.find', label: 'Find in terminal', key: 'f', meta: true, display: '⌘F', group: 'Views' },
+  { id: 'terminal.find', label: 'Find in terminal', key: 'f', primary: true, group: 'Views' },
   { id: 'settings.open', label: 'Settings', key: ',', group: 'App' },
   { id: 'command.menu', label: 'Command menu', key: 'k', meta: true, display: '⌘K', group: 'App' },
   { id: 'shortcuts.help', label: 'Controls', key: '?', group: 'App' },

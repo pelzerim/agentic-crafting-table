@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { terminalKey } from './terminal-keys.ts';
+import { findStep, isFindKey, terminalKey } from './terminal-keys.ts';
 
 function fixture() {
   const sent: string[] = [];
@@ -79,4 +79,41 @@ test('the cut key is taken only when something was cut, and modified keys stay k
   assert.equal(terminalKey(terminal, key(otherKey).event, true, undefined, false, notACut), true, 'the other platform\'s modifier stays a key');
   assert.equal(terminalKey(terminal, key({ ...cutKey, shiftKey: true }).event, true, undefined, false, notACut), true);
   assert.equal(terminalKey(terminal, key({ ...cutKey, type: 'keyup' }).event, true, undefined, false, notACut), true);
+});
+
+test('the find key is ⌘F on macOS; elsewhere Ctrl+Shift+F in every terminal and Ctrl+F in an agent', () => {
+  const key = (fields: Partial<KeyboardEvent>) => ({ key: 'f', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...fields }) as KeyboardEvent;
+  assert.equal(isFindKey(key({ metaKey: true }), false, true), true, '⌘F on macOS');
+  assert.equal(isFindKey(key({ ctrlKey: true }), true, true), false, 'Ctrl+F on macOS stays forward-char');
+  assert.equal(isFindKey(key({ ctrlKey: true }), true, false), true, 'Ctrl+F in an agent');
+  assert.equal(isFindKey(key({ ctrlKey: true }), false, false), false, 'a shell keeps Ctrl+F');
+  assert.equal(isFindKey(key({ key: 'F', ctrlKey: true, shiftKey: true }), false, false), true, 'Ctrl+Shift+F in a shell');
+  assert.equal(isFindKey(key({ ctrlKey: true, altKey: true }), true, false), false);
+  assert.equal(isFindKey(key({}), true, false), false, 'plain F types');
+});
+
+test('Ctrl+F in an agent opens find on Linux and Windows instead of reaching the process', () => {
+  const { terminal, event, sent } = fixture();
+  if (/Mac/.test(navigator.platform)) return;
+  let opened = 0;
+  const ctrlF = { key: 'f', ctrlKey: true, shiftKey: false, keyCode: 70 };
+  assert.equal(terminalKey(terminal, event(ctrlF), true, () => opened++), false);
+  assert.equal(opened, 1);
+  assert.equal(terminalKey(terminal, event(ctrlF), false, () => opened++), true, 'a shell gets Ctrl+F');
+  assert.equal(terminalKey(terminal, event({ ...ctrlF, key: 'F', shiftKey: true }), false, () => opened++), false);
+  assert.equal(opened, 2); assert.deepEqual(sent, []);
+});
+
+test('the find bar steps with Enter, the arrows, F3 and the platform Find Next key', () => {
+  const key = (key: string, fields: Partial<KeyboardEvent> = {}) => ({ key, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...fields }) as KeyboardEvent;
+  for (const mac of [true, false]) {
+    assert.equal(findStep(key('Enter'), mac), 'next'); assert.equal(findStep(key('Enter', { shiftKey: true }), mac), 'previous');
+    assert.equal(findStep(key('ArrowDown'), mac), 'next'); assert.equal(findStep(key('ArrowUp'), mac), 'previous');
+    assert.equal(findStep(key('F3'), mac), 'next'); assert.equal(findStep(key('F3', { shiftKey: true }), mac), 'previous');
+    assert.equal(findStep(key('g', { metaKey: true }), mac), 'next'); assert.equal(findStep(key('G', { metaKey: true, shiftKey: true }), mac), 'previous');
+    assert.equal(findStep(key('g'), mac), undefined); assert.equal(findStep(key('ArrowDown', { shiftKey: true }), mac), undefined, 'Shift+arrow selects text');
+    assert.equal(findStep(key('Enter', { altKey: true }), mac), undefined);
+  }
+  assert.equal(findStep(key('g', { ctrlKey: true }), false), 'next'); assert.equal(findStep(key('G', { ctrlKey: true, shiftKey: true }), false), 'previous');
+  assert.equal(findStep(key('g', { ctrlKey: true }), true), undefined, 'Ctrl+G is not Find Next on macOS');
 });

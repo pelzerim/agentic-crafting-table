@@ -82,7 +82,7 @@ server, so an agent puts its own pull request, review and notes where they belon
 
 **Terminals that survive**
 - Real local shells with your own configuration. They outlive renderer and service
-  restarts and keep their scrollback. ⌘F finds text in them.
+  restarts and keep their scrollback. ⌘F (Ctrl+F in an agent session on Linux and Windows) finds text in them.
 
 **To-dos where the work is**
 - Items join the to-do list; imported tickets land in an inbox you triage onto a project.
